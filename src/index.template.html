@@ -1,0 +1,193 @@
+<title>Blueprint Buddy</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+{{CSS}}
+</style>
+
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+        <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+      </svg>
+      <span class="brand-name">Blueprint<span>Buddy</span></span>
+    </div>
+    <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
+    <div class="topbar-spacer"></div>
+    <div class="topbar-group" role="group" aria-label="History">
+      <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+      <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <button id="historyBtn" class="btn" aria-haspopup="dialog">History</button>
+    </div>
+    <div class="topbar-group">
+      <button id="unitsBtn" class="btn icon" title="Toggle units" aria-label="Toggle millimetres or inches">mm</button>
+      <div class="menu-wrap">
+        <button id="exportBtn" class="btn primary" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <div id="exportMenu" class="menu" role="menu">
+          <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
+          <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+          <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+          <div class="menu-sep"></div>
+          <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+          <div class="menu-sep"></div>
+          <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="bench">
+    <aside class="chat" id="chatPanel" aria-label="Design chat">
+      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat"></button>
+      <div class="chat-head">
+        <h2>Design chat</h2>
+        <select id="levelSelect" class="level-select" aria-label="Skill level">
+          <option value="beginner">Beginner</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced</option>
+        </select>
+      </div>
+      <div class="chat-log" id="chatLog" aria-live="polite"></div>
+      <div class="chat-input">
+        <form id="chatForm">
+          <textarea id="chatText" rows="1" placeholder="Describe a change…" aria-label="Message"></textarea>
+          <button type="submit" class="btn primary" id="sendBtn" aria-label="Send">Send</button>
+        </form>
+        <div class="hint-prompts" id="hintPrompts"></div>
+      </div>
+    </aside>
+
+    <section class="stage">
+      <div class="viewport-wrap" id="viewportWrap">
+        <canvas id="view3d" tabindex="0" aria-label="3D model viewport. Drag or use arrow keys to orbit, plus and minus to zoom, Home to reframe. Click a part to inspect it; double-click to isolate."></canvas>
+
+        <div class="advisories" id="advisories"></div>
+
+        <div class="inspector" id="inspector" role="region" aria-label="Part inspector">
+          <div class="inspector-head">
+            <h3 id="inspName">Part</h3>
+            <button class="btn icon ghost" id="inspClose" aria-label="Close inspector">✕</button>
+          </div>
+          <div class="inspector-dims" id="inspDims"></div>
+          <div class="inspector-body" id="inspBody"></div>
+        </div>
+
+        <div class="stage-controls">
+          <div class="control-card">
+            <label for="explodeRange">Explode</label>
+            <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
+          </div>
+          <div class="control-card">
+            <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
+          </div>
+          <div class="control-card">
+            <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
+          </div>
+        </div>
+
+        <div class="compare-banner" id="compareBanner" hidden>
+          <span id="compareLabel"></span>
+          <button class="btn small" id="compareExit">Done comparing</button>
+        </div>
+
+        <div class="playback-bar" id="playbackBar" hidden>
+          <button class="btn icon" id="pbPrev" aria-label="Previous step">‹</button>
+          <span class="step-count" id="pbCount">1/9</span>
+          <span class="step-label" id="pbLabel">Step</span>
+          <button class="btn icon" id="pbReplay" aria-label="Replay step">↺</button>
+          <button class="btn icon" id="pbNext" aria-label="Next step">›</button>
+          <button class="btn small" id="pbExit">Exit</button>
+        </div>
+
+        <div class="viewport-hint" id="viewportHint">drag to orbit · scroll to zoom · click a part to tune it</div>
+      </div>
+
+      <nav class="tabs" role="tablist" aria-label="Plans" id="tabBar">
+        <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="true">Cut list</button>
+        <button class="tab" role="tab" id="tab-bom" aria-controls="panel-main" aria-selected="false">Materials</button>
+        <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assembly</button>
+        <button class="tab" role="tab" id="tab-reference" aria-controls="panel-main" aria-selected="false">Shop reference</button>
+      </nav>
+      <div class="panel" id="panel-main" role="tabpanel" tabindex="0"></div>
+    </section>
+  </main>
+
+  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>Revisions</h2>
+      <button class="btn small" id="compareBtn" disabled>Compare</button>
+      <button class="btn icon ghost" id="historyClose" aria-label="Close history">✕</button>
+    </div>
+    <div class="drawer-body" id="historyList"></div>
+    <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
+  </aside>
+
+  <div class="scrim" id="galleryScrim" role="dialog" aria-modal="true" aria-label="Starter gallery">
+    <div class="modal">
+      <h2>What are we building?</h2>
+      <p class="sub">Pick a starter to see full plans instantly — every one runs through the same parametric pipeline as a design you describe yourself. Refine it in the chat afterward.</p>
+      <div class="gallery-grid" id="galleryGrid"></div>
+      <div class="modal-foot">
+        <span class="sub" style="margin:0">…or close this and describe your own piece.</span>
+        <button class="btn" id="galleryClose">Start from scratch</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="scrim" id="helpScrim" role="dialog" aria-modal="true" aria-label="Export help">
+    <div class="modal">
+      <h2>Getting your design into SketchUp</h2>
+      <div class="help-block">
+        <h3>Mesh import (.dae)</h3>
+        <ol class="help-steps">
+          <li>Export <strong>SketchUp mesh (.dae)</strong> from the Export menu.</li>
+          <li>In SketchUp choose <strong>File &gt; Import…</strong> and pick <em>COLLADA (*.dae)</em> as the file type.</li>
+          <li>Select the downloaded file and click <strong>Import</strong> — parts arrive named, at exact size, right side up.</li>
+        </ol>
+      </div>
+      <div class="help-block">
+        <h3>Build script (.rb) — the parametric way</h3>
+        <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter. (Or drop the file into your Plugins folder.) Serious users want this one — components stay editable.</p>
+      </div>
+      <div class="help-block">
+        <h3>Integrations: SketchUp connector in Claude</h3>
+        <p>Working inside Claude with the Trimble SketchUp connector? Export your <strong>DesignSpec (.json)</strong>, paste it into the conversation, and ask Claude to build the piece directly in your live SketchUp model. The spec carries every dimension, so nothing is lost in translation.</p>
+      </div>
+      <div class="modal-foot">
+        <span></span>
+        <button class="btn primary" id="helpClose">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="scrim" id="compareScrim" role="dialog" aria-modal="true" aria-label="Snapshot comparison">
+    <div class="modal">
+      <h2 id="compareTitle">Compare snapshots</h2>
+      <p class="sub" id="compareSub"></p>
+      <div class="table-scroll">
+        <table class="data diff-table"><thead><tr><th>Parameter</th><th>Older</th><th>Newer</th></tr></thead><tbody id="compareRows"></tbody></table>
+      </div>
+      <div class="modal-foot">
+        <span class="sub" style="margin:0">Close to see the older design ghosted in 3D.</span>
+        <button class="btn primary" id="compareClose">Show 3D overlay</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="printRoot"></div>
+
+<script>{{THREE}}</script>
+<script>{{JS_KNOWLEDGE}}</script>
+<script>{{JS_SPEC}}</script>
+<script>{{JS_PARAMETRIC}}</script>
+<script>{{JS_PLANS}}</script>
+<script>{{JS_EXPORTS}}</script>
+<script>{{JS_HISTORY}}</script>
+<script>{{JS_AI}}</script>
+<script>{{JS_GALLERY}}</script>
+<script>{{JS_ENGINE}}</script>
+<script>{{JS_UI}}</script>

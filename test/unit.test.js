@@ -1,0 +1,366 @@
+/* Blueprint Buddy — headless unit tests for the code-owned layers.
+ * Run: node test/unit.test.js
+ */
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const SRC = ['knowledge.js', 'spec.js', 'parametric.js', 'plans.js', 'exports.js', 'history.js', 'ai.js', 'gallery.js'];
+for (const f of SRC) {
+  vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
+}
+const BB = globalThis.BB;
+const { Spec, Parametric, Plans, Exports, History, AI, K, Gallery } = BB;
+
+let pass = 0, fail = 0;
+function ok(cond, msg) {
+  if (cond) { pass++; }
+  else { fail++; console.error('  ✗ ' + msg); }
+}
+function eq(a, b, msg) { ok(JSON.stringify(a) === JSON.stringify(b), `${msg} — got ${JSON.stringify(a)}, want ${JSON.stringify(b)}`); }
+function section(name) { console.log('· ' + name); }
+
+function pipeline(raw) {
+  const spec = Spec.correctSpec(raw);
+  const model = Parametric.build(spec);
+  const report = Spec.validate(spec, model);
+  return { spec, model, report };
+}
+
+/* ---------------- spec + correction ---------------- */
+section('spec correction');
+{
+  const s1 = Spec.correctSpec(Spec.defaultSpec('table'));
+  const s2 = Spec.correctSpec(s1);
+  eq(s1, s2, 'correction is idempotent');
+
+  const bad = Spec.correctSpec({ meta: { template: 'table', level: 'beginner' }, joinery: { frame: 'mortise_tenon', box: 'half_blind_dovetail' } });
+  eq(bad.joinery.frame, 'pocket_screws', 'beginner frame joint snapped to level matrix');
+  eq(bad.joinery.box, 'pocket_screws', 'beginner box joint snapped (never dovetail)');
+
+  const adv = Spec.correctSpec({ meta: { template: 'nightstand', level: 'advanced' }, joinery: { box: 'half_blind_dovetail' } });
+  eq(adv.joinery.box, 'half_blind_dovetail', 'advanced keeps dovetail box');
+
+  const wr = Spec.correctSpec({ meta: { template: 'nightstand', level: 'beginner' }, drawers: { count: 1, runner: 'wood_runners' } });
+  eq(wr.drawers.runner, 'side_mount_slides', 'wood runners gated to intermediate+');
+
+  const noDr = Spec.correctSpec({ meta: { template: 'table' }, drawers: { count: 2 } });
+  ok(noDr.drawers === null || noDr.drawers === undefined, 'table never carries drawers');
+}
+
+/* ---------------- table geometry ---------------- */
+section('table parametrics');
+{
+  const { spec, model, report } = pipeline({ meta: { name: 'Seed', template: 'table', level: 'beginner' } });
+  eq(model.parts.length, 9, 'table = 4 legs + 4 aprons + top');
+  const legs = model.parts.filter(p => p.role === 'leg');
+  eq(legs.length, 4, 'four legs');
+  eq(legs[0].size.h, spec.overall.height - spec.structure.topThickness, 'leg height = H - top');
+  const top = model.parts.find(p => p.role === 'top');
+  eq(top.size.w, spec.overall.width, 'top width exact');
+  eq(top.pos.y, spec.overall.height - spec.structure.topThickness / 2, 'top rides at full height');
+  ok(legs.every(l => Math.abs((l.pos.y - l.size.h / 2)) < 1e-9), 'legs sit on the floor');
+  eq(report.errors.length, 0, 'seed validates clean');
+  ok(legs.every(l => l.defKey === legs[0].defKey), 'legs share one definition key');
+}
+
+/* ---------------- ergonomics advisories ---------------- */
+section('validation: advisory vs error');
+{
+  const { report } = pipeline({ meta: { template: 'table' }, overall: { width: 1500, depth: 850, height: 820 } });
+  eq(report.errors.length, 0, '820mm table height: no errors');
+  ok(report.advisories.some(a => a.id === 'ergo_dining_height'), '820mm table height: dismissible advisory');
+
+  const { report: r2 } = pipeline({ meta: { template: 'table' }, overall: { width: 1500, depth: 900, height: 750 }, wood: { species: 'red_oak' } });
+  ok(r2.advisories.some(a => a.id.startsWith('movement_')), 'high-movement species + wide top → movement advisory');
+
+  const r3 = pipeline({ meta: { template: 'table' }, overall: { width: 1500, depth: 900, height: 750 }, wood: { species: 'baltic_birch' } });
+  eq(r3.spec.wood.species, 'red_oak', 'sheet stock snapped to a solid species for solid parts');
+
+  const r4 = pipeline({ meta: { template: 'table' }, overall: { width: 1500, depth: 900, height: 750 }, wood: { species: 'hard_maple' } });
+  ok(!r4.report.advisories.some(a => a.id.startsWith('movement_')), 'medium-movement species: no movement advisory');
+}
+
+/* ---------------- drawer math ---------------- */
+section('drawer-box math (nightstand, 2 drawers)');
+{
+  const { spec, model, report } = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' },
+    joinery: { frame: 'dowels', box: 'locking_rabbet' }
+  });
+  eq(report.errors.length, 0, 'nightstand validates clean');
+  const rails = model.parts.filter(p => p.role === 'rail');
+  eq(rails.length, 3, '2 drawers → 3 rails (top, divider, bottom)');
+  ok(rails.every(r => r.size.h === 60 && r.size.d === 20), 'rails are 20 thick × 60 tall');
+  eq(model.openings.length, 2, 'two openings');
+  eq(model.drawers.length, 2, 'two drawer assemblies');
+
+  for (const d of model.drawers) {
+    const op = d.opening;
+    eq(d.box.w, op.w - 25, `drawer ${d.index + 1}: box width = opening − 25`);
+    eq(d.box.h, op.h - 15, `drawer ${d.index + 1}: box height = opening − 15`);
+    ok(K.SLIDE_LENGTHS.includes(d.slideLen), `drawer ${d.index + 1}: slide is a standard length (${d.slideLen})`);
+    eq(d.box.d, d.slideLen, `drawer ${d.index + 1}: box depth = slide length`);
+    ok(d.slideLen <= op.interiorDepth - 25, `drawer ${d.index + 1}: slide respects 25mm rear setback`);
+    eq(d.front.w, op.w - 4, `drawer ${d.index + 1}: inset front = opening − 2mm gap each side (w)`);
+    eq(d.front.h, op.h - 4, `drawer ${d.index + 1}: inset front = opening − 2mm gap each side (h)`);
+    eq(d.front.t, 19, 'front thickness 19');
+    ok(op.h >= 80, 'opening ≥ 80');
+    ok(op.w <= 750, 'opening ≤ 750');
+  }
+  const openings = model.openings;
+  ok(Math.abs(openings[0].h - openings[1].h) < 0.2, 'equal opening heights by default');
+
+  // Front parts use the main species; box parts use sheet stock.
+  const fronts = model.parts.filter(p => p.role === 'drawer_front');
+  eq(fronts.length, 2, 'two applied fronts');
+  ok(fronts.every(f => f.material === spec.wood.species), 'fronts match main species');
+  ok(model.parts.filter(p => p.role === 'drawer_side').every(p => p.material === 'baltic_birch'), 'box sides are baltic birch');
+
+  // BOM: slide pairs + pulls + mounting screws.
+  const bom = Plans.bom(spec, model);
+  eq(bom.items.filter(i => i.label.includes('side-mount slides')).length, 2, 'BOM: one slide pair per drawer');
+  eq(bom.items.filter(i => i.label === 'Drawer pull').length, 2, 'BOM: one pull per drawer');
+  ok(bom.items.some(i => i.label.includes('M4 × 16')), 'BOM: slide mounting screws');
+  ok(bom.items.some(i => i.detail && i.detail.includes('front attachment')), 'BOM: front attachment screws');
+
+  // Cut list: drawer parts flow through with allowances.
+  const cut = Plans.cutList(spec, model);
+  const boxFront = cut.find(r => r.name.includes('box front'));
+  ok(boxFront, 'cut list includes drawer box fronts');
+  ok(boxFront.note.includes('locking rabbet'), 'locking rabbet allowance noted');
+  const geomFront = model.parts.find(p => p.role === 'drawer_boxfront');
+  const geomLen = Math.max(geomFront.size.w, geomFront.size.h, geomFront.size.d);
+  eq(boxFront.L, Math.round((geomLen + 2 * Plans.JOINT_ALLOWANCE.locking_rabbet) * 10) / 10, 'box front length = geometry + 2 joint allowances');
+}
+
+section('drawer auto-correction + overlay');
+{
+  // Too many drawers for a short nightstand → correction reduces count.
+  const { spec, model, report } = pipeline({
+    meta: { template: 'nightstand', level: 'intermediate' },
+    overall: { width: 450, depth: 380, height: 480 },
+    drawers: { count: 4, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  ok(spec.drawers.count < 4, `drawer count auto-reduced (${spec.drawers.count})`);
+  ok(model.openings.every(o => o.h >= 80), 'all openings ≥ 80 after correction');
+  eq(report.errors.length, 0, 'auto-corrected design has no blocking errors');
+
+  const ov = pipeline({
+    meta: { template: 'cabinet', level: 'intermediate' },
+    overall: { width: 800, depth: 450, height: 900 },
+    drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }
+  });
+  for (const d of ov.model.drawers) {
+    ok(d.front.w > d.opening.w && d.front.w <= d.opening.w + 20, 'overlay front wider than opening, ≤ +10/side');
+    ok(d.front.h > d.opening.h, 'overlay front taller than opening');
+  }
+
+  // Wood runners math.
+  const wr = pipeline({
+    meta: { template: 'nightstand', level: 'intermediate' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }
+  });
+  const d0 = wr.model.drawers[0];
+  eq(d0.box.w, d0.opening.w - 4, 'wood runners: box = opening − 4 total');
+  eq(d0.box.h, d0.opening.h - 10, 'wood runners: height = opening − 10');
+  eq(d0.box.d, d0.opening.interiorDepth - 20, 'wood runners: depth = interior − 20');
+  eq(d0.slideLen, null, 'no slide hardware for wood runners');
+}
+
+/* ---------------- diff merge + chips ---------------- */
+section('diff-based refinement');
+{
+  const base = Spec.correctSpec({ meta: { template: 'table' } });
+  const reply = AI.classify(AI.extractJSON('{"overall":{"height":700},"explain":"Lowered height by 50mm"}'));
+  eq(reply.kind, 'diff', 'partial spec classified as diff');
+  const applied = AI.apply(reply, base);
+  eq(applied.spec.overall.height, 700, 'deep-merge applied');
+  eq(applied.spec.overall.width, base.overall.width, 'unrelated fields untouched (no drift)');
+  ok(applied.diffs.some(d => d.path === 'overall.height' && d.from === 745 && d.to === 700), 'code-computed diff records 745 → 700');
+  ok(applied.chips.some(c => /height 745 mm → 700 mm/.test(c)), 'chip text renders code-computed change');
+
+  // Null deletes.
+  const cab = Spec.correctSpec({ meta: { template: 'cabinet' }, drawers: { count: 2 } });
+  const rm = AI.apply(AI.classify({ drawers: null, explain: 'Removed drawers' }), cab);
+  ok(!rm.spec.drawers, 'null removes drawers');
+
+  // Question shape.
+  const q = AI.classify(AI.extractJSON('Sure! {"question":"Bigger how?","options":["Wider","Taller"]}'));
+  eq(q.kind, 'question', 'question classified');
+  eq(q.options.length, 2, 'options preserved');
+
+  // Correction still governs merged specs.
+  const cheat = AI.apply(AI.classify({ joinery: { box: 'half_blind_dovetail' }, explain: 'x' }),
+    Spec.correctSpec({ meta: { template: 'nightstand', level: 'beginner' } }));
+  ok(cheat.spec.joinery.box !== 'half_blind_dovetail', 'AI cannot smuggle advanced joints past a beginner level');
+}
+
+/* ---------------- local model ---------------- */
+section('local intent parser');
+{
+  const spec = Spec.correctSpec({ meta: { template: 'table' } });
+  const q = AI.localModel('make it bigger', spec);
+  eq(q.kind, 'question', 'ambiguous “bigger” → clarifying question');
+  ok(q.options.length >= 2, 'question ships tappable options');
+
+  const low = AI.localModel('lower it by 50mm', spec);
+  eq(low.kind, 'diff', 'lower by 50 → diff');
+  eq(low.patch.overall.height, spec.overall.height - 50, 'height reduced by 50');
+
+  const wal = AI.localModel('make it walnut', spec);
+  eq(wal.patch.wood.species, 'walnut', 'species change parsed');
+
+  const ns = Spec.correctSpec({ meta: { template: 'nightstand' } });
+  const dr = AI.localModel('add another drawer', ns);
+  eq(dr.patch.drawers.count, 2, 'add a drawer increments count');
+
+  const nw = AI.localModel('build me a bookshelf 900 wide', spec);
+  eq(nw.kind, 'new', 'creation intent');
+  eq(nw.spec.meta.template, 'bookshelf', 'template switched');
+  eq(nw.spec.overall.width, 900, 'width picked up');
+
+  const inches = AI.localModel('width to 48 in', spec);
+  eq(inches.patch.overall.width, Math.round(48 * 25.4), 'imperial parsed to mm');
+}
+
+/* ---------------- history ---------------- */
+section('history');
+{
+  const s0 = Spec.correctSpec({ meta: { template: 'table' } });
+  const h = History.createHistory(s0, 'gallery');
+  const s1 = Spec.correctSpec(Spec.deepMerge(s0, { overall: { height: 700 } }));
+  h.push(s1, 'ai');
+  const s2 = Spec.correctSpec(Spec.deepMerge(s1, { wood: { species: 'walnut' } }));
+  h.push(s2, 'manual');
+  eq(h.snapshots.length, 3, 'three snapshots');
+  eq(h.currentSpec().wood.species, 'walnut', 'current is latest');
+  eq(h.undo().wood.species, 'red_oak', 'undo restores species');
+  eq(h.undo().overall.height, 745, 'undo restores height');
+  ok(!h.canUndo(), 'at root');
+  eq(h.redo().overall.height, 700, 'redo works');
+  h.restore(0);
+  eq(h.snapshots.length, 4, 'restore appends, never truncates');
+  eq(h.currentSpec().overall.height, 745, 'restore returns to snapshot 0 state');
+  ok(h.snapshots[2], 'later snapshots still present after restore');
+  const cmp = h.compare(0, 2);
+  ok(cmp.diffs.some(d => d.path === 'wood.species'), 'compare finds species diff');
+  ok(cmp.rows.length > 0, 'compare renders rows');
+  ok(Object.isFrozen(h.snapshots[0].spec), 'snapshots are immutable');
+}
+
+/* ---------------- exports ---------------- */
+section('COLLADA export');
+{
+  const { spec, model } = pipeline({ meta: { name: 'Seed Table', template: 'table' } });
+  const dae = Exports.toDAE(spec, model);
+  ok(dae.includes('<unit meter="0.001" name="millimeter"/>'), 'mm unit declared');
+  ok(dae.includes('<up_axis>Z_UP</up_axis>'), 'Z_UP declared');
+  for (const p of model.parts) ok(dae.includes(`<node id="${p.id}" name="${p.id}">`), `node for ${p.id}`);
+  // Leg lands on the ground plane: node Z translation = legH/2, geometry half-height = legH/2.
+  const leg = model.parts.find(p => p.id === 'leg_1');
+  const m = dae.match(new RegExp(`<node id="leg_1"[^>]*>\\s*<matrix>([^<]+)</matrix>`));
+  ok(m, 'leg_1 has a matrix');
+  const vals = m[1].trim().split(/\s+/).map(Number);
+  eq(vals[11], leg.size.h / 2, 'leg Z translation = half height (foot on ground)');
+  eq(vals[3], leg.pos.x, 'X preserved');
+  eq(vals[7], -leg.pos.z, 'Y′ = −z (Y-up → Z-up swap)');
+  ok(dae.includes('mat_leg') && dae.includes('mat_top'), 'materials per role');
+  // Deduped geometry: 4 legs share one geometry id.
+  const geomCount = (dae.match(/<geometry id="/g) || []).length;
+  ok(geomCount < model.parts.length, `geometry deduped (${geomCount} geoms for ${model.parts.length} parts)`);
+}
+
+section('Ruby export');
+{
+  const { spec, model } = pipeline({
+    meta: { name: 'NS "quoted"', template: 'nightstand', level: 'intermediate' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const rb = Exports.toRuby(spec, model);
+  ok(rb.includes('model.start_operation') && rb.includes('model.commit_operation'), 'single undo operation');
+  ok(rb.includes('.mm'), 'uses .mm helper');
+  ok(!/Point3d\.new\([^)]*\d\s*[,)]\s*(?!.*\.mm)/.test('') , 'placeholder');
+  // Every Point3d coordinate carries .mm
+  const pts = rb.match(/Geom::Point3d\.new\([^)]*\)/g) || [];
+  ok(pts.length > 0 && pts.every(p => (p.match(/\.mm/g) || []).length === 3), 'every instance coordinate uses .mm');
+  // Dedup: 4 legs → one definition, four instances.
+  const legDefs = (rb.match(/defs\.add\("Leg /g) || []).length;
+  eq(legDefs, 1, 'four legs = ONE ComponentDefinition');
+  const legInsts = (rb.match(/inst\.name = "leg_\d"/g) || []).length;
+  eq(legInsts, 4, 'four leg instances');
+  ok(rb.includes('model.layers.add'), 'tags (layers) per role');
+  ok(rb.includes('pushpull'), 'boxes built via pushpull');
+  ok(rb.includes('face.reverse! if face.normal.z < 0'), 'pushpull direction normalized');
+  ok(rb.includes('NS \\"quoted\\"'), 'design name escaped in Ruby strings');
+  ok(rb.includes('Ruby Console'), 'run instructions in header');
+}
+
+/* ---------------- assembly ---------------- */
+section('assembly steps');
+{
+  const { spec, model } = pipeline({
+    meta: { template: 'nightstand', level: 'beginner' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const steps = Plans.assembly(spec, model);
+  const ids = steps.map(s => s.id);
+  const want = ['dr1_box', 'dr1_bottom', 'dr1_runners', 'dr1_hang', 'dr1_front', 'dr1_pull'];
+  ok(want.every(w => ids.includes(w)), 'drawer sub-sequence complete');
+  ok(ids.indexOf('dr1_box') < ids.indexOf('dr1_bottom') && ids.indexOf('dr1_bottom') < ids.indexOf('dr1_runners') &&
+     ids.indexOf('dr1_runners') < ids.indexOf('dr1_hang') && ids.indexOf('dr1_hang') < ids.indexOf('dr1_front') &&
+     ids.indexOf('dr1_front') < ids.indexOf('dr1_pull'), 'drawer steps in build order');
+  ok(ids.indexOf('dr1_pull') < ids.indexOf('dr2_box'), 'drawer 1 completes before drawer 2');
+  const partIds = new Set(model.parts.map(p => p.id));
+  ok(steps.every(s => s.partIds.every(id => partIds.has(id))), 'every step references real parts');
+  ok(steps.some(s => s.joints && s.joints.length), 'steps carry joint metadata for highlighting');
+  ok(!steps.some(s => s.text.toLowerCase().includes('dovetail')), 'beginner build never mentions dovetails');
+  ok(steps[steps.length - 1].id === 'finish', 'finishing step closes the sequence');
+}
+
+/* ---------------- gallery through the pipeline ---------------- */
+section('starter gallery');
+{
+  for (const g of Gallery.STARTERS) {
+    const { spec, model, report } = pipeline(g.spec);
+    eq(report.errors.length, 0, `${g.spec.meta.name}: no blocking errors`);
+    ok(model.parts.length > 4, `${g.spec.meta.name}: parts built`);
+    const cut = Plans.cutList(spec, model);
+    const b = Plans.bom(spec, model);
+    const steps = Plans.assembly(spec, model);
+    ok(cut.length > 0 && b.items.length > 0 && steps.length > 0, `${g.spec.meta.name}: full plans derived`);
+    const dae = Exports.toDAE(spec, model);
+    const rb = Exports.toRuby(spec, model);
+    ok(dae.length > 500 && rb.length > 500, `${g.spec.meta.name}: exports generate`);
+  }
+  eq(Gallery.STARTERS.length, 6, 'six starters');
+}
+
+/* ---------------- knowledge ---------------- */
+section('knowledge bases');
+{
+  ok(Object.keys(K.WOOD_SPECIES).length >= 9, 'nine+ species');
+  for (const s of Object.values(K.WOOD_SPECIES)) {
+    ok(s.janka > 0 && s.blurb && s.movement && s.costTier >= 1, `${s.key} row complete`);
+  }
+  ok(K.ERGONOMICS.some(r => r.key === 'drawer_max_width'), 'drawer ergonomics rows present');
+  for (const j of Object.values(K.JOINERY)) {
+    ok(j.strength >= 1 && j.strength <= 5 && j.tools.length && j.failure && j.bestFor, `${j.key} row complete`);
+  }
+  const digest = K.knowledgeDigest();
+  ok(digest.includes('dining_height 730–760mm') && digest.includes('mortise_tenon'), 'digest carries norms');
+  const sys = AI.systemPrompt(Spec.correctSpec({ meta: { template: 'table' } }));
+  ok(sys.includes(digest) && sys.includes('"template":"table"'), 'system prompt embeds knowledge digest + current corrected spec');
+  ok(sys.includes('ONLY the changed DesignSpec fields'), 'system prompt demands diff-based refinement');
+  eq(K.jointsForLevel('beginner').sort().join(','), 'butt_screws,pocket_screws', 'beginner matrix');
+  ok(K.jointsForLevel('advanced').includes('half_blind_dovetail'), 'advanced matrix');
+  ok(K.FASTENERS.screws.every(s => s.pilot !== undefined), 'screws carry pilot diameters');
+  ok(K.FINISHES.every(f => f.coats && f.recoatHrs !== undefined && f.cureDays), 'finishes carry coats + dry times');
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
