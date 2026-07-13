@@ -4,7 +4,9 @@
  * (or a partial-spec diff); THIS layer owns the corrected spec; geometry and all
  * derived plans are pure functions of the corrected spec.
  *
- * All lengths are millimetres internally. `meta.units` only affects display.
+ * All lengths are millimetres internally. `meta.units` only affects display,
+ * and every displayed length routes through BB.Units — the single boundary
+ * where mm becomes text.
  */
 var BB = globalThis.BB = globalThis.BB || {};
 
@@ -12,6 +14,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   'use strict';
   const K = BB.K;
   const Geo = BB.Geo;
+  const U = () => BB.Units;
 
   const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
@@ -67,11 +70,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
   }
 
+  /* Template defaults are stored in mm (internal truth) but chosen as exact
+   * inch multiples so a fresh design reads as clean fractions in the default
+   * imperial display: 1524 = 60 in, 863.6 = 34 in, 736.6 = 29 in, … Heights
+   * also keep (height − top)/2 on the 0.1 mm grid the parametric layer
+   * rounds positions to, so legs land exactly on the floor. */
   function defaultSpec(template) {
     const base = {
       specVersion: SPEC_VERSION,
-      meta: { name: 'Untitled', template: template || 'table', level: 'beginner', units: 'mm' },
-      overall: { width: 1500, depth: 850, height: 745 },
+      meta: { name: 'Untitled', template: template || 'table', level: 'beginner', units: 'in' },
+      overall: { width: 1524, depth: 863.6, height: 736.6 },
       wood: { species: 'red_oak', sheetSpecies: 'baltic_birch' },
       structure: {
         topThickness: 25, legThickness: 70, apronHeight: 90, apronThickness: 20,
@@ -89,22 +97,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       Object.assign(base.overall, { width: 1100, depth: 350, height: 468 });
       base.meta.name = 'Custom Piece';
     }
-    if (t === 'desk') Object.assign(base.overall, { width: 1300, depth: 650, height: 735 });
+    if (t === 'desk') Object.assign(base.overall, { width: 1320.8, depth: 660.4, height: 736.6 });
     if (t === 'bench') {
-      Object.assign(base.overall, { width: 1200, depth: 380, height: 450 });
+      Object.assign(base.overall, { width: 1219.2, depth: 381, height: 457.2 });
       Object.assign(base.structure, { topThickness: 32, legThickness: 60, apronHeight: 80 });
     }
     if (t === 'bookshelf') {
-      Object.assign(base.overall, { width: 900, depth: 300, height: 1800 });
+      Object.assign(base.overall, { width: 914.4, depth: 304.8, height: 1828.8 });
       base.structure.shelfCount = 4;
     }
     if (t === 'nightstand') {
-      Object.assign(base.overall, { width: 500, depth: 400, height: 600 });
+      Object.assign(base.overall, { width: 508, depth: 406.4, height: 609.6 });
       Object.assign(base.structure, { topThickness: 20, legThickness: 45, apronHeight: 80 });
       base.drawers = { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' };
     }
     if (t === 'cabinet') {
-      Object.assign(base.overall, { width: 800, depth: 450, height: 900 });
+      Object.assign(base.overall, { width: 812.8, depth: 457.2, height: 914.4 });
       Object.assign(base.structure, { topThickness: 25, shelfCount: 1, toeKick: true });
       base.drawers = { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' };
     }
@@ -173,21 +181,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness)/;
 
-  const MM_PER_IN = 25.4;
-  function fmtLen(mm, units) {
-    if (units === 'in') {
-      const inches = mm / MM_PER_IN;
-      // nearest 1/16", trimmed
-      const sixteenths = Math.round(inches * 16);
-      const whole = Math.floor(sixteenths / 16), rem = sixteenths % 16;
-      if (!rem) return whole + '″';
-      const div = (a, b) => { const g = (x, y) => y ? g(y, x % y) : x; const d = g(a, b); return (a / d) + '/' + (b / d); };
-      return (whole ? whole + ' ' : '') + div(rem, 16) + '″';
-    }
-    return (Math.round(mm * 10) / 10) + ' mm';
-  }
-  function fmtValue(path, v, units) {
-    if (typeof v === 'number' && MM_PATHS.test(path)) return fmtLen(v, units);
+  /* Diff-chip / inspector value rendering. Lengths route through BB.Units —
+   * the current display preference, NOT a per-call unit, decides the text. */
+  function fmtValue(path, v) {
+    if (typeof v === 'number' && MM_PATHS.test(path)) return U().fmtLength(v);
     if (typeof v === 'boolean') return v ? 'on' : 'off';
     if (v === undefined) return '—';
     if (Array.isArray(v)) return v.length + ' item' + (v.length === 1 ? '' : 's');
@@ -200,10 +197,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     return String(v);
   }
-  function describeDiff(diffs, units) {
+  function describeDiff(diffs) {
     return diffs.map(d => {
       const label = PATH_LABELS[d.path] || d.path;
-      return `${label} ${fmtValue(d.path, d.from, units)} → ${fmtValue(d.path, d.to, units)}`;
+      return `${label} ${fmtValue(d.path, d.from)} → ${fmtValue(d.path, d.to)}`;
     });
   }
 
@@ -329,7 +326,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     s.specVersion = SPEC_VERSION;
     s.meta.template = template;
     if (!K.LEVELS.includes(s.meta.level)) s.meta.level = 'beginner';
-    if (s.meta.units !== 'in') s.meta.units = 'mm';
+    // Imperial is the default; only an explicit metric choice stays metric.
+    if (s.meta.units !== 'mm') s.meta.units = 'in';
     s.meta.name = String(s.meta.name || 'Untitled').slice(0, 60);
 
     const o = s.overall, st = s.structure;
@@ -398,7 +396,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function validate(spec, model) {
     const errors = [], advisories = [];
     const t = spec.meta.template, o = spec.overall;
-    const units = spec.meta.units;
+    const fmt = mm => U().fmtLength(mm);
 
     // Ergonomics advisories (never block).
     for (const row of K.ERGONOMICS) {
@@ -409,7 +407,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           const dir = v > row.max ? 'above' : 'below';
           advisories.push({
             id: 'ergo_' + row.key,
-            text: `${fmtLen(v, units)} is ${dir} the typical ${fmtLen(row.min, units)}–${fmtLen(row.max, units)} ${row.label.toLowerCase()}. ${row.note}`
+            text: `${fmt(v)} is ${dir} the typical ${fmt(row.min)} to ${fmt(row.max)} ${row.label.toLowerCase()}. ${U().fmtTemplate(row.note)}`
           });
         }
       }
@@ -421,19 +419,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (sp && sp.movement === 'high' && hasWideTop) {
       advisories.push({
         id: 'movement_' + sp.key,
-        text: `${sp.label} moves a lot across the grain, and this top is ${fmtLen(o.depth, units)} wide. Fasten it with buttons or figure-8s — never glue a wide solid top down.`
+        text: `${sp.label} moves a lot across the grain, and this top is ${fmt(o.depth)} wide. Fasten it with buttons or figure-8s — never glue a wide solid top down.`
       });
     }
 
     // Drawer geometry from the built model.
     if (model && model.openings) {
       for (const op of model.openings) {
-        if (op.h < 80) errors.push({ id: 'op_h_' + op.index, text: `Drawer opening ${op.index + 1} is only ${fmtLen(op.h, units)} tall — the minimum workable opening is 80 mm. Reduce the drawer count or grow the piece.` });
-        if (op.w > 750) advisories.push({ id: 'op_w_' + op.index, text: `A ${fmtLen(op.w, units)} drawer is wider than the ${fmtLen(750, units)} a single slide pair handles well. Consider two banks side by side.` });
+        if (op.h < 80) errors.push({ id: 'op_h_' + op.index, text: `Drawer opening ${op.index + 1} is only ${fmt(op.h)} tall — the minimum workable opening is ${fmt(80)}. Reduce the drawer count or grow the piece.` });
+        if (op.w > 750) advisories.push({ id: 'op_w_' + op.index, text: `A ${fmt(op.w)} drawer is wider than the ${fmt(750)} a single slide pair handles well. Consider two banks side by side.` });
       }
       if (spec.drawers && model.openings.length) {
         const topOp = model.openings[0];
-        if (t === 'cabinet' && topOp.zTop > 1100) advisories.push({ id: 'pull_height', text: 'The top drawer sits above comfortable pull height (600–1100 mm). Fine for occasional storage.' });
+        if (t === 'cabinet' && topOp.zTop > 1100) advisories.push({ id: 'pull_height', text: `The top drawer sits above comfortable pull height (${fmt(600)} to ${fmt(1100)}). Fine for occasional storage.` });
       }
     }
 
@@ -474,7 +472,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
-    correctSpec, validate, fmtLen, fmtValue, PATH_LABELS, MM_PER_IN,
+    correctSpec, validate, fmtValue, PATH_LABELS,
     customPartSize, customExtents
   };
 })();

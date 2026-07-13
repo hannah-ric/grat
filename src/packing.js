@@ -14,6 +14,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   'use strict';
   const K = BB.K;
   const L = () => K.LUMBER;
+  const U = () => BB.Units; // display boundary — packing math itself stays mm
 
   const r1 = v => Math.round(v * 10) / 10;
 
@@ -91,7 +92,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           // fuller boards never cost more.
           const lengths = L().STOCK_LENGTHS;
           const stockLen = lengths[lengths.length - 1] - 2 * trim >= p.len ? lengths[lengths.length - 1] : null;
-          if (!stockLen) { boards.push({ nominal, actual: list[0].actual, stockLen: null, cuts: [], error: `“${p.name}” (${p.len} mm) exceeds the longest stock board.` }); continue; }
+          if (!stockLen) { boards.push({ nominal, actual: list[0].actual, stockLen: null, cuts: [], error: `“${p.name}” (${U().fmtLength(p.len)}) exceeds the longest stock board.` }); continue; }
           const b = { nominal, actual: list[0].actual, stockLen, used: 0, remaining: stockLen - 2 * trim, cuts: [] };
           b.cuts.push({ name: p.name, len: p.len, offset: 0, note: p.note });
           b.used = p.len;
@@ -151,7 +152,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const errors = [];
     for (const p of sorted) {
       if (p.w > SW || (p.h > SH && (p.grainLocked || p.h > SW || p.w > SH))) {
-        errors.push(`“${p.name}” (${p.w} × ${p.h}) exceeds a full sheet.`);
+        errors.push(`“${p.name}” (${U().fmtLength(p.w)} × ${U().fmtLength(p.h)}) exceeds a full sheet.`);
         continue;
       }
       let placed = false;
@@ -198,13 +199,13 @@ var BB = globalThis.BB = globalThis.BB || {};
           if (!rough) {
             const sec = sectionFor(row.T, row.W);
             if (sec.kind === 'direct') {
-              solidPieces.push({ name: row.name, len: row.L, nominal: sec.nominal, actual: sec.actual, note: sec.actual.w - row.W > 3 ? `rip to ${row.W}` : '' });
+              solidPieces.push({ name: row.name, len: row.L, nominal: sec.nominal, actual: sec.actual, note: sec.actual.w - row.W > 3 ? `rip to ${U().fmtLength(row.W)}` : '' });
             } else if (sec.kind === 'glueup') {
               glueups.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, W: row.W, T: row.T });
               for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (strip ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: 'glue-up strip' });
             } else {
               laminations.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, T: row.T });
-              for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (layer ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: `laminate + plane to ${row.T}` });
+              for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (layer ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: `laminate + plane to ${U().fmtLength(row.T)}` });
             }
           }
         }
@@ -237,7 +238,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const perM = spPrices[nominal] !== undefined ? spPrices[nominal] : 5;
         const cost = count * perM * (+len / 1000);
         lumberCost += cost;
-        shopping.push({ kind: 'board', label: `${K.WOOD_SPECIES[species].label} ${nominal} × ${len} mm`, qty: count, unit: `$${(perM * (+len / 1000)).toFixed(2)}`, cost });
+        shopping.push({ kind: 'board', label: `${K.WOOD_SPECIES[species].label} ${U().fmtNominal(nominal, L().NOMINALS[nominal], +len)}`, qty: count, unit: `$${(perM * (+len / 1000)).toFixed(2)}`, cost });
       }
     }
 
@@ -250,7 +251,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const bdftCost = bdftWithWaste * bdftRate;
     if (rough && solidVol > 0) {
       lumberCost = bdftCost;
-      shopping.push({ kind: 'board', label: `${K.WOOD_SPECIES[species].label} rough stock — ${bdftWithWaste} bd ft (incl. 30% waste)`, qty: 1, unit: `$${bdftRate.toFixed(2)}/bd ft`, cost: bdftCost });
+      shopping.push({ kind: 'board', label: `${K.WOOD_SPECIES[species].label} rough stock — ${U().fmtBoardFeet(bdftWithWaste)} (incl. 30% waste)`, qty: 1, unit: `$${bdftRate.toFixed(2)}/bd ft`, cost: bdftCost });
     }
 
     let sheetCost = 0, sheetBoughtArea = 0, sheetUsedArea = 0;
@@ -264,7 +265,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const [key, count] of [...sheetGroups.entries()].sort((a, b) => b[0].localeCompare(a[0]))) {
       const [t, frac] = key.split('|').map(Number);
       const price = ((prices.sheet && prices.sheet[t]) !== undefined ? prices.sheet[t] : 60) * frac;
-      const label = `Baltic birch ${t} mm — ${frac === 1 ? 'full' : frac === 0.5 ? 'half' : 'quarter'} sheet (1220 × 2440 base)`;
+      const label = `Baltic birch ${U().fmtLength(t)} — ${frac === 1 ? 'full' : frac === 0.5 ? 'half' : 'quarter'} sheet (${U().fmtSheet(L().SHEET.W, L().SHEET.L)} base)`;
       sheetCost += count * price;
       shopping.push({ kind: 'sheet', label, qty: count, unit: `$${price.toFixed(2)}`, cost: count * price });
     }
@@ -298,6 +299,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function boardSVG(board, fmt) {
+    fmt = fmt || (v => U().fmtLength(v));
     const W = 720, H = 64, pad = 4;
     const id = 'bbhatch' + (++hatchSeq);
     const sx = (W - 2 * pad) / board.stockLen;
@@ -309,9 +311,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       x += w;
       return { px, w, cls, label, title };
     };
-    rects.push(seg(trim * sx, 'trim', '', 'end trim 15 mm'));
+    rects.push(seg(trim * sx, 'trim', '', `end trim ${U().fmtLength(trim)}`));
     board.cuts.forEach((c, i) => {
-      if (i > 0) rects.push(seg(kerf * sx, 'kerf', '', 'kerf 3 mm'));
+      if (i > 0) rects.push(seg(kerf * sx, 'kerf', '', `kerf ${U().fmtSmall(kerf)}`));
       rects.push(seg(c.len * sx, 'cut', `${c.name} · ${fmt(c.len)}`, `${c.name} — ${fmt(c.len)}${c.note ? ' · ' + c.note : ''}`));
     });
     const offX = x;
@@ -334,6 +336,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function sheetSVG(sheet, fmt) {
+    fmt = fmt || (v => U().fmtLength(v));
     const SW = L().SHEET.L, SH = L().SHEET.W;
     const W = 720, H = Math.round(W * SH / SW), pad = 3;
     const id = 'bbhatch' + (++hatchSeq);

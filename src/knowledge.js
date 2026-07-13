@@ -97,18 +97,20 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- 3b. Ergonomics ----------------
    * All mm. axis: which overall dimension the range constrains.
    * Templates reference rows by key; validation emits advisories, never errors.
+   * Notes carry lengths as {mm} tokens — BB.Units.fmtTemplate renders them in
+   * the current display units, so static data still crosses ONE boundary.
    */
   const ERGONOMICS = [
-    { key: 'dining_height', label: 'Dining table height', min: 730, max: 760, axis: 'height', appliesTo: ['table'], note: 'Bar height (1040–1100) and counter height (860–920) are intentional exceptions.' },
-    { key: 'desk_height', label: 'Desk height', min: 720, max: 750, axis: 'height', appliesTo: ['desk'], note: 'Pair with a 420–530 mm adjustable chair.' },
-    { key: 'bench_seat', label: 'Bench seat height', min: 430, max: 480, axis: 'height', appliesTo: ['bench'], note: 'Subtract ~25 mm if a cushion will live on it.' },
-    { key: 'nightstand_height', label: 'Nightstand height', min: 550, max: 700, axis: 'height', appliesTo: ['nightstand'], note: 'Aim within 50 mm of the mattress top.' },
-    { key: 'shelf_depth_books', label: 'Shelf depth for books', min: 250, max: 320, axis: 'depth', appliesTo: ['bookshelf'], note: 'Trade paperbacks need 230; art books want 320+.' },
-    { key: 'counter_height', label: 'Counter height', min: 860, max: 940, axis: 'height', appliesTo: ['cabinet'], note: 'Standard kitchen counter is 900 mm to the finished top.' },
-    { key: 'toe_kick', label: 'Toe kick', min: 75, max: 100, axis: 'toeKick', appliesTo: ['cabinet'], note: 'Standard recess: 90 mm high × 75 mm deep.' },
+    { key: 'dining_height', label: 'Dining table height', min: 730, max: 760, axis: 'height', appliesTo: ['table'], note: 'Bar height ({1040} to {1100}) and counter height ({860} to {920}) are intentional exceptions.' },
+    { key: 'desk_height', label: 'Desk height', min: 720, max: 750, axis: 'height', appliesTo: ['desk'], note: 'Pair with a {420} to {530} adjustable chair.' },
+    { key: 'bench_seat', label: 'Bench seat height', min: 430, max: 480, axis: 'height', appliesTo: ['bench'], note: 'Subtract ~{25} if a cushion will live on it.' },
+    { key: 'nightstand_height', label: 'Nightstand height', min: 550, max: 700, axis: 'height', appliesTo: ['nightstand'], note: 'Aim within {50} of the mattress top.' },
+    { key: 'shelf_depth_books', label: 'Shelf depth for books', min: 250, max: 320, axis: 'depth', appliesTo: ['bookshelf'], note: 'Trade paperbacks need {230}; art books want {320}+.' },
+    { key: 'counter_height', label: 'Counter height', min: 860, max: 940, axis: 'height', appliesTo: ['cabinet'], note: 'Standard kitchen counter is {900} to the finished top.' },
+    { key: 'toe_kick', label: 'Toe kick', min: 75, max: 100, axis: 'toeKick', appliesTo: ['cabinet'], note: 'Standard recess: {90} high × {75} deep.' },
     /* Drawer rows (Phase 2 §5): drive drawer advisories. */
-    { key: 'drawer_min_height', label: 'Minimum useful drawer opening', min: 80, max: Infinity, axis: 'drawerOpeningHeight', appliesTo: ['nightstand', 'cabinet'], note: 'Below 80 mm an opening barely clears a hand.' },
-    { key: 'drawer_max_width', label: 'Max drawer width per slide pair', min: 0, max: 750, axis: 'drawerOpeningWidth', appliesTo: ['nightstand', 'cabinet'], note: 'Beyond 750 mm boxes rack; use two banks.' },
+    { key: 'drawer_min_height', label: 'Minimum useful drawer opening', min: 80, max: Infinity, axis: 'drawerOpeningHeight', appliesTo: ['nightstand', 'cabinet'], note: 'Below {80} an opening barely clears a hand.' },
+    { key: 'drawer_max_width', label: 'Max drawer width per slide pair', min: 0, max: 750, axis: 'drawerOpeningWidth', appliesTo: ['nightstand', 'cabinet'], note: 'Beyond {750} boxes rack; use two banks.' },
     { key: 'drawer_pull_height', label: 'Comfortable pull height', min: 600, max: 1100, axis: 'drawerPullHeight', appliesTo: ['cabinet'], note: 'Top drawers between hip and chest height open easiest.' }
   ];
 
@@ -197,22 +199,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     advanced: { frame: 'mortise_tenon', case: 'dado', box: 'half_blind_dovetail' }
   };
 
-  /* ---------------- 3d. Fasteners & finishes ---------------- */
+  /* ---------------- 3d. Fasteners & finishes ----------------
+   * Labels/uses carry {mm} tokens rendered via BB.Units.fmtTemplate.
+   * Exceptions kept literal on purpose: "M4" and "5 mm shelf pin" ARE the
+   * trade names in every market (metric hardware), and "#8" is a gauge. */
   const FASTENERS = {
     screws: [
-      { key: 'wood_8x25', label: '#8 × 25 mm wood screw', pilot: 2.8, use: 'Drawer fronts from inside the box' },
-      { key: 'wood_8x32', label: '#8 × 32 mm wood screw', pilot: 2.8, use: 'Aprons, cleats, general carcass' },
-      { key: 'wood_8x50', label: '#8 × 50 mm wood screw', pilot: 3.2, use: 'Legs, rails, structural butt joints' },
-      { key: 'pocket_32', label: '32 mm coarse pocket screw', pilot: 0, use: 'Pocket joints in 18–20 mm stock' },
-      { key: 'slide_m4', label: 'M4 × 16 mm pan-head', pilot: 3.0, use: 'Drawer slide mounting' },
-      { key: 'top_button', label: 'Tabletop button + #8 × 16 mm', pilot: 2.8, use: 'Solid tops — lets the panel move' }
+      { key: 'wood_8x25', label: '#8 × {25} wood screw', pilot: 2.8, use: 'Drawer fronts from inside the box' },
+      { key: 'wood_8x32', label: '#8 × {32} wood screw', pilot: 2.8, use: 'Aprons, cleats, general carcass' },
+      { key: 'wood_8x50', label: '#8 × {50} wood screw', pilot: 3.2, use: 'Legs, rails, structural butt joints' },
+      { key: 'pocket_32', label: '{32} coarse pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} stock' },
+      { key: 'slide_m4', label: 'M4 × {16} pan-head', pilot: 3.0, use: 'Drawer slide mounting' },
+      { key: 'top_button', label: 'Tabletop button + #8 × {16}', pilot: 2.8, use: 'Solid tops — lets the panel move' }
     ],
     dowels: [
-      { key: 'dowel_8', label: '8 × 40 mm fluted dowel', pilot: 8, use: 'Aprons and rails in 20+ mm stock' },
-      { key: 'dowel_10', label: '10 × 50 mm fluted dowel', pilot: 10, use: 'Legs and thick frames' }
+      { key: 'dowel_8', label: '{8} × {40} fluted dowel', pilot: 8, use: 'Aprons and rails in {20}+ stock' },
+      { key: 'dowel_10', label: '{10} × {50} fluted dowel', pilot: 10, use: 'Legs and thick frames' }
     ],
     hardware: [
-      { key: 'slide_pair', label: 'Side-mount ball-bearing slides (pair)', use: 'Drawer runners, 250–500 mm', price: 14 },
+      { key: 'slide_pair', label: 'Side-mount ball-bearing slides (pair)', use: 'Drawer runners, {250} to {500}', price: 14 },
       { key: 'pull', label: 'Drawer pull', use: 'One per drawer', price: 6 },
       { key: 'shelf_pin', label: '5 mm shelf pin', use: 'Adjustable shelves — 4 per shelf', price: 0.25 },
       { key: 'figure8', label: 'Figure-8 fastener', use: 'Solid top attachment allowing movement', price: 0.8 }

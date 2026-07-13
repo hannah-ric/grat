@@ -42,6 +42,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     return [
       'You are the design intent engine inside Blueprint Buddy, a parametric furniture design tool.',
       'You NEVER compute geometry. You propose intent; the app owns all math, snaps stock sizes, and re-validates everything.',
+      'All wire dimensions are millimetres. The app pre-normalizes dimension strings in user messages to explicit millimetres before you see them — NEVER convert units yourself.',
       Codec().SCHEMA_DOC,
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes).',
       'LEVEL MATRIX (code enforces this regardless): beginner={butt_screws,pocket_screws}; intermediate adds {dowels,dado,rabbet,locking_rabbet}; advanced adds {mortise_tenon,half_blind_dovetail}.',
@@ -100,7 +101,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (N && typeof N === 'object') {
       const spec = Codec().decode(N);
       if (!spec) return null;
-      return { kind: 'new', spec, explain: explain || 'Here’s a starting point.' };
+      // A new design that never states display units inherits the user's
+      // current choice (apply() fills it in) instead of the wire default.
+      return { kind: 'new', spec, unitsUnspecified: N.u === undefined && N.units === undefined, explain: explain || 'Here’s a starting point.' };
     }
     const wireDiff = {};
     for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain') wireDiff[k] = obj[k];
@@ -113,16 +116,19 @@ var BB = globalThis.BB = globalThis.BB || {};
    * Deliberately conservative: handles the common refinement vocabulary and
    * asks a clarifying question when the request is ambiguous.
    */
-  const MM = { mm: 1, millimeter: 1, millimeters: 1, cm: 10, centimeter: 10, centimeters: 10, m: 1000, in: 25.4, inch: 25.4, inches: 25.4, '"': 25.4, ft: 304.8, feet: 304.8, foot: 304.8 };
-  function parseLen(str) {
-    const m = String(str).match(/(\d+(?:\.\d+)?)\s*(mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?/i);
-    if (!m) return null;
-    const unit = (m[2] || 'mm').toLowerCase();
-    return Math.round(parseFloat(m[1]) * (MM[unit] || 1));
+  /* Length parsing delegates to the ONE shared parser in BB.Units. Bare
+   * numbers inherit the design's display system (an imperial user's "60
+   * wide" means inches); chat text is normally pre-normalized to mm by
+   * BB.Units.normalizeLengthText before it ever reaches this parser. */
+  function parseLen(str, spec) {
+    const dflt = spec && spec.meta && spec.meta.units === 'mm' ? 'mm' : 'in';
+    const v = BB.Units.parseLength(str, dflt);
+    return v == null ? null : Math.round(v * 10) / 10;
   }
   const WORD_NUMS = { one: 1, a: 1, an: 1, two: 2, three: 3, four: 4 };
 
   function localModel(text, spec) {
+    text = BB.Units.normalizeLengthText(text); // idempotent; direct callers get the same guarantee as chat
     const t = ' ' + String(text).toLowerCase().trim() + ' ';
     const patch = {};
     const notes = [];
@@ -168,12 +174,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     let m;
     while ((m = re.exec(t))) {
       const key = dimWord[(m[2] || m[3] || '').toLowerCase()];
-      const val = parseLen(m[1] || m[4]);
-      if (key && val) { set('overall.' + key, val); notes.push(`${key} ${val}mm`); }
+      const val = parseLen(m[1] || m[4], spec);
+      if (key && val) { set('overall.' + key, val); notes.push(`${key} ${BB.Units.fmtLength(val)}`); }
     }
     let mm2;
     if ((mm2 = t.match(/\b(lower|shorten|raise|lift)\b(?:\s+\w+)*?\s+by\s+([\d.]+\s*(?:mm|cm|in|inch(?:es)?|")?)/))) {
-      const delta = parseLen(mm2[2]);
+      const delta = parseLen(mm2[2], spec);
       if (delta) { set('overall.height', spec.overall.height + (/(lower|shorten)/.test(mm2[1]) ? -delta : delta)); notes.push('height'); }
     }
     if (/\b(wider)\b/.test(t) && !patch.overall) { set('overall.width', Math.round(spec.overall.width * 1.15)); notes.push('wider'); }
@@ -229,7 +235,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       return {
         kind: 'question',
         question: 'I didn’t catch a change I can make there. Try a dimension, species, joinery level, drawers, or finish — what should move?',
-        options: ['Make it walnut', 'Lower it by 50 mm', 'Add a drawer']
+        options: ['Make it walnut', `Lower it by ${BB.Units.fmtLength(spec.meta.units === 'mm' ? 50 : 50.8)}`, 'Add a drawer']
       };
     }
     return { kind: 'diff', patch, explain: 'Adjusted ' + notes.slice(0, 4).join(', ') + '.' };
@@ -335,6 +341,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- respond ---------------- */
   async function respond(userText, spec, opts) {
     opts = opts || {};
+    // Pre-parse dimension strings to explicit millimetres BEFORE the model
+    // sees them — the model proposes intent and never converts units.
+    userText = BB.Units.normalizeLengthText(userText);
     const onStatus = opts.onStatus || (() => {});
     if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true };
 
@@ -425,11 +434,17 @@ var BB = globalThis.BB = globalThis.BB || {};
   function apply(reply, currentSpec) {
     const S = BB.Spec;
     let proposed;
-    if (reply.kind === 'new') proposed = reply.spec;
-    else proposed = S.deepMerge(currentSpec, reply.patch);
+    if (reply.kind === 'new') {
+      proposed = reply.spec;
+      // Display units are the user's choice, not the model's: a new design
+      // that never mentioned them keeps whatever the user was working in.
+      if (reply.unitsUnspecified && currentSpec && currentSpec.meta) {
+        proposed = S.deepMerge(proposed, { meta: { units: currentSpec.meta.units } });
+      }
+    } else proposed = S.deepMerge(currentSpec, reply.patch);
     const corrected = S.correctSpec(proposed);
     const diffs = S.diffSpecs(currentSpec, corrected);
-    return { spec: corrected, diffs, chips: S.describeDiff(diffs, corrected.meta.units) };
+    return { spec: corrected, diffs, chips: S.describeDiff(diffs) };
   }
 
   BB.AI = {

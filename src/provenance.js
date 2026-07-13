@@ -15,7 +15,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   'use strict';
   const K = BB.K;
 
-  const mm = v => `${Math.round(v * 10) / 10} mm`;
+  /* Rules and inputs render in the user's display units (the popover carries
+   * a "computed internally in metric" footnote); the math itself never leaves
+   * millimetres. */
+  const mm = v => BB.Units.fmtLength(v);
 
   /* ---------------- provenance registry ---------------- */
   /* Returns [{dim, formula}] for a cut-list row (or inspector part). Each
@@ -32,16 +35,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     const frameD = o.depth - 2 * overhang;
     const innerW = o.width - 2 * st.sideThickness;
 
+    const fine = v => BB.Units.fmtSmall(v);
+
     if (t === 'custom') {
-      push('Dimensions', 'novel composition: dimensions come straight from the designed primitive (AI proposes, code clamps to 10–3000 mm and snaps thickness to stock)');
+      push('Dimensions', `novel composition: dimensions come straight from the designed primitive (AI proposes, code clamps to ${mm(10)}–${mm(3000)} and snaps thickness to stock)`);
     } else if (name === 'Leg') {
       push('Length', `leg = height − top thickness = ${mm(o.height)} − ${mm(st.topThickness)} = ${mm(o.height - st.topThickness)}`);
       push('Section', `leg thickness (spec) = ${mm(st.legThickness)} square`);
     } else if (name === 'Long apron') {
-      push('Length', `frame width − 2 × leg = (${mm(o.width)} − 2 × ${overhang} overhang) − 2 × ${mm(st.legThickness)} = ${mm(frameW - 2 * st.legThickness)}`);
+      push('Length', `frame width − 2 × leg = (${mm(o.width)} − 2 × ${mm(overhang)} overhang) − 2 × ${mm(st.legThickness)} = ${mm(frameW - 2 * st.legThickness)}`);
       push('Width', `apron height (spec) = ${mm(st.apronHeight)}`);
     } else if (name === 'Short apron') {
-      push('Length', `frame depth − 2 × leg = (${mm(o.depth)} − 2 × ${overhang} overhang) − 2 × ${mm(st.legThickness)} = ${mm(frameD - 2 * st.legThickness)}`);
+      push('Length', `frame depth − 2 × leg = (${mm(o.depth)} − 2 × ${mm(overhang)} overhang) − 2 × ${mm(st.legThickness)} = ${mm(frameD - 2 * st.legThickness)}`);
       push('Width', `apron height (spec) = ${mm(st.apronHeight)}`);
     } else if (name === 'Top' && ['table', 'desk', 'bench', 'nightstand', 'cabinet'].includes(t)) {
       if (t === 'bookshelf' || t === 'cabinet') push('Length', `inner width = width − 2 × side = ${mm(innerW)}`);
@@ -62,42 +67,42 @@ var BB = globalThis.BB = globalThis.BB || {};
       push('Length', `inner width = width − 2 × side = ${mm(o.width)} − 2 × ${mm(st.sideThickness)} = ${mm(innerW)}`);
       push('Thickness', `shelf thickness (spec) = ${mm(st.shelfThickness)}`);
     } else if (name === 'Back panel') {
-      push('Size', `case − 12 mm rabbet reveal = ${mm(o.width - 12)} × …, 6 mm sheet stock`);
+      push('Size', `case − ${mm(12)} rabbet reveal = ${mm(o.width - 12)} × …, ${mm(6)} sheet stock`);
     } else if (/^(Side|Back) apron$/.test(name) && t === 'nightstand') {
       const count = spec.drawers ? spec.drawers.count : 1;
       const available = o.height - st.topThickness - 120;
       const desired = (count + 1) * 60 + count * 130;
       const bank = Math.min(desired, available);
-      push('Width (bank height)', `min((${count}+1)×60 rail + ${count}×130 opening, height − top − 120 leg reveal) = min(${mm(desired)}, ${mm(available)}) = ${mm(bank)}`);
+      push('Width (bank height)', `min((${count}+1)×${mm(60)} rail + ${count}×${mm(130)} opening, height − top − ${mm(120)} leg reveal) = min(${mm(desired)}, ${mm(available)}) = ${mm(bank)}`);
       push('Length', name === 'Side apron'
         ? `frame depth − 2 × leg = ${mm(frameD - 2 * st.legThickness)}`
         : `frame width − 2 × leg = ${mm(frameW - 2 * st.legThickness)}`);
     } else if (/drawer rail/i.test(name) || name === 'Divider rail') {
       push('Length', `clear opening width between ${t === 'nightstand' ? 'legs' : 'sides'}`);
-      push('Section', '20 × 60 mm rail stock (code constant)');
+      push('Section', `${mm(20)} × ${mm(60)} rail stock (code constant)`);
     } else if (/^Drawer /.test(name) && model.drawers && model.drawers.length) {
       const d = model.drawers[0];
       const op = d.opening;
       if (/side$/.test(name)) push('Depth', d.runner === 'side_mount_slides'
-        ? `box depth = longest standard slide ≤ interior − 25 mm setback = ${mm(d.box.d)}`
-        : `box depth = interior − 20 = ${mm(d.box.d)}`);
-      if (/side$/.test(name)) push('Height', d.runner === 'side_mount_slides' ? `opening − 15 mm slide clearance = ${mm(op.h)} − 15 = ${mm(d.box.h)}` : `opening − 10 = ${mm(d.box.h)}`);
+        ? `box depth = longest standard slide ≤ interior − ${fine(25)} setback = ${mm(d.box.d)}`
+        : `box depth = interior − ${fine(20)} = ${mm(d.box.d)}`);
+      if (/side$/.test(name)) push('Height', d.runner === 'side_mount_slides' ? `opening − ${fine(15)} slide clearance = ${mm(op.h)} − ${fine(15)} = ${mm(d.box.h)}` : `opening − ${fine(10)} = ${mm(d.box.h)}`);
       if (/box front|box back/.test(name)) push('Width', d.runner === 'side_mount_slides'
-        ? `opening − 25 mm (12.5 per side for slides) − 2 × box side = ${mm(op.w)} − 25 − 2×${mm(d.box.t)} = ${mm(d.box.w - 2 * d.box.t)}`
-        : `opening − 4 (fitted) − 2 × box side = ${mm(d.box.w - 2 * d.box.t)}`);
+        ? `opening − ${fine(25)} (${fine(12.5)} per side for slides) − 2 × box side = ${mm(op.w)} − ${fine(25)} − 2×${mm(d.box.t)} = ${mm(d.box.w - 2 * d.box.t)}`
+        : `opening − ${fine(4)} (fitted) − 2 × box side = ${mm(d.box.w - 2 * d.box.t)}`);
       if (/ front$/.test(name) && !/box/.test(name)) push('Size', d.frontStyle === 'inset'
-        ? `inset front = opening − 2 mm gap all around = ${mm(op.w)}−4 × ${mm(op.h)}−4 = ${mm(d.front.w)} × ${mm(d.front.h)}`
-        : `overlay front = opening + up to 10 mm per side = ${mm(d.front.w)} × ${mm(d.front.h)}`);
-      if (/bottom$/.test(name)) push('Size', '6 mm ply in a 6 mm groove, 10 mm up — floats, no glue');
+        ? `inset front = opening − ${fine(2)} gap all around = ${mm(d.front.w)} × ${mm(d.front.h)}`
+        : `overlay front = opening + up to ${fine(10)} per side = ${mm(d.front.w)} × ${mm(d.front.h)}`);
+      if (/bottom$/.test(name)) push('Size', `${mm(6)} ply in a ${mm(6)} groove, ${mm(10)} up — floats, no glue`);
     } else if (name === 'Toe-kick board') {
-      push('Size', `width − 2 × side, 90 mm tall, set back 75 mm (standard recess)`);
+      push('Size', `width − 2 × side, ${mm(90)} tall, set back ${mm(75)} (standard recess)`);
     } else if (name === 'Lower shelf') {
-      push('Length', `frame width − 2 × leg + 30 mm notch allowance`);
+      push('Length', `frame width − 2 × leg + ${mm(30)} notch allowance`);
     }
 
     if (row.allowance) {
       const j = K.JOINERY[row.allowanceJoint];
-      push('Joinery allowance', `cut length includes ${row.allowanceEnds} × ${row.allowance / row.allowanceEnds} mm for ${j ? j.label.toLowerCase() : row.allowanceJoint} = +${row.allowance} mm (geometry ${mm(row.L - row.allowance)} → cut ${mm(row.L)})`);
+      push('Joinery allowance', `cut length includes ${row.allowanceEnds} × ${mm(row.allowance / row.allowanceEnds)} for ${j ? j.label.toLowerCase() : row.allowanceJoint} = +${mm(row.allowance)} (geometry ${mm(row.L - row.allowance)} → cut ${mm(row.L)})`);
     }
     if (row.angles) {
       push('Angles', `saw angles from part rotation, rounded to 0.5°: ${BB.Geo.angleText(row.angles)}`);
@@ -135,12 +140,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const integ = BB.Structural.computeIntegrity(s2, m2, { loadChoices: opts.loadChoices, defaultLoad: opts.defaultLoad, climate: opts.climate });
       const worst = integ.summary.worstSag;
       const sagMargin = worst && worst.sag > 0 ? worst.limit / worst.sag : Infinity;
-      // Worst-panel movement across the design.
+      // Worst-panel movement, read from the check's raw data — never parsed
+      // back out of display text (which is unit-dependent).
       let movement = 0;
       for (const c of integ.checks) {
-        if (!c.id.startsWith('move:')) continue;
-        const m = c.value.match(/([\d.]+) mm seasonal/);
-        if (m) movement = Math.max(movement, parseFloat(m[1]));
+        if (!c.id.startsWith('move:') || !c.data) continue;
+        movement = Math.max(movement, c.data.movementMM || 0);
       }
       out.push({
         key, label: sp.label,

@@ -7,54 +7,57 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
+  /* Dimensions are stored in mm (internal truth) but picked as exact inch
+   * multiples so the default imperial display reads as clean fractions:
+   * 1828.8 = 72 in, 914.4 = 36 in, 749.3 = 29 1/2 in, and so on. */
   const STARTERS = [
     {
       caption: 'The classic first commission', emoji: '🍽',
       spec: {
-        meta: { name: 'Shaker Dining Table', template: 'table', level: 'intermediate', units: 'mm' },
-        overall: { width: 1800, depth: 900, height: 750 },
+        meta: { name: 'Shaker Dining Table', template: 'table', level: 'intermediate', units: 'in' },
+        overall: { width: 1828.8, depth: 914.4, height: 749.3 },
         wood: { species: 'cherry' },
-        structure: { topThickness: 25, legThickness: 70, apronHeight: 100, apronThickness: 20, apronInset: 12 },
+        structure: { topThickness: 25, legThickness: 70, apronHeight: 101.6, apronThickness: 19, apronInset: 12.7 },
         joinery: { frame: 'dowels' }, finish: 'danish_oil'
       }
     },
     {
       caption: 'A weekend of pocket screws', emoji: '💻',
       spec: {
-        meta: { name: 'Weekend Desk', template: 'desk', level: 'beginner', units: 'mm' },
-        overall: { width: 1300, depth: 650, height: 735 },
+        meta: { name: 'Weekend Desk', template: 'desk', level: 'beginner', units: 'in' },
+        overall: { width: 1320.8, depth: 660.4, height: 736.6 },
         wood: { species: 'hard_maple' },
-        structure: { topThickness: 25, legThickness: 60, apronHeight: 90 },
+        structure: { topThickness: 25, legThickness: 60, apronHeight: 88.9 },
         finish: 'water_poly'
       }
     },
     {
       caption: 'Sturdy seat for the mudroom', emoji: '🪑',
       spec: {
-        meta: { name: 'Entry Bench', template: 'bench', level: 'intermediate', units: 'mm' },
-        overall: { width: 1100, depth: 380, height: 450 },
+        meta: { name: 'Entry Bench', template: 'bench', level: 'intermediate', units: 'in' },
+        overall: { width: 1117.6, depth: 381, height: 457.2 },
         wood: { species: 'white_oak' },
-        structure: { topThickness: 32, legThickness: 60, apronHeight: 80 },
+        structure: { topThickness: 32, legThickness: 60, apronHeight: 76.2 },
         joinery: { frame: 'dowels' }, finish: 'hardwax_oil'
       }
     },
     {
       caption: 'Five shelves, one afternoon', emoji: '📚',
       spec: {
-        meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
-        overall: { width: 900, depth: 300, height: 1800 },
+        meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'in' },
+        overall: { width: 914.4, depth: 304.8, height: 1828.8 },
         wood: { species: 'ash' },
-        structure: { shelfCount: 4, sideThickness: 18, shelfThickness: 19, backPanel: true },
+        structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true },
         finish: 'wipe_poly'
       }
     },
     {
       caption: 'Drawer joinery, sized by code', emoji: '🌙',
       spec: {
-        meta: { name: 'Two-Drawer Nightstand', template: 'nightstand', level: 'intermediate', units: 'mm' },
-        overall: { width: 500, depth: 400, height: 600 },
+        meta: { name: 'Two-Drawer Nightstand', template: 'nightstand', level: 'intermediate', units: 'in' },
+        overall: { width: 508, depth: 406.4, height: 609.6 },
         wood: { species: 'walnut' },
-        structure: { topThickness: 20, legThickness: 45, shelfCount: 1 },
+        structure: { topThickness: 19, legThickness: 45, shelfCount: 1 },
         joinery: { frame: 'dowels', box: 'locking_rabbet' },
         drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' },
         finish: 'hardwax_oil'
@@ -63,8 +66,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     {
       caption: 'Carcass work with a drawer bank', emoji: '🗄',
       spec: {
-        meta: { name: 'Sideboard Cabinet', template: 'cabinet', level: 'advanced', units: 'mm' },
-        overall: { width: 780, depth: 450, height: 900 },
+        meta: { name: 'Sideboard Cabinet', template: 'cabinet', level: 'advanced', units: 'in' },
+        overall: { width: 762, depth: 457.2, height: 914.4 },
         wood: { species: 'white_oak' },
         structure: { topThickness: 25, shelfCount: 1, toeKick: true, backPanel: true },
         joinery: { frame: 'mortise_tenon', case: 'dado', box: 'half_blind_dovetail' },
@@ -75,7 +78,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   ];
 
   const FIRST_RUN_PROMPTS = [
-    'Build me a walnut dining table, 1600 wide, for a beginner',
+    'Build me a walnut dining table, 63 in wide, for a beginner',
     'A nightstand with two drawers in cherry'
   ];
 

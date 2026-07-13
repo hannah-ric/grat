@@ -100,7 +100,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       explodeT: 0,
       openDrawers: new Set(),
       selected: null, isolated: null,
-      dimsVisible: false, units: 'mm',
+      dimsVisible: false,
       playback: null,         // {steps, index}
       reducedMotion: !!opts.reducedMotion,
       bounds: { w: 1500, d: 850, h: 750 },
@@ -301,7 +301,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       while (annoGroup.children.length) annoGroup.remove(annoGroup.children[0]);
       for (const t of labelTextures.splice(0)) t.dispose();
       if (!E.dimsVisible || !E.model) return;
-      const b = E.bounds, u = E.units, fmt = v => BB.Spec.fmtLen(v, u);
+      // Annotation labels route through the display boundary like every
+      // other surface; scene geometry itself stays in raw millimetres.
+      const b = E.bounds, fmt = v => BB.Units.fmtLength(v);
       const m = Math.max(b.w, b.d, b.h) * 0.08 + 40; // offset from body
       const hw = b.w / 2, hd = b.d / 2;
       annoGroup.add(dimLine({ x: -hw, y: -0, z: hd + m }, { x: hw, y: 0, z: hd + m }, fmt(b.w)));
@@ -512,8 +514,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       select(id) { E.selected = id; E.needsAnno = true; },
       isolate(id) { E.isolated = id; retargetAll(); },
       getIsolated() { return E.isolated; },
-      setDims(on, units) { E.dimsVisible = !!on; if (units) E.units = units; E.needsAnno = true; },
-      setUnits(u) { E.units = u; E.needsAnno = true; },
+      setDims(on) { E.dimsVisible = !!on; E.needsAnno = true; },
+      // Display prefs changed (system/dual): relabel annotations next frame.
+      unitsChanged() { E.needsAnno = true; },
       setReducedMotion(v) { E.reducedMotion = !!v; },
       playbackEnter, playbackGoTo, playbackExit, playbackReplay,
       inPlayback() { return !!E.playback; },

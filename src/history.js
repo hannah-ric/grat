@@ -26,7 +26,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           source: src || 'manual',
           spec: Object.freeze(S().clone(spec)),
           summary: summary || (prev
-            ? (diffs.length ? S().describeDiff(diffs, spec.meta.units) : ['no dimensional change'])
+            ? (diffs.length ? S().describeDiff(diffs) : ['no dimensional change'])
             : ['initial design']),
           diffs
         };
@@ -59,7 +59,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const b = this.snapshots.find(s => s.id === idB);
         if (!a || !b) return null;
         const diffs = S().diffSpecs(a.spec, b.spec);
-        return { a, b, diffs, rows: S().describeDiff(diffs, b.spec.meta.units) };
+        return { a, b, diffs, rows: S().describeDiff(diffs) };
       }
     };
     if (initialSpec) h.push(initialSpec, source || 'manual', ['initial design']);

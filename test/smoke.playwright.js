@@ -54,6 +54,10 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   await page.waitForFunction(() => globalThis.__bb && __bb.state.model, null, { timeout: 15000 });
   ok(true, 'app booted');
 
+  // Fresh session (cleared storage) starts in imperial: fractional inches.
+  ok(await page.evaluate(() => __bb.state.spec.meta.units === 'in' && BB.Units.get().system === 'imperial'),
+    'fresh session defaults to imperial display');
+
   // Gallery on first load; load the nightstand starter through the pipeline.
   ok(await page.isVisible('#galleryScrim.open'), 'starter gallery shows on first load');
   await page.screenshot({ path: SHOTS + '/01-gallery.png' });
@@ -79,8 +83,8 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   await page.click('#sendBtn');
   await page.waitForSelector('.msg.bot .chip', { timeout: 8000 });
   const chip = await page.textContent('.msg.bot:last-child .chip');
-  ok(/height/.test(chip) && /550/.test(chip), `diff chip shows code-computed change (${chip.trim()})`);
-  ok(await page.evaluate(() => __bb.state.spec.overall.height === 550), 'spec height merged to 550');
+  ok(/height 24 in → 22 1\/16 in/.test(chip), `diff chip shows code-computed change in display units (${chip.trim()})`);
+  ok(await page.evaluate(() => __bb.state.spec.overall.height === 559.6), 'spec height merged to 559.6 mm internally');
 
   // Ambiguous prompt → clarifying question with tappable answers.
   await page.fill('#chatText', 'make it bigger');
@@ -89,14 +93,14 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   const opts = await page.$$eval('.answer-row button', bs => bs.map(b => b.textContent));
   ok(opts.length >= 2, `clarifying question with ${opts.length} tappable answers`);
   await page.click('.answer-row button:first-child'); // "Wider"
-  await page.waitForFunction(() => __bb.state.spec.overall.width > 500, null, { timeout: 8000 });
+  await page.waitForFunction(() => __bb.state.spec.overall.width > 508, null, { timeout: 8000 });
   ok(true, 'tapping an answer applies the refinement');
   await page.screenshot({ path: SHOTS + '/03-chat.png' });
 
   // Undo / redo across AI edits.
   const wNow = await page.evaluate(() => __bb.state.spec.overall.width);
   await page.click('#undoBtn');
-  ok(await page.evaluate(() => __bb.state.spec.overall.width === 500), 'undo reverts width');
+  ok(await page.evaluate(() => __bb.state.spec.overall.width === 508), 'undo reverts width');
   await page.click('#redoBtn');
   ok(await page.evaluate((w) => __bb.state.spec.overall.width === w, wNow), 'redo restores width');
 
@@ -219,12 +223,21 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   ok(jointRows === 1, `reference search filters (${jointRows} row for “dovetail”)`);
   await page.screenshot({ path: SHOTS + '/11-reference.png' });
 
-  // Units toggle → inches in cut list.
-  await page.click('#unitsBtn');
+  // Units control: imperial fractions by default, instant metric on toggle,
+  // dual display renders both systems, and the choice persists to prefs.
   await page.click('#tab-cut');
-  const cutText = await page.textContent('#panel-main');
-  ok(cutText.includes('″'), 'cut list renders inches after unit toggle');
-  await page.click('#unitsBtn');
+  const cutImp = await page.textContent('#panel-main');
+  ok(/\d+(?: \d+\/\d+)? in\b/.test(cutImp) && !/\d ?mm\b/.test(cutImp), 'cut list renders fractional inches by default');
+  await page.click('#unitsMm');
+  const cutMet = await page.textContent('#panel-main');
+  ok(/\d ?mm\b/.test(cutMet) && !/\d+(?: \d+\/\d+)? in\b/.test(cutMet), 'cut list switches to millimetres instantly');
+  ok(await page.evaluate(() => __bb.state.prefs4.units.system === 'metric'), 'metric choice persisted to prefs');
+  await page.click('#unitsIn');
+  ok(await page.evaluate(() => __bb.state.prefs4.units.system === 'imperial'), 'imperial choice persisted to prefs');
+  await page.click('#dualBtn');
+  const cutDual = await page.textContent('#panel-main');
+  ok(/in \(\d[\d.]* mm\)/.test(cutDual), 'dual display renders primary + secondary units');
+  await page.click('#dualBtn');
 
   // Beginner never gets dovetails, even via chat.
   await page.evaluate(() => __bb.merge({ meta: { level: 'beginner' }, joinery: { box: 'half_blind_dovetail' } }, 'manual'));
@@ -449,6 +462,54 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   ok(photo.template === 'bench' && photo.name === 'Photo Bench', 'photo reply flows through the normal pipeline');
   ok(photo.caveat, 'estimation caveat chip shown');
   ok(photo.integrityChecks > 3, 'full integrity report computed for the photo design');
+
+  // Stale-unit sweep: in imperial with dual off, no plan surface may render a
+  // raw millimetre value; in metric, none may render inches. (bd ft is the
+  // trade unit in both systems; "M4" / "5 mm shelf pin" are literal trade
+  // names — neither applies to this bench.)
+  await page.click('#unitsIn');
+  const sweep = await page.evaluate(() => {
+    const grab = (tabs, re) => {
+      const out = {};
+      for (const tab of tabs) {
+        document.getElementById('tab-' + tab).click();
+        const text = document.getElementById('panel-main').textContent;
+        const m = text.match(re);
+        if (m) out[tab] = text.slice(Math.max(0, m.index - 40), m.index + 25);
+      }
+      return out;
+    };
+    return grab(['cut', 'stock', 'bom', 'assembly', 'integrity'], /\d\s?mm\b/);
+  });
+  ok(Object.keys(sweep).length === 0, 'imperial sweep finds zero stale mm: ' + JSON.stringify(sweep));
+  await page.click('#unitsMm');
+  const sweepMet = await page.evaluate(() => {
+    const out = {};
+    for (const tab of ['cut', 'stock', 'bom', 'assembly', 'integrity']) {
+      document.getElementById('tab-' + tab).click();
+      const text = document.getElementById('panel-main').textContent;
+      const m = text.match(/\d\s?in\b|\d+\/\d+\s?in\b|\d\s?ft\b|\d\s?lb\b/);
+      if (m) out[tab] = text.slice(Math.max(0, m.index - 40), m.index + 25);
+    }
+    return out;
+  });
+  ok(Object.keys(sweepMet).length === 0, 'metric sweep finds zero stale imperial: ' + JSON.stringify(sweepMet));
+  await page.click('#unitsIn');
+  await page.click('#tab-stock');
+
+  // Display mode never touches export geometry: both SketchUp exports are
+  // byte-identical (modulo timestamps) in imperial and metric display.
+  const exportsStable = await page.evaluate(() => {
+    const strip = s => s.replace(/<created>[^<]*<\/created>|<modified>[^<]*<\/modified>/g, '');
+    const rb1 = BB.Exports.toRuby(__bb.state.spec, __bb.state.model);
+    const dae1 = strip(BB.Exports.toDAE(__bb.state.spec, __bb.state.model));
+    document.getElementById('unitsMm').click();
+    const rb2 = BB.Exports.toRuby(__bb.state.spec, __bb.state.model);
+    const dae2 = strip(BB.Exports.toDAE(__bb.state.spec, __bb.state.model));
+    document.getElementById('unitsIn').click();
+    return rb1 === rb2 && dae1 === dae2;
+  });
+  ok(exportsStable, 'SketchUp exports identical regardless of display mode');
 
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });
