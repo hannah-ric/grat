@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'geometry.js', 'spec.js', 'parametric.js', 'structural.js', 'packing.js',
+const SRC = ['knowledge.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'packing.js',
   'plans.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'selftest.js'];
 for (const f of SRC) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
@@ -125,7 +125,7 @@ section('drawer-box math (nightstand, 2 drawers)');
   const bom = Plans.bom(spec, model);
   eq(bom.items.filter(i => i.label.includes('side-mount slides')).length, 2, 'BOM: one slide pair per drawer');
   eq(bom.items.filter(i => i.label === 'Drawer pull').length, 2, 'BOM: one pull per drawer');
-  ok(bom.items.some(i => i.label.includes('M4 × 16')), 'BOM: slide mounting screws');
+  ok(bom.items.some(i => i.label.includes('M4 ×')), 'BOM: slide mounting screws');
   ok(bom.items.some(i => i.detail && i.detail.includes('front attachment')), 'BOM: front attachment screws');
 
   // Cut list: drawer parts flow through with allowances.
@@ -182,8 +182,12 @@ section('wire diff-based refinement');
   const applied = AI.apply(reply, base);
   eq(applied.spec.overall.height, 700, 'deep-merge applied');
   eq(applied.spec.overall.width, base.overall.width, 'unrelated fields untouched (no drift)');
-  ok(applied.diffs.some(d => d.path === 'overall.height' && d.from === 745 && d.to === 700), 'code-computed diff records 745 → 700');
-  ok(applied.chips.some(c => /height 745 mm → 700 mm/.test(c)), 'chip text renders code-computed change');
+  ok(applied.diffs.some(d => d.path === 'overall.height' && d.from === 736.6 && d.to === 700), 'code-computed diff records 736.6 → 700');
+  ok(applied.chips.some(c => /height 29 in → 27 9\/16 in/.test(c)), 'chip text renders the change in display units (imperial default)');
+  BB.Units.set({ system: 'metric' });
+  const chipsMetric = Spec.describeDiff(applied.diffs);
+  ok(chipsMetric.some(c => /height 736\.6 mm → 700 mm/.test(c)), 'the same diff renders metric after a units switch');
+  BB.Units.set({ system: 'imperial' });
 
   // 0 deletes drawers on the wire.
   const cab = Spec.correctSpec({ meta: { template: 'cabinet' }, drawers: { count: 2 } });
@@ -234,13 +238,20 @@ section('local intent parser');
   const dr = AI.localModel('add another drawer', ns);
   eq(dr.patch.drawers.count, 2, 'add a drawer increments count');
 
-  const nw = AI.localModel('build me a bookshelf 900 wide', spec);
+  const nw = AI.localModel('build me a bookshelf 900mm wide', spec);
   eq(nw.kind, 'new', 'creation intent');
   eq(nw.spec.meta.template, 'bookshelf', 'template switched');
-  eq(nw.spec.overall.width, 900, 'width picked up');
+  eq(nw.spec.overall.width, 900, 'explicit mm width picked up');
 
   const inches = AI.localModel('width to 48 in', spec);
-  eq(inches.patch.overall.width, Math.round(48 * 25.4), 'imperial parsed to mm');
+  eq(inches.patch.overall.width, 1219.2, 'imperial parsed to mm');
+
+  // Bare numbers follow the design's display system (imperial default).
+  const bare = AI.localModel('make it 36 wide', spec);
+  eq(bare.patch.overall.width, 914.4, 'bare number means inches for an imperial design');
+
+  const frac = AI.localModel(`width to 29 1/2"`, spec);
+  eq(frac.patch.overall.width, 749.3, 'fractional inches normalized to mm before parsing');
 }
 
 /* ---------------- history ---------------- */
@@ -255,12 +266,12 @@ section('history');
   eq(h.snapshots.length, 3, 'three snapshots');
   eq(h.currentSpec().wood.species, 'walnut', 'current is latest');
   eq(h.undo().wood.species, 'red_oak', 'undo restores species');
-  eq(h.undo().overall.height, 745, 'undo restores height');
+  eq(h.undo().overall.height, 736.6, 'undo restores height');
   ok(!h.canUndo(), 'at root');
   eq(h.redo().overall.height, 700, 'redo works');
   h.restore(0);
   eq(h.snapshots.length, 4, 'restore appends, never truncates');
-  eq(h.currentSpec().overall.height, 745, 'restore returns to snapshot 0 state');
+  eq(h.currentSpec().overall.height, 736.6, 'restore returns to snapshot 0 state');
   ok(h.snapshots[2], 'later snapshots still present after restore');
   const cmp = h.compare(0, 2);
   ok(cmp.diffs.some(d => d.path === 'wood.species'), 'compare finds species diff');
@@ -378,5 +389,13 @@ section('knowledge bases');
   ok(K.FINISHES.every(f => f.coats && f.recoatHrs !== undefined && f.cureDays), 'finishes carry coats + dry times');
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+/* ---------------- the in-app self-test suite, headless ---------------- */
+(async () => {
+  section('self-test suite (headless run)');
+  const results = await BB.SelfTest.run();
+  for (const r of results) {
+    ok(r.pass, `[${r.group}] ${r.name} — actual: ${r.actual}, expected: ${r.expected}`);
+  }
+  console.log(`\n${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+})();

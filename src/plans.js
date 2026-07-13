@@ -6,6 +6,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
   const K = BB.K;
+  const U = () => BB.Units; // display boundary — all plan math stays mm
 
   /* Joinery allowance table: mm added to the inserted member's cut length per
    * joint end. Phase 2 adds locking_rabbet and half_blind_dovetail rows. */
@@ -39,7 +40,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (e) {
         allowance = e.n * JOINT_ALLOWANCE[e.type];
         L = Math.round((L + allowance) * 10) / 10;
-        note = `includes ${allowance} mm for ${K.JOINERY[e.type] ? K.JOINERY[e.type].label.toLowerCase() : e.type}`;
+        note = `includes ${U().fmtLength(allowance)} for ${K.JOINERY[e.type] ? K.JOINERY[e.type].label.toLowerCase() : e.type}`;
       }
       const angles = BB.Geo.cutAngles(p.rot);
       if (angles) note = (note ? note + ' · ' : '') + BB.Geo.angleText(angles);
@@ -85,7 +86,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       if (stock.mode === 'dimensional' && stock.bdft.exact > 0) {
         items.push({
-          kind: 'lumber', label: `(reference) rough-sawn equivalent: ${stock.bdft.withWaste} bd ft`, qty: 1,
+          kind: 'lumber', label: `(reference) rough-sawn equivalent: ${U().fmtBoardFeet(stock.bdft.withWaste)}`, qty: 1,
           detail: `≈ $${stock.bdft.cost.toFixed(2)} at $${stock.bdft.rate.toFixed(2)}/bd ft incl. 30% waste — secondary line, not added to the total`,
           price: 0
         });
@@ -109,7 +110,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (solidMm3 > 0) {
         const bf = Math.ceil(solidMm3 / BF_MM3 * 1.3 * 10) / 10; // 30% waste factor
         items.push({
-          kind: 'lumber', label: `${sp.label} — ${bf} bd ft`, qty: 1,
+          kind: 'lumber', label: `${sp.label} — ${U().fmtBoardFeet(bf)}`, qty: 1,
           detail: `cost tier ${'$'.repeat(sp.costTier)} · ~$${Math.round(bf * sp.pricePerBdFt)}`,
           price: Math.round(bf * sp.pricePerBdFt)
         });
@@ -118,35 +119,39 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (sheetArea[t] > 0) {
           const frac = sheetArea[t] / (1525 * 1525) * 1.25;
           items.push({
-            kind: 'sheet', label: `Baltic birch ply ${t} mm`, qty: Math.ceil(frac * 4) / 4,
-            detail: `${Math.ceil(frac * 4) / 4} of a 1525 × 1525 sheet`, price: Math.round(frac * 70)
+            kind: 'sheet', label: `Baltic birch ply ${U().fmtLength(t)}`, qty: Math.ceil(frac * 4) / 4,
+            detail: `${Math.ceil(frac * 4) / 4} of a ${U().fmtSheet(1525, 1525)} sheet`, price: Math.round(frac * 70)
           });
         }
       }
     }
 
-    // Fasteners from the joint list.
+    // Fasteners from the joint list. Lengths render through the boundary;
+    // pilot diameters are fine values (decimal inches in imperial).
+    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
     const jc = {};
     for (const j of model.joints) jc[j.type] = (jc[j.type] || 0) + 1;
-    if (jc.pocket_screws) items.push({ kind: 'fastener', label: '32 mm coarse pocket screws', qty: jc.pocket_screws * 2, detail: '2 per pocket joint', price: Math.ceil(jc.pocket_screws * 2 * 0.08) });
-    if (jc.butt_screws) items.push({ kind: 'fastener', label: '#8 × 50 mm wood screws (pilot 3.2 mm)', qty: jc.butt_screws * 2, detail: '2 per butt joint, pilot-drilled', price: Math.ceil(jc.butt_screws * 2 * 0.06) });
-    if (jc.dowels) items.push({ kind: 'fastener', label: '8 × 40 mm fluted dowels', qty: jc.dowels * 2, detail: '2 per dowel joint (8 mm pilot)', price: Math.ceil(jc.dowels * 2 * 0.1) });
+    if (jc.pocket_screws) items.push({ kind: 'fastener', label: `${len(32)} coarse pocket screws`, qty: jc.pocket_screws * 2, detail: '2 per pocket joint', price: Math.ceil(jc.pocket_screws * 2 * 0.08) });
+    if (jc.butt_screws) items.push({ kind: 'fastener', label: `#8 × ${len(50)} wood screws (pilot ${fine(3.2)})`, qty: jc.butt_screws * 2, detail: '2 per butt joint, pilot-drilled', price: Math.ceil(jc.butt_screws * 2 * 0.06) });
+    if (jc.dowels) items.push({ kind: 'fastener', label: `${len(8)} × ${len(40)} fluted dowels`, qty: jc.dowels * 2, detail: `2 per dowel joint (${len(8)} pilot)`, price: Math.ceil(jc.dowels * 2 * 0.1) });
 
     // Solid-top attachment lets the panel move.
     const topPart = model.parts.find(p => p.role === 'top' && p.material !== 'baltic_birch');
-    if (topPart) items.push({ kind: 'fastener', label: 'Figure-8 fasteners + #8 × 16 mm', qty: 6, detail: 'top attachment — allows seasonal movement', price: 5 });
+    if (topPart) items.push({ kind: 'fastener', label: `Figure-8 fasteners + #8 × ${len(16)}`, qty: 6, detail: 'top attachment — allows seasonal movement', price: 5 });
 
-    // Drawer hardware from the fastener catalog.
+    // Drawer hardware from the fastener catalog. (M4 is a metric trade name
+    // in every market; the screw length still renders through the boundary.)
     for (const d of model.drawers) {
       if (d.runner === 'side_mount_slides') {
-        items.push({ kind: 'hardware', label: `${d.slideLen} mm side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
-        items.push({ kind: 'fastener', label: 'M4 × 16 mm pan-head screws (pilot 3.0 mm)', qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: 1 });
+        items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
+        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${fine(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: 1 });
       }
       items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: 6 });
-      items.push({ kind: 'fastener', label: '#8 × 25 mm wood screws (pilot 2.8 mm)', qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: 1 });
+      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${fine(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: 1 });
     }
     const shelfParts = model.parts.filter(p => p.role === 'shelf');
     if (shelfParts.length && ['bookshelf', 'cabinet'].includes(spec.meta.template)) {
+      // "5 mm shelf pin" IS the trade name in every market — stays literal.
       items.push({ kind: 'hardware', label: '5 mm shelf pins', qty: shelfParts.length * 4, detail: '4 per adjustable shelf', price: Math.ceil(shelfParts.length) });
     }
 
@@ -174,20 +179,21 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function drawerSteps(spec, model, out) {
     const boxJ = K.JOINERY[spec.joinery.box];
+    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
     for (const d of model.drawers) {
       const n = d.index + 1;
       const ids = id => d.partIds.filter(p => p.includes(id));
       const boxIds = [...ids('side'), ...ids('boxfront'), ...ids('boxback')];
       out.push(step(`dr${n}_box`, `Drawer ${n}: build the box`,
-        `Join the sides, box front, and box back with ${boxJ.label.toLowerCase()}s (${d.box.w} × ${d.box.h} × ${d.box.d} mm outside). Check the diagonals — square now or fight it forever.`,
+        `Join the sides, box front, and box back with ${boxJ.label.toLowerCase()}s (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside). Check the diagonals — square now or fight it forever.`,
         boxIds, { drawer: d.index }));
       out.push(step(`dr${n}_bottom`, `Drawer ${n}: fit the bottom`,
-        `Cut a 6 mm groove, 6 mm deep, 10 mm up from the bottom edge. Slide in the 6 mm bottom — no glue, it floats.`,
+        `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge. Slide in the ${len(6)} bottom — no glue, it floats.`,
         ids('bottom'), { drawer: d.index }));
       const railIds = model.parts.filter(p => p.role === 'rail').slice(d.index, d.index + 2).map(p => p.id);
       if (d.runner === 'side_mount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the slides`,
-          `Screw the ${d.slideLen} mm slides level and flush to the opening sides with M4 × 16 mm pan-heads. A spacer block beats a tape measure here.`,
+          `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(16)} pan-heads. A spacer block beats a tape measure here.`,
           railIds, { drawer: d.index }));
       } else {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: fit wood runners`,
@@ -197,8 +203,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         `Set the box on its runners and check it runs true with an even gap.`, boxIds.concat(ids('bottom')), { drawer: d.index }));
       out.push(step(`dr${n}_front`, `Drawer ${n}: attach the front`,
         d.frontStyle === 'inset'
-          ? `Shim the ${d.front.w} × ${d.front.h} mm front in its opening with a 2 mm reveal all around, then screw it from inside the box with #8 × 25 mm screws.`
-          : `Center the ${d.front.w} × ${d.front.h} mm overlay front on the opening and screw it from inside the box with #8 × 25 mm screws.`,
+          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then screw it from inside the box with #8 × ${len(25)} screws.`
+          : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and screw it from inside the box with #8 × ${len(25)} screws.`,
         ids('front'), { drawer: d.index }));
       out.push(step(`dr${n}_pull`, `Drawer ${n}: add the pull`,
         `Drill for the pull at the front’s centerline and bolt it on.`, ids('pull'), { drawer: d.index }));
@@ -248,9 +254,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (t === 'cabinet') {
       out.push(step('s1', 'Build the carcass', `Join the bottom between the sides with ${ca.label.toLowerCase()}s.`, ids('side_1', 'side_2', 'bottom_1')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
-      if (rails.length) out.push(step('s2', 'Install the drawer rails', `Join each 20 × 60 mm rail into the sides with ${fr.label.toLowerCase()}s, spaced for the drawer openings.`, rails));
+      if (rails.length) out.push(step('s2', 'Install the drawer rails', `Join each ${U().fmtLength(20)} × ${U().fmtLength(60)} rail into the sides with ${fr.label.toLowerCase()}s, spaced for the drawer openings.`, rails));
       if (has('back_1')) out.push(step('s3', 'Fit the back', 'Fasten the back panel — square the carcass to it first.', ['back_1']));
-      if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', 'Fit the toe-kick board 75 mm back from the front edge.', ['plinth_1']));
+      if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
       if (shelves.length) out.push(step('s6', 'Add the shelves', 'Set the shelves on their pins.', shelves));

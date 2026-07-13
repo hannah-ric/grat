@@ -8,7 +8,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
 (function () {
   'use strict';
-  const { Spec, Parametric, Plans, Exports, History, AI, K, Gallery, Codec, Store, Structural, Packing, Prov, Compare } = BB;
+  const { Spec, Parametric, Plans, Exports, History, AI, K, Gallery, Codec, Store, Structural, Packing, Prov, Compare, Units } = BB;
   const $ = id => document.getElementById(id);
   const el = (tag, cls, html) => {
     const e = document.createElement(tag);
@@ -36,7 +36,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     turns: [],                      // AI conversation, wire format
     loadChoices: {},                // per-surface load presets
     prices: K.defaultPrices(),
-    prefs4: { climate: 'temperate', stockMode: {} },
+    prefs4: JSON.parse(JSON.stringify(Store.DEFAULT_PREFS)),
     project: null,                  // {id, progress:{cuts:{},steps:{}}}
     buildMode: false, bmPlayback: false,
     wakeLock: null,
@@ -44,7 +44,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
 
-  function fmt(mm) { return Spec.fmtLen(mm, state.spec ? state.spec.meta.units : 'mm'); }
+  // ALL displayed lengths go through BB.Units — the single mm→text boundary.
+  const fmt = mm => Units.fmtLength(mm);
+  const fmtS = mm => Units.fmtSmall(mm);
 
   /* ---------------- pipeline ---------------- */
   function runPipeline(raw) {
@@ -56,6 +58,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const integrityOpts = () => ({ loadChoices: state.loadChoices, defaultLoad: 'auto', climate: state.prefs4.climate });
 
   function adopt(r) {
+    // The active design's unit choice IS the display system — sync the
+    // formatter boundary before anything derived renders.
+    Units.setSystem(r.spec.meta.units);
     state.spec = r.spec; state.model = r.model; state.report = r.report;
     state.integrity = Structural.computeIntegrity(r.spec, r.model, integrityOpts());
     state.cut = Plans.cutList(r.spec, r.model);
@@ -174,7 +179,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- render: top bar ---------------- */
   function renderTopbar() {
     $('designName').value = state.spec.meta.name;
-    $('unitsBtn').textContent = state.spec.meta.units;
+    const imperial = state.spec.meta.units !== 'mm';
+    $('unitsIn').setAttribute('aria-pressed', String(imperial));
+    $('unitsMm').setAttribute('aria-pressed', String(!imperial));
+    $('dualBtn').setAttribute('aria-pressed', String(!!Units.get().dual));
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
@@ -231,7 +239,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const pop = $('provPop');
     const lines = Prov.forCutRow(state.spec, state.model, row);
     pop.innerHTML = `<h5>${esc(row.name)} — where these numbers come from</h5>` +
-      lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('');
+      lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('') +
+      `<div class="prov-foot">computed internally in metric</div>`;
     pop.hidden = false;
     const r = anchor.getBoundingClientRect();
     pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left)) + 'px';
@@ -268,7 +277,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const plan = state.stockPlan;
     const species = state.spec.wood.species;
     root.append(el('h3', '', 'Stock — what to buy, and how to break it down'));
-    root.append(el('p', 'lede', 'Deterministic packing of the cut list onto buyable lumber: 3 mm kerf per cut, 15 mm end trim per board end, grain honored on sheets. Offcuts are hatched.'));
+    root.append(el('p', 'lede', `Deterministic packing of the cut list onto buyable lumber: ${fmtS(K.LUMBER.KERF)} kerf per cut, ${fmt(K.LUMBER.END_TRIM)} end trim per board end, grain honored on sheets. Offcuts are hatched.`));
 
     const controls = el('div', 'stock-controls');
     const modeSel = document.createElement('select');
@@ -302,7 +311,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     tot.innerHTML = `<span>Purchasable stock total${waste.length ? ` <span style="color:var(--muted);font-weight:400">· ${waste.join(' · ')}</span>` : ''}</span><strong>$${plan.totalCost.toFixed(2)}</strong>`;
     root.append(tot);
     if (plan.mode === 'dimensional' && plan.bdft.exact > 0) {
-      root.append(el('p', 'stock-note', `Reference: rough-sawn equivalent ≈ ${plan.bdft.withWaste} bd ft (incl. 30% waste) ≈ $${plan.bdft.cost.toFixed(2)} at $${plan.bdft.rate.toFixed(2)}/bd ft.`));
+      root.append(el('p', 'stock-note', `Reference: rough-sawn equivalent ≈ ${Units.fmtBoardFeet(plan.bdft.withWaste)} (incl. 30% waste) ≈ $${plan.bdft.cost.toFixed(2)} at $${plan.bdft.rate.toFixed(2)}/bd ft.`));
     }
     for (const g of plan.glueups) root.append(el('p', 'stock-note', `“${esc(g.name)}” is wider than any board: edge-glue ${g.n} × ${esc(g.nominal)} strips, then trim to ${fmt(g.W)}.`));
     for (const l of plan.laminations) root.append(el('p', 'stock-note', `“${esc(l.name)}” is thicker than any board: face-laminate ${l.n} × ${esc(l.nominal)} layers, then plane to ${fmt(l.T)}.`));
@@ -313,7 +322,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       plan.boards.forEach((b, i) => {
         if (!b.stockLen) return;
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Board ${i + 1} — ${esc(K.WOOD_SPECIES[species].label)} ${esc(b.nominal)} (${b.actual.t} × ${b.actual.w} mm) × ${b.stockLen} mm</span><span class="offcut">offcut ${fmt(Math.max(0, b.offcut))}</span></div>` + Packing.boardSVG(b, fmt);
+        card.innerHTML = `<div class="sb-title"><span>Board ${i + 1} — ${esc(K.WOOD_SPECIES[species].label)} ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}</span><span class="offcut">offcut ${fmt(Math.max(0, b.offcut))}</span></div>` + Packing.boardSVG(b, fmt);
         root.append(card);
       });
     }
@@ -321,7 +330,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('h3', '', 'Cutting diagrams — sheets'));
       plan.sheets.forEach((s, i) => {
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Sheet ${i + 1} — Baltic birch ${s.thickness} mm · buy a ${esc(s.fractionLabel)}</span><span class="offcut">layout ${Math.round(s.extent.x)} × ${Math.round(s.extent.y)} mm</span></div>` + Packing.sheetSVG(s, fmt);
+        card.innerHTML = `<div class="sb-title"><span>Sheet ${i + 1} — Baltic birch ${fmt(s.thickness)} · buy a ${esc(s.fractionLabel)}</span><span class="offcut">layout ${fmt(s.extent.x)} × ${fmt(s.extent.y)}</span></div>` + Packing.sheetSVG(s, fmt);
         root.append(card);
       });
     }
@@ -346,12 +355,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       lab.append(inp);
       return lab;
     };
+    // Prices are stored per metre (internal SI, like every number); imperial
+    // mode DISPLAYS and EDITS them per lineal foot — converted at this
+    // boundary only, in both directions.
+    const imperialPrices = Units.get().system === 'imperial';
+    const M_PER_FT = 0.3048;
+    const rateLabel = imperialPrices ? '$/ft' : '$/m';
+    const toDisplay = perM => Math.round((imperialPrices ? perM * M_PER_FT : perM) * 100) / 100;
+    const fromDisplay = v => (imperialPrices ? v / M_PER_FT : v);
     for (const nom of Object.keys(K.LUMBER.NOMINALS)) {
-      grid.append(priceInput(`${K.WOOD_SPECIES[species].label} ${nom} $/m`, state.prices.dimensional[species][nom],
-        v => { state.prices.dimensional[species][nom] = v; }));
+      grid.append(priceInput(`${K.WOOD_SPECIES[species].label} ${nom} ${rateLabel}`, toDisplay(state.prices.dimensional[species][nom]),
+        v => { state.prices.dimensional[species][nom] = fromDisplay(v); }));
     }
     for (const t of K.LUMBER.SHEET.THICKNESSES) {
-      grid.append(priceInput(`Sheet ${t} mm $/full`, state.prices.sheet[t], v => { state.prices.sheet[t] = v; }));
+      grid.append(priceInput(`Sheet ${fmt(t)} $/full`, state.prices.sheet[t], v => { state.prices.sheet[t] = v; }));
     }
     grid.append(priceInput(`${K.WOOD_SPECIES[species].label} $/bd ft`, state.prices.bdft[species], v => { state.prices.bdft[species] = v; }));
     details.append(grid);
@@ -442,13 +459,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('h3', '', 'Load presets (per surface)'));
       for (const s of integ.surfaces) {
         const row = el('div', 'load-row');
-        const label = el('span', '', `${esc(s.label)}<span class="span-note">${Math.round(s.span)} mm ${s.model === 'cant' ? 'cantilever' : 'span'}</span>`);
+        const label = el('span', '', `${esc(s.label)}<span class="span-note">${fmt(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}</span>`);
         const ls = document.createElement('select');
         ls.setAttribute('aria-label', `Load preset for ${s.label}`);
         for (const k of Structural.PRESET_KEYS) {
           const o = document.createElement('option');
           o.value = k;
-          o.textContent = `${Structural.LOAD_PRESETS[k].label} — ${Structural.LOAD_PRESETS[k].detail}`;
+          o.textContent = `${Structural.LOAD_PRESETS[k].label} — ${Structural.presetDetail(k)}`;
           o.selected = k === s.presetKey;
           ls.append(o);
         }
@@ -533,7 +550,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td><strong>${esc(r.label)}</strong></td>
         <td class="num">${isFinite(r.max) ? `${fmt(r.min)} – ${fmt(r.max)}` : `≥ ${fmt(r.min)}`}</td>
         <td>${esc(r.appliesTo.join(', '))}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(r.note)}</td></tr>`).join('');
+        <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
       head = '<th>Joint</th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
@@ -547,16 +564,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (state.refTab === 'lumber') {
       head = '<th>Nominal</th><th>Actual (T × W)</th><th>Stock lengths</th>';
       rows = Object.entries(K.LUMBER.NOMINALS).filter(([n]) => hit(n)).map(([n, a]) => `<tr>
-        <td><strong>${esc(n)}</strong></td><td class="num">${a.t} × ${a.w} mm</td>
-        <td class="num">${K.LUMBER.STOCK_LENGTHS.join(' / ')} mm</td></tr>`).join('');
-      rows += `<tr><td><strong>Sheet goods</strong></td><td class="num">1220 × 2440 mm · ${K.LUMBER.SHEET.THICKNESSES.join('/')} mm</td><td>sold whole, half, or quarter</td></tr>`;
+        <td><strong>${esc(n)}</strong></td><td class="num">${esc(`${fmt(a.t)} × ${fmt(a.w)}`)}</td>
+        <td class="num">${esc(K.LUMBER.STOCK_LENGTHS.map(l => Units.fmtBoardLength(l)).join(' / '))}</td></tr>`).join('');
+      rows += `<tr><td><strong>Sheet goods</strong></td><td class="num">${esc(Units.fmtSheet(K.LUMBER.SHEET.W, K.LUMBER.SHEET.L))} · ${esc(K.LUMBER.SHEET.THICKNESSES.map(t => fmt(t)).join(' / '))}</td><td>sold whole, half, or quarter</td></tr>`;
     } else {
       head = '<th>Item</th><th>Pilot / spec</th><th>Use</th>';
       const f = K.FASTENERS;
       rows = [...f.screws, ...f.dowels, ...f.hardware].filter(x => hit(x.label, x.use)).map(x => `<tr>
-        <td><strong>${esc(x.label)}</strong></td>
-        <td class="num">${x.pilot ? x.pilot + ' mm pilot' : (x.price ? '~$' + x.price : '—')}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(x.use)}</td></tr>`).join('');
+        <td><strong>${esc(Units.fmtTemplate(x.label))}</strong></td>
+        <td class="num">${x.pilot ? esc(fmtS(x.pilot)) + ' pilot' : (x.price ? '~$' + x.price : '—')}</td>
+        <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
       rows += K.FINISHES.filter(x => hit(x.label, x.blurb)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong></td>
         <td class="num">${x.coats} coats · ${x.recoatHrs} h recoat · ${x.cureDays} d cure</td>
@@ -698,7 +715,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
-      const chips = Spec.describeDiff(realDiffs, state.spec.meta.units);
+      const chips = Spec.describeDiff(realDiffs);
       const caveat = image ? 'Proportions estimated from photo. Verify dimensions.' : null;
       if (out.failReport) {
         botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Integrity tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
@@ -747,20 +764,25 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- inspector ---------------- */
+  /* Unit-aware sliders run in the DISPLAY domain — integer 1/16 in ticks in
+   * imperial, 1 mm ticks in metric — and convert back to millimetres exactly
+   * once (Units.sliderDomain.toMM), so edits round-trip without drift. */
   function paramSlider(label, value, min, max, step, unitAware, onInput, onCommit) {
     const wrap = el('div', 'param');
     const lab = el('div', 'param-label');
     const out = el('output', '', unitAware ? fmt(value) : String(value));
     lab.append(el('span', '', esc(label)), out);
     const range = document.createElement('input');
-    range.type = 'range'; range.min = min; range.max = max; range.step = step; range.value = value;
+    const dom = unitAware ? Units.sliderDomain(min, max, value) : { min, max, value, step, toMM: v => v };
+    range.type = 'range'; range.min = dom.min; range.max = dom.max; range.step = dom.step; range.value = dom.value;
     range.setAttribute('aria-label', label);
     range.addEventListener('input', () => {
-      out.textContent = unitAware ? fmt(+range.value) : range.value;
-      onInput(+range.value);
+      const mm = dom.toMM(+range.value);
+      out.textContent = unitAware ? fmt(mm) : String(mm);
+      onInput(mm);
     });
-    range.addEventListener('change', () => onCommit(+range.value));
-    range.addEventListener('keyup', e => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) onCommit(+range.value); });
+    range.addEventListener('change', () => onCommit(dom.toMM(+range.value)));
+    range.addEventListener('keyup', e => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) onCommit(dom.toMM(+range.value)); });
     wrap.append(lab, range);
     return wrap;
   }
@@ -957,8 +979,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const rows = $('compareRows');
     rows.innerHTML = cmp.diffs.map(d => `<tr>
       <td>${esc(Spec.PATH_LABELS[d.path] || d.path)}</td>
-      <td class="old num">${esc(Spec.fmtValue(d.path, d.from, cmp.b.spec.meta.units))}</td>
-      <td class="new num">${esc(Spec.fmtValue(d.path, d.to, cmp.b.spec.meta.units))}</td></tr>`).join('') ||
+      <td class="old num">${esc(Spec.fmtValue(d.path, d.from))}</td>
+      <td class="new num">${esc(Spec.fmtValue(d.path, d.to))}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="color:var(--muted)">No differences.</td></tr>';
     openScrim('compareScrim');
   }
@@ -1199,9 +1221,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
       `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} →</button></th>`).join('')}</tr></thead><tbody>
       <tr><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
-      <tr><td>Weight</td>${cols.map(c => cell(c.weightKg, c.weightKg === bestWeight, ' kg')).join('')}</tr>
-      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span style="color:var(--muted)">(${c.worstSagMM} mm/${c.span} mm)</span>` : '')).join('')}</tr>
-      <tr><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(c.movementMM, c.movementMM === bestMove, ' mm')).join('')}</tr>
+      <tr><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
+      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span style="color:var(--muted)">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
+      <tr><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(esc(fmtS(c.movementMM)), c.movementMM === bestMove)).join('')}</tr>
       <tr><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span style="color:var(--muted)">${esc(c.duty)}</span>`)).join('')}</tr>
       <tr><td>Failing checks</td>${cols.map(c => cell(c.fails, c.fails === 0)).join('')}</tr>
     </tbody></table>`;
@@ -1319,7 +1341,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
-      group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(b.nominal)} × ${b.stockLen} mm`));
+      group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}`));
       b.cuts.forEach((c, ci) => {
         const key = cutKey('b', bi, ci, c.name, c.len);
         group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -1328,7 +1350,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     plan.sheets.forEach((s, si) => {
       const group = el('div', 'bm-board');
-      group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${s.thickness} mm (${esc(s.fractionLabel)})`));
+      group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${esc(fmt(s.thickness))} (${esc(s.fractionLabel)})`));
       s.placements.forEach((p, pi) => {
         const key = cutKey('s', si, pi, p.name, Math.round(p.w));
         group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -1487,7 +1509,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       try {
         state.prices = await Store.loadPrices();
         state.prefs4 = await Store.loadPrefs();
+        Units.set(state.prefs4.units); // precision + dual (+ system default)
+        // A fresh session honors the stored unit choice: a returning metric
+        // user's seed opens metric; cleared storage stays imperial.
+        const wantU = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
+        if (!state.project && state.history.snapshots.length === 1 && state.spec.meta.units !== wantU) {
+          const r2 = runPipeline(Spec.deepMerge(state.spec, { meta: { units: wantU } }));
+          adopt(r2);
+          state.history = History.createHistory(r2.spec, 'seed');
+        }
         recompute();
+        renderAll();
       } catch (e) { /* defaults are the product */ }
     })();
 
@@ -1499,7 +1531,27 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('compareBtn').onclick = openCompare;
     $('compareClose').onclick = showCompareOverlay;
     $('compareExit').onclick = clearCompare;
-    $('unitsBtn').onclick = () => merge({ meta: { units: state.spec.meta.units === 'mm' ? 'in' : 'mm' } }, 'manual');
+    /* Units: a two-state in|mm control. Switching re-renders every surface in
+     * one pass (all text flows from BB.Units) and persists the choice so the
+     * next fresh session starts the same way. */
+    const setUnits = u => {
+      state.prefs4.units.system = u === 'mm' ? 'metric' : 'imperial';
+      Store.savePrefs(state.prefs4);
+      if (state.spec.meta.units !== u) merge({ meta: { units: u } }, 'manual');
+      else renderTopbar();
+    };
+    $('unitsIn').onclick = () => setUnits('in');
+    $('unitsMm').onclick = () => setUnits('mm');
+    $('dualBtn').onclick = () => {
+      const dual = !Units.get().dual;
+      Units.set({ dual });
+      state.prefs4.units.dual = dual;
+      Store.savePrefs(state.prefs4);
+      // Same spec, new display prefs: rebuild derived text + every surface.
+      adopt(runPipeline(state.spec));
+      renderAll();
+      state.engine.unitsChanged();
+    };
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -1568,7 +1620,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('dimsToggle').onclick = () => {
       const on = $('dimsToggle').getAttribute('aria-pressed') !== 'true';
       $('dimsToggle').setAttribute('aria-pressed', String(on));
-      state.engine.setDims(on, state.spec.meta.units);
+      state.engine.setDims(on);
     };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;

@@ -29,7 +29,11 @@
       <button id="buildModeBtn" class="btn" title="Full-screen shop companion">Build mode</button>
     </div>
     <div class="topbar-group">
-      <button id="unitsBtn" class="btn icon" title="Toggle units" aria-label="Toggle millimetres or inches">mm</button>
+      <div class="seg units-seg" role="group" aria-label="Display units">
+        <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
+        <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
+      </div>
+      <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
       <div class="menu-wrap">
         <button id="exportBtn" class="btn primary" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
         <div id="exportMenu" class="menu" role="menu">
@@ -284,6 +288,7 @@
 <script>{{THREE}}</script>
 <script>{{JS_KNOWLEDGE}}</script>
 <script>{{JS_GEOMETRY}}</script>
+<script>{{JS_UNITS}}</script>
 <script>{{JS_SPEC}}</script>
 <script>{{JS_PARAMETRIC}}</script>
 <script>{{JS_STRUCTURAL}}</script>

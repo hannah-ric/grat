@@ -8,7 +8,10 @@
  *   project:{id}    -> { id, name, updated, wire (codec spec), revisions
  *                        (last 20 wire snapshots), progress {cuts, steps} }
  *   prices:v1       -> user-edited price table
- *   prefs:v1        -> { climate, stockMode, ... }
+ *   prefs:v2        -> { climate, stockMode, units: {system, precision, dual} }
+ *   prefs:v1        -> legacy (no units block); migrated on first load, and a
+ *                      returning v1 user keeps the metric world they had —
+ *                      the imperial default applies ONLY to fresh installs.
  * Never store meshes or derived plans — everything regenerates from the spec.
  */
 var BB = globalThis.BB = globalThis.BB || {};
@@ -127,8 +130,13 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- price table & preferences ---------------- */
   const PRICES_KEY = 'prices:v1';
-  const PREFS_KEY = 'prefs:v1';
-  const DEFAULT_PREFS = { climate: 'temperate', stockMode: {} };
+  const PREFS_KEY = 'prefs:v2';
+  const LEGACY_PREFS_KEY = 'prefs:v1';
+  // Fresh installs: fractional inches at 1/16, dual display off.
+  const DEFAULT_PREFS = {
+    climate: 'temperate', stockMode: {},
+    units: { system: 'imperial', precision: 16, dual: false }
+  };
 
   async function loadPrices() {
     const stored = await get(PRICES_KEY);
@@ -142,9 +150,28 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   const savePrices = prices => set(PRICES_KEY, prices);
 
+  /* Deep-fill against defaults so new fields appear WITHOUT clobbering the
+   * user's stored choices (Object.assign would flatten the units block). */
+  function withPrefDefaults(stored) {
+    const out = Object.assign({}, DEFAULT_PREFS, stored);
+    out.units = Object.assign({}, DEFAULT_PREFS.units, stored && stored.units ? stored.units : {});
+    return out;
+  }
   async function loadPrefs() {
     const stored = await get(PREFS_KEY);
-    return Object.assign({}, DEFAULT_PREFS, stored && typeof stored === 'object' ? stored : {});
+    if (stored && typeof stored === 'object') return withPrefDefaults(stored);
+    // Schema migration v1 -> v2. The imperial default is for people with NO
+    // stored preferences; a returning v1 user was living in the old metric
+    // default, so their selection is preserved, never overwritten.
+    const legacy = await get(LEGACY_PREFS_KEY);
+    if (legacy && typeof legacy === 'object') {
+      const migrated = withPrefDefaults(Object.assign({}, legacy, {
+        units: { system: 'metric', precision: 16, dual: false }
+      }));
+      await set(PREFS_KEY, migrated);
+      return migrated;
+    }
+    return withPrefDefaults({});
   }
   const savePrefs = prefs => set(PREFS_KEY, prefs);
 

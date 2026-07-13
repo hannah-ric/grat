@@ -89,33 +89,109 @@ var BB = globalThis.BB = globalThis.BB || {};
       return { spec, model, report: Spec.validate(spec, model) };
     };
 
-    /* ============ unit conversions ============ */
+    /* ============ unit conversions (BB.Units — the ONE display boundary) ============ */
     {
+      const Units = BB.Units;
+      const IMP = { system: 'imperial', precision: 16, dual: false };
+
       const parseFrac = s => {
-        const m = String(s).match(/^(?:(\d+)(?:\s+(\d+)\/(\d+))?|(\d+)\/(\d+))″$/);
+        const m = String(s).match(/^(?:(\d+)(?:\s+(\d+)\/(\d+))?|(\d+)\/(\d+)) in$/);
         if (!m) return null;
         const val = m[4] !== undefined ? (+m[4] / +m[5]) : (+m[1] + (m[2] !== undefined ? (+m[2] / +m[3]) : 0));
         return val * 25.4;
       };
       let worst = 0, worstMM = 0;
       for (let mm = 3; mm <= 2400; mm += 7.3) {
-        const s = Spec.fmtLen(mm, 'in');
+        const s = Units.fmtLength(mm, IMP);
         const back = parseFrac(s);
         if (back == null) { worst = 99; worstMM = mm; break; }
         const err = Math.abs(back - mm);
         if (err > worst) { worst = err; worstMM = mm; }
       }
       const tol = 25.4 / 32; // half a 1/16" tick
-      test('units', 'mm → fractional inches → mm round-trips within 1/32″', worst <= tol, `worst ${worst.toFixed(3)} mm at ${worstMM.toFixed(1)} mm`, `≤ ${tol.toFixed(3)} mm`);
+      test('units', 'mm → fractional inches → mm round-trips within 1/32 in', worst <= tol, `worst ${worst.toFixed(3)} mm at ${worstMM.toFixed(1)} mm`, `≤ ${tol.toFixed(3)} mm`);
 
       const gcd = (a, b) => b ? gcd(b, a % b) : a;
       let unreduced = null;
       for (let mm = 0.5; mm <= 1000; mm += 0.7) {
-        const s = Spec.fmtLen(mm, 'in');
+        const s = Units.fmtLength(mm, IMP);
         const m = s.match(/(\d+)\/(\d+)/);
         if (m && gcd(+m[1], +m[2]) !== 1) { unreduced = `${s} at ${mm} mm`; break; }
       }
       test('units', 'fraction reduction never emits an unreduced fraction', !unreduced, unreduced || 'all reduced', 'all reduced');
+
+      // Fine values (sag, movement, kerf, reveals) are DECIMAL inches — never fractions.
+      let badFine = null;
+      for (const mm of [0.11, 0.5, 1, 2.8, 3, 7.9, 15, 28.6, 50]) {
+        const s = Units.fmtSmall(mm, IMP);
+        if (s.includes('/') || !/^\d+(\.\d+)? in$/.test(s)) { badFine = `${s} at ${mm} mm`; break; }
+      }
+      test('units', 'fine values format as decimal inches, never fractions', !badFine, badFine || 'all decimal', 'all decimal');
+      test('units', 'known fine value: 2.8 mm → 0.11 in', Units.fmtSmall(2.8, IMP) === '0.11 in', Units.fmtSmall(2.8, IMP), '0.11 in');
+
+      // Stock board lengths render in feet; sheets as feet × feet.
+      test('units', 'board lengths format in feet (2438 mm → 8 ft)', Units.fmtBoardLength(2438, IMP) === '8 ft', Units.fmtBoardLength(2438, IMP), '8 ft');
+      test('units', 'sheet goods format as 4 x 8 ft', Units.fmtSheet(1220, 2440, IMP) === '4 x 8 ft', Units.fmtSheet(1220, 2440, IMP), '4 x 8 ft');
+      test('units', 'nominal lumber leads with the trade name in imperial',
+        Units.fmtNominal('1x4', { t: 19, w: 89 }, 2438, IMP) === '1x4 x 8 ft (3/4 x 3 1/2 in)',
+        Units.fmtNominal('1x4', { t: 19, w: 89 }, 2438, IMP), '1x4 x 8 ft (3/4 x 3 1/2 in)');
+      test('units', 'nominal lumber leads with actual mm in metric',
+        Units.fmtNominal('1x4', { t: 19, w: 89 }, 2438, { system: 'metric', dual: false }) === '19 x 89 x 2438 mm (1x4)',
+        Units.fmtNominal('1x4', { t: 19, w: 89 }, 2438, { system: 'metric', dual: false }), '19 x 89 x 2438 mm (1x4)');
+
+      // Slider round-trip: 29 1/2 in ↔ exactly 749.3 mm, no drift.
+      const dom = Units.sliderDomain(120, 2400, 749.3, IMP);
+      const ticks = Math.round(29.5 * 16);
+      test('units', 'slider round-trip: 29 1/2 in → 749.3 mm → 29 1/2 in',
+        dom.value === ticks && dom.toMM(ticks) === 749.3 && Units.fmtLength(dom.toMM(ticks), IMP) === '29 1/2 in',
+        `${dom.value} ticks → ${dom.toMM(ticks)} mm → ${Units.fmtLength(dom.toMM(ticks), IMP)}`,
+        `${ticks} ticks → 749.3 mm → 29 1/2 in`);
+
+      // The forgiving parser: five input forms, one shared normalizer, any mode.
+      const forms = [['29 1/2', 749.3], ['29.5"', 749.3], [`2' 5"`, 736.6], ['750mm', 750], ['75cm', 750]];
+      const got = forms.map(([s]) => Units.parseLength(s));
+      test('units', 'length parser handles 29 1/2 · 29.5" · 2\' 5" · 750mm · 75cm',
+        forms.every(([s, want], i) => got[i] === want), got.join(', '), forms.map(f => f[1]).join(', '));
+      test('units', 'chat pre-parse rewrites dimension strings to explicit mm',
+        Units.normalizeLengthText('make it 29 1/2 wide and 610mm deep') === 'make it 749.3mm wide and 610mm deep',
+        Units.normalizeLengthText('make it 29 1/2 wide and 610mm deep'), 'make it 749.3mm wide and 610mm deep');
+
+      // A known advisory renders converted units in imperial mode.
+      {
+        const saved = Units.get();
+        try {
+          Units.set(IMP);
+          const tall = pipeline({ meta: { name: 'Ergo Case', template: 'table' }, overall: { width: 1524, depth: 863.6, height: 820 } });
+          const adv = tall.report.advisories.find(a => a.id === 'ergo_dining_height');
+          test('units', 'ergonomic advisory converts its range in imperial mode',
+            adv && adv.text.includes('28 3/4 in') && adv.text.includes('29 15/16 in') && !/\d\s?mm/.test(adv.text),
+            adv ? adv.text.slice(0, 80) + '…' : 'no advisory', 'contains 28 3/4 in … 29 15/16 in, no mm');
+        } finally { Units.set(saved); }
+      }
+
+      // Dual display renders both systems on an Integrity row and a Stock row.
+      {
+        const saved = Units.get();
+        try {
+          Units.set({ system: 'imperial', precision: 16, dual: true });
+          const shelf = pipeline({
+            meta: { name: 'Dual Case', template: 'bookshelf', level: 'beginner' },
+            overall: { width: 914.4, depth: 304.8, height: 1828.8 },
+            wood: { species: 'red_oak' }, structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true }
+          });
+          const integ = Structural.computeIntegrity(shelf.spec, shelf.model, {});
+          const sagCheck = integ.checks.find(c => c.id.startsWith('sag:'));
+          test('units', 'dual display: Integrity sag row carries both systems',
+            sagCheck && /in \(/.test(sagCheck.value) && / mm\)/.test(sagCheck.value),
+            sagCheck ? sagCheck.value : 'no sag check', 'in (… mm) in the sag line');
+          const cut = Plans.cutList(shelf.spec, shelf.model);
+          const plan = Packing.planStock(shelf.spec, shelf.model, cut, {});
+          const board = plan.shopping.find(s => s.kind === 'board');
+          test('units', 'dual display: Stock shopping row carries both systems',
+            board && / ft /.test(board.label + ' ') && / mm/.test(board.label),
+            board ? board.label : 'no board row', 'trade name + ft + mm actuals');
+        } finally { Units.set(saved); }
+      }
     }
 
     /* ============ joinery allowances ============ */
@@ -152,8 +228,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       const integ = Structural.computeIntegrity(spec, model, {});
       const shelfSag = integ.checks.find(c => c.id === 'sag:shelf_1');
-      const got = shelfSag && parseFloat((shelfSag.value.match(/sag ([\d.]+) mm/) || [])[1]);
-      test('beam', 'integrity panel reports the same computed sag', got && Math.abs(got - HAND_SAG) < 0.06, got, HAND_SAG.toFixed(1));
+      // Raw numbers ride check.data — display text is unit-dependent and never parsed.
+      const got = shelfSag && shelfSag.data && shelfSag.data.sagMM;
+      test('beam', 'integrity panel reports the same computed sag', got && Math.abs(got - HAND_SAG) < 0.06, got && got.toFixed(4) + ' mm', HAND_SAG.toFixed(4) + ' mm');
     }
 
     /* ============ structural: movement / tipping / racking (fixed values) ============ */
@@ -351,6 +428,27 @@ var BB = globalThis.BB = globalThis.BB || {};
       test('storage', 'store round-trips (falls back to memory when storage is absent)', back && back.ok === 1, JSON.stringify(back), '{"ok":1}');
       const prices = await Store.loadPrices();
       test('storage', 'price table loads with defaults merged', prices.dimensional && prices.dimensional.red_oak && prices.sheet[18] > 0, `red_oak 1x4 = $${prices.dimensional.red_oak && prices.dimensional.red_oak['1x4']}/m`, 'defaults present');
+
+      // Prefs schema v1 → v2: imperial is for FRESH installs only; a returning
+      // v1 user keeps metric. Real keys are saved and restored around the test.
+      const savedV2 = await Store.get('prefs:v2'), savedV1 = await Store.get('prefs:v1');
+      try {
+        await Store.del('prefs:v2');
+        await Store.set('prefs:v1', { climate: 'humid', stockMode: {} });
+        const migrated = await Store.loadPrefs();
+        test('storage', 'prefs v1 → v2 migration keeps a returning user metric',
+          migrated.units.system === 'metric' && migrated.climate === 'humid',
+          `${migrated.units.system} / climate ${migrated.climate}`, 'metric / climate humid');
+        await Store.del('prefs:v2');
+        await Store.del('prefs:v1');
+        const fresh = await Store.loadPrefs();
+        test('storage', 'fresh install defaults to imperial · 1/16 · dual off',
+          fresh.units.system === 'imperial' && fresh.units.precision === 16 && fresh.units.dual === false,
+          JSON.stringify(fresh.units), '{"system":"imperial","precision":16,"dual":false}');
+      } finally {
+        if (savedV1) await Store.set('prefs:v1', savedV1); else await Store.del('prefs:v1');
+        if (savedV2) await Store.set('prefs:v2', savedV2); else await Store.del('prefs:v2');
+      }
     }
 
     return results;

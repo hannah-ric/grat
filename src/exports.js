@@ -27,7 +27,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'design';
   const n = v => (Math.round(v * 1000) / 1000).toString();
 
-  /* ---------------- COLLADA ---------------- */
+  /* ---------------- COLLADA ----------------
+   * INTENTIONALLY unit-exempt: the .dae declares <unit meter="0.001"> and
+   * writes raw millimetre geometry regardless of the display preference.
+   * SketchUp must receive real geometry — display units never touch exports. */
   function toDAE(spec, model) {
     const created = new Date().toISOString();
     const roles = [...new Set(model.parts.map(p => p.role))];
@@ -114,7 +117,10 @@ ${nodes}
 `;
   }
 
-  /* ---------------- SketchUp Ruby ---------------- */
+  /* ---------------- SketchUp Ruby ----------------
+   * INTENTIONALLY unit-exempt: every coordinate uses the .mm helper, so the
+   * rebuilt model is geometrically identical no matter which display units
+   * the user had selected. Do not route these through BB.Units. */
   function toRuby(spec, model) {
     const rb = s => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const name = rb(spec.meta.name);
@@ -202,9 +208,11 @@ BlueprintBuddyImport.build
   const printSVG = svg => String(svg).replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PRINT_COLORS[v] || '#333');
 
   function printHTML(spec, model, cut, bomData, steps, stock) {
-    const S = BB.Spec, u = spec.meta.units;
+    // The print sheet is a display surface: it follows the current display
+    // preference via BB.Units (unlike the geometry exports above).
+    const U = BB.Units;
     const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-    const dim = v => S.fmtLen(v, u);
+    const dim = v => U.fmtLength(v);
     const sp = BB.K.WOOD_SPECIES[spec.wood.species];
     const cutRows = cut.map(r => `<tr><td>${esc(r.name)}</td><td>${r.qty}</td><td>${dim(r.L)}</td><td>${dim(r.W)}</td><td>${dim(r.T)}</td><td>${esc(BB.K.WOOD_SPECIES[r.material] ? BB.K.WOOD_SPECIES[r.material].label : r.material)}</td><td>${esc(r.note || '')}</td></tr>`).join('');
     const bomRows = bomData.items.map(i => `<tr><td>${esc(i.label)}</td><td>${i.qty}</td><td>${esc(i.detail || '')}</td></tr>`).join('');
@@ -214,9 +222,9 @@ BlueprintBuddyImport.build
     if (stock && (stock.boards.length || stock.sheets.length)) {
       const shopRows = stock.shopping.map(s => `<tr><td>${esc(s.label)}</td><td>${s.qty}</td><td>${esc(s.unit)}</td><td>$${s.cost.toFixed(2)}</td></tr>`).join('');
       const boardBlocks = stock.boards.filter(b => b.stockLen).map((b, i) =>
-        `<div class="print-board"><p>${esc(b.nominal)} × ${b.stockLen} mm — board ${i + 1} · offcut ${dim(b.offcut)}</p>${printSVG(BB.Packing.boardSVG(b, dim))}</div>`).join('');
+        `<div class="print-board"><p>${esc(U.fmtNominal(b.nominal, b.actual, b.stockLen))} — board ${i + 1} · offcut ${dim(b.offcut)}</p>${printSVG(BB.Packing.boardSVG(b, dim))}</div>`).join('');
       const sheetBlocks = stock.sheets.map((s, i) =>
-        `<div class="print-board"><p>${s.thickness} mm sheet ${i + 1} — buy a ${esc(s.fractionLabel)}</p>${printSVG(BB.Packing.sheetSVG(s, dim))}</div>`).join('');
+        `<div class="print-board"><p>${dim(s.thickness)} sheet ${i + 1} — buy a ${esc(s.fractionLabel)}</p>${printSVG(BB.Packing.sheetSVG(s, dim))}</div>`).join('');
       const waste = [];
       if (stock.wasteSolidPct != null) waste.push(`solid ${stock.wasteSolidPct}%`);
       if (stock.wasteSheetPct != null) waste.push(`sheet ${stock.wasteSheetPct}%`);
@@ -226,7 +234,7 @@ BlueprintBuddyImport.build
     <table><thead><tr><th>Buy</th><th>Qty</th><th>Unit</th><th>Cost</th></tr></thead><tbody>${shopRows}</tbody></table>
     <p class="print-total">Purchasable-stock total: $${stock.totalCost.toFixed(2)}${waste.length ? ' · waste ' + waste.join(' · ') : ''}</p>
     ${boardBlocks}${sheetBlocks}
-    <p>Kerf 3 mm per cut · 15 mm end trim per board end · hatched areas are offcuts.</p>
+    <p>Kerf ${U.fmtSmall(BB.K.LUMBER.KERF)} per cut · ${dim(BB.K.LUMBER.END_TRIM)} end trim per board end · hatched areas are offcuts.</p>
   </section>`;
     }
 

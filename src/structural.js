@@ -28,18 +28,29 @@ var BB = globalThis.BB = globalThis.BB || {};
   const densityOf = key => speciesOf(key).sg * 1000; // kg/m³ at ~12% MC
   const sgFactor = key => speciesOf(key).sg / 0.5;
   const nextSolidUp = t => K.SOLID_THICKNESS.find(x => x > t) || null;
-  const fmtMM = x => (Math.round(x * 10) / 10).toFixed(1) + ' mm';
-  const fmtDeg = x => (Math.round(x * 10) / 10) + '°';
+  // All display text routes through BB.Units — the check math stays SI.
+  const U = () => BB.Units;
+  const fmtFine = x => U().fmtSmall(x);      // sag / movement / margins: decimal in
+  const fmtLen = x => U().fmtLength(x);      // spans / thicknesses: fractional in
+  const fmtDeg = x => U().fmtDeg(x);         // angles never convert
 
   /* ---------------- load presets (user-selectable per surface) ---------------- */
   const LOAD_PRESETS = {
-    display: { label: 'Display items', detail: '10 kg/m', kind: 'udl', kgPerM: 10 },
-    books:   { label: 'Books', detail: '55 kg/m', kind: 'udl', kgPerM: 55 },
-    heavy:   { label: 'Heavy storage', detail: '90 kg/m', kind: 'udl', kgPerM: 90 },
-    seating: { label: 'Seated people', detail: '120 kg per seat', kind: 'seat', kgSeat: 120 },
-    worktop: { label: 'Desk / table duty', detail: '75 kg + 90 kg lean', kind: 'combo', kgDist: 75, kgEdge: 90 }
+    display: { label: 'Display items', kind: 'udl', kgPerM: 10 },
+    books:   { label: 'Books', kind: 'udl', kgPerM: 55 },
+    heavy:   { label: 'Heavy storage', kind: 'udl', kgPerM: 90 },
+    seating: { label: 'Seated people', kind: 'seat', kgSeat: 120 },
+    worktop: { label: 'Desk / table duty', kind: 'combo', kgDist: 75, kgEdge: 90 }
   };
   const PRESET_KEYS = ['display', 'books', 'heavy', 'seating', 'worktop'];
+  /* Preset magnitudes rendered in the CURRENT display units (lb/ft · lb
+   * imperial, kg/m · kg metric) — formatted at render time, never stored. */
+  function presetDetail(key) {
+    const p = LOAD_PRESETS[key] || LOAD_PRESETS.display;
+    if (p.kind === 'udl') return U().fmtLinearLoad(p.kgPerM);
+    if (p.kind === 'seat') return `${U().fmtPointLoad(p.kgSeat)} per seat`;
+    return `${U().fmtPointLoad(p.kgDist)} + ${U().fmtPointLoad(p.kgEdge)} lean`;
+  }
   function defaultPresetFor(kind, template, defaultLoad) {
     if (kind === 'seat') return 'seating';
     if (kind === 'top') return 'worktop';
@@ -246,13 +257,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       let standExplain;
       if (!grounded.size) standExplain = 'No part touches the floor — the piece has nothing to stand on.';
       else if (hull.length < 3) standExplain = 'The floor contact points are collinear — the piece would fall over sideways.';
-      else if (inDist < 0) standExplain = `The center of gravity falls ${Math.round(-inDist)} mm outside the support polygon.`;
-      else if (inDist < MARGIN) standExplain = `The center of gravity is only ${Math.round(inDist)} mm inside the support polygon — under the ${MARGIN} mm stability margin.`;
-      else standExplain = `The center of gravity sits ${Math.round(inDist)} mm inside the footprint.`;
+      else if (inDist < 0) standExplain = `The center of gravity falls ${fmtFine(-inDist)} outside the support polygon.`;
+      else if (inDist < MARGIN) standExplain = `The center of gravity is only ${fmtFine(inDist)} inside the support polygon — under the ${fmtFine(MARGIN)} stability margin.`;
+      else standExplain = `The center of gravity sits ${fmtFine(inDist)} inside the footprint.`;
       checks.push({
         id: 'stand', title: 'It must stand', status: inDist >= MARGIN ? 'pass' : 'fail',
-        value: isFinite(inDist) ? `COG margin ${Math.round(inDist)} mm` : 'no footprint',
-        threshold: `≥ ${MARGIN} mm inside the support polygon`, explain: standExplain, fixes: []
+        value: isFinite(inDist) ? `COG margin ${fmtFine(inDist)}` : 'no footprint',
+        threshold: `≥ ${fmtFine(MARGIN)} inside the support polygon`, explain: standExplain, fixes: [],
+        data: { cogMarginMM: isFinite(inDist) ? inDist : null }
       });
 
       for (const p of parts) {
@@ -290,7 +302,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (connSet.has(key)) {
           const A = Geo.partOBB(a); A.e = A.e.map(e => e + 5);
           if (pen == null && Geo.obbPenetration(A, Geo.partOBB(b)) == null) gaps.push(`${a.id}–${b.id}`);
-        } else if (pen != null && pen > 2) hits.push(`${a.id} × ${b.id} (${Math.round(pen)} mm)`);
+        } else if (pen != null && pen > 2) hits.push(`${a.id} × ${b.id} (${fmtFine(pen)})`);
       }
       checks.push({
         id: 'collide', title: 'Collision check', status: hits.length ? 'fail' : gaps.length ? 'advisory' : 'pass',
@@ -331,12 +343,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const fixes = [];
       const up = nextSolidUp(s.h);
       if (!custom && up) {
-        if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${up} mm`, patch: { structure: { topThickness: up } } });
-        else if (s.part.material !== 'baltic_birch') fixes.push({ id: 'thick-shelf', label: `Thicken to ${up} mm`, patch: { structure: { shelfThickness: up } } });
+        if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${fmtLen(up)}`, patch: { structure: { topThickness: up } } });
+        else if (s.part.material !== 'baltic_birch') fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
       }
       if (custom && up && s.part.material !== 'baltic_birch') {
         const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: up } } : p);
-        fixes.push({ id: 'thick-' + s.id, label: `Thicken ${s.id} to ${up} mm`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
+        fixes.push({ id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(up)}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
       }
       if (K.WOOD_SPECIES.hard_maple.moe > sp.moe * 1.1 && spec.wood.species !== 'hard_maple') {
         fixes.push({ id: 'maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } });
@@ -345,10 +357,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       checks.push({
         id: 'sag:' + s.id, title: `Sag — ${s.label}`,
         status: ratio <= 1 ? 'pass' : ratio <= 1.5 ? 'advisory' : 'fail',
-        value: `predicted sag ${fmtMM(sag)} over ${Math.round(s.span)} mm ${s.model === 'cant' ? 'cantilever' : 'span'}`,
-        threshold: `≤ ${fmtMM(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : `1 mm per ${SAG_LIMIT_RATIO} mm of span`})`,
-        explain: `${sp.label} at ${Math.round(s.h)} mm thick under the “${preset.label}” preset (${preset.detail}). Stiffness comes from MOE (${sp.moe} GPa) and thickness cubed.`,
+        value: `predicted sag ${fmtFine(sag)} over a ${fmtLen(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}`,
+        threshold: `≤ ${fmtFine(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
+        explain: `${sp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}). Stiffness comes from MOE (${sp.moe} GPa) and thickness cubed.`,
         fixes: ratio > 1 ? fixes : [],
+        data: { sagMM: sag, limitMM: limit, spanMM: s.span },
         prov: { rule: `sag = Σ load cases (5wL⁴/384EI and friends) with E = ${sp.moe} GPa, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, L = ${Math.round(s.span)} mm` }
       });
 
@@ -373,10 +386,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         checks.push({
           id: 'cant:' + s.id, title: `Overhang — ${s.label}`,
           status: rO <= 1 ? 'pass' : rO <= 1.5 ? 'advisory' : 'fail',
-          value: `edge deflection ${fmtMM(sagO)} on a ${Math.round(s.over)} mm overhang`,
-          threshold: `≤ ${fmtMM(limO)} (L/${CANT_LIMIT_RATIO}) under a ${LOAD_PRESETS.worktop.kgEdge} kg lean`,
+          value: `edge deflection ${fmtFine(sagO)} on a ${fmtLen(s.over)} overhang`,
+          threshold: `≤ ${fmtFine(limO)} (L/${CANT_LIMIT_RATIO}) under a ${U().fmtPointLoad(LOAD_PRESETS.worktop.kgEdge)} lean`,
           explain: 'Cantilever case: a person leaning at the worst edge position.',
-          fixes: rO > 1 ? fixes : []
+          fixes: rO > 1 ? fixes : [],
+          data: { sagMM: sagO, limitMM: limO, spanMM: s.over }
         });
       }
 
@@ -433,7 +447,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           value: `tipping angle ${fmtDeg(angLoaded)} loaded · ${fmtDeg(angEmpty)} empty · height/depth ${ratio.toFixed(1)}`,
           threshold: '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
           explain: antiTip
-            ? `Tall or top-heavy${loadKg ? ` with ${Math.round(loadKg)} kg on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
+            ? `Tall or top-heavy${loadKg ? ` with ${U().fmtPointLoad(loadKg)} on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
             : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
           fixes: []
         });
@@ -509,7 +523,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (worst.l) {
           const fixes = [];
           const up = nextSolidUp(Math.min(worst.l.size.w, worst.l.size.d));
-          if (!custom && up) fixes.push({ id: 'thick-leg', label: `Thicken legs to ${Math.min(100, worst.l.size.w + 15)} mm`, patch: { structure: { legThickness: Math.min(100, worst.l.size.w + 15) } } });
+          if (!custom && up) fixes.push({ id: 'thick-leg', label: `Thicken legs to ${fmtLen(Math.min(100, worst.l.size.w + 15))}`, patch: { structure: { legThickness: Math.min(100, worst.l.size.w + 15) } } });
           if (custom && up) {
             const newParts = spec.custom.parts.map(p => p.id === worst.l.id ? { ...p, dim: { ...p.dim, t: up, w: Math.max(p.dim.w, up) } } : p);
             fixes.push({ id: 'thick-' + worst.l.id, label: `Thicken ${worst.l.id}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
@@ -560,7 +574,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         checks.push({
           id: 'joints', title: 'Joint adequacy',
           status: weakest.margin >= 1.5 ? 'pass' : weakest.margin >= 1 ? 'advisory' : 'fail',
-          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where} — ${Math.round(weakest.per)} N per joint vs ${Math.round(weakest.cap)} N capacity`,
+          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
           threshold: '≥ 1.5× capacity margin (SG-scaled joint ratings)',
           explain: weakest.margin >= 1.5 ? 'Every joint carries its share of the load path with room to spare.'
             : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`,
@@ -587,10 +601,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (p.material === 'baltic_birch') {
           checks.push({
             id: 'move:' + p.id, title: `Movement — ${p.name}`, status: 'pass',
-            value: 'plywood: ~0 mm seasonal movement',
-            threshold: `≤ ${MOVEMENT_LIMIT} mm across the grain`,
+            value: `plywood: ~${fmtFine(0)} seasonal movement`,
+            threshold: `≤ ${fmtFine(MOVEMENT_LIMIT)} across the grain`,
             explain: 'Plywood is exempt: cross-laminated plies restrain each other, so seasonal moisture swings produce no meaningful dimensional change.',
-            fixes: []
+            fixes: [],
+            data: { movementMM: 0, crossWidthMM: crossW }
           });
           continue;
         }
@@ -605,11 +620,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         checks.push({
           id: 'move:' + p.id, title: `Movement — ${p.name}`,
           status: over ? 'advisory' : 'pass',
-          value: `${mv.toFixed(1)} mm seasonal movement across ${Math.round(crossW)} mm`,
-          threshold: `≤ ${MOVEMENT_LIMIT} mm on a cross-grain constrained panel`,
-          explain: `${Math.round(crossW)} mm × ${sp.ct} (tangential coefficient) × ${dMC}% ΔMC = ${mv.toFixed(1)} mm.` +
+          value: `${fmtFine(mv)} seasonal movement across ${fmtLen(crossW)}`,
+          threshold: `≤ ${fmtFine(MOVEMENT_LIMIT)} on a cross-grain constrained panel`,
+          explain: `${fmtLen(crossW)} × ${sp.ct} (tangential coefficient) × ${dMC}% ΔMC = ${fmtFine(mv)}.` +
             (over ? ` This panel is fastened across the grain — restrained movement splits panels or breaks joints. ${fixText}${cupNote}` : ` Within tolerance for a constrained panel.${cupNote}`),
           fixes: [],
+          data: { movementMM: mv, crossWidthMM: crossW },
           prov: { rule: `movement = width × coefficient × ΔMC = ${Math.round(crossW)} × ${sp.ct} × ${dMC}` }
         });
       }
@@ -630,7 +646,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const chips = [];
     if (before.summary.worstSag && after.summary.worstSag) {
       const a = before.summary.worstSag.sag, b = after.summary.worstSag.sag;
-      if (Math.abs(a - b) > 0.05) chips.push(`sag ${a.toFixed(1)} → ${b.toFixed(1)} mm`);
+      if (Math.abs(a - b) > 0.05) chips.push(`sag ${fmtFine(a)} → ${fmtFine(b)}`);
     }
     if (before.summary.tipLoaded != null && after.summary.tipLoaded != null) {
       const a = before.summary.tipLoaded, b = after.summary.tipLoaded;
@@ -643,7 +659,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Structural = {
-    LOAD_PRESETS, PRESET_KEYS, JOINT_RATING, SAFETY_FACTOR,
+    LOAD_PRESETS, PRESET_KEYS, presetDetail, JOINT_RATING, SAFETY_FACTOR,
     SAG_LIMIT_RATIO, CANT_LIMIT_RATIO, MOVEMENT_LIMIT, GRAV,
     I_rect, DEFL, MOM, loadCasesFor, totalLoadN, evalBeam,
     surfacesOf, computeIntegrity, integrityDiff, defaultPresetFor, nextSolidUp

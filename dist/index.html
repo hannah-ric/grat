@@ -466,6 +466,12 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .seg button + button { border-left: 1px solid var(--line-2); }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 
+/* Header units control: the same segmented pattern, compact. Switching only
+ * changes text produced by BB.Units, so no layout jump. */
+.units-seg { flex: none; }
+.units-seg button { flex: none; min-width: 34px; padding: 6px 9px; font-family: var(--mono); }
+#dualBtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
 /* ---------------- history drawer ---------------- */
 .drawer-panel {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 92vw); z-index: 70;
@@ -675,6 +681,10 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .prov-pop .prov-line { margin-bottom: 6px; }
 .prov-pop .prov-line b { display: block; font: 600 11px var(--body); color: color-mix(in srgb, var(--paper) 75%, transparent); }
 .prov-pop .prov-line span { font-family: var(--mono); font-size: 12px; }
+.prov-pop .prov-foot {
+  margin-top: 8px; padding-top: 6px; border-top: 1px solid color-mix(in srgb, var(--paper) 18%, transparent);
+  font: 500 10.5px var(--body); letter-spacing: .06em; color: color-mix(in srgb, var(--paper) 55%, transparent);
+}
 
 /* ---------------- projects gallery ---------------- */
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--s3); max-height: 55vh; overflow-y: auto; padding: 2px; }
@@ -825,7 +835,11 @@ body.bm-playback .playback-bar { display: none !important; }
       <button id="buildModeBtn" class="btn" title="Full-screen shop companion">Build mode</button>
     </div>
     <div class="topbar-group">
-      <button id="unitsBtn" class="btn icon" title="Toggle units" aria-label="Toggle millimetres or inches">mm</button>
+      <div class="seg units-seg" role="group" aria-label="Display units">
+        <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
+        <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
+      </div>
+      <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
       <div class="menu-wrap">
         <button id="exportBtn" class="btn primary" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
         <div id="exportMenu" class="menu" role="menu">
@@ -1184,18 +1198,20 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- 3b. Ergonomics ----------------
    * All mm. axis: which overall dimension the range constrains.
    * Templates reference rows by key; validation emits advisories, never errors.
+   * Notes carry lengths as {mm} tokens — BB.Units.fmtTemplate renders them in
+   * the current display units, so static data still crosses ONE boundary.
    */
   const ERGONOMICS = [
-    { key: 'dining_height', label: 'Dining table height', min: 730, max: 760, axis: 'height', appliesTo: ['table'], note: 'Bar height (1040–1100) and counter height (860–920) are intentional exceptions.' },
-    { key: 'desk_height', label: 'Desk height', min: 720, max: 750, axis: 'height', appliesTo: ['desk'], note: 'Pair with a 420–530 mm adjustable chair.' },
-    { key: 'bench_seat', label: 'Bench seat height', min: 430, max: 480, axis: 'height', appliesTo: ['bench'], note: 'Subtract ~25 mm if a cushion will live on it.' },
-    { key: 'nightstand_height', label: 'Nightstand height', min: 550, max: 700, axis: 'height', appliesTo: ['nightstand'], note: 'Aim within 50 mm of the mattress top.' },
-    { key: 'shelf_depth_books', label: 'Shelf depth for books', min: 250, max: 320, axis: 'depth', appliesTo: ['bookshelf'], note: 'Trade paperbacks need 230; art books want 320+.' },
-    { key: 'counter_height', label: 'Counter height', min: 860, max: 940, axis: 'height', appliesTo: ['cabinet'], note: 'Standard kitchen counter is 900 mm to the finished top.' },
-    { key: 'toe_kick', label: 'Toe kick', min: 75, max: 100, axis: 'toeKick', appliesTo: ['cabinet'], note: 'Standard recess: 90 mm high × 75 mm deep.' },
+    { key: 'dining_height', label: 'Dining table height', min: 730, max: 760, axis: 'height', appliesTo: ['table'], note: 'Bar height ({1040} to {1100}) and counter height ({860} to {920}) are intentional exceptions.' },
+    { key: 'desk_height', label: 'Desk height', min: 720, max: 750, axis: 'height', appliesTo: ['desk'], note: 'Pair with a {420} to {530} adjustable chair.' },
+    { key: 'bench_seat', label: 'Bench seat height', min: 430, max: 480, axis: 'height', appliesTo: ['bench'], note: 'Subtract ~{25} if a cushion will live on it.' },
+    { key: 'nightstand_height', label: 'Nightstand height', min: 550, max: 700, axis: 'height', appliesTo: ['nightstand'], note: 'Aim within {50} of the mattress top.' },
+    { key: 'shelf_depth_books', label: 'Shelf depth for books', min: 250, max: 320, axis: 'depth', appliesTo: ['bookshelf'], note: 'Trade paperbacks need {230}; art books want {320}+.' },
+    { key: 'counter_height', label: 'Counter height', min: 860, max: 940, axis: 'height', appliesTo: ['cabinet'], note: 'Standard kitchen counter is {900} to the finished top.' },
+    { key: 'toe_kick', label: 'Toe kick', min: 75, max: 100, axis: 'toeKick', appliesTo: ['cabinet'], note: 'Standard recess: {90} high × {75} deep.' },
     /* Drawer rows (Phase 2 §5): drive drawer advisories. */
-    { key: 'drawer_min_height', label: 'Minimum useful drawer opening', min: 80, max: Infinity, axis: 'drawerOpeningHeight', appliesTo: ['nightstand', 'cabinet'], note: 'Below 80 mm an opening barely clears a hand.' },
-    { key: 'drawer_max_width', label: 'Max drawer width per slide pair', min: 0, max: 750, axis: 'drawerOpeningWidth', appliesTo: ['nightstand', 'cabinet'], note: 'Beyond 750 mm boxes rack; use two banks.' },
+    { key: 'drawer_min_height', label: 'Minimum useful drawer opening', min: 80, max: Infinity, axis: 'drawerOpeningHeight', appliesTo: ['nightstand', 'cabinet'], note: 'Below {80} an opening barely clears a hand.' },
+    { key: 'drawer_max_width', label: 'Max drawer width per slide pair', min: 0, max: 750, axis: 'drawerOpeningWidth', appliesTo: ['nightstand', 'cabinet'], note: 'Beyond {750} boxes rack; use two banks.' },
     { key: 'drawer_pull_height', label: 'Comfortable pull height', min: 600, max: 1100, axis: 'drawerPullHeight', appliesTo: ['cabinet'], note: 'Top drawers between hip and chest height open easiest.' }
   ];
 
@@ -1284,22 +1300,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     advanced: { frame: 'mortise_tenon', case: 'dado', box: 'half_blind_dovetail' }
   };
 
-  /* ---------------- 3d. Fasteners & finishes ---------------- */
+  /* ---------------- 3d. Fasteners & finishes ----------------
+   * Labels/uses carry {mm} tokens rendered via BB.Units.fmtTemplate.
+   * Exceptions kept literal on purpose: "M4" and "5 mm shelf pin" ARE the
+   * trade names in every market (metric hardware), and "#8" is a gauge. */
   const FASTENERS = {
     screws: [
-      { key: 'wood_8x25', label: '#8 × 25 mm wood screw', pilot: 2.8, use: 'Drawer fronts from inside the box' },
-      { key: 'wood_8x32', label: '#8 × 32 mm wood screw', pilot: 2.8, use: 'Aprons, cleats, general carcass' },
-      { key: 'wood_8x50', label: '#8 × 50 mm wood screw', pilot: 3.2, use: 'Legs, rails, structural butt joints' },
-      { key: 'pocket_32', label: '32 mm coarse pocket screw', pilot: 0, use: 'Pocket joints in 18–20 mm stock' },
-      { key: 'slide_m4', label: 'M4 × 16 mm pan-head', pilot: 3.0, use: 'Drawer slide mounting' },
-      { key: 'top_button', label: 'Tabletop button + #8 × 16 mm', pilot: 2.8, use: 'Solid tops — lets the panel move' }
+      { key: 'wood_8x25', label: '#8 × {25} wood screw', pilot: 2.8, use: 'Drawer fronts from inside the box' },
+      { key: 'wood_8x32', label: '#8 × {32} wood screw', pilot: 2.8, use: 'Aprons, cleats, general carcass' },
+      { key: 'wood_8x50', label: '#8 × {50} wood screw', pilot: 3.2, use: 'Legs, rails, structural butt joints' },
+      { key: 'pocket_32', label: '{32} coarse pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} stock' },
+      { key: 'slide_m4', label: 'M4 × {16} pan-head', pilot: 3.0, use: 'Drawer slide mounting' },
+      { key: 'top_button', label: 'Tabletop button + #8 × {16}', pilot: 2.8, use: 'Solid tops — lets the panel move' }
     ],
     dowels: [
-      { key: 'dowel_8', label: '8 × 40 mm fluted dowel', pilot: 8, use: 'Aprons and rails in 20+ mm stock' },
-      { key: 'dowel_10', label: '10 × 50 mm fluted dowel', pilot: 10, use: 'Legs and thick frames' }
+      { key: 'dowel_8', label: '{8} × {40} fluted dowel', pilot: 8, use: 'Aprons and rails in {20}+ stock' },
+      { key: 'dowel_10', label: '{10} × {50} fluted dowel', pilot: 10, use: 'Legs and thick frames' }
     ],
     hardware: [
-      { key: 'slide_pair', label: 'Side-mount ball-bearing slides (pair)', use: 'Drawer runners, 250–500 mm', price: 14 },
+      { key: 'slide_pair', label: 'Side-mount ball-bearing slides (pair)', use: 'Drawer runners, {250} to {500}', price: 14 },
       { key: 'pull', label: 'Drawer pull', use: 'One per drawer', price: 6 },
       { key: 'shelf_pin', label: '5 mm shelf pin', use: 'Adjustable shelves — 4 per shelf', price: 0.25 },
       { key: 'figure8', label: 'Figure-8 fastener', use: 'Solid top attachment allowing movement', price: 0.8 }
@@ -1545,13 +1564,294 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Geo = { rotMat, mulMV, partOBB, obbCorners, obbPenetration, convexHull2D, polyInsideDistance, cutAngles, angleText, worldExtents, dot3 };
 })();
 </script>
+<script>/* Blueprint Buddy — the display-unit boundary.
+ *
+ * THE rule: internal math is always millimetres and SI. Conversion to display
+ * units happens HERE, exactly once, at render time — never inside a
+ * computation, so rounding can never feed back into geometry or physics.
+ * Every physical quantity the user sees must pass through one of these
+ * formatters; a raw `${x} mm` template string anywhere else is a bug.
+ * (The only exemptions are the SketchUp exports, which describe real
+ * geometry and stay millimetre-based regardless of display mode.)
+ *
+ * Preferences (system / fraction precision / dual display) live in ONE
+ * place — `prefs` below — synced from stored prefs and the active design.
+ *
+ * Imperial semantics:
+ *   fmtLength      cut & overall dimensions -> reduced fractions ("29 1/2 in")
+ *   fmtSmall       fine values (sag, movement, kerf, reveals, clearances)
+ *                  -> DECIMAL inches ("0.11 in"), never fractions
+ *   fmtBoardLength stock board lengths -> feet ("8 ft")
+ *   fmtSheet       sheet goods -> "4 x 8 ft"
+ *   fmtNominal     trade name first: "1x4 x 8 ft (3/4 x 3 1/2 in)"
+ *   fmtWeight      lb   · fmtPointLoad lb   · fmtLinearLoad lb/ft
+ *   fmtBoardFeet   board feet in BOTH systems (it is the trade unit);
+ *                  metric adds m³ as a secondary
+ *   fmtDeg         degrees everywhere (angles never convert)
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const IN = 25.4, FT = 304.8;
+  const KG_LB = 2.2046226218, KGM_LBFT = KG_LB / 3.280839895;
+  const M3_PER_BDFT = 0.002359737;
+
+  const DEFAULTS = { system: 'imperial', precision: 16, dual: false };
+  const prefs = { ...DEFAULTS };
+
+  function normalizeSystem(s) {
+    if (s === 'mm' || s === 'metric') return 'metric';
+    if (s === 'in' || s === 'imperial') return 'imperial';
+    return null;
+  }
+  function set(patch) {
+    if (!patch || typeof patch !== 'object') return prefs;
+    const sys = normalizeSystem(patch.system);
+    if (sys) prefs.system = sys;
+    if (typeof patch.precision === 'number' && patch.precision >= 2) prefs.precision = Math.round(patch.precision);
+    if (patch.dual !== undefined) prefs.dual = !!patch.dual;
+    return prefs;
+  }
+  const setSystem = s => set({ system: s });
+  const get = () => ({ ...prefs });
+
+  const r = (v, d) => Math.round(v * Math.pow(10, d)) / Math.pow(10, d);
+  const trim0 = s => String(s).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+
+  /* Reduced fractional inches at the given denominator: "29 1/2". */
+  function fracIn(mm, denom) {
+    denom = denom || prefs.precision;
+    const ticks = Math.round((mm / IN) * denom);
+    const whole = Math.floor(ticks / denom);
+    let num = ticks - whole * denom, den = denom;
+    if (!num) return String(whole);
+    const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+    const g = gcd(num, den);
+    num /= g; den /= g;
+    return (whole ? whole + ' ' : '') + num + '/' + den;
+  }
+
+  const opt = (o, k) => (o && o[k] !== undefined ? o[k] : prefs[k]);
+
+  /* Assemble "primary (secondary)" when dual display is on. */
+  function dualize(primary, secondary, o) {
+    return opt(o, 'dual') && secondary ? `${primary} (${secondary})` : primary;
+  }
+
+  const mmText = mm => trim0(String(r(mm, 1))) + ' mm';
+  const inFracText = (mm, o) => fracIn(mm, opt(o, 'precision')) + ' in';
+  const inDecText = mm => trim0((mm / IN).toFixed(2)) + ' in';
+  function ftText(mm) {
+    const ft = mm / FT;
+    const near = Math.round(ft);
+    return (Math.abs(ft - near) < 0.05 ? String(near) : trim0(ft.toFixed(1))) + ' ft';
+  }
+
+  /* ---- lengths ---- */
+  function fmtLength(mm, o) {
+    if (typeof mm !== 'number' || !isFinite(mm)) return '—';
+    return opt(o, 'system') === 'imperial'
+      ? dualize(inFracText(mm, o), mmText(mm), o)
+      : dualize(mmText(mm), inFracText(mm, o), o);
+  }
+  /* Fine values: decimal inches, never fractions. */
+  function fmtSmall(mm, o) {
+    if (typeof mm !== 'number' || !isFinite(mm)) return '—';
+    return opt(o, 'system') === 'imperial'
+      ? dualize(inDecText(mm), mmText(mm), o)
+      : dualize(mmText(mm), inDecText(mm), o);
+  }
+  function fmtBoardLength(mm, o) {
+    if (typeof mm !== 'number' || !isFinite(mm)) return '—';
+    return opt(o, 'system') === 'imperial'
+      ? dualize(ftText(mm), Math.round(mm) + ' mm', o)
+      : dualize(Math.round(mm) + ' mm', ftText(mm), o);
+  }
+  function fmtSheet(wMM, hMM, o) {
+    const imp = `${trim0((Math.round(wMM / FT * 2) / 2).toFixed(1))} x ${trim0((Math.round(hMM / FT * 2) / 2).toFixed(1))} ft`;
+    const met = `${Math.round(wMM)} × ${Math.round(hMM)} mm`;
+    return opt(o, 'system') === 'imperial' ? dualize(imp, met, o) : dualize(met, imp, o);
+  }
+  /* Nominal lumber: the trade name leads in imperial, actuals lead in metric.
+   * actual = {t, w} in mm; stockLenMM optional. */
+  function fmtNominal(nominal, actual, stockLenMM, o) {
+    const metr = `${r(actual.t, 1)} x ${r(actual.w, 1)}${stockLenMM ? ' x ' + Math.round(stockLenMM) : ''} mm`;
+    if (opt(o, 'system') === 'imperial') {
+      const acts = `${fracIn(actual.t, opt(o, 'precision'))} x ${fracIn(actual.w, opt(o, 'precision'))} in`;
+      const main = nominal + (stockLenMM ? ` x ${ftText(stockLenMM)}` : '');
+      return `${main} (${opt(o, 'dual') ? acts + ' · ' + metr : acts})`;
+    }
+    return `${metr} (${nominal})`;
+  }
+
+  /* ---- mass & loads ---- */
+  function fmtWeight(kg, o) {
+    const lb = trim0((kg * KG_LB).toFixed(1)) + ' lb';
+    const met = trim0(String(r(kg, 1))) + ' kg';
+    return opt(o, 'system') === 'imperial' ? dualize(lb, met, o) : dualize(met, lb, o);
+  }
+  function fmtPointLoad(kg, o) {
+    const lb = Math.round(kg * KG_LB) + ' lb';
+    const met = trim0(String(r(kg, 1))) + ' kg';
+    return opt(o, 'system') === 'imperial' ? dualize(lb, met, o) : dualize(met, lb, o);
+  }
+  function fmtLinearLoad(kgPerM, o) {
+    const lbft = Math.round(kgPerM * KGM_LBFT) + ' lb/ft';
+    const met = trim0(String(r(kgPerM, 1))) + ' kg/m';
+    return opt(o, 'system') === 'imperial' ? dualize(lbft, met, o) : dualize(met, lbft, o);
+  }
+
+  /* ---- trade & derived units ---- */
+  function fmtBoardFeet(bdft, o) {
+    const main = trim0(String(r(bdft, 1))) + ' bd ft';
+    // board feet is the trade unit in BOTH systems; metric adds m³ secondary
+    return opt(o, 'system') === 'metric' ? `${main} (${(bdft * M3_PER_BDFT).toFixed(2)} m³)` : main;
+  }
+  const fmtDeg = deg => trim0(String(r(deg, 1))) + '°';
+
+  /* Sag/deflection limits expressed as a rate ("1 mm per 300 mm of span"
+   * metric, "0.04 in/ft" imperial — same L/ratio limit, display-side only). */
+  function fmtSagRate(limitRatio, o) {
+    return opt(o, 'system') === 'imperial'
+      ? trim0((12 / limitRatio).toFixed(2)) + ' in/ft'
+      : `1 mm per ${limitRatio} mm of span`;
+  }
+
+  /* Knowledge-base strings carry lengths as {N} (or {N|s} fine / {N|ft}
+   * board-length) tokens so static data still renders through the boundary. */
+  function fmtTemplate(str, o) {
+    return String(str).replace(/\{(\d+(?:\.\d+)?)(?:\|(s|ft))?\}/g, (m, num, kind) => {
+      const v = parseFloat(num);
+      if (kind === 's') return fmtSmall(v, o);
+      if (kind === 'ft') return fmtBoardLength(v, o);
+      return fmtLength(v, o);
+    });
+  }
+
+  /* ---- inspector slider domains ----
+   * Imperial sliders step in exact 1/16 in ticks (integer tick values, so no
+   * float-step artifacts); metric sliders step 1 mm. toMM converts a slider
+   * value back to millimetres exactly once, rounded to 0.1 mm — the same
+   * precision the spec stores — so edits round-trip without drift. */
+  function sliderDomain(minMM, maxMM, valueMM, o) {
+    if (opt(o, 'system') === 'imperial') {
+      const tick = IN / 16;
+      return {
+        min: Math.ceil(minMM / tick),
+        max: Math.floor(maxMM / tick),
+        value: Math.round(valueMM / tick),
+        step: 1,
+        toMM: v => Math.round(v * tick * 10) / 10
+      };
+    }
+    return { min: Math.ceil(minMM), max: Math.floor(maxMM), value: Math.round(valueMM), step: 1, toMM: v => v };
+  }
+
+  /* ---- forgiving length input ----
+   * One shared parser: accepts 29 1/2 · 29.5" · 2' 5" · 750mm · 75cm · 0.75m
+   * · 48 in · 8 ft, in any display mode, and normalizes to millimetres.
+   * A bare decimal with no unit falls back to `defaultUnit` (or the current
+   * display system). Returns mm (number) or null. */
+  const UNIT_MM = { mm: 1, millimeter: 1, millimeters: 1, millimetre: 1, millimetres: 1, cm: 10, centimeter: 10, centimeters: 10, m: 1000, meter: 1000, meters: 1000, metre: 1000, metres: 1000, in: IN, inch: IN, inches: IN, '"': IN, '″': IN, ft: FT, feet: FT, foot: FT, "'": FT, '′': FT };
+  const FRACTION = String.raw`(?:(\d+)\s+)?(\d+)\s*\/\s*(\d+)`;
+
+  function parseLength(input, defaultUnit) {
+    const s = String(input == null ? '' : input).trim().toLowerCase();
+    if (!s) return null;
+    const dflt = defaultUnit || (prefs.system === 'imperial' ? 'in' : 'mm');
+    let m;
+
+    // feet + optional inches: 2' 5", 2 ft 5 1/2 in, 6', 8 ft
+    // (fraction alternative FIRST so 5 1/2 isn't split into 5 + stray 1/2)
+    m = s.match(new RegExp(String.raw`^(\d+(?:\.\d+)?)\s*(?:'|′|ft\.?|feet|foot)\s*(?:(?:${FRACTION}|(\d+(?:\.\d+)?))\s*(?:"|″|in\.?|inch(?:es)?)?)?$`));
+    if (m) {
+      let inches = 0;
+      if (m[3] !== undefined) inches = (m[2] ? parseInt(m[2], 10) : 0) + parseInt(m[3], 10) / parseInt(m[4], 10);
+      else if (m[5] !== undefined) inches = parseFloat(m[5]);
+      return r(parseFloat(m[1]) * FT + inches * IN, 1);
+    }
+    // mixed / plain fraction, optionally marked as inches: 29 1/2, 3/4"
+    m = s.match(new RegExp(String.raw`^${FRACTION}\s*(?:"|″|in\.?|inch(?:es)?)?$`));
+    if (m) {
+      const val = (m[1] ? parseInt(m[1], 10) : 0) + parseInt(m[2], 10) / parseInt(m[3], 10);
+      return r(val * IN, 1); // a fraction is an inch idiom in any mode
+    }
+    // decimal + unit: 750mm, 75cm, 0.75m, 29.5", 48 in
+    m = s.match(/^(\d+(?:\.\d+)?)\s*(mm|cm|m|in|inch(?:es)?|"|″|ft|feet|foot|'|′)\.?$/);
+    if (m) return r(parseFloat(m[1]) * UNIT_MM[m[2]], 1);
+    // bare decimal: current display system decides
+    m = s.match(/^(\d+(?:\.\d+)?)$/);
+    if (m) return r(parseFloat(m[1]) * (UNIT_MM[dflt] || 1), 1);
+    return null;
+  }
+
+  /* Rewrite every dimension token in free text to explicit millimetres, so
+   * the AI (and the offline parser) NEVER convert units themselves. Applied
+   * to chat input before anything reaches a model. Bare numbers are left
+   * alone unless they sit next to a dimension word (then the current display
+   * system supplies the unit). */
+  const DIM_WORDS = 'wide|width|deep|depth|tall|height|high|long|thick|thickness';
+  function normalizeLengthText(text) {
+    let out = String(text == null ? '' : text);
+    const mm = v => trim0(String(r(v, 1))) + 'mm';
+
+    // 2' 5", 2ft 5 1/2 in, 6 ft. In running text the inches part must be a
+    // fraction or carry an inch marker — "6 ft 4 drawers" keeps its 4.
+    out = out.replace(
+      new RegExp(String.raw`(\d+(?:\.\d+)?)\s*(?:'|′|ft\.?|feet|foot)\b(?:\s*(?:${FRACTION}\s*(?:"|″|in\b\.?|inch(?:es)?)?|(\d+(?:\.\d+)?)\s*(?:"|″|in\b\.?|inch(?:es)?)))?`, 'gi'),
+      (m0, ft, w, n, d, dec) => {
+        let inches = 0;
+        if (n !== undefined) inches = (w ? parseInt(w, 10) : 0) + parseInt(n, 10) / parseInt(d, 10);
+        else if (dec !== undefined) inches = parseFloat(dec);
+        return mm(parseFloat(ft) * FT + inches * IN);
+      });
+    // 29 1/2 (in|"|bare), 3/4" — a fraction is an inch idiom. Whitespace is
+    // only consumed together with a unit marker so "29 1/2 wide" keeps its space.
+    out = out.replace(
+      new RegExp(String.raw`(?:(\d+)\s+)?(\d+)\s*\/\s*(\d+)(?:\s*(?:"|″|in\b\.?|inch(?:es)?))?`, 'gi'),
+      (m0, w, n, d) => {
+        // leave pure "N/D" without unit AND without leading whole number alone
+        // — "1/2 the size" must not become 12.7mm
+        if (w === undefined && !/["″]|in\b|inch/i.test(m0)) return m0;
+        return mm(((w ? parseInt(w, 10) : 0) + parseInt(n, 10) / parseInt(d, 10)) * IN);
+      });
+    // decimal + explicit unit: 29.5", 48 in, 75cm, 0.75m, 750mm
+    out = out.replace(/(\d+(?:\.\d+)?)\s*(mm|cm|m|in|inch(?:es)?|"|″)\b\.?/gi,
+      (m0, num, unit) => mm(parseFloat(num) * UNIT_MM[unit.toLowerCase()]));
+    out = out.replace(/(\d+(?:\.\d+)?)\s*(["″])/g, (m0, num) => mm(parseFloat(num) * IN));
+    // bare number next to a dimension word: current system supplies the unit
+    if (prefs.system === 'imperial') {
+      out = out.replace(new RegExp(String.raw`(\d+(?:\.\d+)?)(\s+(?:${DIM_WORDS})\b)`, 'gi'),
+        (m0, num, tail) => mm(parseFloat(num) * IN) + tail);
+      // (?![\d.]…) also stops a partial-number match: "749.3mm" must not
+      // backtrack to "749" + ".3mm" and get converted twice.
+      out = out.replace(new RegExp(String.raw`\b((?:${DIM_WORDS})\s*(?:to|of|=|at)?\s+)(\d+(?:\.\d+)?)(?![\d.]|\s*(?:mm|cm|m\b|%))`, 'gi'),
+        (m0, head, num) => head + mm(parseFloat(num) * IN));
+    }
+    return out;
+  }
+
+  BB.Units = {
+    DEFAULTS, get, set, setSystem,
+    fmtLength, fmtSmall, fmtBoardLength, fmtSheet, fmtNominal,
+    fmtWeight, fmtPointLoad, fmtLinearLoad, fmtBoardFeet, fmtDeg,
+    fmtSagRate, fmtTemplate, sliderDomain,
+    parseLength, normalizeLengthText,
+    IN, FT
+  };
+})();
+</script>
 <script>/* Blueprint Buddy — DesignSpec: schema, defaults, correction, validation, diffing.
  *
  * Architecture rule (Phase 1, still binding): the AI proposes intent as a spec
  * (or a partial-spec diff); THIS layer owns the corrected spec; geometry and all
  * derived plans are pure functions of the corrected spec.
  *
- * All lengths are millimetres internally. `meta.units` only affects display.
+ * All lengths are millimetres internally. `meta.units` only affects display,
+ * and every displayed length routes through BB.Units — the single boundary
+ * where mm becomes text.
  */
 var BB = globalThis.BB = globalThis.BB || {};
 
@@ -1559,6 +1859,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   'use strict';
   const K = BB.K;
   const Geo = BB.Geo;
+  const U = () => BB.Units;
 
   const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
@@ -1614,11 +1915,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
   }
 
+  /* Template defaults are stored in mm (internal truth) but chosen as exact
+   * inch multiples so a fresh design reads as clean fractions in the default
+   * imperial display: 1524 = 60 in, 863.6 = 34 in, 736.6 = 29 in, … Heights
+   * also keep (height − top)/2 on the 0.1 mm grid the parametric layer
+   * rounds positions to, so legs land exactly on the floor. */
   function defaultSpec(template) {
     const base = {
       specVersion: SPEC_VERSION,
-      meta: { name: 'Untitled', template: template || 'table', level: 'beginner', units: 'mm' },
-      overall: { width: 1500, depth: 850, height: 745 },
+      meta: { name: 'Untitled', template: template || 'table', level: 'beginner', units: 'in' },
+      overall: { width: 1524, depth: 863.6, height: 736.6 },
       wood: { species: 'red_oak', sheetSpecies: 'baltic_birch' },
       structure: {
         topThickness: 25, legThickness: 70, apronHeight: 90, apronThickness: 20,
@@ -1636,22 +1942,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       Object.assign(base.overall, { width: 1100, depth: 350, height: 468 });
       base.meta.name = 'Custom Piece';
     }
-    if (t === 'desk') Object.assign(base.overall, { width: 1300, depth: 650, height: 735 });
+    if (t === 'desk') Object.assign(base.overall, { width: 1320.8, depth: 660.4, height: 736.6 });
     if (t === 'bench') {
-      Object.assign(base.overall, { width: 1200, depth: 380, height: 450 });
+      Object.assign(base.overall, { width: 1219.2, depth: 381, height: 457.2 });
       Object.assign(base.structure, { topThickness: 32, legThickness: 60, apronHeight: 80 });
     }
     if (t === 'bookshelf') {
-      Object.assign(base.overall, { width: 900, depth: 300, height: 1800 });
+      Object.assign(base.overall, { width: 914.4, depth: 304.8, height: 1828.8 });
       base.structure.shelfCount = 4;
     }
     if (t === 'nightstand') {
-      Object.assign(base.overall, { width: 500, depth: 400, height: 600 });
+      Object.assign(base.overall, { width: 508, depth: 406.4, height: 609.6 });
       Object.assign(base.structure, { topThickness: 20, legThickness: 45, apronHeight: 80 });
       base.drawers = { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' };
     }
     if (t === 'cabinet') {
-      Object.assign(base.overall, { width: 800, depth: 450, height: 900 });
+      Object.assign(base.overall, { width: 812.8, depth: 457.2, height: 914.4 });
       Object.assign(base.structure, { topThickness: 25, shelfCount: 1, toeKick: true });
       base.drawers = { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' };
     }
@@ -1720,21 +2026,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness)/;
 
-  const MM_PER_IN = 25.4;
-  function fmtLen(mm, units) {
-    if (units === 'in') {
-      const inches = mm / MM_PER_IN;
-      // nearest 1/16", trimmed
-      const sixteenths = Math.round(inches * 16);
-      const whole = Math.floor(sixteenths / 16), rem = sixteenths % 16;
-      if (!rem) return whole + '″';
-      const div = (a, b) => { const g = (x, y) => y ? g(y, x % y) : x; const d = g(a, b); return (a / d) + '/' + (b / d); };
-      return (whole ? whole + ' ' : '') + div(rem, 16) + '″';
-    }
-    return (Math.round(mm * 10) / 10) + ' mm';
-  }
-  function fmtValue(path, v, units) {
-    if (typeof v === 'number' && MM_PATHS.test(path)) return fmtLen(v, units);
+  /* Diff-chip / inspector value rendering. Lengths route through BB.Units —
+   * the current display preference, NOT a per-call unit, decides the text. */
+  function fmtValue(path, v) {
+    if (typeof v === 'number' && MM_PATHS.test(path)) return U().fmtLength(v);
     if (typeof v === 'boolean') return v ? 'on' : 'off';
     if (v === undefined) return '—';
     if (Array.isArray(v)) return v.length + ' item' + (v.length === 1 ? '' : 's');
@@ -1747,10 +2042,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     return String(v);
   }
-  function describeDiff(diffs, units) {
+  function describeDiff(diffs) {
     return diffs.map(d => {
       const label = PATH_LABELS[d.path] || d.path;
-      return `${label} ${fmtValue(d.path, d.from, units)} → ${fmtValue(d.path, d.to, units)}`;
+      return `${label} ${fmtValue(d.path, d.from)} → ${fmtValue(d.path, d.to)}`;
     });
   }
 
@@ -1876,7 +2171,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     s.specVersion = SPEC_VERSION;
     s.meta.template = template;
     if (!K.LEVELS.includes(s.meta.level)) s.meta.level = 'beginner';
-    if (s.meta.units !== 'in') s.meta.units = 'mm';
+    // Imperial is the default; only an explicit metric choice stays metric.
+    if (s.meta.units !== 'mm') s.meta.units = 'in';
     s.meta.name = String(s.meta.name || 'Untitled').slice(0, 60);
 
     const o = s.overall, st = s.structure;
@@ -1945,7 +2241,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function validate(spec, model) {
     const errors = [], advisories = [];
     const t = spec.meta.template, o = spec.overall;
-    const units = spec.meta.units;
+    const fmt = mm => U().fmtLength(mm);
 
     // Ergonomics advisories (never block).
     for (const row of K.ERGONOMICS) {
@@ -1956,7 +2252,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           const dir = v > row.max ? 'above' : 'below';
           advisories.push({
             id: 'ergo_' + row.key,
-            text: `${fmtLen(v, units)} is ${dir} the typical ${fmtLen(row.min, units)}–${fmtLen(row.max, units)} ${row.label.toLowerCase()}. ${row.note}`
+            text: `${fmt(v)} is ${dir} the typical ${fmt(row.min)} to ${fmt(row.max)} ${row.label.toLowerCase()}. ${U().fmtTemplate(row.note)}`
           });
         }
       }
@@ -1968,19 +2264,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (sp && sp.movement === 'high' && hasWideTop) {
       advisories.push({
         id: 'movement_' + sp.key,
-        text: `${sp.label} moves a lot across the grain, and this top is ${fmtLen(o.depth, units)} wide. Fasten it with buttons or figure-8s — never glue a wide solid top down.`
+        text: `${sp.label} moves a lot across the grain, and this top is ${fmt(o.depth)} wide. Fasten it with buttons or figure-8s — never glue a wide solid top down.`
       });
     }
 
     // Drawer geometry from the built model.
     if (model && model.openings) {
       for (const op of model.openings) {
-        if (op.h < 80) errors.push({ id: 'op_h_' + op.index, text: `Drawer opening ${op.index + 1} is only ${fmtLen(op.h, units)} tall — the minimum workable opening is 80 mm. Reduce the drawer count or grow the piece.` });
-        if (op.w > 750) advisories.push({ id: 'op_w_' + op.index, text: `A ${fmtLen(op.w, units)} drawer is wider than the ${fmtLen(750, units)} a single slide pair handles well. Consider two banks side by side.` });
+        if (op.h < 80) errors.push({ id: 'op_h_' + op.index, text: `Drawer opening ${op.index + 1} is only ${fmt(op.h)} tall — the minimum workable opening is ${fmt(80)}. Reduce the drawer count or grow the piece.` });
+        if (op.w > 750) advisories.push({ id: 'op_w_' + op.index, text: `A ${fmt(op.w)} drawer is wider than the ${fmt(750)} a single slide pair handles well. Consider two banks side by side.` });
       }
       if (spec.drawers && model.openings.length) {
         const topOp = model.openings[0];
-        if (t === 'cabinet' && topOp.zTop > 1100) advisories.push({ id: 'pull_height', text: 'The top drawer sits above comfortable pull height (600–1100 mm). Fine for occasional storage.' });
+        if (t === 'cabinet' && topOp.zTop > 1100) advisories.push({ id: 'pull_height', text: `The top drawer sits above comfortable pull height (${fmt(600)} to ${fmt(1100)}). Fine for occasional storage.` });
       }
     }
 
@@ -2021,7 +2317,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
-    correctSpec, validate, fmtLen, fmtValue, PATH_LABELS, MM_PER_IN,
+    correctSpec, validate, fmtValue, PATH_LABELS,
     customPartSize, customExtents
   };
 })();
@@ -2474,18 +2770,29 @@ var BB = globalThis.BB = globalThis.BB || {};
   const densityOf = key => speciesOf(key).sg * 1000; // kg/m³ at ~12% MC
   const sgFactor = key => speciesOf(key).sg / 0.5;
   const nextSolidUp = t => K.SOLID_THICKNESS.find(x => x > t) || null;
-  const fmtMM = x => (Math.round(x * 10) / 10).toFixed(1) + ' mm';
-  const fmtDeg = x => (Math.round(x * 10) / 10) + '°';
+  // All display text routes through BB.Units — the check math stays SI.
+  const U = () => BB.Units;
+  const fmtFine = x => U().fmtSmall(x);      // sag / movement / margins: decimal in
+  const fmtLen = x => U().fmtLength(x);      // spans / thicknesses: fractional in
+  const fmtDeg = x => U().fmtDeg(x);         // angles never convert
 
   /* ---------------- load presets (user-selectable per surface) ---------------- */
   const LOAD_PRESETS = {
-    display: { label: 'Display items', detail: '10 kg/m', kind: 'udl', kgPerM: 10 },
-    books:   { label: 'Books', detail: '55 kg/m', kind: 'udl', kgPerM: 55 },
-    heavy:   { label: 'Heavy storage', detail: '90 kg/m', kind: 'udl', kgPerM: 90 },
-    seating: { label: 'Seated people', detail: '120 kg per seat', kind: 'seat', kgSeat: 120 },
-    worktop: { label: 'Desk / table duty', detail: '75 kg + 90 kg lean', kind: 'combo', kgDist: 75, kgEdge: 90 }
+    display: { label: 'Display items', kind: 'udl', kgPerM: 10 },
+    books:   { label: 'Books', kind: 'udl', kgPerM: 55 },
+    heavy:   { label: 'Heavy storage', kind: 'udl', kgPerM: 90 },
+    seating: { label: 'Seated people', kind: 'seat', kgSeat: 120 },
+    worktop: { label: 'Desk / table duty', kind: 'combo', kgDist: 75, kgEdge: 90 }
   };
   const PRESET_KEYS = ['display', 'books', 'heavy', 'seating', 'worktop'];
+  /* Preset magnitudes rendered in the CURRENT display units (lb/ft · lb
+   * imperial, kg/m · kg metric) — formatted at render time, never stored. */
+  function presetDetail(key) {
+    const p = LOAD_PRESETS[key] || LOAD_PRESETS.display;
+    if (p.kind === 'udl') return U().fmtLinearLoad(p.kgPerM);
+    if (p.kind === 'seat') return `${U().fmtPointLoad(p.kgSeat)} per seat`;
+    return `${U().fmtPointLoad(p.kgDist)} + ${U().fmtPointLoad(p.kgEdge)} lean`;
+  }
   function defaultPresetFor(kind, template, defaultLoad) {
     if (kind === 'seat') return 'seating';
     if (kind === 'top') return 'worktop';
@@ -2692,13 +2999,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       let standExplain;
       if (!grounded.size) standExplain = 'No part touches the floor — the piece has nothing to stand on.';
       else if (hull.length < 3) standExplain = 'The floor contact points are collinear — the piece would fall over sideways.';
-      else if (inDist < 0) standExplain = `The center of gravity falls ${Math.round(-inDist)} mm outside the support polygon.`;
-      else if (inDist < MARGIN) standExplain = `The center of gravity is only ${Math.round(inDist)} mm inside the support polygon — under the ${MARGIN} mm stability margin.`;
-      else standExplain = `The center of gravity sits ${Math.round(inDist)} mm inside the footprint.`;
+      else if (inDist < 0) standExplain = `The center of gravity falls ${fmtFine(-inDist)} outside the support polygon.`;
+      else if (inDist < MARGIN) standExplain = `The center of gravity is only ${fmtFine(inDist)} inside the support polygon — under the ${fmtFine(MARGIN)} stability margin.`;
+      else standExplain = `The center of gravity sits ${fmtFine(inDist)} inside the footprint.`;
       checks.push({
         id: 'stand', title: 'It must stand', status: inDist >= MARGIN ? 'pass' : 'fail',
-        value: isFinite(inDist) ? `COG margin ${Math.round(inDist)} mm` : 'no footprint',
-        threshold: `≥ ${MARGIN} mm inside the support polygon`, explain: standExplain, fixes: []
+        value: isFinite(inDist) ? `COG margin ${fmtFine(inDist)}` : 'no footprint',
+        threshold: `≥ ${fmtFine(MARGIN)} inside the support polygon`, explain: standExplain, fixes: [],
+        data: { cogMarginMM: isFinite(inDist) ? inDist : null }
       });
 
       for (const p of parts) {
@@ -2736,7 +3044,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (connSet.has(key)) {
           const A = Geo.partOBB(a); A.e = A.e.map(e => e + 5);
           if (pen == null && Geo.obbPenetration(A, Geo.partOBB(b)) == null) gaps.push(`${a.id}–${b.id}`);
-        } else if (pen != null && pen > 2) hits.push(`${a.id} × ${b.id} (${Math.round(pen)} mm)`);
+        } else if (pen != null && pen > 2) hits.push(`${a.id} × ${b.id} (${fmtFine(pen)})`);
       }
       checks.push({
         id: 'collide', title: 'Collision check', status: hits.length ? 'fail' : gaps.length ? 'advisory' : 'pass',
@@ -2777,12 +3085,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const fixes = [];
       const up = nextSolidUp(s.h);
       if (!custom && up) {
-        if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${up} mm`, patch: { structure: { topThickness: up } } });
-        else if (s.part.material !== 'baltic_birch') fixes.push({ id: 'thick-shelf', label: `Thicken to ${up} mm`, patch: { structure: { shelfThickness: up } } });
+        if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${fmtLen(up)}`, patch: { structure: { topThickness: up } } });
+        else if (s.part.material !== 'baltic_birch') fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
       }
       if (custom && up && s.part.material !== 'baltic_birch') {
         const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: up } } : p);
-        fixes.push({ id: 'thick-' + s.id, label: `Thicken ${s.id} to ${up} mm`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
+        fixes.push({ id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(up)}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
       }
       if (K.WOOD_SPECIES.hard_maple.moe > sp.moe * 1.1 && spec.wood.species !== 'hard_maple') {
         fixes.push({ id: 'maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } });
@@ -2791,10 +3099,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       checks.push({
         id: 'sag:' + s.id, title: `Sag — ${s.label}`,
         status: ratio <= 1 ? 'pass' : ratio <= 1.5 ? 'advisory' : 'fail',
-        value: `predicted sag ${fmtMM(sag)} over ${Math.round(s.span)} mm ${s.model === 'cant' ? 'cantilever' : 'span'}`,
-        threshold: `≤ ${fmtMM(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : `1 mm per ${SAG_LIMIT_RATIO} mm of span`})`,
-        explain: `${sp.label} at ${Math.round(s.h)} mm thick under the “${preset.label}” preset (${preset.detail}). Stiffness comes from MOE (${sp.moe} GPa) and thickness cubed.`,
+        value: `predicted sag ${fmtFine(sag)} over a ${fmtLen(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}`,
+        threshold: `≤ ${fmtFine(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
+        explain: `${sp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}). Stiffness comes from MOE (${sp.moe} GPa) and thickness cubed.`,
         fixes: ratio > 1 ? fixes : [],
+        data: { sagMM: sag, limitMM: limit, spanMM: s.span },
         prov: { rule: `sag = Σ load cases (5wL⁴/384EI and friends) with E = ${sp.moe} GPa, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, L = ${Math.round(s.span)} mm` }
       });
 
@@ -2819,10 +3128,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         checks.push({
           id: 'cant:' + s.id, title: `Overhang — ${s.label}`,
           status: rO <= 1 ? 'pass' : rO <= 1.5 ? 'advisory' : 'fail',
-          value: `edge deflection ${fmtMM(sagO)} on a ${Math.round(s.over)} mm overhang`,
-          threshold: `≤ ${fmtMM(limO)} (L/${CANT_LIMIT_RATIO}) under a ${LOAD_PRESETS.worktop.kgEdge} kg lean`,
+          value: `edge deflection ${fmtFine(sagO)} on a ${fmtLen(s.over)} overhang`,
+          threshold: `≤ ${fmtFine(limO)} (L/${CANT_LIMIT_RATIO}) under a ${U().fmtPointLoad(LOAD_PRESETS.worktop.kgEdge)} lean`,
           explain: 'Cantilever case: a person leaning at the worst edge position.',
-          fixes: rO > 1 ? fixes : []
+          fixes: rO > 1 ? fixes : [],
+          data: { sagMM: sagO, limitMM: limO, spanMM: s.over }
         });
       }
 
@@ -2879,7 +3189,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           value: `tipping angle ${fmtDeg(angLoaded)} loaded · ${fmtDeg(angEmpty)} empty · height/depth ${ratio.toFixed(1)}`,
           threshold: '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
           explain: antiTip
-            ? `Tall or top-heavy${loadKg ? ` with ${Math.round(loadKg)} kg on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
+            ? `Tall or top-heavy${loadKg ? ` with ${U().fmtPointLoad(loadKg)} on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
             : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
           fixes: []
         });
@@ -2955,7 +3265,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (worst.l) {
           const fixes = [];
           const up = nextSolidUp(Math.min(worst.l.size.w, worst.l.size.d));
-          if (!custom && up) fixes.push({ id: 'thick-leg', label: `Thicken legs to ${Math.min(100, worst.l.size.w + 15)} mm`, patch: { structure: { legThickness: Math.min(100, worst.l.size.w + 15) } } });
+          if (!custom && up) fixes.push({ id: 'thick-leg', label: `Thicken legs to ${fmtLen(Math.min(100, worst.l.size.w + 15))}`, patch: { structure: { legThickness: Math.min(100, worst.l.size.w + 15) } } });
           if (custom && up) {
             const newParts = spec.custom.parts.map(p => p.id === worst.l.id ? { ...p, dim: { ...p.dim, t: up, w: Math.max(p.dim.w, up) } } : p);
             fixes.push({ id: 'thick-' + worst.l.id, label: `Thicken ${worst.l.id}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
@@ -3006,7 +3316,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         checks.push({
           id: 'joints', title: 'Joint adequacy',
           status: weakest.margin >= 1.5 ? 'pass' : weakest.margin >= 1 ? 'advisory' : 'fail',
-          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where} — ${Math.round(weakest.per)} N per joint vs ${Math.round(weakest.cap)} N capacity`,
+          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
           threshold: '≥ 1.5× capacity margin (SG-scaled joint ratings)',
           explain: weakest.margin >= 1.5 ? 'Every joint carries its share of the load path with room to spare.'
             : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`,
@@ -3033,10 +3343,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (p.material === 'baltic_birch') {
           checks.push({
             id: 'move:' + p.id, title: `Movement — ${p.name}`, status: 'pass',
-            value: 'plywood: ~0 mm seasonal movement',
-            threshold: `≤ ${MOVEMENT_LIMIT} mm across the grain`,
+            value: `plywood: ~${fmtFine(0)} seasonal movement`,
+            threshold: `≤ ${fmtFine(MOVEMENT_LIMIT)} across the grain`,
             explain: 'Plywood is exempt: cross-laminated plies restrain each other, so seasonal moisture swings produce no meaningful dimensional change.',
-            fixes: []
+            fixes: [],
+            data: { movementMM: 0, crossWidthMM: crossW }
           });
           continue;
         }
@@ -3051,11 +3362,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         checks.push({
           id: 'move:' + p.id, title: `Movement — ${p.name}`,
           status: over ? 'advisory' : 'pass',
-          value: `${mv.toFixed(1)} mm seasonal movement across ${Math.round(crossW)} mm`,
-          threshold: `≤ ${MOVEMENT_LIMIT} mm on a cross-grain constrained panel`,
-          explain: `${Math.round(crossW)} mm × ${sp.ct} (tangential coefficient) × ${dMC}% ΔMC = ${mv.toFixed(1)} mm.` +
+          value: `${fmtFine(mv)} seasonal movement across ${fmtLen(crossW)}`,
+          threshold: `≤ ${fmtFine(MOVEMENT_LIMIT)} on a cross-grain constrained panel`,
+          explain: `${fmtLen(crossW)} × ${sp.ct} (tangential coefficient) × ${dMC}% ΔMC = ${fmtFine(mv)}.` +
             (over ? ` This panel is fastened across the grain — restrained movement splits panels or breaks joints. ${fixText}${cupNote}` : ` Within tolerance for a constrained panel.${cupNote}`),
           fixes: [],
+          data: { movementMM: mv, crossWidthMM: crossW },
           prov: { rule: `movement = width × coefficient × ΔMC = ${Math.round(crossW)} × ${sp.ct} × ${dMC}` }
         });
       }
@@ -3076,7 +3388,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const chips = [];
     if (before.summary.worstSag && after.summary.worstSag) {
       const a = before.summary.worstSag.sag, b = after.summary.worstSag.sag;
-      if (Math.abs(a - b) > 0.05) chips.push(`sag ${a.toFixed(1)} → ${b.toFixed(1)} mm`);
+      if (Math.abs(a - b) > 0.05) chips.push(`sag ${fmtFine(a)} → ${fmtFine(b)}`);
     }
     if (before.summary.tipLoaded != null && after.summary.tipLoaded != null) {
       const a = before.summary.tipLoaded, b = after.summary.tipLoaded;
@@ -3089,7 +3401,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Structural = {
-    LOAD_PRESETS, PRESET_KEYS, JOINT_RATING, SAFETY_FACTOR,
+    LOAD_PRESETS, PRESET_KEYS, presetDetail, JOINT_RATING, SAFETY_FACTOR,
     SAG_LIMIT_RATIO, CANT_LIMIT_RATIO, MOVEMENT_LIMIT, GRAV,
     I_rect, DEFL, MOM, loadCasesFor, totalLoadN, evalBeam,
     surfacesOf, computeIntegrity, integrityDiff, defaultPresetFor, nextSolidUp
@@ -3112,6 +3424,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   'use strict';
   const K = BB.K;
   const L = () => K.LUMBER;
+  const U = () => BB.Units; // display boundary — packing math itself stays mm
 
   const r1 = v => Math.round(v * 10) / 10;
 
@@ -3189,7 +3502,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           // fuller boards never cost more.
           const lengths = L().STOCK_LENGTHS;
           const stockLen = lengths[lengths.length - 1] - 2 * trim >= p.len ? lengths[lengths.length - 1] : null;
-          if (!stockLen) { boards.push({ nominal, actual: list[0].actual, stockLen: null, cuts: [], error: `“${p.name}” (${p.len} mm) exceeds the longest stock board.` }); continue; }
+          if (!stockLen) { boards.push({ nominal, actual: list[0].actual, stockLen: null, cuts: [], error: `“${p.name}” (${U().fmtLength(p.len)}) exceeds the longest stock board.` }); continue; }
           const b = { nominal, actual: list[0].actual, stockLen, used: 0, remaining: stockLen - 2 * trim, cuts: [] };
           b.cuts.push({ name: p.name, len: p.len, offset: 0, note: p.note });
           b.used = p.len;
@@ -3249,7 +3562,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const errors = [];
     for (const p of sorted) {
       if (p.w > SW || (p.h > SH && (p.grainLocked || p.h > SW || p.w > SH))) {
-        errors.push(`“${p.name}” (${p.w} × ${p.h}) exceeds a full sheet.`);
+        errors.push(`“${p.name}” (${U().fmtLength(p.w)} × ${U().fmtLength(p.h)}) exceeds a full sheet.`);
         continue;
       }
       let placed = false;
@@ -3296,13 +3609,13 @@ var BB = globalThis.BB = globalThis.BB || {};
           if (!rough) {
             const sec = sectionFor(row.T, row.W);
             if (sec.kind === 'direct') {
-              solidPieces.push({ name: row.name, len: row.L, nominal: sec.nominal, actual: sec.actual, note: sec.actual.w - row.W > 3 ? `rip to ${row.W}` : '' });
+              solidPieces.push({ name: row.name, len: row.L, nominal: sec.nominal, actual: sec.actual, note: sec.actual.w - row.W > 3 ? `rip to ${U().fmtLength(row.W)}` : '' });
             } else if (sec.kind === 'glueup') {
               glueups.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, W: row.W, T: row.T });
               for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (strip ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: 'glue-up strip' });
             } else {
               laminations.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, T: row.T });
-              for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (layer ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: `laminate + plane to ${row.T}` });
+              for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (layer ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: `laminate + plane to ${U().fmtLength(row.T)}` });
             }
           }
         }
@@ -3335,7 +3648,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const perM = spPrices[nominal] !== undefined ? spPrices[nominal] : 5;
         const cost = count * perM * (+len / 1000);
         lumberCost += cost;
-        shopping.push({ kind: 'board', label: `${K.WOOD_SPECIES[species].label} ${nominal} × ${len} mm`, qty: count, unit: `$${(perM * (+len / 1000)).toFixed(2)}`, cost });
+        shopping.push({ kind: 'board', label: `${K.WOOD_SPECIES[species].label} ${U().fmtNominal(nominal, L().NOMINALS[nominal], +len)}`, qty: count, unit: `$${(perM * (+len / 1000)).toFixed(2)}`, cost });
       }
     }
 
@@ -3348,7 +3661,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const bdftCost = bdftWithWaste * bdftRate;
     if (rough && solidVol > 0) {
       lumberCost = bdftCost;
-      shopping.push({ kind: 'board', label: `${K.WOOD_SPECIES[species].label} rough stock — ${bdftWithWaste} bd ft (incl. 30% waste)`, qty: 1, unit: `$${bdftRate.toFixed(2)}/bd ft`, cost: bdftCost });
+      shopping.push({ kind: 'board', label: `${K.WOOD_SPECIES[species].label} rough stock — ${U().fmtBoardFeet(bdftWithWaste)} (incl. 30% waste)`, qty: 1, unit: `$${bdftRate.toFixed(2)}/bd ft`, cost: bdftCost });
     }
 
     let sheetCost = 0, sheetBoughtArea = 0, sheetUsedArea = 0;
@@ -3362,7 +3675,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const [key, count] of [...sheetGroups.entries()].sort((a, b) => b[0].localeCompare(a[0]))) {
       const [t, frac] = key.split('|').map(Number);
       const price = ((prices.sheet && prices.sheet[t]) !== undefined ? prices.sheet[t] : 60) * frac;
-      const label = `Baltic birch ${t} mm — ${frac === 1 ? 'full' : frac === 0.5 ? 'half' : 'quarter'} sheet (1220 × 2440 base)`;
+      const label = `Baltic birch ${U().fmtLength(t)} — ${frac === 1 ? 'full' : frac === 0.5 ? 'half' : 'quarter'} sheet (${U().fmtSheet(L().SHEET.W, L().SHEET.L)} base)`;
       sheetCost += count * price;
       shopping.push({ kind: 'sheet', label, qty: count, unit: `$${price.toFixed(2)}`, cost: count * price });
     }
@@ -3396,6 +3709,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function boardSVG(board, fmt) {
+    fmt = fmt || (v => U().fmtLength(v));
     const W = 720, H = 64, pad = 4;
     const id = 'bbhatch' + (++hatchSeq);
     const sx = (W - 2 * pad) / board.stockLen;
@@ -3407,9 +3721,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       x += w;
       return { px, w, cls, label, title };
     };
-    rects.push(seg(trim * sx, 'trim', '', 'end trim 15 mm'));
+    rects.push(seg(trim * sx, 'trim', '', `end trim ${U().fmtLength(trim)}`));
     board.cuts.forEach((c, i) => {
-      if (i > 0) rects.push(seg(kerf * sx, 'kerf', '', 'kerf 3 mm'));
+      if (i > 0) rects.push(seg(kerf * sx, 'kerf', '', `kerf ${U().fmtSmall(kerf)}`));
       rects.push(seg(c.len * sx, 'cut', `${c.name} · ${fmt(c.len)}`, `${c.name} — ${fmt(c.len)}${c.note ? ' · ' + c.note : ''}`));
     });
     const offX = x;
@@ -3432,6 +3746,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function sheetSVG(sheet, fmt) {
+    fmt = fmt || (v => U().fmtLength(v));
     const SW = L().SHEET.L, SH = L().SHEET.W;
     const W = 720, H = Math.round(W * SH / SW), pad = 3;
     const id = 'bbhatch' + (++hatchSeq);
@@ -3466,6 +3781,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
   const K = BB.K;
+  const U = () => BB.Units; // display boundary — all plan math stays mm
 
   /* Joinery allowance table: mm added to the inserted member's cut length per
    * joint end. Phase 2 adds locking_rabbet and half_blind_dovetail rows. */
@@ -3499,7 +3815,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (e) {
         allowance = e.n * JOINT_ALLOWANCE[e.type];
         L = Math.round((L + allowance) * 10) / 10;
-        note = `includes ${allowance} mm for ${K.JOINERY[e.type] ? K.JOINERY[e.type].label.toLowerCase() : e.type}`;
+        note = `includes ${U().fmtLength(allowance)} for ${K.JOINERY[e.type] ? K.JOINERY[e.type].label.toLowerCase() : e.type}`;
       }
       const angles = BB.Geo.cutAngles(p.rot);
       if (angles) note = (note ? note + ' · ' : '') + BB.Geo.angleText(angles);
@@ -3545,7 +3861,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       if (stock.mode === 'dimensional' && stock.bdft.exact > 0) {
         items.push({
-          kind: 'lumber', label: `(reference) rough-sawn equivalent: ${stock.bdft.withWaste} bd ft`, qty: 1,
+          kind: 'lumber', label: `(reference) rough-sawn equivalent: ${U().fmtBoardFeet(stock.bdft.withWaste)}`, qty: 1,
           detail: `≈ $${stock.bdft.cost.toFixed(2)} at $${stock.bdft.rate.toFixed(2)}/bd ft incl. 30% waste — secondary line, not added to the total`,
           price: 0
         });
@@ -3569,7 +3885,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (solidMm3 > 0) {
         const bf = Math.ceil(solidMm3 / BF_MM3 * 1.3 * 10) / 10; // 30% waste factor
         items.push({
-          kind: 'lumber', label: `${sp.label} — ${bf} bd ft`, qty: 1,
+          kind: 'lumber', label: `${sp.label} — ${U().fmtBoardFeet(bf)}`, qty: 1,
           detail: `cost tier ${'$'.repeat(sp.costTier)} · ~$${Math.round(bf * sp.pricePerBdFt)}`,
           price: Math.round(bf * sp.pricePerBdFt)
         });
@@ -3578,35 +3894,39 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (sheetArea[t] > 0) {
           const frac = sheetArea[t] / (1525 * 1525) * 1.25;
           items.push({
-            kind: 'sheet', label: `Baltic birch ply ${t} mm`, qty: Math.ceil(frac * 4) / 4,
-            detail: `${Math.ceil(frac * 4) / 4} of a 1525 × 1525 sheet`, price: Math.round(frac * 70)
+            kind: 'sheet', label: `Baltic birch ply ${U().fmtLength(t)}`, qty: Math.ceil(frac * 4) / 4,
+            detail: `${Math.ceil(frac * 4) / 4} of a ${U().fmtSheet(1525, 1525)} sheet`, price: Math.round(frac * 70)
           });
         }
       }
     }
 
-    // Fasteners from the joint list.
+    // Fasteners from the joint list. Lengths render through the boundary;
+    // pilot diameters are fine values (decimal inches in imperial).
+    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
     const jc = {};
     for (const j of model.joints) jc[j.type] = (jc[j.type] || 0) + 1;
-    if (jc.pocket_screws) items.push({ kind: 'fastener', label: '32 mm coarse pocket screws', qty: jc.pocket_screws * 2, detail: '2 per pocket joint', price: Math.ceil(jc.pocket_screws * 2 * 0.08) });
-    if (jc.butt_screws) items.push({ kind: 'fastener', label: '#8 × 50 mm wood screws (pilot 3.2 mm)', qty: jc.butt_screws * 2, detail: '2 per butt joint, pilot-drilled', price: Math.ceil(jc.butt_screws * 2 * 0.06) });
-    if (jc.dowels) items.push({ kind: 'fastener', label: '8 × 40 mm fluted dowels', qty: jc.dowels * 2, detail: '2 per dowel joint (8 mm pilot)', price: Math.ceil(jc.dowels * 2 * 0.1) });
+    if (jc.pocket_screws) items.push({ kind: 'fastener', label: `${len(32)} coarse pocket screws`, qty: jc.pocket_screws * 2, detail: '2 per pocket joint', price: Math.ceil(jc.pocket_screws * 2 * 0.08) });
+    if (jc.butt_screws) items.push({ kind: 'fastener', label: `#8 × ${len(50)} wood screws (pilot ${fine(3.2)})`, qty: jc.butt_screws * 2, detail: '2 per butt joint, pilot-drilled', price: Math.ceil(jc.butt_screws * 2 * 0.06) });
+    if (jc.dowels) items.push({ kind: 'fastener', label: `${len(8)} × ${len(40)} fluted dowels`, qty: jc.dowels * 2, detail: `2 per dowel joint (${len(8)} pilot)`, price: Math.ceil(jc.dowels * 2 * 0.1) });
 
     // Solid-top attachment lets the panel move.
     const topPart = model.parts.find(p => p.role === 'top' && p.material !== 'baltic_birch');
-    if (topPart) items.push({ kind: 'fastener', label: 'Figure-8 fasteners + #8 × 16 mm', qty: 6, detail: 'top attachment — allows seasonal movement', price: 5 });
+    if (topPart) items.push({ kind: 'fastener', label: `Figure-8 fasteners + #8 × ${len(16)}`, qty: 6, detail: 'top attachment — allows seasonal movement', price: 5 });
 
-    // Drawer hardware from the fastener catalog.
+    // Drawer hardware from the fastener catalog. (M4 is a metric trade name
+    // in every market; the screw length still renders through the boundary.)
     for (const d of model.drawers) {
       if (d.runner === 'side_mount_slides') {
-        items.push({ kind: 'hardware', label: `${d.slideLen} mm side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
-        items.push({ kind: 'fastener', label: 'M4 × 16 mm pan-head screws (pilot 3.0 mm)', qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: 1 });
+        items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
+        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${fine(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: 1 });
       }
       items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: 6 });
-      items.push({ kind: 'fastener', label: '#8 × 25 mm wood screws (pilot 2.8 mm)', qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: 1 });
+      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${fine(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: 1 });
     }
     const shelfParts = model.parts.filter(p => p.role === 'shelf');
     if (shelfParts.length && ['bookshelf', 'cabinet'].includes(spec.meta.template)) {
+      // "5 mm shelf pin" IS the trade name in every market — stays literal.
       items.push({ kind: 'hardware', label: '5 mm shelf pins', qty: shelfParts.length * 4, detail: '4 per adjustable shelf', price: Math.ceil(shelfParts.length) });
     }
 
@@ -3634,20 +3954,21 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function drawerSteps(spec, model, out) {
     const boxJ = K.JOINERY[spec.joinery.box];
+    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
     for (const d of model.drawers) {
       const n = d.index + 1;
       const ids = id => d.partIds.filter(p => p.includes(id));
       const boxIds = [...ids('side'), ...ids('boxfront'), ...ids('boxback')];
       out.push(step(`dr${n}_box`, `Drawer ${n}: build the box`,
-        `Join the sides, box front, and box back with ${boxJ.label.toLowerCase()}s (${d.box.w} × ${d.box.h} × ${d.box.d} mm outside). Check the diagonals — square now or fight it forever.`,
+        `Join the sides, box front, and box back with ${boxJ.label.toLowerCase()}s (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside). Check the diagonals — square now or fight it forever.`,
         boxIds, { drawer: d.index }));
       out.push(step(`dr${n}_bottom`, `Drawer ${n}: fit the bottom`,
-        `Cut a 6 mm groove, 6 mm deep, 10 mm up from the bottom edge. Slide in the 6 mm bottom — no glue, it floats.`,
+        `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge. Slide in the ${len(6)} bottom — no glue, it floats.`,
         ids('bottom'), { drawer: d.index }));
       const railIds = model.parts.filter(p => p.role === 'rail').slice(d.index, d.index + 2).map(p => p.id);
       if (d.runner === 'side_mount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the slides`,
-          `Screw the ${d.slideLen} mm slides level and flush to the opening sides with M4 × 16 mm pan-heads. A spacer block beats a tape measure here.`,
+          `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(16)} pan-heads. A spacer block beats a tape measure here.`,
           railIds, { drawer: d.index }));
       } else {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: fit wood runners`,
@@ -3657,8 +3978,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         `Set the box on its runners and check it runs true with an even gap.`, boxIds.concat(ids('bottom')), { drawer: d.index }));
       out.push(step(`dr${n}_front`, `Drawer ${n}: attach the front`,
         d.frontStyle === 'inset'
-          ? `Shim the ${d.front.w} × ${d.front.h} mm front in its opening with a 2 mm reveal all around, then screw it from inside the box with #8 × 25 mm screws.`
-          : `Center the ${d.front.w} × ${d.front.h} mm overlay front on the opening and screw it from inside the box with #8 × 25 mm screws.`,
+          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then screw it from inside the box with #8 × ${len(25)} screws.`
+          : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and screw it from inside the box with #8 × ${len(25)} screws.`,
         ids('front'), { drawer: d.index }));
       out.push(step(`dr${n}_pull`, `Drawer ${n}: add the pull`,
         `Drill for the pull at the front’s centerline and bolt it on.`, ids('pull'), { drawer: d.index }));
@@ -3708,9 +4029,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (t === 'cabinet') {
       out.push(step('s1', 'Build the carcass', `Join the bottom between the sides with ${ca.label.toLowerCase()}s.`, ids('side_1', 'side_2', 'bottom_1')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
-      if (rails.length) out.push(step('s2', 'Install the drawer rails', `Join each 20 × 60 mm rail into the sides with ${fr.label.toLowerCase()}s, spaced for the drawer openings.`, rails));
+      if (rails.length) out.push(step('s2', 'Install the drawer rails', `Join each ${U().fmtLength(20)} × ${U().fmtLength(60)} rail into the sides with ${fr.label.toLowerCase()}s, spaced for the drawer openings.`, rails));
       if (has('back_1')) out.push(step('s3', 'Fit the back', 'Fasten the back panel — square the carcass to it first.', ['back_1']));
-      if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', 'Fit the toe-kick board 75 mm back from the front edge.', ['plinth_1']));
+      if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
       if (shelves.length) out.push(step('s6', 'Add the shelves', 'Set the shelves on their pins.', shelves));
@@ -3770,7 +4091,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'design';
   const n = v => (Math.round(v * 1000) / 1000).toString();
 
-  /* ---------------- COLLADA ---------------- */
+  /* ---------------- COLLADA ----------------
+   * INTENTIONALLY unit-exempt: the .dae declares <unit meter="0.001"> and
+   * writes raw millimetre geometry regardless of the display preference.
+   * SketchUp must receive real geometry — display units never touch exports. */
   function toDAE(spec, model) {
     const created = new Date().toISOString();
     const roles = [...new Set(model.parts.map(p => p.role))];
@@ -3857,7 +4181,10 @@ ${nodes}
 `;
   }
 
-  /* ---------------- SketchUp Ruby ---------------- */
+  /* ---------------- SketchUp Ruby ----------------
+   * INTENTIONALLY unit-exempt: every coordinate uses the .mm helper, so the
+   * rebuilt model is geometrically identical no matter which display units
+   * the user had selected. Do not route these through BB.Units. */
   function toRuby(spec, model) {
     const rb = s => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const name = rb(spec.meta.name);
@@ -3945,9 +4272,11 @@ BlueprintBuddyImport.build
   const printSVG = svg => String(svg).replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PRINT_COLORS[v] || '#333');
 
   function printHTML(spec, model, cut, bomData, steps, stock) {
-    const S = BB.Spec, u = spec.meta.units;
+    // The print sheet is a display surface: it follows the current display
+    // preference via BB.Units (unlike the geometry exports above).
+    const U = BB.Units;
     const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-    const dim = v => S.fmtLen(v, u);
+    const dim = v => U.fmtLength(v);
     const sp = BB.K.WOOD_SPECIES[spec.wood.species];
     const cutRows = cut.map(r => `<tr><td>${esc(r.name)}</td><td>${r.qty}</td><td>${dim(r.L)}</td><td>${dim(r.W)}</td><td>${dim(r.T)}</td><td>${esc(BB.K.WOOD_SPECIES[r.material] ? BB.K.WOOD_SPECIES[r.material].label : r.material)}</td><td>${esc(r.note || '')}</td></tr>`).join('');
     const bomRows = bomData.items.map(i => `<tr><td>${esc(i.label)}</td><td>${i.qty}</td><td>${esc(i.detail || '')}</td></tr>`).join('');
@@ -3957,9 +4286,9 @@ BlueprintBuddyImport.build
     if (stock && (stock.boards.length || stock.sheets.length)) {
       const shopRows = stock.shopping.map(s => `<tr><td>${esc(s.label)}</td><td>${s.qty}</td><td>${esc(s.unit)}</td><td>$${s.cost.toFixed(2)}</td></tr>`).join('');
       const boardBlocks = stock.boards.filter(b => b.stockLen).map((b, i) =>
-        `<div class="print-board"><p>${esc(b.nominal)} × ${b.stockLen} mm — board ${i + 1} · offcut ${dim(b.offcut)}</p>${printSVG(BB.Packing.boardSVG(b, dim))}</div>`).join('');
+        `<div class="print-board"><p>${esc(U.fmtNominal(b.nominal, b.actual, b.stockLen))} — board ${i + 1} · offcut ${dim(b.offcut)}</p>${printSVG(BB.Packing.boardSVG(b, dim))}</div>`).join('');
       const sheetBlocks = stock.sheets.map((s, i) =>
-        `<div class="print-board"><p>${s.thickness} mm sheet ${i + 1} — buy a ${esc(s.fractionLabel)}</p>${printSVG(BB.Packing.sheetSVG(s, dim))}</div>`).join('');
+        `<div class="print-board"><p>${dim(s.thickness)} sheet ${i + 1} — buy a ${esc(s.fractionLabel)}</p>${printSVG(BB.Packing.sheetSVG(s, dim))}</div>`).join('');
       const waste = [];
       if (stock.wasteSolidPct != null) waste.push(`solid ${stock.wasteSolidPct}%`);
       if (stock.wasteSheetPct != null) waste.push(`sheet ${stock.wasteSheetPct}%`);
@@ -3969,7 +4298,7 @@ BlueprintBuddyImport.build
     <table><thead><tr><th>Buy</th><th>Qty</th><th>Unit</th><th>Cost</th></tr></thead><tbody>${shopRows}</tbody></table>
     <p class="print-total">Purchasable-stock total: $${stock.totalCost.toFixed(2)}${waste.length ? ' · waste ' + waste.join(' · ') : ''}</p>
     ${boardBlocks}${sheetBlocks}
-    <p>Kerf 3 mm per cut · 15 mm end trim per board end · hatched areas are offcuts.</p>
+    <p>Kerf ${U.fmtSmall(BB.K.LUMBER.KERF)} per cut · ${dim(BB.K.LUMBER.END_TRIM)} end trim per board end · hatched areas are offcuts.</p>
   </section>`;
     }
 
@@ -4035,7 +4364,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           source: src || 'manual',
           spec: Object.freeze(S().clone(spec)),
           summary: summary || (prev
-            ? (diffs.length ? S().describeDiff(diffs, spec.meta.units) : ['no dimensional change'])
+            ? (diffs.length ? S().describeDiff(diffs) : ['no dimensional change'])
             : ['initial design']),
           diffs
         };
@@ -4068,7 +4397,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const b = this.snapshots.find(s => s.id === idB);
         if (!a || !b) return null;
         const diffs = S().diffSpecs(a.spec, b.spec);
-        return { a, b, diffs, rows: S().describeDiff(diffs, b.spec.meta.units) };
+        return { a, b, diffs, rows: S().describeDiff(diffs) };
       }
     };
     if (initialSpec) h.push(initialSpec, source || 'manual', ['initial design']);
@@ -4395,6 +4724,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     return [
       'You are the design intent engine inside Blueprint Buddy, a parametric furniture design tool.',
       'You NEVER compute geometry. You propose intent; the app owns all math, snaps stock sizes, and re-validates everything.',
+      'All wire dimensions are millimetres. The app pre-normalizes dimension strings in user messages to explicit millimetres before you see them — NEVER convert units yourself.',
       Codec().SCHEMA_DOC,
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes).',
       'LEVEL MATRIX (code enforces this regardless): beginner={butt_screws,pocket_screws}; intermediate adds {dowels,dado,rabbet,locking_rabbet}; advanced adds {mortise_tenon,half_blind_dovetail}.',
@@ -4453,7 +4783,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (N && typeof N === 'object') {
       const spec = Codec().decode(N);
       if (!spec) return null;
-      return { kind: 'new', spec, explain: explain || 'Here’s a starting point.' };
+      // A new design that never states display units inherits the user's
+      // current choice (apply() fills it in) instead of the wire default.
+      return { kind: 'new', spec, unitsUnspecified: N.u === undefined && N.units === undefined, explain: explain || 'Here’s a starting point.' };
     }
     const wireDiff = {};
     for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain') wireDiff[k] = obj[k];
@@ -4466,16 +4798,19 @@ var BB = globalThis.BB = globalThis.BB || {};
    * Deliberately conservative: handles the common refinement vocabulary and
    * asks a clarifying question when the request is ambiguous.
    */
-  const MM = { mm: 1, millimeter: 1, millimeters: 1, cm: 10, centimeter: 10, centimeters: 10, m: 1000, in: 25.4, inch: 25.4, inches: 25.4, '"': 25.4, ft: 304.8, feet: 304.8, foot: 304.8 };
-  function parseLen(str) {
-    const m = String(str).match(/(\d+(?:\.\d+)?)\s*(mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?/i);
-    if (!m) return null;
-    const unit = (m[2] || 'mm').toLowerCase();
-    return Math.round(parseFloat(m[1]) * (MM[unit] || 1));
+  /* Length parsing delegates to the ONE shared parser in BB.Units. Bare
+   * numbers inherit the design's display system (an imperial user's "60
+   * wide" means inches); chat text is normally pre-normalized to mm by
+   * BB.Units.normalizeLengthText before it ever reaches this parser. */
+  function parseLen(str, spec) {
+    const dflt = spec && spec.meta && spec.meta.units === 'mm' ? 'mm' : 'in';
+    const v = BB.Units.parseLength(str, dflt);
+    return v == null ? null : Math.round(v * 10) / 10;
   }
   const WORD_NUMS = { one: 1, a: 1, an: 1, two: 2, three: 3, four: 4 };
 
   function localModel(text, spec) {
+    text = BB.Units.normalizeLengthText(text); // idempotent; direct callers get the same guarantee as chat
     const t = ' ' + String(text).toLowerCase().trim() + ' ';
     const patch = {};
     const notes = [];
@@ -4521,12 +4856,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     let m;
     while ((m = re.exec(t))) {
       const key = dimWord[(m[2] || m[3] || '').toLowerCase()];
-      const val = parseLen(m[1] || m[4]);
-      if (key && val) { set('overall.' + key, val); notes.push(`${key} ${val}mm`); }
+      const val = parseLen(m[1] || m[4], spec);
+      if (key && val) { set('overall.' + key, val); notes.push(`${key} ${BB.Units.fmtLength(val)}`); }
     }
     let mm2;
     if ((mm2 = t.match(/\b(lower|shorten|raise|lift)\b(?:\s+\w+)*?\s+by\s+([\d.]+\s*(?:mm|cm|in|inch(?:es)?|")?)/))) {
-      const delta = parseLen(mm2[2]);
+      const delta = parseLen(mm2[2], spec);
       if (delta) { set('overall.height', spec.overall.height + (/(lower|shorten)/.test(mm2[1]) ? -delta : delta)); notes.push('height'); }
     }
     if (/\b(wider)\b/.test(t) && !patch.overall) { set('overall.width', Math.round(spec.overall.width * 1.15)); notes.push('wider'); }
@@ -4582,7 +4917,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       return {
         kind: 'question',
         question: 'I didn’t catch a change I can make there. Try a dimension, species, joinery level, drawers, or finish — what should move?',
-        options: ['Make it walnut', 'Lower it by 50 mm', 'Add a drawer']
+        options: ['Make it walnut', `Lower it by ${BB.Units.fmtLength(spec.meta.units === 'mm' ? 50 : 50.8)}`, 'Add a drawer']
       };
     }
     return { kind: 'diff', patch, explain: 'Adjusted ' + notes.slice(0, 4).join(', ') + '.' };
@@ -4688,6 +5023,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- respond ---------------- */
   async function respond(userText, spec, opts) {
     opts = opts || {};
+    // Pre-parse dimension strings to explicit millimetres BEFORE the model
+    // sees them — the model proposes intent and never converts units.
+    userText = BB.Units.normalizeLengthText(userText);
     const onStatus = opts.onStatus || (() => {});
     if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true };
 
@@ -4778,11 +5116,17 @@ var BB = globalThis.BB = globalThis.BB || {};
   function apply(reply, currentSpec) {
     const S = BB.Spec;
     let proposed;
-    if (reply.kind === 'new') proposed = reply.spec;
-    else proposed = S.deepMerge(currentSpec, reply.patch);
+    if (reply.kind === 'new') {
+      proposed = reply.spec;
+      // Display units are the user's choice, not the model's: a new design
+      // that never mentioned them keeps whatever the user was working in.
+      if (reply.unitsUnspecified && currentSpec && currentSpec.meta) {
+        proposed = S.deepMerge(proposed, { meta: { units: currentSpec.meta.units } });
+      }
+    } else proposed = S.deepMerge(currentSpec, reply.patch);
     const corrected = S.correctSpec(proposed);
     const diffs = S.diffSpecs(currentSpec, corrected);
-    return { spec: corrected, diffs, chips: S.describeDiff(diffs, corrected.meta.units) };
+    return { spec: corrected, diffs, chips: S.describeDiff(diffs) };
   }
 
   BB.AI = {
@@ -4803,7 +5147,10 @@ var BB = globalThis.BB = globalThis.BB || {};
  *   project:{id}    -> { id, name, updated, wire (codec spec), revisions
  *                        (last 20 wire snapshots), progress {cuts, steps} }
  *   prices:v1       -> user-edited price table
- *   prefs:v1        -> { climate, stockMode, ... }
+ *   prefs:v2        -> { climate, stockMode, units: {system, precision, dual} }
+ *   prefs:v1        -> legacy (no units block); migrated on first load, and a
+ *                      returning v1 user keeps the metric world they had —
+ *                      the imperial default applies ONLY to fresh installs.
  * Never store meshes or derived plans — everything regenerates from the spec.
  */
 var BB = globalThis.BB = globalThis.BB || {};
@@ -4922,8 +5269,13 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- price table & preferences ---------------- */
   const PRICES_KEY = 'prices:v1';
-  const PREFS_KEY = 'prefs:v1';
-  const DEFAULT_PREFS = { climate: 'temperate', stockMode: {} };
+  const PREFS_KEY = 'prefs:v2';
+  const LEGACY_PREFS_KEY = 'prefs:v1';
+  // Fresh installs: fractional inches at 1/16, dual display off.
+  const DEFAULT_PREFS = {
+    climate: 'temperate', stockMode: {},
+    units: { system: 'imperial', precision: 16, dual: false }
+  };
 
   async function loadPrices() {
     const stored = await get(PRICES_KEY);
@@ -4937,9 +5289,28 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   const savePrices = prices => set(PRICES_KEY, prices);
 
+  /* Deep-fill against defaults so new fields appear WITHOUT clobbering the
+   * user's stored choices (Object.assign would flatten the units block). */
+  function withPrefDefaults(stored) {
+    const out = Object.assign({}, DEFAULT_PREFS, stored);
+    out.units = Object.assign({}, DEFAULT_PREFS.units, stored && stored.units ? stored.units : {});
+    return out;
+  }
   async function loadPrefs() {
     const stored = await get(PREFS_KEY);
-    return Object.assign({}, DEFAULT_PREFS, stored && typeof stored === 'object' ? stored : {});
+    if (stored && typeof stored === 'object') return withPrefDefaults(stored);
+    // Schema migration v1 -> v2. The imperial default is for people with NO
+    // stored preferences; a returning v1 user was living in the old metric
+    // default, so their selection is preserved, never overwritten.
+    const legacy = await get(LEGACY_PREFS_KEY);
+    if (legacy && typeof legacy === 'object') {
+      const migrated = withPrefDefaults(Object.assign({}, legacy, {
+        units: { system: 'metric', precision: 16, dual: false }
+      }));
+      await set(PREFS_KEY, migrated);
+      return migrated;
+    }
+    return withPrefDefaults({});
   }
   const savePrefs = prefs => set(PREFS_KEY, prefs);
 
@@ -4991,7 +5362,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   'use strict';
   const K = BB.K;
 
-  const mm = v => `${Math.round(v * 10) / 10} mm`;
+  /* Rules and inputs render in the user's display units (the popover carries
+   * a "computed internally in metric" footnote); the math itself never leaves
+   * millimetres. */
+  const mm = v => BB.Units.fmtLength(v);
 
   /* ---------------- provenance registry ---------------- */
   /* Returns [{dim, formula}] for a cut-list row (or inspector part). Each
@@ -5008,16 +5382,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     const frameD = o.depth - 2 * overhang;
     const innerW = o.width - 2 * st.sideThickness;
 
+    const fine = v => BB.Units.fmtSmall(v);
+
     if (t === 'custom') {
-      push('Dimensions', 'novel composition: dimensions come straight from the designed primitive (AI proposes, code clamps to 10–3000 mm and snaps thickness to stock)');
+      push('Dimensions', `novel composition: dimensions come straight from the designed primitive (AI proposes, code clamps to ${mm(10)}–${mm(3000)} and snaps thickness to stock)`);
     } else if (name === 'Leg') {
       push('Length', `leg = height − top thickness = ${mm(o.height)} − ${mm(st.topThickness)} = ${mm(o.height - st.topThickness)}`);
       push('Section', `leg thickness (spec) = ${mm(st.legThickness)} square`);
     } else if (name === 'Long apron') {
-      push('Length', `frame width − 2 × leg = (${mm(o.width)} − 2 × ${overhang} overhang) − 2 × ${mm(st.legThickness)} = ${mm(frameW - 2 * st.legThickness)}`);
+      push('Length', `frame width − 2 × leg = (${mm(o.width)} − 2 × ${mm(overhang)} overhang) − 2 × ${mm(st.legThickness)} = ${mm(frameW - 2 * st.legThickness)}`);
       push('Width', `apron height (spec) = ${mm(st.apronHeight)}`);
     } else if (name === 'Short apron') {
-      push('Length', `frame depth − 2 × leg = (${mm(o.depth)} − 2 × ${overhang} overhang) − 2 × ${mm(st.legThickness)} = ${mm(frameD - 2 * st.legThickness)}`);
+      push('Length', `frame depth − 2 × leg = (${mm(o.depth)} − 2 × ${mm(overhang)} overhang) − 2 × ${mm(st.legThickness)} = ${mm(frameD - 2 * st.legThickness)}`);
       push('Width', `apron height (spec) = ${mm(st.apronHeight)}`);
     } else if (name === 'Top' && ['table', 'desk', 'bench', 'nightstand', 'cabinet'].includes(t)) {
       if (t === 'bookshelf' || t === 'cabinet') push('Length', `inner width = width − 2 × side = ${mm(innerW)}`);
@@ -5038,42 +5414,42 @@ var BB = globalThis.BB = globalThis.BB || {};
       push('Length', `inner width = width − 2 × side = ${mm(o.width)} − 2 × ${mm(st.sideThickness)} = ${mm(innerW)}`);
       push('Thickness', `shelf thickness (spec) = ${mm(st.shelfThickness)}`);
     } else if (name === 'Back panel') {
-      push('Size', `case − 12 mm rabbet reveal = ${mm(o.width - 12)} × …, 6 mm sheet stock`);
+      push('Size', `case − ${mm(12)} rabbet reveal = ${mm(o.width - 12)} × …, ${mm(6)} sheet stock`);
     } else if (/^(Side|Back) apron$/.test(name) && t === 'nightstand') {
       const count = spec.drawers ? spec.drawers.count : 1;
       const available = o.height - st.topThickness - 120;
       const desired = (count + 1) * 60 + count * 130;
       const bank = Math.min(desired, available);
-      push('Width (bank height)', `min((${count}+1)×60 rail + ${count}×130 opening, height − top − 120 leg reveal) = min(${mm(desired)}, ${mm(available)}) = ${mm(bank)}`);
+      push('Width (bank height)', `min((${count}+1)×${mm(60)} rail + ${count}×${mm(130)} opening, height − top − ${mm(120)} leg reveal) = min(${mm(desired)}, ${mm(available)}) = ${mm(bank)}`);
       push('Length', name === 'Side apron'
         ? `frame depth − 2 × leg = ${mm(frameD - 2 * st.legThickness)}`
         : `frame width − 2 × leg = ${mm(frameW - 2 * st.legThickness)}`);
     } else if (/drawer rail/i.test(name) || name === 'Divider rail') {
       push('Length', `clear opening width between ${t === 'nightstand' ? 'legs' : 'sides'}`);
-      push('Section', '20 × 60 mm rail stock (code constant)');
+      push('Section', `${mm(20)} × ${mm(60)} rail stock (code constant)`);
     } else if (/^Drawer /.test(name) && model.drawers && model.drawers.length) {
       const d = model.drawers[0];
       const op = d.opening;
       if (/side$/.test(name)) push('Depth', d.runner === 'side_mount_slides'
-        ? `box depth = longest standard slide ≤ interior − 25 mm setback = ${mm(d.box.d)}`
-        : `box depth = interior − 20 = ${mm(d.box.d)}`);
-      if (/side$/.test(name)) push('Height', d.runner === 'side_mount_slides' ? `opening − 15 mm slide clearance = ${mm(op.h)} − 15 = ${mm(d.box.h)}` : `opening − 10 = ${mm(d.box.h)}`);
+        ? `box depth = longest standard slide ≤ interior − ${fine(25)} setback = ${mm(d.box.d)}`
+        : `box depth = interior − ${fine(20)} = ${mm(d.box.d)}`);
+      if (/side$/.test(name)) push('Height', d.runner === 'side_mount_slides' ? `opening − ${fine(15)} slide clearance = ${mm(op.h)} − ${fine(15)} = ${mm(d.box.h)}` : `opening − ${fine(10)} = ${mm(d.box.h)}`);
       if (/box front|box back/.test(name)) push('Width', d.runner === 'side_mount_slides'
-        ? `opening − 25 mm (12.5 per side for slides) − 2 × box side = ${mm(op.w)} − 25 − 2×${mm(d.box.t)} = ${mm(d.box.w - 2 * d.box.t)}`
-        : `opening − 4 (fitted) − 2 × box side = ${mm(d.box.w - 2 * d.box.t)}`);
+        ? `opening − ${fine(25)} (${fine(12.5)} per side for slides) − 2 × box side = ${mm(op.w)} − ${fine(25)} − 2×${mm(d.box.t)} = ${mm(d.box.w - 2 * d.box.t)}`
+        : `opening − ${fine(4)} (fitted) − 2 × box side = ${mm(d.box.w - 2 * d.box.t)}`);
       if (/ front$/.test(name) && !/box/.test(name)) push('Size', d.frontStyle === 'inset'
-        ? `inset front = opening − 2 mm gap all around = ${mm(op.w)}−4 × ${mm(op.h)}−4 = ${mm(d.front.w)} × ${mm(d.front.h)}`
-        : `overlay front = opening + up to 10 mm per side = ${mm(d.front.w)} × ${mm(d.front.h)}`);
-      if (/bottom$/.test(name)) push('Size', '6 mm ply in a 6 mm groove, 10 mm up — floats, no glue');
+        ? `inset front = opening − ${fine(2)} gap all around = ${mm(d.front.w)} × ${mm(d.front.h)}`
+        : `overlay front = opening + up to ${fine(10)} per side = ${mm(d.front.w)} × ${mm(d.front.h)}`);
+      if (/bottom$/.test(name)) push('Size', `${mm(6)} ply in a ${mm(6)} groove, ${mm(10)} up — floats, no glue`);
     } else if (name === 'Toe-kick board') {
-      push('Size', `width − 2 × side, 90 mm tall, set back 75 mm (standard recess)`);
+      push('Size', `width − 2 × side, ${mm(90)} tall, set back ${mm(75)} (standard recess)`);
     } else if (name === 'Lower shelf') {
-      push('Length', `frame width − 2 × leg + 30 mm notch allowance`);
+      push('Length', `frame width − 2 × leg + ${mm(30)} notch allowance`);
     }
 
     if (row.allowance) {
       const j = K.JOINERY[row.allowanceJoint];
-      push('Joinery allowance', `cut length includes ${row.allowanceEnds} × ${row.allowance / row.allowanceEnds} mm for ${j ? j.label.toLowerCase() : row.allowanceJoint} = +${row.allowance} mm (geometry ${mm(row.L - row.allowance)} → cut ${mm(row.L)})`);
+      push('Joinery allowance', `cut length includes ${row.allowanceEnds} × ${mm(row.allowance / row.allowanceEnds)} for ${j ? j.label.toLowerCase() : row.allowanceJoint} = +${mm(row.allowance)} (geometry ${mm(row.L - row.allowance)} → cut ${mm(row.L)})`);
     }
     if (row.angles) {
       push('Angles', `saw angles from part rotation, rounded to 0.5°: ${BB.Geo.angleText(row.angles)}`);
@@ -5111,12 +5487,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const integ = BB.Structural.computeIntegrity(s2, m2, { loadChoices: opts.loadChoices, defaultLoad: opts.defaultLoad, climate: opts.climate });
       const worst = integ.summary.worstSag;
       const sagMargin = worst && worst.sag > 0 ? worst.limit / worst.sag : Infinity;
-      // Worst-panel movement across the design.
+      // Worst-panel movement, read from the check's raw data — never parsed
+      // back out of display text (which is unit-dependent).
       let movement = 0;
       for (const c of integ.checks) {
-        if (!c.id.startsWith('move:')) continue;
-        const m = c.value.match(/([\d.]+) mm seasonal/);
-        if (m) movement = Math.max(movement, parseFloat(m[1]));
+        if (!c.id.startsWith('move:') || !c.data) continue;
+        movement = Math.max(movement, c.data.movementMM || 0);
       }
       out.push({
         key, label: sp.label,
@@ -5147,54 +5523,57 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
+  /* Dimensions are stored in mm (internal truth) but picked as exact inch
+   * multiples so the default imperial display reads as clean fractions:
+   * 1828.8 = 72 in, 914.4 = 36 in, 749.3 = 29 1/2 in, and so on. */
   const STARTERS = [
     {
       caption: 'The classic first commission', emoji: '🍽',
       spec: {
-        meta: { name: 'Shaker Dining Table', template: 'table', level: 'intermediate', units: 'mm' },
-        overall: { width: 1800, depth: 900, height: 750 },
+        meta: { name: 'Shaker Dining Table', template: 'table', level: 'intermediate', units: 'in' },
+        overall: { width: 1828.8, depth: 914.4, height: 749.3 },
         wood: { species: 'cherry' },
-        structure: { topThickness: 25, legThickness: 70, apronHeight: 100, apronThickness: 20, apronInset: 12 },
+        structure: { topThickness: 25, legThickness: 70, apronHeight: 101.6, apronThickness: 19, apronInset: 12.7 },
         joinery: { frame: 'dowels' }, finish: 'danish_oil'
       }
     },
     {
       caption: 'A weekend of pocket screws', emoji: '💻',
       spec: {
-        meta: { name: 'Weekend Desk', template: 'desk', level: 'beginner', units: 'mm' },
-        overall: { width: 1300, depth: 650, height: 735 },
+        meta: { name: 'Weekend Desk', template: 'desk', level: 'beginner', units: 'in' },
+        overall: { width: 1320.8, depth: 660.4, height: 736.6 },
         wood: { species: 'hard_maple' },
-        structure: { topThickness: 25, legThickness: 60, apronHeight: 90 },
+        structure: { topThickness: 25, legThickness: 60, apronHeight: 88.9 },
         finish: 'water_poly'
       }
     },
     {
       caption: 'Sturdy seat for the mudroom', emoji: '🪑',
       spec: {
-        meta: { name: 'Entry Bench', template: 'bench', level: 'intermediate', units: 'mm' },
-        overall: { width: 1100, depth: 380, height: 450 },
+        meta: { name: 'Entry Bench', template: 'bench', level: 'intermediate', units: 'in' },
+        overall: { width: 1117.6, depth: 381, height: 457.2 },
         wood: { species: 'white_oak' },
-        structure: { topThickness: 32, legThickness: 60, apronHeight: 80 },
+        structure: { topThickness: 32, legThickness: 60, apronHeight: 76.2 },
         joinery: { frame: 'dowels' }, finish: 'hardwax_oil'
       }
     },
     {
       caption: 'Five shelves, one afternoon', emoji: '📚',
       spec: {
-        meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
-        overall: { width: 900, depth: 300, height: 1800 },
+        meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'in' },
+        overall: { width: 914.4, depth: 304.8, height: 1828.8 },
         wood: { species: 'ash' },
-        structure: { shelfCount: 4, sideThickness: 18, shelfThickness: 19, backPanel: true },
+        structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true },
         finish: 'wipe_poly'
       }
     },
     {
       caption: 'Drawer joinery, sized by code', emoji: '🌙',
       spec: {
-        meta: { name: 'Two-Drawer Nightstand', template: 'nightstand', level: 'intermediate', units: 'mm' },
-        overall: { width: 500, depth: 400, height: 600 },
+        meta: { name: 'Two-Drawer Nightstand', template: 'nightstand', level: 'intermediate', units: 'in' },
+        overall: { width: 508, depth: 406.4, height: 609.6 },
         wood: { species: 'walnut' },
-        structure: { topThickness: 20, legThickness: 45, shelfCount: 1 },
+        structure: { topThickness: 19, legThickness: 45, shelfCount: 1 },
         joinery: { frame: 'dowels', box: 'locking_rabbet' },
         drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' },
         finish: 'hardwax_oil'
@@ -5203,8 +5582,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     {
       caption: 'Carcass work with a drawer bank', emoji: '🗄',
       spec: {
-        meta: { name: 'Sideboard Cabinet', template: 'cabinet', level: 'advanced', units: 'mm' },
-        overall: { width: 780, depth: 450, height: 900 },
+        meta: { name: 'Sideboard Cabinet', template: 'cabinet', level: 'advanced', units: 'in' },
+        overall: { width: 762, depth: 457.2, height: 914.4 },
         wood: { species: 'white_oak' },
         structure: { topThickness: 25, shelfCount: 1, toeKick: true, backPanel: true },
         joinery: { frame: 'mortise_tenon', case: 'dado', box: 'half_blind_dovetail' },
@@ -5215,7 +5594,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   ];
 
   const FIRST_RUN_PROMPTS = [
-    'Build me a walnut dining table, 1600 wide, for a beginner',
+    'Build me a walnut dining table, 63 in wide, for a beginner',
     'A nightstand with two drawers in cherry'
   ];
 
@@ -5313,33 +5692,109 @@ var BB = globalThis.BB = globalThis.BB || {};
       return { spec, model, report: Spec.validate(spec, model) };
     };
 
-    /* ============ unit conversions ============ */
+    /* ============ unit conversions (BB.Units — the ONE display boundary) ============ */
     {
+      const Units = BB.Units;
+      const IMP = { system: 'imperial', precision: 16, dual: false };
+
       const parseFrac = s => {
-        const m = String(s).match(/^(?:(\d+)(?:\s+(\d+)\/(\d+))?|(\d+)\/(\d+))″$/);
+        const m = String(s).match(/^(?:(\d+)(?:\s+(\d+)\/(\d+))?|(\d+)\/(\d+)) in$/);
         if (!m) return null;
         const val = m[4] !== undefined ? (+m[4] / +m[5]) : (+m[1] + (m[2] !== undefined ? (+m[2] / +m[3]) : 0));
         return val * 25.4;
       };
       let worst = 0, worstMM = 0;
       for (let mm = 3; mm <= 2400; mm += 7.3) {
-        const s = Spec.fmtLen(mm, 'in');
+        const s = Units.fmtLength(mm, IMP);
         const back = parseFrac(s);
         if (back == null) { worst = 99; worstMM = mm; break; }
         const err = Math.abs(back - mm);
         if (err > worst) { worst = err; worstMM = mm; }
       }
       const tol = 25.4 / 32; // half a 1/16" tick
-      test('units', 'mm → fractional inches → mm round-trips within 1/32″', worst <= tol, `worst ${worst.toFixed(3)} mm at ${worstMM.toFixed(1)} mm`, `≤ ${tol.toFixed(3)} mm`);
+      test('units', 'mm → fractional inches → mm round-trips within 1/32 in', worst <= tol, `worst ${worst.toFixed(3)} mm at ${worstMM.toFixed(1)} mm`, `≤ ${tol.toFixed(3)} mm`);
 
       const gcd = (a, b) => b ? gcd(b, a % b) : a;
       let unreduced = null;
       for (let mm = 0.5; mm <= 1000; mm += 0.7) {
-        const s = Spec.fmtLen(mm, 'in');
+        const s = Units.fmtLength(mm, IMP);
         const m = s.match(/(\d+)\/(\d+)/);
         if (m && gcd(+m[1], +m[2]) !== 1) { unreduced = `${s} at ${mm} mm`; break; }
       }
       test('units', 'fraction reduction never emits an unreduced fraction', !unreduced, unreduced || 'all reduced', 'all reduced');
+
+      // Fine values (sag, movement, kerf, reveals) are DECIMAL inches — never fractions.
+      let badFine = null;
+      for (const mm of [0.11, 0.5, 1, 2.8, 3, 7.9, 15, 28.6, 50]) {
+        const s = Units.fmtSmall(mm, IMP);
+        if (s.includes('/') || !/^\d+(\.\d+)? in$/.test(s)) { badFine = `${s} at ${mm} mm`; break; }
+      }
+      test('units', 'fine values format as decimal inches, never fractions', !badFine, badFine || 'all decimal', 'all decimal');
+      test('units', 'known fine value: 2.8 mm → 0.11 in', Units.fmtSmall(2.8, IMP) === '0.11 in', Units.fmtSmall(2.8, IMP), '0.11 in');
+
+      // Stock board lengths render in feet; sheets as feet × feet.
+      test('units', 'board lengths format in feet (2438 mm → 8 ft)', Units.fmtBoardLength(2438, IMP) === '8 ft', Units.fmtBoardLength(2438, IMP), '8 ft');
+      test('units', 'sheet goods format as 4 x 8 ft', Units.fmtSheet(1220, 2440, IMP) === '4 x 8 ft', Units.fmtSheet(1220, 2440, IMP), '4 x 8 ft');
+      test('units', 'nominal lumber leads with the trade name in imperial',
+        Units.fmtNominal('1x4', { t: 19, w: 89 }, 2438, IMP) === '1x4 x 8 ft (3/4 x 3 1/2 in)',
+        Units.fmtNominal('1x4', { t: 19, w: 89 }, 2438, IMP), '1x4 x 8 ft (3/4 x 3 1/2 in)');
+      test('units', 'nominal lumber leads with actual mm in metric',
+        Units.fmtNominal('1x4', { t: 19, w: 89 }, 2438, { system: 'metric', dual: false }) === '19 x 89 x 2438 mm (1x4)',
+        Units.fmtNominal('1x4', { t: 19, w: 89 }, 2438, { system: 'metric', dual: false }), '19 x 89 x 2438 mm (1x4)');
+
+      // Slider round-trip: 29 1/2 in ↔ exactly 749.3 mm, no drift.
+      const dom = Units.sliderDomain(120, 2400, 749.3, IMP);
+      const ticks = Math.round(29.5 * 16);
+      test('units', 'slider round-trip: 29 1/2 in → 749.3 mm → 29 1/2 in',
+        dom.value === ticks && dom.toMM(ticks) === 749.3 && Units.fmtLength(dom.toMM(ticks), IMP) === '29 1/2 in',
+        `${dom.value} ticks → ${dom.toMM(ticks)} mm → ${Units.fmtLength(dom.toMM(ticks), IMP)}`,
+        `${ticks} ticks → 749.3 mm → 29 1/2 in`);
+
+      // The forgiving parser: five input forms, one shared normalizer, any mode.
+      const forms = [['29 1/2', 749.3], ['29.5"', 749.3], [`2' 5"`, 736.6], ['750mm', 750], ['75cm', 750]];
+      const got = forms.map(([s]) => Units.parseLength(s));
+      test('units', 'length parser handles 29 1/2 · 29.5" · 2\' 5" · 750mm · 75cm',
+        forms.every(([s, want], i) => got[i] === want), got.join(', '), forms.map(f => f[1]).join(', '));
+      test('units', 'chat pre-parse rewrites dimension strings to explicit mm',
+        Units.normalizeLengthText('make it 29 1/2 wide and 610mm deep') === 'make it 749.3mm wide and 610mm deep',
+        Units.normalizeLengthText('make it 29 1/2 wide and 610mm deep'), 'make it 749.3mm wide and 610mm deep');
+
+      // A known advisory renders converted units in imperial mode.
+      {
+        const saved = Units.get();
+        try {
+          Units.set(IMP);
+          const tall = pipeline({ meta: { name: 'Ergo Case', template: 'table' }, overall: { width: 1524, depth: 863.6, height: 820 } });
+          const adv = tall.report.advisories.find(a => a.id === 'ergo_dining_height');
+          test('units', 'ergonomic advisory converts its range in imperial mode',
+            adv && adv.text.includes('28 3/4 in') && adv.text.includes('29 15/16 in') && !/\d\s?mm/.test(adv.text),
+            adv ? adv.text.slice(0, 80) + '…' : 'no advisory', 'contains 28 3/4 in … 29 15/16 in, no mm');
+        } finally { Units.set(saved); }
+      }
+
+      // Dual display renders both systems on an Integrity row and a Stock row.
+      {
+        const saved = Units.get();
+        try {
+          Units.set({ system: 'imperial', precision: 16, dual: true });
+          const shelf = pipeline({
+            meta: { name: 'Dual Case', template: 'bookshelf', level: 'beginner' },
+            overall: { width: 914.4, depth: 304.8, height: 1828.8 },
+            wood: { species: 'red_oak' }, structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true }
+          });
+          const integ = Structural.computeIntegrity(shelf.spec, shelf.model, {});
+          const sagCheck = integ.checks.find(c => c.id.startsWith('sag:'));
+          test('units', 'dual display: Integrity sag row carries both systems',
+            sagCheck && /in \(/.test(sagCheck.value) && / mm\)/.test(sagCheck.value),
+            sagCheck ? sagCheck.value : 'no sag check', 'in (… mm) in the sag line');
+          const cut = Plans.cutList(shelf.spec, shelf.model);
+          const plan = Packing.planStock(shelf.spec, shelf.model, cut, {});
+          const board = plan.shopping.find(s => s.kind === 'board');
+          test('units', 'dual display: Stock shopping row carries both systems',
+            board && / ft /.test(board.label + ' ') && / mm/.test(board.label),
+            board ? board.label : 'no board row', 'trade name + ft + mm actuals');
+        } finally { Units.set(saved); }
+      }
     }
 
     /* ============ joinery allowances ============ */
@@ -5376,8 +5831,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       const integ = Structural.computeIntegrity(spec, model, {});
       const shelfSag = integ.checks.find(c => c.id === 'sag:shelf_1');
-      const got = shelfSag && parseFloat((shelfSag.value.match(/sag ([\d.]+) mm/) || [])[1]);
-      test('beam', 'integrity panel reports the same computed sag', got && Math.abs(got - HAND_SAG) < 0.06, got, HAND_SAG.toFixed(1));
+      // Raw numbers ride check.data — display text is unit-dependent and never parsed.
+      const got = shelfSag && shelfSag.data && shelfSag.data.sagMM;
+      test('beam', 'integrity panel reports the same computed sag', got && Math.abs(got - HAND_SAG) < 0.06, got && got.toFixed(4) + ' mm', HAND_SAG.toFixed(4) + ' mm');
     }
 
     /* ============ structural: movement / tipping / racking (fixed values) ============ */
@@ -5575,6 +6031,27 @@ var BB = globalThis.BB = globalThis.BB || {};
       test('storage', 'store round-trips (falls back to memory when storage is absent)', back && back.ok === 1, JSON.stringify(back), '{"ok":1}');
       const prices = await Store.loadPrices();
       test('storage', 'price table loads with defaults merged', prices.dimensional && prices.dimensional.red_oak && prices.sheet[18] > 0, `red_oak 1x4 = $${prices.dimensional.red_oak && prices.dimensional.red_oak['1x4']}/m`, 'defaults present');
+
+      // Prefs schema v1 → v2: imperial is for FRESH installs only; a returning
+      // v1 user keeps metric. Real keys are saved and restored around the test.
+      const savedV2 = await Store.get('prefs:v2'), savedV1 = await Store.get('prefs:v1');
+      try {
+        await Store.del('prefs:v2');
+        await Store.set('prefs:v1', { climate: 'humid', stockMode: {} });
+        const migrated = await Store.loadPrefs();
+        test('storage', 'prefs v1 → v2 migration keeps a returning user metric',
+          migrated.units.system === 'metric' && migrated.climate === 'humid',
+          `${migrated.units.system} / climate ${migrated.climate}`, 'metric / climate humid');
+        await Store.del('prefs:v2');
+        await Store.del('prefs:v1');
+        const fresh = await Store.loadPrefs();
+        test('storage', 'fresh install defaults to imperial · 1/16 · dual off',
+          fresh.units.system === 'imperial' && fresh.units.precision === 16 && fresh.units.dual === false,
+          JSON.stringify(fresh.units), '{"system":"imperial","precision":16,"dual":false}');
+      } finally {
+        if (savedV1) await Store.set('prefs:v1', savedV1); else await Store.del('prefs:v1');
+        if (savedV2) await Store.set('prefs:v2', savedV2); else await Store.del('prefs:v2');
+      }
     }
 
     return results;
@@ -5685,7 +6162,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       explodeT: 0,
       openDrawers: new Set(),
       selected: null, isolated: null,
-      dimsVisible: false, units: 'mm',
+      dimsVisible: false,
       playback: null,         // {steps, index}
       reducedMotion: !!opts.reducedMotion,
       bounds: { w: 1500, d: 850, h: 750 },
@@ -5886,7 +6363,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       while (annoGroup.children.length) annoGroup.remove(annoGroup.children[0]);
       for (const t of labelTextures.splice(0)) t.dispose();
       if (!E.dimsVisible || !E.model) return;
-      const b = E.bounds, u = E.units, fmt = v => BB.Spec.fmtLen(v, u);
+      // Annotation labels route through the display boundary like every
+      // other surface; scene geometry itself stays in raw millimetres.
+      const b = E.bounds, fmt = v => BB.Units.fmtLength(v);
       const m = Math.max(b.w, b.d, b.h) * 0.08 + 40; // offset from body
       const hw = b.w / 2, hd = b.d / 2;
       annoGroup.add(dimLine({ x: -hw, y: -0, z: hd + m }, { x: hw, y: 0, z: hd + m }, fmt(b.w)));
@@ -6097,8 +6576,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       select(id) { E.selected = id; E.needsAnno = true; },
       isolate(id) { E.isolated = id; retargetAll(); },
       getIsolated() { return E.isolated; },
-      setDims(on, units) { E.dimsVisible = !!on; if (units) E.units = units; E.needsAnno = true; },
-      setUnits(u) { E.units = u; E.needsAnno = true; },
+      setDims(on) { E.dimsVisible = !!on; E.needsAnno = true; },
+      // Display prefs changed (system/dual): relabel annotations next frame.
+      unitsChanged() { E.needsAnno = true; },
       setReducedMotion(v) { E.reducedMotion = !!v; },
       playbackEnter, playbackGoTo, playbackExit, playbackReplay,
       inPlayback() { return !!E.playback; },
@@ -6139,7 +6619,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
 (function () {
   'use strict';
-  const { Spec, Parametric, Plans, Exports, History, AI, K, Gallery, Codec, Store, Structural, Packing, Prov, Compare } = BB;
+  const { Spec, Parametric, Plans, Exports, History, AI, K, Gallery, Codec, Store, Structural, Packing, Prov, Compare, Units } = BB;
   const $ = id => document.getElementById(id);
   const el = (tag, cls, html) => {
     const e = document.createElement(tag);
@@ -6167,7 +6647,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     turns: [],                      // AI conversation, wire format
     loadChoices: {},                // per-surface load presets
     prices: K.defaultPrices(),
-    prefs4: { climate: 'temperate', stockMode: {} },
+    prefs4: JSON.parse(JSON.stringify(Store.DEFAULT_PREFS)),
     project: null,                  // {id, progress:{cuts:{},steps:{}}}
     buildMode: false, bmPlayback: false,
     wakeLock: null,
@@ -6175,7 +6655,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
 
-  function fmt(mm) { return Spec.fmtLen(mm, state.spec ? state.spec.meta.units : 'mm'); }
+  // ALL displayed lengths go through BB.Units — the single mm→text boundary.
+  const fmt = mm => Units.fmtLength(mm);
+  const fmtS = mm => Units.fmtSmall(mm);
 
   /* ---------------- pipeline ---------------- */
   function runPipeline(raw) {
@@ -6187,6 +6669,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const integrityOpts = () => ({ loadChoices: state.loadChoices, defaultLoad: 'auto', climate: state.prefs4.climate });
 
   function adopt(r) {
+    // The active design's unit choice IS the display system — sync the
+    // formatter boundary before anything derived renders.
+    Units.setSystem(r.spec.meta.units);
     state.spec = r.spec; state.model = r.model; state.report = r.report;
     state.integrity = Structural.computeIntegrity(r.spec, r.model, integrityOpts());
     state.cut = Plans.cutList(r.spec, r.model);
@@ -6305,7 +6790,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- render: top bar ---------------- */
   function renderTopbar() {
     $('designName').value = state.spec.meta.name;
-    $('unitsBtn').textContent = state.spec.meta.units;
+    const imperial = state.spec.meta.units !== 'mm';
+    $('unitsIn').setAttribute('aria-pressed', String(imperial));
+    $('unitsMm').setAttribute('aria-pressed', String(!imperial));
+    $('dualBtn').setAttribute('aria-pressed', String(!!Units.get().dual));
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
@@ -6362,7 +6850,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const pop = $('provPop');
     const lines = Prov.forCutRow(state.spec, state.model, row);
     pop.innerHTML = `<h5>${esc(row.name)} — where these numbers come from</h5>` +
-      lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('');
+      lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('') +
+      `<div class="prov-foot">computed internally in metric</div>`;
     pop.hidden = false;
     const r = anchor.getBoundingClientRect();
     pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left)) + 'px';
@@ -6399,7 +6888,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const plan = state.stockPlan;
     const species = state.spec.wood.species;
     root.append(el('h3', '', 'Stock — what to buy, and how to break it down'));
-    root.append(el('p', 'lede', 'Deterministic packing of the cut list onto buyable lumber: 3 mm kerf per cut, 15 mm end trim per board end, grain honored on sheets. Offcuts are hatched.'));
+    root.append(el('p', 'lede', `Deterministic packing of the cut list onto buyable lumber: ${fmtS(K.LUMBER.KERF)} kerf per cut, ${fmt(K.LUMBER.END_TRIM)} end trim per board end, grain honored on sheets. Offcuts are hatched.`));
 
     const controls = el('div', 'stock-controls');
     const modeSel = document.createElement('select');
@@ -6433,7 +6922,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     tot.innerHTML = `<span>Purchasable stock total${waste.length ? ` <span style="color:var(--muted);font-weight:400">· ${waste.join(' · ')}</span>` : ''}</span><strong>$${plan.totalCost.toFixed(2)}</strong>`;
     root.append(tot);
     if (plan.mode === 'dimensional' && plan.bdft.exact > 0) {
-      root.append(el('p', 'stock-note', `Reference: rough-sawn equivalent ≈ ${plan.bdft.withWaste} bd ft (incl. 30% waste) ≈ $${plan.bdft.cost.toFixed(2)} at $${plan.bdft.rate.toFixed(2)}/bd ft.`));
+      root.append(el('p', 'stock-note', `Reference: rough-sawn equivalent ≈ ${Units.fmtBoardFeet(plan.bdft.withWaste)} (incl. 30% waste) ≈ $${plan.bdft.cost.toFixed(2)} at $${plan.bdft.rate.toFixed(2)}/bd ft.`));
     }
     for (const g of plan.glueups) root.append(el('p', 'stock-note', `“${esc(g.name)}” is wider than any board: edge-glue ${g.n} × ${esc(g.nominal)} strips, then trim to ${fmt(g.W)}.`));
     for (const l of plan.laminations) root.append(el('p', 'stock-note', `“${esc(l.name)}” is thicker than any board: face-laminate ${l.n} × ${esc(l.nominal)} layers, then plane to ${fmt(l.T)}.`));
@@ -6444,7 +6933,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       plan.boards.forEach((b, i) => {
         if (!b.stockLen) return;
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Board ${i + 1} — ${esc(K.WOOD_SPECIES[species].label)} ${esc(b.nominal)} (${b.actual.t} × ${b.actual.w} mm) × ${b.stockLen} mm</span><span class="offcut">offcut ${fmt(Math.max(0, b.offcut))}</span></div>` + Packing.boardSVG(b, fmt);
+        card.innerHTML = `<div class="sb-title"><span>Board ${i + 1} — ${esc(K.WOOD_SPECIES[species].label)} ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}</span><span class="offcut">offcut ${fmt(Math.max(0, b.offcut))}</span></div>` + Packing.boardSVG(b, fmt);
         root.append(card);
       });
     }
@@ -6452,7 +6941,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('h3', '', 'Cutting diagrams — sheets'));
       plan.sheets.forEach((s, i) => {
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Sheet ${i + 1} — Baltic birch ${s.thickness} mm · buy a ${esc(s.fractionLabel)}</span><span class="offcut">layout ${Math.round(s.extent.x)} × ${Math.round(s.extent.y)} mm</span></div>` + Packing.sheetSVG(s, fmt);
+        card.innerHTML = `<div class="sb-title"><span>Sheet ${i + 1} — Baltic birch ${fmt(s.thickness)} · buy a ${esc(s.fractionLabel)}</span><span class="offcut">layout ${fmt(s.extent.x)} × ${fmt(s.extent.y)}</span></div>` + Packing.sheetSVG(s, fmt);
         root.append(card);
       });
     }
@@ -6477,12 +6966,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       lab.append(inp);
       return lab;
     };
+    // Prices are stored per metre (internal SI, like every number); imperial
+    // mode DISPLAYS and EDITS them per lineal foot — converted at this
+    // boundary only, in both directions.
+    const imperialPrices = Units.get().system === 'imperial';
+    const M_PER_FT = 0.3048;
+    const rateLabel = imperialPrices ? '$/ft' : '$/m';
+    const toDisplay = perM => Math.round((imperialPrices ? perM * M_PER_FT : perM) * 100) / 100;
+    const fromDisplay = v => (imperialPrices ? v / M_PER_FT : v);
     for (const nom of Object.keys(K.LUMBER.NOMINALS)) {
-      grid.append(priceInput(`${K.WOOD_SPECIES[species].label} ${nom} $/m`, state.prices.dimensional[species][nom],
-        v => { state.prices.dimensional[species][nom] = v; }));
+      grid.append(priceInput(`${K.WOOD_SPECIES[species].label} ${nom} ${rateLabel}`, toDisplay(state.prices.dimensional[species][nom]),
+        v => { state.prices.dimensional[species][nom] = fromDisplay(v); }));
     }
     for (const t of K.LUMBER.SHEET.THICKNESSES) {
-      grid.append(priceInput(`Sheet ${t} mm $/full`, state.prices.sheet[t], v => { state.prices.sheet[t] = v; }));
+      grid.append(priceInput(`Sheet ${fmt(t)} $/full`, state.prices.sheet[t], v => { state.prices.sheet[t] = v; }));
     }
     grid.append(priceInput(`${K.WOOD_SPECIES[species].label} $/bd ft`, state.prices.bdft[species], v => { state.prices.bdft[species] = v; }));
     details.append(grid);
@@ -6573,13 +7070,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('h3', '', 'Load presets (per surface)'));
       for (const s of integ.surfaces) {
         const row = el('div', 'load-row');
-        const label = el('span', '', `${esc(s.label)}<span class="span-note">${Math.round(s.span)} mm ${s.model === 'cant' ? 'cantilever' : 'span'}</span>`);
+        const label = el('span', '', `${esc(s.label)}<span class="span-note">${fmt(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}</span>`);
         const ls = document.createElement('select');
         ls.setAttribute('aria-label', `Load preset for ${s.label}`);
         for (const k of Structural.PRESET_KEYS) {
           const o = document.createElement('option');
           o.value = k;
-          o.textContent = `${Structural.LOAD_PRESETS[k].label} — ${Structural.LOAD_PRESETS[k].detail}`;
+          o.textContent = `${Structural.LOAD_PRESETS[k].label} — ${Structural.presetDetail(k)}`;
           o.selected = k === s.presetKey;
           ls.append(o);
         }
@@ -6664,7 +7161,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td><strong>${esc(r.label)}</strong></td>
         <td class="num">${isFinite(r.max) ? `${fmt(r.min)} – ${fmt(r.max)}` : `≥ ${fmt(r.min)}`}</td>
         <td>${esc(r.appliesTo.join(', '))}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(r.note)}</td></tr>`).join('');
+        <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
       head = '<th>Joint</th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
@@ -6678,16 +7175,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (state.refTab === 'lumber') {
       head = '<th>Nominal</th><th>Actual (T × W)</th><th>Stock lengths</th>';
       rows = Object.entries(K.LUMBER.NOMINALS).filter(([n]) => hit(n)).map(([n, a]) => `<tr>
-        <td><strong>${esc(n)}</strong></td><td class="num">${a.t} × ${a.w} mm</td>
-        <td class="num">${K.LUMBER.STOCK_LENGTHS.join(' / ')} mm</td></tr>`).join('');
-      rows += `<tr><td><strong>Sheet goods</strong></td><td class="num">1220 × 2440 mm · ${K.LUMBER.SHEET.THICKNESSES.join('/')} mm</td><td>sold whole, half, or quarter</td></tr>`;
+        <td><strong>${esc(n)}</strong></td><td class="num">${esc(`${fmt(a.t)} × ${fmt(a.w)}`)}</td>
+        <td class="num">${esc(K.LUMBER.STOCK_LENGTHS.map(l => Units.fmtBoardLength(l)).join(' / '))}</td></tr>`).join('');
+      rows += `<tr><td><strong>Sheet goods</strong></td><td class="num">${esc(Units.fmtSheet(K.LUMBER.SHEET.W, K.LUMBER.SHEET.L))} · ${esc(K.LUMBER.SHEET.THICKNESSES.map(t => fmt(t)).join(' / '))}</td><td>sold whole, half, or quarter</td></tr>`;
     } else {
       head = '<th>Item</th><th>Pilot / spec</th><th>Use</th>';
       const f = K.FASTENERS;
       rows = [...f.screws, ...f.dowels, ...f.hardware].filter(x => hit(x.label, x.use)).map(x => `<tr>
-        <td><strong>${esc(x.label)}</strong></td>
-        <td class="num">${x.pilot ? x.pilot + ' mm pilot' : (x.price ? '~$' + x.price : '—')}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(x.use)}</td></tr>`).join('');
+        <td><strong>${esc(Units.fmtTemplate(x.label))}</strong></td>
+        <td class="num">${x.pilot ? esc(fmtS(x.pilot)) + ' pilot' : (x.price ? '~$' + x.price : '—')}</td>
+        <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
       rows += K.FINISHES.filter(x => hit(x.label, x.blurb)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong></td>
         <td class="num">${x.coats} coats · ${x.recoatHrs} h recoat · ${x.cureDays} d cure</td>
@@ -6829,7 +7326,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
-      const chips = Spec.describeDiff(realDiffs, state.spec.meta.units);
+      const chips = Spec.describeDiff(realDiffs);
       const caveat = image ? 'Proportions estimated from photo. Verify dimensions.' : null;
       if (out.failReport) {
         botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Integrity tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
@@ -6878,20 +7375,25 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- inspector ---------------- */
+  /* Unit-aware sliders run in the DISPLAY domain — integer 1/16 in ticks in
+   * imperial, 1 mm ticks in metric — and convert back to millimetres exactly
+   * once (Units.sliderDomain.toMM), so edits round-trip without drift. */
   function paramSlider(label, value, min, max, step, unitAware, onInput, onCommit) {
     const wrap = el('div', 'param');
     const lab = el('div', 'param-label');
     const out = el('output', '', unitAware ? fmt(value) : String(value));
     lab.append(el('span', '', esc(label)), out);
     const range = document.createElement('input');
-    range.type = 'range'; range.min = min; range.max = max; range.step = step; range.value = value;
+    const dom = unitAware ? Units.sliderDomain(min, max, value) : { min, max, value, step, toMM: v => v };
+    range.type = 'range'; range.min = dom.min; range.max = dom.max; range.step = dom.step; range.value = dom.value;
     range.setAttribute('aria-label', label);
     range.addEventListener('input', () => {
-      out.textContent = unitAware ? fmt(+range.value) : range.value;
-      onInput(+range.value);
+      const mm = dom.toMM(+range.value);
+      out.textContent = unitAware ? fmt(mm) : String(mm);
+      onInput(mm);
     });
-    range.addEventListener('change', () => onCommit(+range.value));
-    range.addEventListener('keyup', e => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) onCommit(+range.value); });
+    range.addEventListener('change', () => onCommit(dom.toMM(+range.value)));
+    range.addEventListener('keyup', e => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) onCommit(dom.toMM(+range.value)); });
     wrap.append(lab, range);
     return wrap;
   }
@@ -7088,8 +7590,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const rows = $('compareRows');
     rows.innerHTML = cmp.diffs.map(d => `<tr>
       <td>${esc(Spec.PATH_LABELS[d.path] || d.path)}</td>
-      <td class="old num">${esc(Spec.fmtValue(d.path, d.from, cmp.b.spec.meta.units))}</td>
-      <td class="new num">${esc(Spec.fmtValue(d.path, d.to, cmp.b.spec.meta.units))}</td></tr>`).join('') ||
+      <td class="old num">${esc(Spec.fmtValue(d.path, d.from))}</td>
+      <td class="new num">${esc(Spec.fmtValue(d.path, d.to))}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="color:var(--muted)">No differences.</td></tr>';
     openScrim('compareScrim');
   }
@@ -7330,9 +7832,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
       `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} →</button></th>`).join('')}</tr></thead><tbody>
       <tr><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
-      <tr><td>Weight</td>${cols.map(c => cell(c.weightKg, c.weightKg === bestWeight, ' kg')).join('')}</tr>
-      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span style="color:var(--muted)">(${c.worstSagMM} mm/${c.span} mm)</span>` : '')).join('')}</tr>
-      <tr><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(c.movementMM, c.movementMM === bestMove, ' mm')).join('')}</tr>
+      <tr><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
+      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span style="color:var(--muted)">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
+      <tr><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(esc(fmtS(c.movementMM)), c.movementMM === bestMove)).join('')}</tr>
       <tr><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span style="color:var(--muted)">${esc(c.duty)}</span>`)).join('')}</tr>
       <tr><td>Failing checks</td>${cols.map(c => cell(c.fails, c.fails === 0)).join('')}</tr>
     </tbody></table>`;
@@ -7450,7 +7952,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
-      group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(b.nominal)} × ${b.stockLen} mm`));
+      group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}`));
       b.cuts.forEach((c, ci) => {
         const key = cutKey('b', bi, ci, c.name, c.len);
         group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -7459,7 +7961,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     plan.sheets.forEach((s, si) => {
       const group = el('div', 'bm-board');
-      group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${s.thickness} mm (${esc(s.fractionLabel)})`));
+      group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${esc(fmt(s.thickness))} (${esc(s.fractionLabel)})`));
       s.placements.forEach((p, pi) => {
         const key = cutKey('s', si, pi, p.name, Math.round(p.w));
         group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -7618,7 +8120,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       try {
         state.prices = await Store.loadPrices();
         state.prefs4 = await Store.loadPrefs();
+        Units.set(state.prefs4.units); // precision + dual (+ system default)
+        // A fresh session honors the stored unit choice: a returning metric
+        // user's seed opens metric; cleared storage stays imperial.
+        const wantU = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
+        if (!state.project && state.history.snapshots.length === 1 && state.spec.meta.units !== wantU) {
+          const r2 = runPipeline(Spec.deepMerge(state.spec, { meta: { units: wantU } }));
+          adopt(r2);
+          state.history = History.createHistory(r2.spec, 'seed');
+        }
         recompute();
+        renderAll();
       } catch (e) { /* defaults are the product */ }
     })();
 
@@ -7630,7 +8142,27 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('compareBtn').onclick = openCompare;
     $('compareClose').onclick = showCompareOverlay;
     $('compareExit').onclick = clearCompare;
-    $('unitsBtn').onclick = () => merge({ meta: { units: state.spec.meta.units === 'mm' ? 'in' : 'mm' } }, 'manual');
+    /* Units: a two-state in|mm control. Switching re-renders every surface in
+     * one pass (all text flows from BB.Units) and persists the choice so the
+     * next fresh session starts the same way. */
+    const setUnits = u => {
+      state.prefs4.units.system = u === 'mm' ? 'metric' : 'imperial';
+      Store.savePrefs(state.prefs4);
+      if (state.spec.meta.units !== u) merge({ meta: { units: u } }, 'manual');
+      else renderTopbar();
+    };
+    $('unitsIn').onclick = () => setUnits('in');
+    $('unitsMm').onclick = () => setUnits('mm');
+    $('dualBtn').onclick = () => {
+      const dual = !Units.get().dual;
+      Units.set({ dual });
+      state.prefs4.units.dual = dual;
+      Store.savePrefs(state.prefs4);
+      // Same spec, new display prefs: rebuild derived text + every surface.
+      adopt(runPipeline(state.spec));
+      renderAll();
+      state.engine.unitsChanged();
+    };
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -7699,7 +8231,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('dimsToggle').onclick = () => {
       const on = $('dimsToggle').getAttribute('aria-pressed') !== 'true';
       $('dimsToggle').setAttribute('aria-pressed', String(on));
-      state.engine.setDims(on, state.spec.meta.units);
+      state.engine.setDims(on);
     };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;
