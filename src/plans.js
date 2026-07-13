@@ -28,54 +28,100 @@ var BB = globalThis.BB = globalThis.BB || {};
     const rows = new Map();
     for (const p of model.parts) {
       if (p.role === 'pull') continue; // hardware, not lumber
-      const dims = [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
+      // Custom-grammar parts carry explicit cut dims (rotation changes the
+      // oriented box, never the stick you cut); template parts derive L≥W≥T.
+      const dims = p.cutDim ? [p.cutDim.L, p.cutDim.W, p.cutDim.T]
+        : [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
       let [L, W, T] = dims;
       let note = '';
       const e = ends[p.id];
+      let allowance = 0;
       if (e) {
-        L = Math.round((L + e.n * JOINT_ALLOWANCE[e.type]) * 10) / 10;
-        note = `includes ${e.n * JOINT_ALLOWANCE[e.type]} mm for ${K.JOINERY[e.type] ? K.JOINERY[e.type].label.toLowerCase() : e.type}`;
+        allowance = e.n * JOINT_ALLOWANCE[e.type];
+        L = Math.round((L + allowance) * 10) / 10;
+        note = `includes ${allowance} mm for ${K.JOINERY[e.type] ? K.JOINERY[e.type].label.toLowerCase() : e.type}`;
       }
+      const angles = BB.Geo.cutAngles(p.rot);
+      if (angles) note = (note ? note + ' · ' : '') + BB.Geo.angleText(angles);
+      if (p.prim === 'cylinder') note = (note ? note + ' · ' : '') + 'cylinder, Ø = width';
       const mat = p.material === 'baltic_birch' ? 'baltic_birch' : spec.wood.species;
       // Identical parts from different drawers cut as one line item.
       const groupName = p.name.replace(/^Drawer \d+ /, 'Drawer ');
-      const key = [groupName, L, W, T, mat].join('|');
-      if (!rows.has(key)) rows.set(key, { name: groupName, qty: 0, L, W, T, material: mat, note, roles: p.role });
+      const key = [groupName, L, W, T, mat, angles ? `${angles.miter}/${angles.bevel}` : ''].join('|');
+      if (!rows.has(key)) {
+        rows.set(key, {
+          name: groupName, qty: 0, L, W, T, material: mat, note, role: p.role,
+          grain: p.grain || 'length', stock: p.material === 'baltic_birch' ? 'sheet' : 'solid',
+          angles, allowance, allowanceJoint: e ? e.type : null, allowanceEnds: e ? e.n : 0,
+          partId: p.id, defKey: p.defKey
+        });
+      }
       rows.get(key).qty++;
     }
     return [...rows.values()].sort((a, b) => (b.L * b.W) - (a.L * a.W));
   }
 
-  /* ---------------- bill of materials ---------------- */
+  /* ---------------- bill of materials ----------------
+   * Phase 4: when a stock plan is supplied (opts.stock), the BOM prices the
+   * actual purchasable units from the optimizer — boards by nominal size and
+   * stock length, sheets by whole/half/quarter — with the board-foot math
+   * retained as a secondary reference line and waste percentage reported.
+   * Without a plan it falls back to the Phase 1 area/volume estimate.
+   */
   const BF_MM3 = 2359737; // one board foot in mm³
-  function bom(spec, model) {
+  function bom(spec, model, opts) {
+    opts = opts || {};
+    const stock = opts.stock;
     const items = [];
     const sp = K.WOOD_SPECIES[spec.wood.species];
 
-    let solidMm3 = 0, sheetArea = { 6: 0, 12: 0, 15: 0, 18: 0 };
-    for (const p of model.parts) {
-      if (p.role === 'pull') continue;
-      const dims = [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
-      if (p.material === 'baltic_birch') {
-        const t = [6, 12, 15, 18].reduce((x, y) => Math.abs(y - dims[2]) < Math.abs(x - dims[2]) ? y : x);
-        sheetArea[t] += dims[0] * dims[1];
-      } else solidMm3 += p.size.w * p.size.h * p.size.d;
-    }
-    if (solidMm3 > 0) {
-      const bf = Math.ceil(solidMm3 / BF_MM3 * 1.3 * 10) / 10; // 30% waste factor
-      items.push({
-        kind: 'lumber', label: `${sp.label} — ${bf} bd ft`, qty: 1,
-        detail: `cost tier ${'$'.repeat(sp.costTier)} · ~$${Math.round(bf * sp.pricePerBdFt)}`,
-        price: Math.round(bf * sp.pricePerBdFt)
-      });
-    }
-    for (const t of [6, 12, 15, 18]) {
-      if (sheetArea[t] > 0) {
-        const frac = sheetArea[t] / (1525 * 1525) * 1.25;
+    if (stock && stock.shopping.length) {
+      for (const s of stock.shopping) {
         items.push({
-          kind: 'sheet', label: `Baltic birch ply ${t} mm`, qty: Math.ceil(frac * 4) / 4,
-          detail: `${Math.ceil(frac * 4) / 4} of a 1525 × 1525 sheet`, price: Math.round(frac * 70)
+          kind: s.kind === 'sheet' ? 'sheet' : 'lumber', label: s.label, qty: s.qty,
+          detail: `${s.unit} each` + (s.kind === 'board' && stock.mode === 'dimensional' ? ' · from the cutting diagrams' : ''),
+          price: Math.round(s.cost * 100) / 100
         });
+      }
+      if (stock.mode === 'dimensional' && stock.bdft.exact > 0) {
+        items.push({
+          kind: 'lumber', label: `(reference) rough-sawn equivalent: ${stock.bdft.withWaste} bd ft`, qty: 1,
+          detail: `≈ $${stock.bdft.cost.toFixed(2)} at $${stock.bdft.rate.toFixed(2)}/bd ft incl. 30% waste — secondary line, not added to the total`,
+          price: 0
+        });
+      }
+      const wasteBits = [];
+      if (stock.wasteSolidPct != null) wasteBits.push(`solid ${stock.wasteSolidPct}%`);
+      if (stock.wasteSheetPct != null) wasteBits.push(`sheet ${stock.wasteSheetPct}%`);
+      if (wasteBits.length) {
+        items.push({ kind: 'lumber', label: `Waste from purchasable sizes: ${wasteBits.join(' · ')}`, qty: 1, detail: 'offcuts shown hatched in the Stock tab diagrams', price: 0 });
+      }
+    } else {
+      let solidMm3 = 0, sheetArea = { 6: 0, 12: 0, 15: 0, 18: 0 };
+      for (const p of model.parts) {
+        if (p.role === 'pull') continue;
+        const dims = [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
+        if (p.material === 'baltic_birch') {
+          const t = [6, 12, 15, 18].reduce((x, y) => Math.abs(y - dims[2]) < Math.abs(x - dims[2]) ? y : x);
+          sheetArea[t] += dims[0] * dims[1];
+        } else solidMm3 += p.size.w * p.size.h * p.size.d;
+      }
+      if (solidMm3 > 0) {
+        const bf = Math.ceil(solidMm3 / BF_MM3 * 1.3 * 10) / 10; // 30% waste factor
+        items.push({
+          kind: 'lumber', label: `${sp.label} — ${bf} bd ft`, qty: 1,
+          detail: `cost tier ${'$'.repeat(sp.costTier)} · ~$${Math.round(bf * sp.pricePerBdFt)}`,
+          price: Math.round(bf * sp.pricePerBdFt)
+        });
+      }
+      for (const t of [6, 12, 15, 18]) {
+        if (sheetArea[t] > 0) {
+          const frac = sheetArea[t] / (1525 * 1525) * 1.25;
+          items.push({
+            kind: 'sheet', label: `Baltic birch ply ${t} mm`, qty: Math.ceil(frac * 4) / 4,
+            detail: `${Math.ceil(frac * 4) / 4} of a 1525 × 1525 sheet`, price: Math.round(frac * 70)
+          });
+        }
       }
     }
 
@@ -104,10 +150,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       items.push({ kind: 'hardware', label: '5 mm shelf pins', qty: shelfParts.length * 4, detail: '4 per adjustable shelf', price: Math.ceil(shelfParts.length) });
     }
 
+    // Mandatory anti-tip hardware when the stability check demands it — a
+    // line item, not a suggestion.
+    if (opts.integrity && opts.integrity.antiTip) {
+      items.push({ kind: 'hardware', label: 'Anti-tip wall anchor kit (strap + wall screws) — REQUIRED', qty: 1, detail: 'tall or top-heavy: anchor to a stud before loading', price: 7 });
+    }
+
     const fin = K.FINISHES.find(f => f.key === spec.finish);
     items.push({ kind: 'finish', label: fin.label, qty: 1, detail: `${fin.coats} coats · recoat ${fin.recoatHrs} h · cure ${fin.cureDays} days`, price: 18 });
 
-    const total = items.reduce((s, i) => s + (i.price || 0), 0);
+    const total = Math.round(items.reduce((s, i) => s + (i.price || 0), 0) * 100) / 100;
     return { items, total };
   }
 
@@ -158,14 +210,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     out.push(step('finish', 'Finish', `Sand to 180, break the edges, then apply ${fin.coats} coats of ${fin.label.toLowerCase()} (recoat after ${fin.recoatHrs} h, full cure in ${fin.cureDays} days). ${fin.blurb}`, []));
   }
 
-  function assembly(spec, model) {
+  function assembly(spec, model, integrity) {
     const out = [];
     const t = spec.meta.template;
     const fr = K.JOINERY[spec.joinery.frame], ca = K.JOINERY[spec.joinery.case];
     const has = id => model.parts.some(p => p.id === id);
     const ids = (...xs) => xs.filter(has);
 
-    if (t === 'bookshelf') {
+    if (t === 'custom') {
+      // Novel pieces: walk the connection graph bottom-up so every step rests
+      // on the one before it.
+      const byId = new Map(model.parts.map(p => [p.id, p]));
+      const conns = [...((spec.custom && spec.custom.connections) || [])].sort((a, b) => {
+        const ya = Math.min(byId.get(a.a) ? byId.get(a.a).pos.y : 0, byId.get(a.b) ? byId.get(a.b).pos.y : 0);
+        const yb = Math.min(byId.get(b.a) ? byId.get(b.a).pos.y : 0, byId.get(b.b) ? byId.get(b.b).pos.y : 0);
+        return ya - yb;
+      });
+      out.push(step('mill', 'Mill and label every part',
+        'Cut all parts to the dimensions in the cut list (angles included), then label each one in pencil.',
+        model.parts.map(p => p.id)));
+      conns.forEach((c, i) => {
+        const a = byId.get(c.a), b = byId.get(c.b);
+        if (!a || !b) return;
+        const j = K.JOINERY[c.joint];
+        const ang = BB.Geo.cutAngles(a.rot) || BB.Geo.cutAngles(b.rot);
+        out.push(step('c' + (i + 1), `Join ${a.name.toLowerCase()} to ${b.name.toLowerCase()}`,
+          `Fix ${a.name.toLowerCase()} (${c.a}) to ${b.name.toLowerCase()} (${c.b}) with ${j ? j.label.toLowerCase() + 's' : c.joint}.` +
+          (ang ? ` Angled joint: ${BB.Geo.angleText(ang)} — cut per the cut list before assembly.` : '') +
+          ' Dry-fit before glue.',
+          [c.a, c.b]));
+      });
+    } else if (t === 'bookshelf') {
       out.push(step('s1', 'Join the case', `Fasten the top and bottom between the sides with ${ca.label.toLowerCase()}s. Clamp square before anything sets.`, ids('side_1', 'side_2', 'top_1', 'bottom_1')));
       const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
       if (shelves.length) out.push(step('s2', 'Add the shelves', `Fit each shelf with ${ca.label.toLowerCase()}s, working bottom to top.`, shelves));
@@ -191,6 +266,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${fr.label.toLowerCase()}s. Glue, clamp, and check for square.`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
       out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${fr.label.toLowerCase()}s. Work on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
       out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
+    }
+    // Mandatory anti-tip anchoring: an instruction step, not an aside.
+    if (integrity && integrity.antiTip) {
+      out.push(step('antitip', 'Anchor to the wall (required)',
+        'This piece is tall or top-heavy: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf.', []));
     }
     finishingStep(spec, out);
     // Attach joint metadata for playback highlighting.

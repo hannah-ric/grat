@@ -13,59 +13,78 @@ var BB = globalThis.BB = globalThis.BB || {};
    * movement: tangential movement rating for solid stock.
    * costTier: 1 ($) .. 4 ($$$$), drives BOM pricing.
    * tone/rough: drive the 3D material so species read differently.
+   *
+   * Structural doctrine (USDA FPL Wood Handbook, values at 12% MC):
+   *   moe GPa  -> stiffness ONLY: sag / deflection predictions.
+   *   mor MPa  -> strength ONLY: breaking-load margins at safety factor 4.
+   *   sg       -> density (COG / tipping) and fastener / joint capacity scaling.
+   *   janka    -> surface duty ONLY: dent & wear advisories. Never in beam math.
+   *   ct / cr  -> tangential / radial dimensional-change coefficients per 1% MC
+   *               (Wood Handbook table 13-5) — seasonal movement math.
    */
   const WOOD_SPECIES = {
     red_oak: {
       key: 'red_oak', label: 'Red Oak', janka: 1290, workability: 4,
       movement: 'high', outdoor: false, costTier: 2, pricePerBdFt: 5.5,
+      moe: 12.5, mor: 99, sg: 0.63, ct: 0.00369, cr: 0.00158,
       tone: 0xc89a6b, rough: 0.72,
       blurb: 'Open-grained workhorse; strong, honest, and everywhere. Loves stain, hates standing water.'
     },
     white_oak: {
       key: 'white_oak', label: 'White Oak', janka: 1360, workability: 3,
       movement: 'medium', outdoor: true, costTier: 3, pricePerBdFt: 8.5,
+      moe: 12.3, mor: 105, sg: 0.68, ct: 0.00365, cr: 0.00180,
       tone: 0xb99d72, rough: 0.68,
       blurb: 'Closed-pored and rot-resistant — the outdoor-worthy oak. Quartersawn ray fleck is the classic Arts & Crafts look.'
     },
     hard_maple: {
       key: 'hard_maple', label: 'Hard Maple', janka: 1450, workability: 3,
       movement: 'medium', outdoor: false, costTier: 2, pricePerBdFt: 6.5,
+      moe: 12.6, mor: 109, sg: 0.63, ct: 0.00353, cr: 0.00165,
       tone: 0xe4cfa4, rough: 0.55,
       blurb: 'Pale, dense, and crisp under a sharp edge. Blotches under stain — finish it clear.'
     },
     walnut: {
       key: 'walnut', label: 'Black Walnut', janka: 1010, workability: 5,
       movement: 'medium', outdoor: false, costTier: 4, pricePerBdFt: 12,
+      moe: 11.6, mor: 101, sg: 0.55, ct: 0.00274, cr: 0.00190,
       tone: 0x5e4230, rough: 0.6,
       blurb: 'Chocolate heartwood that machines like a dream. The species you save for the show piece.'
     },
     cherry: {
       key: 'cherry', label: 'Cherry', janka: 950, workability: 5,
       movement: 'medium', outdoor: false, costTier: 3, pricePerBdFt: 9,
+      moe: 10.3, mor: 85, sg: 0.50, ct: 0.00248, cr: 0.00126,
       tone: 0xa66a48, rough: 0.58,
       blurb: 'Starts salmon-pink, deepens to auburn with light and age. Scorches if your blade dawdles.'
     },
     ash: {
       key: 'ash', label: 'White Ash', janka: 1320, workability: 4,
       movement: 'medium', outdoor: false, costTier: 2, pricePerBdFt: 5,
+      moe: 12.0, mor: 103, sg: 0.60, ct: 0.00274, cr: 0.00169,
       tone: 0xd6bd92, rough: 0.7,
       blurb: 'Oak’s springier cousin — baseball-bat tough, bends beautifully, takes finish evenly.'
     },
     poplar: {
       key: 'poplar', label: 'Poplar', janka: 540, workability: 5,
       movement: 'medium', outdoor: false, costTier: 1, pricePerBdFt: 3.5,
+      moe: 10.9, mor: 70, sg: 0.42, ct: 0.00289, cr: 0.00158,
       tone: 0xd9cfa8, rough: 0.62,
       blurb: 'Soft, stable, cheap, and green-streaked. The right answer for paint-grade and practice.'
     },
     pine: {
       key: 'pine', label: 'Eastern White Pine', janka: 380, workability: 5,
       movement: 'low', outdoor: false, costTier: 1, pricePerBdFt: 2.5,
+      moe: 8.5, mor: 59, sg: 0.35, ct: 0.00212, cr: 0.00071,
       tone: 0xe8cf9e, rough: 0.8,
       blurb: 'Light, forgiving, and knotty — dents if you look at it hard, but nothing is friendlier to learn on.'
     },
     baltic_birch: {
+      // Effective MOE/MOR reduced ~20% vs solid birch: half the plies run cross-grain.
+      // ct/cr ≈ 0: cross-laminated plies cancel seasonal movement — plywood is exempt.
       key: 'baltic_birch', label: 'Baltic Birch Ply', janka: 1260, workability: 4,
       movement: 'low', outdoor: false, costTier: 2, pricePerBdFt: 6, sheet: true,
+      moe: 10.0, mor: 55, sg: 0.68, ct: 0.0002, cr: 0.0002,
       tone: 0xe9d8ae, rough: 0.5,
       blurb: 'Void-free plywood with clean striped edges. Dead flat, dead stable — the drawer-box default.'
     }
@@ -210,6 +229,72 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* Standard slide lengths (mm), used by drawer-box math. */
   const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500];
 
+  /* ---------------- 3e. Buyable lumber catalog (Phase 4) ----------------
+   * Code-owned: what a lumberyard actually sells. Nominal names map to ACTUAL
+   * surfaced dimensions (mm). Boards come in fixed stock lengths; sheet goods
+   * come as whole, half, or quarter sheets. The stock optimizer packs the cut
+   * list onto these and nothing else.
+   */
+  const LUMBER = {
+    // nominal -> { t: actual thickness mm, w: actual width mm }
+    NOMINALS: {
+      '1x2': { t: 19, w: 38 }, '1x3': { t: 19, w: 64 }, '1x4': { t: 19, w: 89 },
+      '1x6': { t: 19, w: 140 }, '1x8': { t: 19, w: 184 }, '1x10': { t: 19, w: 235 },
+      '1x12': { t: 19, w: 286 },
+      '2x2': { t: 38, w: 38 }, '2x4': { t: 38, w: 89 },
+      // thick hardwood stock (surfaced 5/4 and 8/4) so 25/38 mm parts pack too
+      '5/4x4': { t: 25, w: 89 }, '5/4x6': { t: 25, w: 140 }, '5/4x8': { t: 25, w: 184 },
+      '8/4x3': { t: 45, w: 64 }, '8/4x4': { t: 45, w: 89 }
+    },
+    STOCK_LENGTHS: [1829, 2438, 3048, 3658],        // 6 / 8 / 10 / 12 ft
+    KERF: 3,                                         // mm lost per cut
+    END_TRIM: 15,                                    // mm squared off each board end
+    SHEET: { W: 1220, L: 2440, THICKNESSES: [6, 12, 18] },
+    // purchasable sheet fractions: fraction of full sheet -> usable W × L (mm)
+    SHEET_FRACTIONS: [
+      { key: 'quarter', frac: 0.25, w: 610, l: 1220 },
+      { key: 'half', frac: 0.5, w: 1220, l: 1220 },
+      { key: 'full', frac: 1, w: 1220, l: 2440 }
+    ]
+  };
+
+  /* Default price list — user-editable in the Stock tab, persisted to storage.
+   * Dimensional lumber: $ per lineal metre per nominal, scaled by species cost
+   * tier. Sheets: $ per FULL 1220×2440 sheet per thickness (fractions pro-rata
+   * + 15% cutting premium). Rough hardwood stays priced per board foot
+   * (species pricePerBdFt) when the user prefers rough stock.
+   */
+  const BASE_PRICE_PER_M = {
+    '1x2': 2.0, '1x3': 2.6, '1x4': 3.3, '1x6': 5.2, '1x8': 7.2, '1x10': 9.8, '1x12': 12.5,
+    '2x2': 3.0, '2x4': 4.2, '5/4x4': 4.6, '5/4x6': 7.2, '5/4x8': 9.8, '8/4x3': 6.4, '8/4x4': 8.4
+  };
+  const TIER_FACTOR = { 1: 1, 2: 1.8, 3: 2.6, 4: 3.6 };
+  function defaultPrices() {
+    const dimensional = {};
+    for (const sp of Object.values(WOOD_SPECIES)) {
+      if (sp.sheet) continue;
+      const row = {};
+      for (const nom of Object.keys(LUMBER.NOMINALS)) {
+        row[nom] = Math.round(BASE_PRICE_PER_M[nom] * TIER_FACTOR[sp.costTier] * 100) / 100;
+      }
+      dimensional[sp.key] = row;
+    }
+    return { dimensional, sheet: { 6: 40, 12: 62, 18: 85 }, bdft: Object.fromEntries(
+      Object.values(WOOD_SPECIES).filter(s => !s.sheet).map(s => [s.key, s.pricePerBdFt])) };
+  }
+
+  /* ---------------- 3f. Seasonal movement (Phase 4) ----------------
+   * ΔMC presets: default indoor seasonal swing 4% MC; humid or arid climates
+   * shift it. movementMM = width × coefficient × ΔMC — the whole formula.
+   */
+  const CLIMATE_DMC = { arid: 2, temperate: 4, humid: 6 };
+  function movementMM(widthMM, speciesKey, grain, dMC) {
+    const sp = WOOD_SPECIES[speciesKey];
+    if (!sp) return 0;
+    const coef = grain === 'radial' ? sp.cr : sp.ct; // flat-sawn default: tangential
+    return widthMM * coef * (dMC === undefined ? CLIMATE_DMC.temperate : dMC);
+  }
+
   /* Stock thickness snapping tables (mm). */
   const SOLID_THICKNESS = [12, 15, 19, 20, 25, 32, 38, 45];
   const SHEET_THICKNESS = [6, 12, 18];
@@ -233,6 +318,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.K = {
     WOOD_SPECIES, ERGONOMICS, JOINERY, FASTENERS, FINISHES,
     LEVELS, SLIDE_LENGTHS, SOLID_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM,
-    JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest
+    JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
+    LUMBER, defaultPrices, CLIMATE_DMC, movementMM
   };
 })();

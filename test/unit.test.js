@@ -6,12 +6,13 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'spec.js', 'parametric.js', 'plans.js', 'exports.js', 'history.js', 'ai.js', 'gallery.js'];
+const SRC = ['knowledge.js', 'geometry.js', 'spec.js', 'parametric.js', 'structural.js', 'packing.js',
+  'plans.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'selftest.js'];
 for (const f of SRC) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
 }
 const BB = globalThis.BB;
-const { Spec, Parametric, Plans, Exports, History, AI, K, Gallery } = BB;
+const { Spec, Parametric, Plans, Exports, History, AI, K, Gallery, Codec, Structural, Packing } = BB;
 
 let pass = 0, fail = 0;
 function ok(cond, msg) {
@@ -172,30 +173,44 @@ section('drawer auto-correction + overlay');
   eq(d0.slideLen, null, 'no slide hardware for wood runners');
 }
 
-/* ---------------- diff merge + chips ---------------- */
-section('diff-based refinement');
+/* ---------------- wire diff merge + chips (Phase 4 protocol) ---------------- */
+section('wire diff-based refinement');
 {
   const base = Spec.correctSpec({ meta: { template: 'table' } });
-  const reply = AI.classify(AI.extractJSON('{"overall":{"height":700},"explain":"Lowered height by 50mm"}'));
-  eq(reply.kind, 'diff', 'partial spec classified as diff');
+  const reply = AI.classify(AI.extractJSON('{"o":{"h":700},"e":"Lowered height by 50mm"}'));
+  eq(reply.kind, 'diff', 'partial wire spec classified as diff');
   const applied = AI.apply(reply, base);
   eq(applied.spec.overall.height, 700, 'deep-merge applied');
   eq(applied.spec.overall.width, base.overall.width, 'unrelated fields untouched (no drift)');
   ok(applied.diffs.some(d => d.path === 'overall.height' && d.from === 745 && d.to === 700), 'code-computed diff records 745 → 700');
   ok(applied.chips.some(c => /height 745 mm → 700 mm/.test(c)), 'chip text renders code-computed change');
 
-  // Null deletes.
+  // 0 deletes drawers on the wire.
   const cab = Spec.correctSpec({ meta: { template: 'cabinet' }, drawers: { count: 2 } });
-  const rm = AI.apply(AI.classify({ drawers: null, explain: 'Removed drawers' }), cab);
-  ok(!rm.spec.drawers, 'null removes drawers');
+  const rm = AI.apply(AI.classify(AI.extractJSON('{"d":0,"e":"Removed drawers"}')), cab);
+  ok(!rm.spec.drawers, 'wire "d":0 removes drawers');
 
-  // Question shape.
-  const q = AI.classify(AI.extractJSON('Sure! {"question":"Bigger how?","options":["Wider","Taller"]}'));
+  // Partial drawer + structure + species updates.
+  const drPatch = Codec.decodePartial({ d: { c: 3 }, m: 3, s: { c: 2 } });
+  eq(drPatch.drawers.count, 3, 'partial wire drawer count decoded');
+  const dr = AI.apply(AI.classify(AI.extractJSON('{"d":{"c":3},"m":3,"s":{"c":2},"e":"x"}')), cab);
+  ok(dr.spec.drawers.count === 2, 'correction still auto-reduces drawers that leave openings under 80 mm');
+  eq(dr.spec.wood.species, 'walnut', 'wire species enum decoded');
+  eq(dr.spec.structure.shelfCount, 2, 'wire structure short key decoded');
+
+  // Question shape (wire).
+  const q = AI.classify(AI.extractJSON('Sure! {"q":"Bigger how?","a":["Wider","Taller"]}'));
   eq(q.kind, 'question', 'question classified');
   eq(q.options.length, 2, 'options preserved');
 
+  // New-design shape (wire).
+  const nd = AI.classify(AI.extractJSON('{"N":{"v":4,"n":"Oak Desk","t":1,"l":0,"u":0,"o":[1300,650,735],"m":0,"s":{"t":25},"j":[1,0,1],"f":0,"d":0},"e":"x"}'));
+  eq(nd.kind, 'new', 'wire new-design classified');
+  eq(nd.spec.meta.template, 'desk', 'template enum decoded');
+  eq(nd.spec.overall.width, 1300, 'dimension array decoded');
+
   // Correction still governs merged specs.
-  const cheat = AI.apply(AI.classify({ joinery: { box: 'half_blind_dovetail' }, explain: 'x' }),
+  const cheat = AI.apply(AI.classify(AI.extractJSON('{"j":{"b":7},"e":"x"}')),
     Spec.correctSpec({ meta: { template: 'nightstand', level: 'beginner' } }));
   ok(cheat.spec.joinery.box !== 'half_blind_dovetail', 'AI cannot smuggle advanced joints past a beginner level');
 }
@@ -354,8 +369,9 @@ section('knowledge bases');
   const digest = K.knowledgeDigest();
   ok(digest.includes('dining_height 730–760mm') && digest.includes('mortise_tenon'), 'digest carries norms');
   const sys = AI.systemPrompt(Spec.correctSpec({ meta: { template: 'table' } }));
-  ok(sys.includes(digest) && sys.includes('"template":"table"'), 'system prompt embeds knowledge digest + current corrected spec');
-  ok(sys.includes('ONLY the changed DesignSpec fields'), 'system prompt demands diff-based refinement');
+  ok(sys.includes(digest) && sys.includes('"t":0'), 'system prompt embeds knowledge digest + current spec in wire format');
+  ok(sys.includes('ONLY the changed wire keys'), 'system prompt demands wire diff-based refinement');
+  ok(sys.includes(Codec.SCHEMA_DOC), 'system prompt documents the compact schema once, statically');
   eq(K.jointsForLevel('beginner').sort().join(','), 'butt_screws,pocket_screws', 'beginner matrix');
   ok(K.jointsForLevel('advanced').includes('half_blind_dovetail'), 'advanced matrix');
   ok(K.FASTENERS.screws.every(s => s.pilot !== undefined), 'screws carry pilot diameters');

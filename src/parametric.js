@@ -356,6 +356,45 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
   }
 
+  /* ---------------- custom (novel) compositions ----------------
+   * The AI composes primitives + a connection graph; correction has already
+   * grounded, centered, and canonicalized them. This builder is a straight
+   * projection into model parts — positions and sizes pass through untouched.
+   */
+  function customBuild(spec) {
+    const parts = [], joints = [];
+    const c = spec.custom || { parts: [], connections: [] };
+    const sp = spec.wood.species;
+    for (const p of c.parts) {
+      const size = BB.Spec.customPartSize(p);
+      const dirX = p.pos.x >= 0 ? 1 : -1, dirZ = p.pos.z >= 0 ? 1 : -1;
+      const explode = p.primitive === 'slab' ? { x: 0, y: 1, z: 0 }
+        : (p.primitive === 'post' || p.primitive === 'cylinder') ? { x: dirX * 0.5, y: -0.4, z: dirZ * 0.5 }
+        : { x: dirX * 0.6, y: 0.25, z: dirZ * 0.6 };
+      parts.push(Object.assign(
+        part(p.id, `custom_${p.primitive}_${p.dim.l}x${p.dim.w}x${p.dim.t}`, p.role,
+          p.role.replace(/_/g, ' ').replace(/^./, ch => ch.toUpperCase()),
+          size.w, size.h, size.d, p.pos.x, p.pos.y, p.pos.z,
+          { material: p.stock === 'sheet' ? 'baltic_birch' : sp, explode }),
+        {
+          prim: p.primitive, rot: p.rot ? { ...p.rot } : null,
+          cutDim: { L: p.dim.l, W: p.dim.w, T: p.dim.t },
+          grain: p.grain, surface: p.surface, loadBearing: p.loadBearing
+        }
+      ));
+    }
+    const byId = new Map(parts.map(p => [p.id, p]));
+    for (const cn of c.connections) {
+      const a = byId.get(cn.a), b = byId.get(cn.b);
+      if (!a || !b) continue;
+      joints.push({
+        type: cn.joint, a: cn.a, b: cn.b,
+        pos: { x: (a.pos.x + b.pos.x) / 2, y: (a.pos.y + b.pos.y) / 2, z: (a.pos.z + b.pos.z) / 2 }
+      });
+    }
+    return { parts, joints, openings: [], drawers: [] };
+  }
+
   /* ---------------- entry point ---------------- */
   function build(spec) {
     const t = spec.meta.template;
@@ -363,6 +402,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (t === 'bookshelf') m = bookshelf(spec);
     else if (t === 'nightstand') m = nightstand(spec);
     else if (t === 'cabinet') m = cabinet(spec);
+    else if (t === 'custom') m = customBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
     // Round sizes/positions to 0.1 mm so exports and cut lists are stable.
