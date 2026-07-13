@@ -7,7 +7,7 @@
 
 <div id="app">
   <header class="topbar">
-    <div class="brand">
+    <div class="brand" id="brandLogo" title="Blueprint Buddy (hold to open diagnostics)">
       <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
         <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
         <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
@@ -16,11 +16,17 @@
       <span class="brand-name">Blueprint<span>Buddy</span></span>
     </div>
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
+    <span class="save-state" id="saveState" aria-live="polite"></span>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
       <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
       <button id="historyBtn" class="btn" aria-haspopup="dialog">History</button>
+    </div>
+    <div class="topbar-group">
+      <button id="projectsBtn" class="btn" aria-haspopup="dialog">Projects</button>
+      <button id="shareBtn" class="btn" aria-haspopup="dialog">Share</button>
+      <button id="buildModeBtn" class="btn" title="Full-screen shop companion">Build mode</button>
     </div>
     <div class="topbar-group">
       <button id="unitsBtn" class="btn icon" title="Toggle units" aria-label="Toggle millimetres or inches">mm</button>
@@ -30,6 +36,7 @@
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+          <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
           <div class="menu-sep"></div>
@@ -52,10 +59,14 @@
       </div>
       <div class="chat-log" id="chatLog" aria-live="polite"></div>
       <div class="chat-input">
-        <form id="chatForm">
+        <div class="chat-controls" id="chatForm">
+          <button type="button" class="btn icon ghost" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
+            <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true"><rect x="1.2" y="3.6" width="14.6" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 3.6 6.7 1.6 h3.6 l1.3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          </button>
+          <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp,image/*" hidden aria-label="Furniture photo">
           <textarea id="chatText" rows="1" placeholder="Describe a change…" aria-label="Message"></textarea>
-          <button type="submit" class="btn primary" id="sendBtn" aria-label="Send">Send</button>
-        </form>
+          <button type="button" class="btn primary" id="sendBtn" aria-label="Send">Send</button>
+        </div>
         <div class="hint-prompts" id="hintPrompts"></div>
       </div>
     </aside>
@@ -107,8 +118,10 @@
 
       <nav class="tabs" role="tablist" aria-label="Plans" id="tabBar">
         <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="true">Cut list</button>
+        <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Stock</button>
         <button class="tab" role="tab" id="tab-bom" aria-controls="panel-main" aria-selected="false">Materials</button>
         <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assembly</button>
+        <button class="tab" role="tab" id="tab-integrity" aria-controls="panel-main" aria-selected="false">Integrity <span class="integrity-dot" id="integrityDot" hidden></span></button>
         <button class="tab" role="tab" id="tab-reference" aria-controls="panel-main" aria-selected="false">Shop reference</button>
       </nav>
       <div class="panel" id="panel-main" role="tabpanel" tabindex="0"></div>
@@ -176,18 +189,113 @@
       </div>
     </div>
   </div>
+
+  <div class="scrim" id="projectsScrim" role="dialog" aria-modal="true" aria-label="My projects">
+    <div class="modal">
+      <h2>My projects</h2>
+      <p class="sub" id="projectsSub">Designs autosave here as you work. Open, rename, duplicate, or delete — build progress travels with each project.</p>
+      <div class="projects-grid" id="projectsGrid"></div>
+      <div class="modal-foot">
+        <span class="sub" style="margin:0" id="storageNote"></span>
+        <button class="btn" id="projectsClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="scrim" id="shareScrim" role="dialog" aria-modal="true" aria-label="Share design">
+    <div class="modal">
+      <h2>Share code</h2>
+      <p class="sub">A compact code that carries the whole design. Copy it anywhere; paste one below to import.</p>
+      <div class="share-block">
+        <label class="share-label" for="shareCode">This design</label>
+        <textarea id="shareCode" class="share-code" rows="3" readonly spellcheck="false" aria-label="Share code for this design"></textarea>
+        <div class="share-row">
+          <span class="share-meta" id="shareMeta"></span>
+          <button class="btn primary" id="copyShare">Copy code</button>
+        </div>
+      </div>
+      <div class="share-block">
+        <label class="share-label" for="importCode">Import a design</label>
+        <textarea id="importCode" class="share-code" rows="3" placeholder="Paste a BB4: code…" spellcheck="false" aria-label="Paste a share code"></textarea>
+        <div class="share-row">
+          <span class="share-meta share-error" id="importMsg" aria-live="polite"></span>
+          <button class="btn" id="importShare">Import</button>
+        </div>
+      </div>
+      <div class="modal-foot"><span></span><button class="btn" id="shareClose">Close</button></div>
+    </div>
+  </div>
+
+  <div class="scrim" id="speciesScrim" role="dialog" aria-modal="true" aria-label="Species comparison">
+    <div class="modal modal-wide">
+      <h2>Compare species</h2>
+      <p class="sub">The same design recomputed side by side — purchasable cost, weight, sag margin on the critical span, seasonal movement, and surface duty. Tap a column to use that species.</p>
+      <div class="species-pick" id="speciesPick" role="group" aria-label="Pick up to three species"></div>
+      <div class="table-scroll" id="speciesTableWrap"></div>
+      <div class="modal-foot"><span class="sub" style="margin:0">Pure recomputation — nothing is changed until you tap a column.</span><button class="btn" id="speciesClose">Close</button></div>
+    </div>
+  </div>
+
+  <div class="scrim" id="diagScrim" role="dialog" aria-modal="true" aria-label="Diagnostics">
+    <div class="modal modal-wide">
+      <h2>Diagnostics</h2>
+      <p class="sub">The self-test harness: every code-owned promise, asserted in-app. <span id="diagSummary" class="diag-summary"></span></p>
+      <div class="diag-body" id="diagBody"><p class="sub">Running…</p></div>
+      <div class="modal-foot">
+        <button class="btn" id="diagRerun">Run again</button>
+        <button class="btn primary" id="diagClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="build-mode" id="buildMode" hidden aria-label="Build mode">
+    <header class="bm-head">
+      <div class="bm-title">
+        <span class="bm-name" id="bmName">Project</span>
+        <span class="bm-progress" id="bmProgress"></span>
+      </div>
+      <span class="bm-wake" id="bmWake" title="Screen stays awake while you build"></span>
+      <button class="btn bm-exit" id="bmExit">Exit build mode</button>
+    </header>
+    <div class="bm-columns">
+      <section class="bm-col" aria-label="Cuts, board by board">
+        <h2>Cuts — board by board</h2>
+        <div id="bmCuts"></div>
+      </section>
+      <section class="bm-col" aria-label="Assembly steps">
+        <h2>Assembly</h2>
+        <div id="bmSteps"></div>
+      </section>
+    </div>
+  </section>
+
+  <div class="bm-playbar" id="bmPlaybar" hidden>
+    <button class="btn bm-big" id="bmPbPrev">‹ Prev</button>
+    <span class="bm-pblabel" id="bmPbLabel"></span>
+    <button class="btn bm-big" id="bmPbNext">Next ›</button>
+    <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
+  </div>
+
+  <div class="prov-pop" id="provPop" hidden role="tooltip"></div>
 </div>
 
 <div id="printRoot"></div>
 
 <script>{{THREE}}</script>
 <script>{{JS_KNOWLEDGE}}</script>
+<script>{{JS_GEOMETRY}}</script>
 <script>{{JS_SPEC}}</script>
 <script>{{JS_PARAMETRIC}}</script>
+<script>{{JS_STRUCTURAL}}</script>
+<script>{{JS_PACKING}}</script>
 <script>{{JS_PLANS}}</script>
 <script>{{JS_EXPORTS}}</script>
 <script>{{JS_HISTORY}}</script>
+<script>{{JS_CODEC}}</script>
 <script>{{JS_AI}}</script>
+<script>{{JS_STORE}}</script>
+<script>{{JS_PROVENANCE}}</script>
 <script>{{JS_GALLERY}}</script>
+<script>{{JS_SELFTEST}}</script>
 <script>{{JS_ENGINE}}</script>
 <script>{{JS_UI}}</script>

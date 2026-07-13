@@ -192,7 +192,16 @@ BlueprintBuddyImport.build
   }
 
   /* ---------------- print sheet ---------------- */
-  function printHTML(spec, model, cut, bomData, steps) {
+  /* The stock diagrams use CSS variables for the screen; print swaps them for
+   * fixed ink-on-paper colors so the sheet works regardless of theme. */
+  const PRINT_COLORS = {
+    '--ink': '#1c1a14', '--ink-2': '#444444', '--muted': '#777777', '--line-2': '#999999',
+    '--accent': '#1b5d82', '--accent-soft': '#e8eef3', '--panel': '#ffffff', '--panel-2': '#eeeeee',
+    '--mono': 'ui-monospace, monospace'
+  };
+  const printSVG = svg => String(svg).replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PRINT_COLORS[v] || '#333');
+
+  function printHTML(spec, model, cut, bomData, steps, stock) {
     const S = BB.Spec, u = spec.meta.units;
     const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
     const dim = v => S.fmtLen(v, u);
@@ -200,6 +209,27 @@ BlueprintBuddyImport.build
     const cutRows = cut.map(r => `<tr><td>${esc(r.name)}</td><td>${r.qty}</td><td>${dim(r.L)}</td><td>${dim(r.W)}</td><td>${dim(r.T)}</td><td>${esc(BB.K.WOOD_SPECIES[r.material] ? BB.K.WOOD_SPECIES[r.material].label : r.material)}</td><td>${esc(r.note || '')}</td></tr>`).join('');
     const bomRows = bomData.items.map(i => `<tr><td>${esc(i.label)}</td><td>${i.qty}</td><td>${esc(i.detail || '')}</td></tr>`).join('');
     const stepBlocks = steps.map((s, i) => `<li><strong>${esc(s.title)}.</strong> ${esc(s.text)}</li>`).join('');
+
+    let stockHTML = '';
+    if (stock && (stock.boards.length || stock.sheets.length)) {
+      const shopRows = stock.shopping.map(s => `<tr><td>${esc(s.label)}</td><td>${s.qty}</td><td>${esc(s.unit)}</td><td>$${s.cost.toFixed(2)}</td></tr>`).join('');
+      const boardBlocks = stock.boards.filter(b => b.stockLen).map((b, i) =>
+        `<div class="print-board"><p>${esc(b.nominal)} × ${b.stockLen} mm — board ${i + 1} · offcut ${dim(b.offcut)}</p>${printSVG(BB.Packing.boardSVG(b, dim))}</div>`).join('');
+      const sheetBlocks = stock.sheets.map((s, i) =>
+        `<div class="print-board"><p>${s.thickness} mm sheet ${i + 1} — buy a ${esc(s.fractionLabel)}</p>${printSVG(BB.Packing.sheetSVG(s, dim))}</div>`).join('');
+      const waste = [];
+      if (stock.wasteSolidPct != null) waste.push(`solid ${stock.wasteSolidPct}%`);
+      if (stock.wasteSheetPct != null) waste.push(`sheet ${stock.wasteSheetPct}%`);
+      stockHTML = `
+  <section class="print-section page-break">
+    <h2>Stock — what to buy and how to break it down</h2>
+    <table><thead><tr><th>Buy</th><th>Qty</th><th>Unit</th><th>Cost</th></tr></thead><tbody>${shopRows}</tbody></table>
+    <p class="print-total">Purchasable-stock total: $${stock.totalCost.toFixed(2)}${waste.length ? ' · waste ' + waste.join(' · ') : ''}</p>
+    ${boardBlocks}${sheetBlocks}
+    <p>Kerf 3 mm per cut · 15 mm end trim per board end · hatched areas are offcuts.</p>
+  </section>`;
+    }
+
     return `
   <header class="print-head">
     <h1>${esc(spec.meta.name)}</h1>
@@ -209,7 +239,7 @@ BlueprintBuddyImport.build
   <section class="print-section">
     <h2>Cut list</h2>
     <table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${cutRows}</tbody></table>
-  </section>
+  </section>${stockHTML}
   <section class="print-section page-break">
     <h2>Bill of materials</h2>
     <table><thead><tr><th>Item</th><th>Qty</th><th>Detail</th></tr></thead><tbody>${bomRows}</tbody></table>

@@ -1,41 +1,60 @@
-/* Blueprint Buddy — AI intent layer.
+/* Blueprint Buddy — AI intent layer (Phase 4: token-optimized).
  *
- * Protocol (Phase 2): for refinements the model returns a minified JSON object
- * containing ONLY changed fields plus "explain". For a brand-new piece it
- * returns {"new":{...spec...},"explain":"..."}. For ambiguity it returns
- * {"question":"...","options":["...","..."]}.
+ * Wire protocol: ALL traffic rides the compact codec (BB.Codec). The system
+ * prompt documents the schema ONCE, statically; refinements are partial-merge
+ * wire diffs; new designs are full wire specs; the current spec travels in
+ * wire format. Response cap is 1000 tokens with a continuation protocol:
+ * stop_reason === "max_tokens" appends the partial as an assistant message,
+ * asks the model to continue exactly where it stopped (max 2 continuations),
+ * and concatenates before parsing — truncation is continuable, never a
+ * validation failure.
  *
- * The reply is intent only. Code deep-merges the patch, re-corrects the spec,
- * reruns the parametric layer, and computes the ACTUAL diff for the chat chip.
+ * Context budget: last 6 turns verbatim; everything older is replaced by a
+ * code-built running digest assembled from the diff chips the app already
+ * computes (zero extra AI calls).
  *
- * Transport: window.claude.complete when hosted inside claude.ai; otherwise a
- * built-in intent parser covers the common refinement vocabulary so the app is
- * fully functional standalone (and testable headless).
+ * Transports, tried in order:
+ *   1. an injected transport (tests / diagnostics use this)
+ *   2. fetch to the Anthropic API (available when hosted on claude.ai)
+ *   3. window.claude.complete (no stop_reason — truncation detected by
+ *      unbalanced braces instead)
+ *   4. the built-in local intent parser, so the app is fully functional
+ *      standalone and testable headless.
+ *
+ * The reply is intent only. Code deep-merges the patch, re-corrects the
+ * spec, reruns the parametric layer, and computes the ACTUAL diff chips.
  */
 var BB = globalThis.BB = globalThis.BB || {};
 
 (function () {
   'use strict';
   const K = BB.K;
+  const Codec = () => BB.Codec;
 
+  const MAX_TOKENS = 1000;
+  const MAX_CONTINUATIONS = 2;
+  const VERBATIM_TURNS = 6;
+  const CONTINUE_PROMPT = 'Continue exactly where you stopped. No repetition, no preamble.';
+
+  /* ---------------- system prompt: static schema doc + level joint list +
+   * knowledge digests + current spec in wire format. Nothing else. -------- */
   function systemPrompt(spec) {
     return [
       'You are the design intent engine inside Blueprint Buddy, a parametric furniture design tool.',
-      'You NEVER compute geometry. You propose intent; the app owns all math and re-validates everything.',
-      'Reply with ONLY minified JSON, no prose, no markdown fences. Three reply shapes:',
-      '1. Refinement: an object with ONLY the changed DesignSpec fields, plus "explain" (short sentence). Example: {"overall":{"height":700},"explain":"Lowered height by 50mm"}',
-      '2. New design: {"new":{<full DesignSpec>},"explain":"..."}',
-      '3. Ambiguous request: {"question":"...","options":["opt1","opt2","opt3"]} (2-3 short tappable answers).',
-      'Set a field to null to remove it (e.g. {"drawers":null}).',
-      'DesignSpec shape: {meta:{name,template(table|desk|bench|bookshelf|nightstand|cabinet),level(beginner|intermediate|advanced),units(mm|in)},overall:{width,depth,height},wood:{species},structure:{topThickness,legThickness,apronHeight,shelfCount,...},joinery:{frame,case,box},finish,drawers:{count(1-4),frontStyle(inset|overlay),runner(side_mount_slides|wood_runners)}}. All lengths mm.',
-      'Joint choices must respect the level matrix below; the app enforces it regardless.',
+      'You NEVER compute geometry. You propose intent; the app owns all math, snaps stock sizes, and re-validates everything.',
+      Codec().SCHEMA_DOC,
+      'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes).',
+      'LEVEL MATRIX (code enforces this regardless): beginner={butt_screws,pocket_screws}; intermediate adds {dowels,dado,rabbet,locking_rabbet}; advanced adds {mortise_tenon,half_blind_dovetail}.',
+      'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
+      'REFINEMENTS: when the user asks for a change, EDIT the current spec — send ONLY the changed wire keys. Do not redesign. STRUCTURAL CRITIQUE: when the message is a structural critique of your last composition, fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
       '--- knowledge digest ---',
       K.knowledgeDigest(),
-      '--- current corrected spec ---',
-      JSON.stringify(spec)
+      '--- current spec (wire format) ---',
+      JSON.stringify(Codec().encode(spec))
     ].join('\n');
   }
 
+  /* ---------------- JSON extraction ---------------- */
   /* Extract the first balanced JSON object from model text. */
   function extractJSON(text) {
     const s = String(text || '');
@@ -51,19 +70,43 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     return null;
   }
+  /* Truncated-output detector for transports without stop_reason: an opened,
+   * never-closed JSON object is continuable — NOT a validation failure. */
+  function looksTruncated(text) {
+    const s = String(text || '');
+    const start = s.indexOf('{');
+    if (start < 0) return false;
+    let depth = 0, inStr = false, escp = false;
+    for (let i = start; i < s.length; i++) {
+      const c = s[i];
+      if (inStr) { if (escp) escp = false; else if (c === '\\') escp = true; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true;
+      else if (c === '{') depth++;
+      else if (c === '}') { depth--; if (!depth) return false; }
+    }
+    return depth > 0;
+  }
 
+  /* ---------------- classify: wire reply -> verbose intent ---------------- */
   function classify(obj) {
     if (!obj || typeof obj !== 'object') return null;
-    if (typeof obj.question === 'string') {
-      return { kind: 'question', question: obj.question, options: Array.isArray(obj.options) ? obj.options.slice(0, 3).map(String) : [] };
+    const q = obj.q !== undefined ? obj.q : obj.question;
+    if (typeof q === 'string') {
+      const opts = obj.a !== undefined ? obj.a : obj.options;
+      return { kind: 'question', question: q, options: Array.isArray(opts) ? opts.slice(0, 3).map(String) : [] };
     }
-    if (obj.new && typeof obj.new === 'object') {
-      return { kind: 'new', spec: obj.new, explain: String(obj.explain || 'Here’s a starting point.') };
+    const explain = String(obj.e !== undefined ? obj.e : (obj.explain || '')).slice(0, 200);
+    const N = obj.N !== undefined ? obj.N : obj.new;
+    if (N && typeof N === 'object') {
+      const spec = Codec().decode(N);
+      if (!spec) return null;
+      return { kind: 'new', spec, explain: explain || 'Here’s a starting point.' };
     }
-    const patch = {};
-    for (const k of Object.keys(obj)) if (k !== 'explain') patch[k] = obj[k];
-    if (!Object.keys(patch).length) return null;
-    return { kind: 'diff', patch, explain: String(obj.explain || 'Updated.') };
+    const wireDiff = {};
+    for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain') wireDiff[k] = obj[k];
+    const patch = Codec().decodePartial(wireDiff);
+    if (!patch) return null;
+    return { kind: 'diff', patch, explain: explain || 'Updated.' };
   }
 
   /* ---------------- local intent parser (offline fallback) ----------------
@@ -99,7 +142,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (/\b(bigger|larger|smaller)\b/.test(t) && !/\b(wide|width|deep|depth|tall|height|high|%|percent)\b/.test(t)) {
       return { kind: 'question', question: 'Happy to resize — in which direction?', options: ['Wider', 'Deeper', 'Taller'] };
     }
-    if (/\b(change|different|other|new)\b.*\bwood\b/.test(t) && !Object.values(K.WOOD_SPECIES).some(s => t.includes(s.label.toLowerCase().split(' ').pop())) ) {
+    if (/\b(change|different|other|new)\b.*\bwood\b/.test(t) && !Object.values(K.WOOD_SPECIES).some(s => t.includes(s.label.toLowerCase().split(' ').pop()))) {
       return { kind: 'question', question: 'Which way should the wood go?', options: ['Walnut — dark and refined', 'Hard maple — pale and crisp', 'Pine — light and budget-friendly'] };
     }
 
@@ -119,7 +162,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (/\bintermediate\b/.test(t)) { set('meta.level', 'intermediate'); notes.push('intermediate'); }
     else if (/\badvanced|dovetail|mortise\b/.test(t)) { set('meta.level', 'advanced'); notes.push('advanced'); }
 
-    // Dimensions: "<n><unit> wide/deep/tall", "width to X", "lower/raise by X".
+    // Dimensions.
     const dimWord = { wide: 'width', width: 'width', deep: 'depth', depth: 'depth', tall: 'height', height: 'height', high: 'height', long: 'width' };
     const re = /(\d+(?:\.\d+)?\s*(?:mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?)\s*(wide|deep|tall|high|long)|(width|depth|height)\s*(?:to|of|=|at)?\s*(\d+(?:\.\d+)?\s*(?:mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?)/gi;
     let m;
@@ -192,26 +235,189 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { kind: 'diff', patch, explain: 'Adjusted ' + notes.slice(0, 4).join(', ') + '.' };
   }
 
-  /* ---------------- transport ---------------- */
-  function hasClaude() {
-    return typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
+  /* ---------------- transports ---------------- */
+  let injectedTransport = null; // (system, messages) => Promise<{text, stopReason}>
+  function setTransport(fn) { injectedTransport = fn; }
+  let anthropicDead = false; // one hard network failure disables it for the session
+
+  async function anthropicTransport(system, messages) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: MAX_TOKENS, system, messages })
+    });
+    if (!response.ok) throw new Error('API returned ' + response.status);
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message || 'API error');
+    // 1c: read stop_reason from EVERY response — max_tokens means continue.
+    return { text: (data.content || []).map(b => b.text || '').join(''), stopReason: data.stop_reason || 'end_turn' };
   }
 
-  async function respond(userText, spec) {
-    if (hasClaude()) {
+  function renderForPrompt(messages) {
+    // Flatten a messages array into a single prompt for window.claude.complete.
+    return messages.map(m => {
+      const content = Array.isArray(m.content)
+        ? m.content.map(b => b.type === 'text' ? b.text : '[image omitted]').join('\n')
+        : m.content;
+      return (m.role === 'assistant' ? 'ASSISTANT: ' : 'USER: ') + content;
+    }).join('\n');
+  }
+  async function claudeCompleteTransport(system, messages) {
+    const prompt = system + '\n--- conversation ---\n' + renderForPrompt(messages) + '\nReply with ONLY minified JSON.';
+    const text = await window.claude.complete(prompt);
+    // No stop_reason on this transport; unbalanced braces stand in for it.
+    return { text: String(text || ''), stopReason: looksTruncated(text) ? 'max_tokens' : 'end_turn' };
+  }
+
+  function hasRemote() {
+    if (injectedTransport) return true;
+    if (typeof fetch === 'function' && !anthropicDead && typeof window !== 'undefined') return true;
+    return typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
+  }
+  function supportsImages() {
+    return !!injectedTransport || (typeof fetch === 'function' && !anthropicDead);
+  }
+
+  async function rawCall(system, messages) {
+    if (injectedTransport) return injectedTransport(system, messages);
+    if (typeof fetch === 'function' && !anthropicDead) {
       try {
-        const prompt = systemPrompt(spec) + '\n--- user request ---\n' + userText +
-          '\nReply with ONLY minified JSON.';
-        let reply = await window.claude.complete(prompt);
-        let parsed = classify(extractJSON(reply));
-        if (!parsed) {
-          reply = await window.claude.complete(prompt + '\nYour previous reply was not valid JSON. JSON ONLY.');
-          parsed = classify(extractJSON(reply));
-        }
-        if (parsed) return parsed;
-      } catch (e) { /* fall through to local parser */ }
+        return await anthropicTransport(system, messages);
+      } catch (e) {
+        anthropicDead = true; // fall through once, stay fallen
+      }
     }
-    return localModel(userText, spec);
+    if (typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function') {
+      return claudeCompleteTransport(system, messages);
+    }
+    throw new Error('no-transport');
+  }
+
+  /* ---------------- continuation protocol (1c) ----------------
+   * On max_tokens: append the partial output as an assistant message, ask to
+   * continue with no repetition, concatenate before parsing. Up to 2
+   * continuations; the chat shows "Receiving design, part N".
+   */
+  async function callModel(system, baseMessages, onStatus) {
+    let acc = '', continuations = 0;
+    for (;;) {
+      const messages = acc
+        ? [...baseMessages, { role: 'assistant', content: acc }, { role: 'user', content: CONTINUE_PROMPT }]
+        : baseMessages;
+      const res = await rawCall(system, messages);
+      acc += res.text;
+      if (res.stopReason !== 'max_tokens' || continuations >= MAX_CONTINUATIONS) {
+        return { text: acc, stopReason: res.stopReason, continuations };
+      }
+      continuations++;
+      if (onStatus) onStatus(`Receiving design, part ${continuations + 1}`);
+    }
+  }
+
+  /* ---------------- context budget (1b) ----------------
+   * turns: [{role:'user'|'assistant', content}] maintained by the UI in wire
+   * format. Send the last 6 verbatim; compress everything older into the
+   * code-built digest (from history snapshots — zero extra AI calls).
+   */
+  function buildMessages(turns, digest, newUserContent) {
+    let recent = turns.slice(-VERBATIM_TURNS);
+    while (recent.length && recent[0].role === 'assistant') recent = recent.slice(1);
+    const out = [];
+    if (digest && turns.length > VERBATIM_TURNS) {
+      out.push({ role: 'user', content: '[context] ' + digest });
+      out.push({ role: 'assistant', content: '{"e":"ok"}' });
+    }
+    out.push(...recent);
+    out.push({ role: 'user', content: newUserContent });
+    return out;
+  }
+
+  /* ---------------- respond ---------------- */
+  async function respond(userText, spec, opts) {
+    opts = opts || {};
+    const onStatus = opts.onStatus || (() => {});
+    if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true };
+
+    const system = systemPrompt(spec);
+    const turns = opts.turns || [];
+    const digest = opts.digest || '';
+    const userContent = opts.image
+      ? [
+          { type: 'image', source: { type: 'base64', media_type: opts.image.mediaType, data: opts.image.base64 } },
+          { type: 'text', text: userText }
+        ]
+      : userText;
+    const baseMessages = buildMessages(turns, digest, userContent);
+
+    try {
+      let { text } = await callModel(system, baseMessages, onStatus);
+      let parsed = classify(extractJSON(text));
+      if (!parsed) {
+        // The single validation retry. Truncation never lands here — the
+        // continuation protocol already stitched partial outputs together.
+        onStatus('Re-asking for valid JSON');
+        const retryMessages = [...baseMessages,
+          { role: 'assistant', content: text || '(empty)' },
+          { role: 'user', content: 'That was not valid wire-format JSON. Reply again with ONLY minified JSON in the documented wire format.' }];
+        const second = await callModel(system, retryMessages, onStatus);
+        parsed = classify(extractJSON(second.text));
+        if (parsed) text = second.text;
+      }
+      if (parsed) {
+        const newTurns = [...turns,
+          { role: 'user', content: typeof userContent === 'string' ? userContent : userText + ' [photo]' },
+          { role: 'assistant', content: text }];
+        return { reply: parsed, turns: newTurns, local: false };
+      }
+      return { reply: null, turns, error: 'The model never produced a valid design reply.' };
+    } catch (err) {
+      if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
+      return { reply: localModel(userText, spec), turns, local: true };
+    }
+  }
+
+  /* Structured critique for the propose-validate-revise loop (novel pieces). */
+  function buildCritique(failedChecks) {
+    const lines = failedChecks.slice(0, 10).map(c => `- ${c.title}: ${c.explain} (${c.value}; required: ${c.threshold})`);
+    return `Structural validation of your composition FAILED. Problems:\n${lines.join('\n')}\nFix ONLY these problems — keep the design intent and everything that already works. Reply {"N":{corrected FULL wire spec}} as minified JSON, nothing else.`;
+  }
+
+  /* ---------------- photo-to-design (Phase 4 item 4) ---------------- */
+  const VISION_PROMPT = [
+    'The image is a furniture photo. Identify the furniture type and estimate overall proportions, anchored to standard ergonomic heights from the knowledge digest (table 730-760, desk 720-750, seat 430-480, nightstand 550-700, counter 860-940 mm).',
+    'Reply {"N":{full wire spec}} — use a known template (t 0-5) whenever one fits; use t=6 (custom, parts + connections) only if none does.',
+    'Estimate wood species from color/grain (m). If drawers are visible on a nightstand/cabinet, set "d". Minified JSON only.'
+  ].join(' ');
+
+  /* Client-side downscale (1d): image tokens scale with pixel count — NEVER
+   * send a raw camera image. 1024 px long edge, JPEG quality 0.8. */
+  function downscaleImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const long = Math.max(img.naturalWidth, img.naturalHeight) || 1;
+          const scale = Math.min(1, 1024 / long);
+          const w = Math.max(1, Math.round(img.naturalWidth * scale));
+          const h = Math.max(1, Math.round(img.naturalHeight * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          URL.revokeObjectURL(url);
+          resolve({
+            dataUrl,
+            base64: dataUrl.split(',')[1],
+            mediaType: 'image/jpeg',
+            width: w, height: h,
+            originalWidth: img.naturalWidth, originalHeight: img.naturalHeight
+          });
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('unreadable image')); };
+      img.src = url;
+    });
   }
 
   /* Apply an AI reply to the current corrected spec.
@@ -226,5 +432,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { spec: corrected, diffs, chips: S.describeDiff(diffs, corrected.meta.units) };
   }
 
-  BB.AI = { systemPrompt, extractJSON, classify, localModel, respond, apply, hasClaude };
+  BB.AI = {
+    systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
+    setTransport, callModel, buildMessages, buildCritique, downscaleImage,
+    supportsImages, hasRemote, VISION_PROMPT,
+    MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT
+  };
 })();

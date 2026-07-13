@@ -54,9 +54,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     groundGroup.add(grid);
     scene.add(groundGroup);
 
-    // Shared geometry — the whole memory story.
+    // Shared geometry — the whole memory story. Cylinders (novel-grammar
+    // primitive) share one unit cylinder the same way boxes share one unit box.
     const unitBox = new THREE.BoxGeometry(1, 1, 1);
     const unitEdges = new THREE.EdgesGeometry(unitBox);
+    const unitCyl = new THREE.CylinderGeometry(0.5, 0.5, 1, 24);
+    const unitCylEdges = new THREE.EdgesGeometry(unitCyl, 30);
+    const DEG = Math.PI / 180;
 
     // Bounded material pool.
     const matPool = new Map();
@@ -188,17 +192,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       const seen = new Set();
       for (const part of model.parts) {
         seen.add(part.id);
+        const isCyl = part.prim === 'cylinder';
         let rec = E.meshes.get(part.id);
+        if (rec && rec.isCyl !== isCyl) { partsGroup.remove(rec.mesh); E.meshes.delete(part.id); rec = null; }
         if (!rec) {
-          const mesh = new THREE.Mesh(unitBox, materialFor(part.material, part.role, 'solid'));
-          const edge = new THREE.LineSegments(unitEdges, edgeMat);
+          const mesh = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'solid'));
+          const edge = new THREE.LineSegments(isCyl ? unitCylEdges : unitEdges, edgeMat);
           mesh.add(edge);
           mesh.userData.partId = part.id;
           partsGroup.add(mesh);
-          rec = { mesh, edge, part, bucket: 'solid', cur: null };
+          rec = { mesh, edge, part, bucket: 'solid', cur: null, isCyl };
           E.meshes.set(part.id, rec);
         }
         rec.part = part;
+        // Static rotation from the novel grammar (degrees, applied X→Y→Z).
+        const r = part.rot || { x: 0, y: 0, z: 0 };
+        rec.mesh.rotation.set((r.x || 0) * DEG, (r.y || 0) * DEG, (r.z || 0) * DEG, 'ZYX');
         computeTarget(rec);
         if (!rec.cur || (opts2 && opts2.snap)) {
           rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } };
@@ -509,6 +518,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       playbackEnter, playbackGoTo, playbackExit, playbackReplay,
       inPlayback() { return !!E.playback; },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
+      /* Synchronous render + return the canvas — thumbnails read pixels right
+       * after this call (the drawing buffer is only valid in the same tick). */
+      renderNow() { renderer.render(scene, camera); return canvas; },
       snapNow() { for (const rec of E.meshes.values()) { rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } }; } Object.assign(camCur, camGoal); },
       dispose() {
         E.disposed = true;
@@ -516,6 +528,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         for (const m of matPool.values()) m.dispose();
         matPool.clear();
         unitBox.dispose(); unitEdges.dispose();
+        unitCyl.dispose(); unitCylEdges.dispose();
         discGeo.dispose(); jointGeo.dispose();
         for (const t of labelTextures.splice(0)) t.dispose();
         renderer.dispose();
