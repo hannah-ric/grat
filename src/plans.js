@@ -37,8 +37,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         note = `includes ${e.n * JOINT_ALLOWANCE[e.type]} mm for ${K.JOINERY[e.type] ? K.JOINERY[e.type].label.toLowerCase() : e.type}`;
       }
       const mat = p.material === 'baltic_birch' ? 'baltic_birch' : spec.wood.species;
-      const key = [p.name, L, W, T, mat].join('|');
-      if (!rows.has(key)) rows.set(key, { name: p.name, qty: 0, L, W, T, material: mat, note, roles: p.role });
+      // Identical parts from different drawers cut as one line item.
+      const groupName = p.name.replace(/^Drawer \d+ /, 'Drawer ');
+      const key = [groupName, L, W, T, mat].join('|');
+      if (!rows.has(key)) rows.set(key, { name: groupName, qty: 0, L, W, T, material: mat, note, roles: p.role });
       rows.get(key).qty++;
     }
     return [...rows.values()].sort((a, b) => (b.L * b.W) - (a.L * a.W));

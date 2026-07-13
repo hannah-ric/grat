@@ -353,6 +353,9 @@ section('knowledge bases');
   }
   const digest = K.knowledgeDigest();
   ok(digest.includes('dining_height 730–760mm') && digest.includes('mortise_tenon'), 'digest carries norms');
+  const sys = AI.systemPrompt(Spec.correctSpec({ meta: { template: 'table' } }));
+  ok(sys.includes(digest) && sys.includes('"template":"table"'), 'system prompt embeds knowledge digest + current corrected spec');
+  ok(sys.includes('ONLY the changed DesignSpec fields'), 'system prompt demands diff-based refinement');
   eq(K.jointsForLevel('beginner').sort().join(','), 'butt_screws,pocket_screws', 'beginner matrix');
   ok(K.jointsForLevel('advanced').includes('half_blind_dovetail'), 'advanced matrix');
   ok(K.FASTENERS.screws.every(s => s.pilot !== undefined), 'screws carry pilot diameters');

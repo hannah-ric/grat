@@ -64,7 +64,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       caption: 'Carcass work with a drawer bank', emoji: '🗄',
       spec: {
         meta: { name: 'Sideboard Cabinet', template: 'cabinet', level: 'advanced', units: 'mm' },
-        overall: { width: 900, depth: 450, height: 900 },
+        overall: { width: 780, depth: 450, height: 900 },
         wood: { species: 'white_oak' },
         structure: { topThickness: 25, shelfCount: 1, toeKick: true, backPanel: true },
         joinery: { frame: 'mortise_tenon', case: 'dado', box: 'half_blind_dovetail' },

@@ -270,12 +270,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       errors.push({ id: 'no_model', text: 'The parametric layer could not build this spec.' });
     }
 
-    // dedupe by id
-    const seen = new Set();
-    return {
-      errors: errors.filter(e => !seen.has(e.id) && seen.add(e.id)),
-      advisories: advisories.filter(a => !seen.has(a.id) && seen.add(a.id))
-    };
+    // dedupe by id and by identical text (e.g. the same advisory per opening)
+    const seen = new Set(), seenText = new Set();
+    const uniq = list => list.filter(x => {
+      if (seen.has(x.id) || seenText.has(x.text)) return false;
+      seen.add(x.id); seenText.add(x.text);
+      return true;
+    });
+    return { errors: uniq(errors), advisories: uniq(advisories) };
   }
 
   BB.Spec = {
