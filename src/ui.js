@@ -67,6 +67,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.stockPlan = Packing.planStock(r.spec, r.model, state.cut, { prices: state.prices, stockMode: state.prefs4.stockMode });
     state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan });
     state.steps = Plans.assembly(r.spec, r.model, state.integrity);
+    // The checklist just changed shape: progress keys from an older stock
+    // layout would otherwise inflate the build percentage forever.
+    if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
     state.engine.setModel(r.model, r.spec);
   }
   /* Recompute derived layers for the SAME spec (load presets, prices,
@@ -86,6 +89,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     exitPlayback();
     clearCompare();
+    state.previewing = false; // any pending slider preview is superseded by this commit
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -115,6 +119,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function restoreTo(spec) {
     exitPlayback();
+    clearCompare(); // undo/redo/restore must never leave a stale ghost + banner
+    state.previewing = false; // a restore discards any uncommitted preview
     const r = runPipeline(spec);
     adopt(r);
     renderAll();
@@ -130,20 +136,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   let saveTimer = null;
   function progressPct() {
     if (!state.project) return 0;
-    const total = countChecklistItems();
+    // Count only keys that exist in the live checklist — never orphans from
+    // an older stock layout, never boards the checklist can't render.
+    const keys = Plans.checklistKeys(state.stockPlan, state.cut, state.steps);
+    const total = keys.cuts.length + keys.steps.length;
     if (!total) return 0;
-    const done = Object.values(state.project.progress.cuts).filter(Boolean).length +
-      Object.values(state.project.progress.steps).filter(Boolean).length;
+    const done = keys.cuts.filter(k => state.project.progress.cuts[k]).length +
+      keys.steps.filter(k => state.project.progress.steps[k]).length;
     return Math.min(100, Math.round(100 * done / total));
-  }
-  function countChecklistItems() {
-    let n = state.steps.length;
-    if (state.stockPlan) {
-      for (const b of state.stockPlan.boards) n += b.cuts.length;
-      for (const s of state.stockPlan.sheets) n += s.placements.length;
-      if (state.stockPlan.mode === 'rough') n += state.cut.filter(r => r.stock !== 'sheet').length;
-    }
-    return n;
   }
   function scheduleAutosave() {
     clearTimeout(saveTimer);
@@ -183,9 +183,21 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('unitsIn').setAttribute('aria-pressed', String(imperial));
     $('unitsMm').setAttribute('aria-pressed', String(!imperial));
     $('dualBtn').setAttribute('aria-pressed', String(!!Units.get().dual));
+    $('precisionRow').hidden = !imperial; // fractions are an imperial concept
+    $('precisionSelect').value = String(state.prefs4.units.precision);
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
+  }
+
+  /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
+   * the :root[data-theme] overrides. */
+  function applyTheme(t) {
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    else delete document.documentElement.dataset.theme;
+    for (const [id, val] of [['themeAuto', 'auto'], ['themeLight', 'light'], ['themeDark', 'dark']]) {
+      $(id).setAttribute('aria-pressed', String((t || 'auto') === val));
+    }
   }
 
   /* ---------------- render: advisories ---------------- */
@@ -216,16 +228,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
-    if (state.busy) {
-      const stack = el('div', 'skeleton-stack');
-      [28, 18, 18, 18, 18, 18].forEach(h => {
-        const s = el('div', 'skeleton'); s.style.height = h + 'px';
-        if (h === 28) s.style.width = '40%';
-        stack.append(s);
-      });
-      inner.append(stack);
-      return;
-    }
     if (state.tab === 'cut') renderCut(inner);
     else if (state.tab === 'stock') renderStock(inner);
     else if (state.tab === 'bom') renderBom(inner);
@@ -234,19 +236,30 @@ var BB = globalThis.BB = globalThis.BB || {};
     else renderReference(inner);
   }
 
-  /* ---------------- provenance popover (stretch: number provenance) ---------------- */
+  /* ---------------- provenance dialog (stretch: number provenance) ---------------- */
+  let provAnchor = null;
   function showProv(row, anchor) {
     const pop = $('provPop');
     const lines = Prov.forCutRow(state.spec, state.model, row);
-    pop.innerHTML = `<h5>${esc(row.name)} — where these numbers come from</h5>` +
+    pop.innerHTML = `<div class="prov-head"><h5>${esc(row.name)} — where these numbers come from</h5>
+      <button type="button" class="prov-close" aria-label="Close provenance">✕</button></div>` +
       lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('') +
       `<div class="prov-foot">computed internally in metric</div>`;
     pop.hidden = false;
+    provAnchor = anchor;
+    pop.querySelector('.prov-close').onclick = hideProv;
     const r = anchor.getBoundingClientRect();
     pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left)) + 'px';
     pop.style.top = (r.bottom + 8 + pop.offsetHeight > window.innerHeight ? r.top - pop.offsetHeight - 8 : r.bottom + 8) + 'px';
+    pop.querySelector('.prov-close').focus();
   }
-  function hideProv() { const pop = $('provPop'); if (pop) pop.hidden = true; }
+  function hideProv() {
+    const pop = $('provPop');
+    if (!pop || pop.hidden) return;
+    pop.hidden = true;
+    if (provAnchor && document.contains(provAnchor)) provAnchor.focus();
+    provAnchor = null;
+  }
   document.addEventListener('click', e => {
     if (!e.target.closest || (!e.target.closest('.prov-btn') && !e.target.closest('.prov-pop'))) hideProv();
   });
@@ -259,10 +272,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       return;
     }
     const scroll = el('div', 'table-scroll');
-    const dim = (r, v, i) => `<button type="button" class="prov-btn num" data-prov="${i}">${fmt(v)}</button>`;
+    const dim = (r, v, i, what) => `<button type="button" class="prov-btn num" data-prov="${i}" aria-label="${esc(r.name)} ${what} ${esc(fmt(v))} — show the formula">${fmt(v)}</button>`;
     const rows = state.cut.map((r, i) => `<tr>
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
-      <td class="num">${dim(r, r.L, i)}</td><td class="num">${dim(r, r.W, i)}</td><td class="num">${dim(r, r.T, i)}</td>
+      <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
       <td style="color:var(--muted);font-size:12.5px">${esc(r.note || '')}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -378,6 +391,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderBom(root) {
     root.append(el('h3', '', 'Bill of materials'));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
+    if (!state.bomData.items.length) {
+      root.append(el('div', 'empty-state', '<span class="big">Nothing to buy yet.</span>Describe a piece in the chat and the shopping list prices itself.'));
+      return;
+    }
     const compareBtn = el('button', 'btn small', 'Compare species side by side');
     compareBtn.onclick = openSpecies;
     root.append(compareBtn);
@@ -409,6 +426,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderAssembly(root) {
     root.append(el('h3', '', 'Assembly'));
     root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow.'));
+    if (!state.steps.length) {
+      root.append(el('div', 'empty-state', '<span class="big">No steps to walk yet.</span>Once a design has parts, assembly writes itself in build order.'));
+      return;
+    }
     const list = el('ol', 'step-list');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
@@ -517,13 +538,32 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     const tabs = el('div', 'ref-tabs');
     tabs.setAttribute('role', 'tablist');
-    for (const [key, label] of [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']]) {
+    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']];
+    for (const [key, label] of refEntries) {
       const b = el('button', 'ref-tab', esc(label));
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', state.refTab === key);
+      b.tabIndex = state.refTab === key ? 0 : -1; // roving tabindex
       b.onclick = () => { state.refTab = key; renderPanel(); };
       tabs.append(b);
     }
+    // Same arrow-key pattern as the main plan tabs.
+    tabs.addEventListener('keydown', e => {
+      const order = refEntries.map(x => x[0]);
+      const i = order.indexOf(state.refTab);
+      let next = null;
+      if (e.key === 'ArrowRight') next = order[(i + 1) % order.length];
+      if (e.key === 'ArrowLeft') next = order[(i + order.length - 1) % order.length];
+      if (e.key === 'Home') next = order[0];
+      if (e.key === 'End') next = order[order.length - 1];
+      if (next) {
+        e.preventDefault();
+        state.refTab = next;
+        renderPanel(); // rebuilds the tablist — refocus the selected tab
+        const nb = document.querySelectorAll('.ref-tab')[order.indexOf(next)];
+        if (nb) nb.focus();
+      }
+    });
     root.append(tabs);
     const body = el('div');
     root.append(body);
@@ -588,12 +628,24 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- chat ---------------- */
+  /* The AI round-trip is busy state for the CHAT, not the plans: panels keep
+   * their content (the last valid design is still true), while Send and
+   * Photo disable and the chat reports aria-busy. */
+  function setBusy(b) {
+    state.busy = b;
+    $('sendBtn').disabled = b;
+    $('photoBtn').disabled = b;
+    $('chatPanel').setAttribute('aria-busy', String(b));
+  }
   function chatMsg(kind, html) {
     const log = $('chatLog');
     const m = el('div', 'msg ' + kind);
     m.innerHTML = html;
     log.append(m);
     log.scrollTop = log.scrollHeight;
+    // The collapsed mobile sheet shows the tail of the conversation.
+    const peekText = m.textContent.trim();
+    if (peekText) $('chatPeek').textContent = (kind === 'user' ? 'You: ' : '') + peekText;
     return m;
   }
   function botSay(text, chips, opts) {
@@ -699,19 +751,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       b.style.display = 'block';
       b.textContent = t + '…';
     };
-    state.busy = true;
-    renderPanel();
+    setBusy(true);
     try {
       const promptText = image ? AI.VISION_PROMPT : text;
       const before = state.spec;
       const out = await aiPipeline(promptText, image, setStatus);
       typing.remove();
-      state.busy = false;
-      if (!out) { renderPanel(); return; }
+      setBusy(false);
+      if (!out) return;
       const okc = commit(out.final, 'ai');
       if (!okc) {
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
-        renderPanel();
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
@@ -727,8 +777,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     } catch (err) {
       typing.remove();
-      state.busy = false;
-      renderPanel();
+      setBusy(false);
       botSay('The design brain slipped a gear on that one. Mind rephrasing?', []);
     }
   }
@@ -821,9 +870,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.engine.select(part.id);
     const insp = $('inspector');
     insp.classList.add('open');
+    insp.inert = false;
     $('inspName').textContent = part.name;
     const dims = $('inspDims');
-    dims.innerHTML = `<button type="button" class="prov-btn num">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
+    dims.innerHTML = `<button type="button" class="prov-btn num" aria-label="${esc(part.name)} dimensions ${esc(fmt(part.size.w))} by ${esc(fmt(part.size.h))} by ${esc(fmt(part.size.d))} — show the formulas">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
     dims.querySelector('.prov-btn').onclick = e => {
       e.stopPropagation();
       const groupName = part.name.replace(/^Drawer \d+ /, 'Drawer ');
@@ -879,9 +929,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     else closeInspector();
   }
   function closeInspector() {
+    // Closing mid-drag commits the pending preview: the model on screen
+    // already shows it, and the slider's own change event commits the same
+    // way — the design must never silently diverge from history.
+    commitPreview('manual');
     state.selected = null;
     state.engine.select(null);
     $('inspector').classList.remove('open');
+    $('inspector').inert = true;
   }
 
   /* ---------------- playback ---------------- */
@@ -1014,17 +1069,82 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderHistory();
     const d = $('historyDrawer');
     d.classList.add('open');
+    d.inert = false;
     d.setAttribute('aria-hidden', 'false');
+    $('historyBackdrop').hidden = false;
+    // Everything behind the drawer goes inert: clicks and focus stay inside.
+    document.querySelector('.topbar').inert = true;
+    document.querySelector('.bench').inert = true;
+    trapFocus(d);
   }
   function closeHistoryDrawer() {
     const d = $('historyDrawer');
     d.classList.remove('open');
+    d.inert = true;
     d.setAttribute('aria-hidden', 'true');
+    $('historyBackdrop').hidden = true;
+    document.querySelector('.topbar').inert = false;
+    document.querySelector('.bench').inert = false;
+    releaseFocus(d);
   }
 
-  /* ---------------- modals ---------------- */
-  function openScrim(id) { $(id).classList.add('open'); }
-  function closeScrim(id) { $(id).classList.remove('open'); }
+  /* ---------------- focus management ----------------
+   * Every scrim and the history drawer trap Tab inside themselves while
+   * open and hand focus back to the opener on close. Traps stack, so a
+   * modal opened over the drawer restores into the drawer first. */
+  const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  const trapStack = [];
+  function trapFocus(container) {
+    if (trapStack.some(t => t.container === container)) return;
+    const restoreTo = document.activeElement;
+    const handler = e => {
+      if (e.key !== 'Tab') return;
+      const items = [...container.querySelectorAll(FOCUSABLE)].filter(x => x.getClientRects().length);
+      if (!items.length) { e.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1];
+      const inside = container.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === first)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (!inside || document.activeElement === last)) { e.preventDefault(); first.focus(); }
+    };
+    container.addEventListener('keydown', handler);
+    trapStack.push({ container, restoreTo, handler });
+    const target = container.querySelector(FOCUSABLE);
+    if (target) target.focus();
+  }
+  function releaseFocus(container) {
+    const i = trapStack.findIndex(t => t.container === container);
+    if (i < 0) return;
+    const [t] = trapStack.splice(i, 1);
+    t.container.removeEventListener('keydown', t.handler);
+    if (t.restoreTo && document.contains(t.restoreTo)) {
+      t.restoreTo.focus();
+      if (document.activeElement !== t.restoreTo) {
+        // Opener went inert with its closed menu — its menu button stands in.
+        const wrap = t.restoreTo.closest('.menu-wrap');
+        const btn = wrap && wrap.querySelector('[aria-haspopup="menu"]');
+        if (btn) btn.focus();
+      }
+    }
+  }
+
+  /* ---------------- modals ----------------
+   * Closed overlays carry `inert` so their controls leave the tab order and
+   * the accessibility tree entirely — inert flips synchronously, so focus
+   * can move in on the same tick the overlay opens. */
+  function openScrim(id) {
+    const s = $(id);
+    if (s.classList.contains('open')) return;
+    s.classList.add('open');
+    s.inert = false;
+    trapFocus(s);
+  }
+  function closeScrim(id) {
+    const s = typeof id === 'string' ? $(id) : id;
+    if (!s.classList.contains('open')) return;
+    s.classList.remove('open');
+    s.inert = true;
+    releaseFocus(s);
+  }
 
   function renderGallery() {
     const grid = $('galleryGrid');
@@ -1038,6 +1158,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <span class="g-meta">${fmt(r.spec.overall.width)} × ${fmt(r.spec.overall.depth)} × ${fmt(r.spec.overall.height)} · ${esc(K.WOOD_SPECIES[r.spec.wood.species].label)}</span>`;
       card.onclick = () => {
         closeScrim('galleryScrim');
+        hideHints(); // a loaded design replaces the first-run prompts
         state.dismissed.clear();
         state.project = null;   // a starter begins a fresh project
         state.turns = [];
@@ -1121,11 +1242,12 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   async function loadProjectIntoApp(id) {
     const rec = await Store.loadProject(id);
-    if (!rec) return;
+    if (!rec) return false;
     const spec = Spec.correctSpec(Codec.decode(rec.wire));
     exitBuildMode();
     exitPlayback();
     clearCompare();
+    hideHints(); // an opened project replaces the first-run prompts
     // Rebuild the revision history from the stored snapshots.
     let hist = null;
     for (const rev of rec.revisions || []) {
@@ -1138,6 +1260,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.project = { id, progress: rec.progress || { cuts: {}, steps: {} } };
     state.turns = [];
     state.dismissed.clear();
+    state.previewing = false; // the loaded project replaces any pending preview
     const r = runPipeline(state.history.currentSpec() || spec);
     adopt(r);
     renderAll();
@@ -1145,6 +1268,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     closeScrim('projectsScrim');
     closeScrim('galleryScrim');
     botSay(`Opened “${rec.name}” — plans, history, and build progress restored. Tell me what to change.`, []);
+    return true;
   }
 
   /* ---------------- share codes (Phase 4 item 2) ---------------- */
@@ -1290,7 +1414,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (state.buildMode && document.visibilityState === 'visible') requestWakeLock();
   });
 
-  function cutKey(kind, bi, ci, name, len) { return `${kind}:${bi}:${ci}:${name}:${len}`; }
+  const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
 
   function enterBuildMode() {
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
@@ -1298,6 +1422,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
     renderBuildChecklists();
+    trapFocus($('buildMode')); // keyboard users land on the shop surface
     requestWakeLock();
   }
   function exitBuildMode() {
@@ -1305,6 +1430,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.buildMode = false;
     exitBmPlayback();
     $('buildMode').hidden = true;
+    releaseFocus($('buildMode'));
     releaseWakeLock();
     scheduleAutosave();
   }
@@ -1338,10 +1464,18 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Cuts grouped by stock board, straight from the optimizer diagrams —
     // the user works board by board.
+    const diagram = svg => {
+      const d = el('div', 'bm-diagram');
+      d.innerHTML = svg;
+      return d;
+    };
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}`));
+      // The same drafting diagram as the Stock tab, at the saw: which piece
+      // comes out of which end of this exact board.
+      group.append(diagram(Packing.boardSVG(b, fmt)));
       b.cuts.forEach((c, ci) => {
         const key = cutKey('b', bi, ci, c.name, c.len);
         group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -1351,6 +1485,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     plan.sheets.forEach((s, si) => {
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${esc(fmt(s.thickness))} (${esc(s.fractionLabel)})`));
+      group.append(diagram(Packing.sheetSVG(s, fmt)));
       s.placements.forEach((p, pi) => {
         const key = cutKey('s', si, pi, p.name, Math.round(p.w));
         group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -1360,9 +1495,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (plan.mode === 'rough') {
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', 'Cut list (rough stock)'));
+      // One check per physical piece, not per quantity batch — you cut them
+      // one at a time, you check them one at a time.
       state.cut.filter(r => r.stock !== 'sheet').forEach((r, ri) => {
-        const key = cutKey('r', 0, ri, r.name, r.L);
-        group.append(checkButton(`${r.qty} × ${r.name}`, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
+        for (let qi = 0; qi < r.qty; qi++) {
+          const key = cutKey('r', ri, qi, r.name, r.L);
+          const label = r.qty > 1 ? `${r.name} (${qi + 1} of ${r.qty})` : r.name;
+          group.append(checkButton(label, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
+        }
       });
       cuts.append(group);
     }
@@ -1401,7 +1541,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('bmPlaybar').hidden = true;
     exitPlayback();
     state.engine.resize();
-    if (state.buildMode) renderBuildChecklists();
+    if (state.buildMode) {
+      renderBuildChecklists();
+      $('bmExit').focus(); // hand focus back into the checklist surface
+    }
   }
 
   /* ---------------- tabs ---------------- */
@@ -1469,7 +1612,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- boot ---------------- */
-  function boot() {
+  async function boot() {
     const canvas = $('view3d');
     state.engine = BB.Engine.create(canvas, {
       reducedMotion: reduceMq.matches,
@@ -1491,9 +1634,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
-    // Seed design straight through the pipeline.
+    // Persisted prices + prefs load BEFORE the first paint, so units,
+    // precision, and dual display never flash from defaults.
+    try {
+      state.prices = await Store.loadPrices();
+      state.prefs4 = await Store.loadPrefs();
+    } catch (e) { /* defaults are the product */ }
+    Units.set(state.prefs4.units);
+    applyTheme(state.prefs4.theme);
+
+    // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
     seed.meta.name = 'Seed Table';
+    seed.meta.units = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
     const r = runPipeline(seed);
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
@@ -1501,33 +1654,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderAll();
     renderHints();
     renderGallery();
-    openScrim('galleryScrim');
-    botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
 
-    // Persisted prices + prefs arrive async; recompute once they land.
-    (async () => {
-      try {
-        state.prices = await Store.loadPrices();
-        state.prefs4 = await Store.loadPrefs();
-        Units.set(state.prefs4.units); // precision + dual (+ system default)
-        // A fresh session honors the stored unit choice: a returning metric
-        // user's seed opens metric; cleared storage stays imperial.
-        const wantU = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
-        if (!state.project && state.history.snapshots.length === 1 && state.spec.meta.units !== wantU) {
-          const r2 = runPipeline(Spec.deepMerge(state.spec, { meta: { units: wantU } }));
-          adopt(r2);
-          state.history = History.createHistory(r2.spec, 'seed');
-        }
-        recompute();
-        renderAll();
-      } catch (e) { /* defaults are the product */ }
-    })();
+    // Returning users land in the studio with their latest project; the
+    // gallery is for first runs and empty shops only.
+    let opened = false;
+    try {
+      const idx = await Store.loadIndex();
+      if (idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
+    } catch (e) { /* storage unavailable: fresh session */ }
+    if (!opened) {
+      openScrim('galleryScrim');
+      botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
+    }
 
     /* top bar */
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
     $('redoBtn').onclick = () => { const s = state.history.redo(); if (s) restoreTo(s); };
     $('historyBtn').onclick = openHistoryDrawer;
     $('historyClose').onclick = closeHistoryDrawer;
+    $('historyBackdrop').onclick = closeHistoryDrawer;
     $('compareBtn').onclick = openCompare;
     $('compareClose').onclick = showCompareOverlay;
     $('compareExit').onclick = clearCompare;
@@ -1552,6 +1697,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       renderAll();
       state.engine.unitsChanged();
     };
+    $('precisionSelect').onchange = () => {
+      const precision = +$('precisionSelect').value;
+      Units.set({ precision });
+      state.prefs4.units.precision = precision;
+      Store.savePrefs(state.prefs4);
+      adopt(runPipeline(state.spec));
+      renderAll();
+      state.engine.unitsChanged();
+    };
+    const setTheme = t => {
+      state.prefs4.theme = t;
+      Store.savePrefs(state.prefs4);
+      applyTheme(t);
+    };
+    $('themeAuto').onclick = () => setTheme('auto');
+    $('themeLight').onclick = () => setTheme('light');
+    $('themeDark').onclick = () => setTheme('dark');
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -1570,27 +1732,65 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('bmPbBack').onclick = exitBmPlayback;
     bindLogoLongPress();
 
-    /* export menu */
-    const menu = $('exportMenu'), exBtn = $('exportBtn');
-    exBtn.onclick = () => {
-      const open = menu.classList.toggle('open');
-      exBtn.setAttribute('aria-expanded', String(open));
+    /* export + More menus */
+    const closeMenu = (btnId, m) => {
+      m.classList.remove('open');
+      m.inert = true;
+      $(btnId).setAttribute('aria-expanded', 'false');
     };
-    document.addEventListener('click', e => {
-      if (!menu.contains(e.target) && e.target !== exBtn) {
-        menu.classList.remove('open');
-        exBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
+    const bindMenu = (btnId, menuId) => {
+      const b = $(btnId), m = $(menuId);
+      b.onclick = () => {
+        const open = m.classList.toggle('open');
+        m.inert = !open;
+        b.setAttribute('aria-expanded', String(open));
+      };
+      document.addEventListener('click', e => {
+        if (!m.contains(e.target) && e.target !== b) closeMenu(btnId, m);
+      });
+      // Menu-button keyboard pattern: ArrowDown opens and enters the menu,
+      // arrows cycle the items, Escape (global handler) closes topmost.
+      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length || m.classList.contains('open'));
+      b.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!m.classList.contains('open')) b.click();
+          const list = items();
+          if (list.length) (e.key === 'ArrowDown' ? list[0] : list[list.length - 1]).focus();
+        }
+      });
+      m.addEventListener('keydown', e => {
+        const list = items();
+        if (!list.length) return;
+        const i = list.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); (list[i + 1] || list[0]).focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); (list[i - 1] || list[list.length - 1]).focus(); }
+        else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
+        else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
+      });
+      return m;
+    };
+    const menu = bindMenu('exportBtn', 'exportMenu');
+    const moreMenu = bindMenu('moreBtn', 'moreMenu');
     menu.querySelectorAll('[data-export]').forEach(b => {
       b.addEventListener('click', () => {
-        menu.classList.remove('open');
+        closeMenu('exportBtn', menu);
+        $('exportBtn').focus(); // menu pattern: activation returns focus to the button
         doExport(b.dataset.export);
+      });
+    });
+    // Picking a dialog from More closes the menu; the units row stays open
+    // so the seg gives instant feedback.
+    moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
+      b.addEventListener('click', () => {
+        closeMenu('moreBtn', moreMenu);
+        if (!trapStack.length) $('moreBtn').focus(); // unless a dialog already took focus
       });
     });
 
     /* chat — no form element (artifact rules); Enter and the button both send */
     const sendNow = () => {
+      if (state.busy) return; // Enter during a round-trip must not eat the draft
       const t = $('chatText');
       sendMessage(t.value);
       t.value = '';
@@ -1613,7 +1813,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       e.target.value = '';
       if (file) sendPhoto(file);
     });
-    $('sheetHandle').onclick = () => $('chatPanel').classList.toggle('expanded');
+    $('sheetHandle').onclick = () => {
+      const expanded = $('chatPanel').classList.toggle('expanded');
+      $('sheetHandle').setAttribute('aria-expanded', String(expanded));
+      $('sheetHandle').setAttribute('aria-label', expanded ? 'Collapse chat' : 'Expand chat');
+    };
 
     /* stage controls */
     $('explodeRange').addEventListener('input', e => state.engine.setExplode(e.target.value / 100));
@@ -1635,7 +1839,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('galleryClose').onclick = () => closeScrim('galleryScrim');
     $('helpClose').onclick = () => closeScrim('helpScrim');
     document.querySelectorAll('.scrim').forEach(s => {
-      s.addEventListener('click', e => { if (e.target === s) s.classList.remove('open'); });
+      s.addEventListener('click', e => { if (e.target === s) closeScrim(s); });
     });
 
     /* keyboard */
@@ -1647,14 +1851,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
         if (!typing) { e.preventDefault(); $('redoBtn').click(); }
       } else if (e.key === 'Escape') {
+        // Close the topmost overlay only — one layer per press. Build mode
+        // is the bottom layer: it exits last, never before an open modal.
+        const prov = $('provPop');
+        if (prov && !prov.hidden) { hideProv(); return; }
+        if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
+        if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
+        const scrims = [...document.querySelectorAll('.scrim.open')];
+        if (scrims.length) { closeScrim(scrims[scrims.length - 1]); return; }
+        if ($('historyDrawer').classList.contains('open')) { closeHistoryDrawer(); return; }
         if (state.bmPlayback) { exitBmPlayback(); return; }
-        if (state.buildMode) { exitBuildMode(); return; }
-        hideProv();
-        document.querySelectorAll('.scrim.open').forEach(s => s.classList.remove('open'));
-        menu.classList.remove('open');
-        closeHistoryDrawer();
-        if (state.playbackIndex >= 0) exitPlayback();
-        else closeInspector();
+        if (state.playbackIndex >= 0) { exitPlayback(); return; }
+        if (state.selected) { closeInspector(); return; }
+        if (state.buildMode) exitBuildMode();
       }
     });
 
@@ -1664,7 +1873,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     globalThis.__bb = {
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
-      openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct
+      openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
+      preview, commitPreview, closeInspector, openInspectorById
     };
 
     setTimeout(() => { const h = $('viewportHint'); if (h) h.style.opacity = '0'; }, 6000);

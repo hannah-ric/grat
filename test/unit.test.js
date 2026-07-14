@@ -279,6 +279,59 @@ section('history');
   ok(Object.isFrozen(h.snapshots[0].spec), 'snapshots are immutable');
 }
 
+/* ---------------- build checklist keys + progress pruning (Phase A) ---------------- */
+section('build progress: checklist keys + orphan pruning');
+{
+  const { spec, model } = pipeline({
+    meta: { template: 'nightstand', level: 'intermediate' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const cut = Plans.cutList(spec, model);
+  const steps = Plans.assembly(spec, model);
+  const plan = Packing.planStock(spec, model, cut, { prices: K.defaultPrices(), stockMode: {} });
+  const keys = Plans.checklistKeys(plan, cut, steps);
+  const boardCuts = plan.boards.filter(b => b.stockLen).reduce((n, b) => n + b.cuts.length, 0);
+  const sheetCuts = plan.sheets.reduce((n, s) => n + s.placements.length, 0);
+  eq(keys.cuts.length, boardCuts + sheetCuts, 'one key per packed board cut and sheet placement');
+  eq(keys.steps.length, steps.length, 'one key per assembly step');
+  ok(new Set(keys.cuts).size === keys.cuts.length, 'cut keys are unique');
+
+  // Orphans from an older stock layout are pruned; live progress survives.
+  const progress = {
+    cuts: { [keys.cuts[0]]: true, 'b:9:9:Zombie leg:9999': true, 's:7:7:Zombie panel:123': false },
+    steps: { [keys.steps[0]]: true, zombie_step: true }
+  };
+  Plans.pruneProgress(progress, keys);
+  eq(Object.keys(progress.cuts), [keys.cuts[0]], 'orphan cut keys pruned, live key kept');
+  eq(Object.keys(progress.steps), [keys.steps[0]], 'orphan step keys pruned, live step kept');
+
+  // A re-pack (wider piece) changes the layout; pruning against the new plan
+  // leaves nothing the live checklist can't render, so % can never lie.
+  const r2 = pipeline(Spec.deepMerge(spec, { overall: { width: spec.overall.width + 220 } }));
+  const cut2 = Plans.cutList(r2.spec, r2.model);
+  const steps2 = Plans.assembly(r2.spec, r2.model);
+  const plan2 = Packing.planStock(r2.spec, r2.model, cut2, { prices: K.defaultPrices(), stockMode: {} });
+  const keys2 = Plans.checklistKeys(plan2, cut2, steps2);
+  const allChecked = {
+    cuts: Object.fromEntries(keys.cuts.map(k => [k, true])),
+    steps: Object.fromEntries(keys.steps.map(k => [k, true]))
+  };
+  Plans.pruneProgress(allChecked, keys2);
+  const live2 = new Set(keys2.cuts);
+  ok(Object.keys(allChecked.cuts).every(k => live2.has(k)), 'after a re-pack no orphan cut keys remain');
+  const done = keys2.cuts.filter(k => allChecked.cuts[k]).length + keys2.steps.filter(k => allChecked.steps[k]).length;
+  ok(done <= keys2.cuts.length + keys2.steps.length, 'checked count never exceeds the live checklist');
+
+  // Rough mode: quantity expands into per-piece keys, sheets still keyed.
+  const planR = Packing.planStock(spec, model, cut, { prices: K.defaultPrices(), stockMode: { [spec.wood.species]: 'rough' } });
+  const keysR = Plans.checklistKeys(planR, cut, steps);
+  eq(planR.mode, 'rough', 'rough stock mode engaged');
+  const solidPieces = cut.filter(r => r.stock !== 'sheet').reduce((n, r) => n + r.qty, 0);
+  eq(keysR.cuts.filter(k => k.startsWith('r:')).length, solidPieces, 'rough mode: one key per physical piece, not per batch');
+  ok(new Set(keysR.cuts).size === keysR.cuts.length, 'per-piece rough keys are unique');
+  eq(keysR.cuts.filter(k => k.startsWith('s:')).length, planR.sheets.reduce((n, s) => n + s.placements.length, 0), 'rough mode: sheet placements still keyed');
+}
+
 /* ---------------- exports ---------------- */
 section('COLLADA export');
 {

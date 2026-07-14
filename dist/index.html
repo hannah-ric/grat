@@ -1,6 +1,9 @@
-<title>Blueprint Buddy</title>
+<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blueprint Buddy</title>
 <style>
 /* Blueprint Buddy — design system.
    Warm oat neutrals biased toward the marking-blue accent's complement,
@@ -38,8 +41,10 @@
   --accent-soft: #e3edf3;
   --amber: #8f6316;
   --amber-soft: #f4e8cf;
+  --amber-ink: #684a0e;
   --brick: #a33d2a;
   --brick-soft: #f6e2dc;
+  --brick-ink: #8c2f1e;
   --green: #4a7c3f;
   --shadow: 0 1px 2px rgba(43, 36, 25, .07), 0 8px 24px -12px rgba(43, 36, 25, .25);
   --shadow-lg: 0 2px 4px rgba(43, 36, 25, .08), 0 24px 48px -16px rgba(43, 36, 25, .35);
@@ -57,6 +62,10 @@
   --t-fast: 150ms; --t-med: 240ms; --t-slow: 420ms;
 
   --radius: 10px; --radius-lg: 16px;
+
+  /* collapsed mobile chat sheet: handle + last-message peek + input,
+     padded for the device safe area */
+  --sheet-peek: calc(150px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -74,8 +83,10 @@
     --accent-soft: #1e3648;
     --amber: #d9a94e;
     --amber-soft: #3a2f17;
+    --amber-ink: #eac37a;
     --brick: #e0796a;
     --brick-soft: #40201a;
+    --brick-ink: #f0a396;
     --green: #8fbc7f;
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
     --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
@@ -84,7 +95,8 @@
 :root[data-theme="light"] {
   --paper: #efeade; --panel: #faf7f0; --panel-2: #f3eee3; --ink: #2b2419; --ink-2: #56493a;
   --muted: #7d705d; --line: #ddd3c0; --line-2: #cabfa8; --accent: #1b5d82; --accent-ink: #f5fafd;
-  --accent-soft: #e3edf3; --amber: #8f6316; --amber-soft: #f4e8cf; --brick: #a33d2a; --brick-soft: #f6e2dc;
+  --accent-soft: #e3edf3; --amber: #8f6316; --amber-soft: #f4e8cf; --amber-ink: #684a0e;
+  --brick: #a33d2a; --brick-soft: #f6e2dc; --brick-ink: #8c2f1e;
   --green: #4a7c3f;
   --shadow: 0 1px 2px rgba(43, 36, 25, .07), 0 8px 24px -12px rgba(43, 36, 25, .25);
   --shadow-lg: 0 2px 4px rgba(43, 36, 25, .08), 0 24px 48px -16px rgba(43, 36, 25, .35);
@@ -92,7 +104,8 @@
 :root[data-theme="dark"] {
   --paper: #191511; --panel: #241f18; --panel-2: #2c261d; --ink: #ede5d6; --ink-2: #c8bba6;
   --muted: #998a72; --line: #3a3226; --line-2: #4c4232; --accent: #6fb0d6; --accent-ink: #0e2231;
-  --accent-soft: #1e3648; --amber: #d9a94e; --amber-soft: #3a2f17; --brick: #e0796a; --brick-soft: #40201a;
+  --accent-soft: #1e3648; --amber: #d9a94e; --amber-soft: #3a2f17; --amber-ink: #eac37a;
+  --brick: #e0796a; --brick-soft: #40201a; --brick-ink: #f0a396;
   --green: #8fbc7f;
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
   --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
@@ -120,7 +133,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--panel); border-bottom: 1px solid var(--line);
   flex: none; z-index: 30;
 }
-.brand { display: flex; align-items: center; gap: 10px; flex: none; }
+.brand { display: flex; align-items: center; gap: var(--s2); flex: none; }
 .brand svg { display: block; }
 .brand-name {
   font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: -.01em;
@@ -130,7 +143,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .design-name {
   font-family: var(--display); font-weight: 600; font-size: 15px;
   background: transparent; border: 1px solid transparent; border-radius: var(--radius);
-  padding: 6px 10px; min-width: 60px; max-width: 320px; width: 24ch;
+  padding: var(--s1) var(--s2); min-width: 60px; max-width: 320px; width: 24ch;
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   text-overflow: ellipsis;
 }
@@ -139,19 +152,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topbar-group { display: flex; align-items: center; gap: var(--s1); }
 
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
   border: 1px solid var(--line-2); background: var(--panel); color: var(--ink-2);
-  border-radius: var(--radius); padding: 7px 12px; cursor: pointer;
+  border-radius: var(--radius); padding: var(--s2) 12px; cursor: pointer;
   font-size: 13.5px; font-weight: 550; white-space: nowrap;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
     color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
 .btn:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); border-color: var(--muted); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
-.btn:disabled { opacity: .38; cursor: default; }
+.btn:disabled { opacity: .55; cursor: default; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); filter: brightness(1.08); }
-.btn.icon { padding: 7px 9px; }
+.btn.icon { padding: var(--s2) 9px; }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover:not(:disabled) { background: var(--panel-2); border-color: transparent; }
 .btn.small { padding: 4px 9px; font-size: 12.5px; border-radius: 8px; }
@@ -159,7 +172,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* dropdown menu */
 .menu-wrap { position: relative; }
 .menu {
-  position: absolute; right: 0; top: calc(100% + 6px); min-width: 240px;
+  position: absolute; right: 0; top: calc(100% + var(--s2)); min-width: 240px;
   background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg); padding: var(--s1);
   opacity: 0; transform: translateY(-6px) scale(.98); pointer-events: none;
@@ -167,14 +180,22 @@ button, input, select, textarea { font: inherit; color: inherit; }
   z-index: 60;
 }
 .menu.open { opacity: 1; transform: none; pointer-events: auto; }
-.menu button {
-  display: flex; width: 100%; text-align: left; gap: 10px; align-items: baseline;
+.menu > button {
+  display: flex; width: 100%; text-align: left; gap: var(--s2); align-items: baseline;
   background: none; border: 0; border-radius: 8px; padding: 9px 12px; cursor: pointer;
   transition: background var(--t-fast) var(--ease);
 }
-.menu button:hover { background: var(--panel-2); }
-.menu button .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+.menu > button:hover { background: var(--panel-2); }
+.menu > button .hint { color: var(--ink-2); font-size: 12px; margin-left: auto; }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
+/* inline control rows inside a menu (units, precision, theme) */
+.menu .menu-row { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) 12px; }
+.menu .menu-row-label { flex: 1; font-size: 12.5px; font-weight: 550; color: var(--muted); }
+.menu .menu-row select {
+  border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px;
+  padding: 4px 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer;
+}
+.menu .menu-row .seg button { padding: var(--s1) var(--s2); font-size: 12px; }
 
 /* ---------------- bench layout ---------------- */
 .bench { display: flex; flex: 1; min-height: 0; }
@@ -200,20 +221,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 .msg.user { align-self: flex-end; }
 .msg .bubble {
-  padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.45;
+  padding: var(--s2) 14px; border-radius: 14px; font-size: 14px; line-height: 1.45;
 }
 .msg.user .bubble { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
 .msg.bot .bubble { background: var(--panel-2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
-.msg .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
+.msg .chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .chip {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: var(--s1);
   font: 500 12px/1.2 var(--mono); font-variant-numeric: tabular-nums;
   background: var(--accent-soft); color: var(--accent); border: 1px solid transparent;
-  padding: 5px 10px; border-radius: 999px;
+  padding: 5px var(--s2); border-radius: 999px;
   animation: rise var(--t-med) var(--ease);
 }
 .chip.neutral { background: var(--panel-2); color: var(--ink-2); border-color: var(--line); }
-.answer-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
+.answer-row { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .answer-row .btn { border-radius: 999px; }
 .typing { display: inline-flex; gap: 4px; padding: 12px 14px; }
 .typing i {
@@ -226,6 +247,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .chat-input { padding: var(--s2) var(--s3) var(--s3); border-top: 1px solid var(--line); }
 .chat-input .chat-controls { display: flex; gap: var(--s2); align-items: flex-end; }
 .chat-input #photoBtn { flex: none; align-self: center; }
+/* photo-to-design is a headline path, not an easter egg */
+.photo-cta {
+  min-width: 42px; min-height: 42px;
+  background: var(--accent-soft); color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.photo-cta:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .chat-input textarea {
   flex: 1; resize: none; border: 1px solid var(--line-2); background: var(--paper);
   border-radius: var(--radius); padding: 9px 12px; min-height: 40px; max-height: 120px;
@@ -233,9 +261,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transition: border-color var(--t-fast) var(--ease);
 }
 .chat-input textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.hint-prompts { display: flex; flex-direction: column; gap: 6px; margin-top: var(--s2); }
+.hint-prompts { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
 .hint-prompts .btn {
-  justify-content: flex-start; font-weight: 450; color: var(--muted);
+  justify-content: flex-start; font-weight: 450; color: var(--ink-2);
   white-space: normal; text-align: left; line-height: 1.35;
 }
 
@@ -253,10 +281,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: var(--s2);
   background: color-mix(in srgb, var(--panel) 88%, transparent);
   backdrop-filter: blur(8px);
-  border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: 999px; padding: var(--s1) var(--s2);
   box-shadow: var(--shadow);
 }
-.control-card label { font-size: 12px; color: var(--muted); font-weight: 550; }
+.control-card label { font-size: 12px; color: var(--ink-2); font-weight: 550; }
+.viewport-toolbar { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - var(--s4)); }
+.vt-sep { width: 1px; align-self: stretch; background: var(--line-2); margin: 2px 0; }
 .control-card input[type="range"] { width: 110px; accent-color: var(--accent); }
 .toggle {
   position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
@@ -275,16 +305,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .toggle[aria-pressed="true"] .track::after { transform: translateX(14px); }
 
 .advisories {
-  position: absolute; top: var(--s3); left: var(--s3); right: 200px; display: flex; flex-direction: column;
+  position: absolute; top: calc(var(--s3) + var(--s6)); left: var(--s3); right: var(--s3); display: flex; flex-direction: column;
   gap: var(--s2); z-index: 10; pointer-events: none;
 }
 .advisory {
-  pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; max-width: 460px;
-  background: var(--amber-soft); color: var(--amber); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
-  border-radius: var(--radius-lg); padding: 10px 12px; font-size: 13px; line-height: 1.45;
+  pointer-events: auto; display: flex; align-items: flex-start; gap: var(--s2); max-width: 460px;
+  background: var(--amber-soft); color: var(--amber-ink); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: var(--radius-lg); padding: var(--s2) 12px; font-size: 13px; line-height: 1.45;
   box-shadow: var(--shadow); animation: rise var(--t-med) var(--ease);
 }
-.advisory.error { background: var(--brick-soft); color: var(--brick); border-color: color-mix(in srgb, var(--brick) 30%, transparent); }
+.advisory.error { background: var(--brick-soft); color: var(--brick-ink); border-color: color-mix(in srgb, var(--brick) 30%, transparent); }
 .advisory .dismiss {
   border: 0; background: none; cursor: pointer; color: inherit; opacity: .6; padding: 0 2px; font-size: 15px; line-height: 1;
   flex: none; margin-left: auto;
@@ -293,7 +323,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .viewport-hint {
   position: absolute; bottom: var(--s2); left: 50%; transform: translateX(-50%);
-  font-size: 12px; color: var(--muted); background: color-mix(in srgb, var(--panel) 80%, transparent);
+  font-size: 12px; color: var(--ink-2); background: color-mix(in srgb, var(--panel) 80%, transparent);
   padding: 4px 12px; border-radius: 999px; pointer-events: none;
   transition: opacity var(--t-slow) var(--ease);
 }
@@ -341,7 +371,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 table.data { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
 table.data th {
   text-align: left; font: 600 11.5px var(--body); letter-spacing: .07em; text-transform: uppercase;
-  color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line-2); background: var(--panel-2);
+  color: var(--muted); padding: var(--s2) 14px; border-bottom: 1px solid var(--line-2); background: var(--panel-2);
   white-space: nowrap;
 }
 table.data td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -354,16 +384,6 @@ table.data tbody tr:hover { background: var(--panel-2); }
   padding: var(--s5) var(--s4); text-align: center; color: var(--muted); font-size: 14px;
 }
 .empty-state .big { font-family: var(--display); font-size: 17px; font-weight: 600; color: var(--ink-2); display: block; margin-bottom: var(--s1); }
-
-/* skeletons */
-.skeleton { border-radius: 8px; background: var(--panel-2); position: relative; overflow: hidden; min-height: 14px; }
-.skeleton::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--line) 60%, transparent), transparent);
-  animation: shimmer 1.4s infinite var(--ease);
-}
-@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-.skeleton-stack { display: flex; flex-direction: column; gap: var(--s2); }
 
 /* assembly */
 .step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); counter-reset: step; }
@@ -402,7 +422,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .why-joint.open .why-tip, .why-joint > button:focus-visible + .why-tip { opacity: 1; transform: none; pointer-events: auto; }
 .why-tip strong { display: block; margin-bottom: 4px; }
-.why-tip .stat { display: inline-block; margin-right: 10px; color: color-mix(in srgb, var(--paper) 70%, transparent); }
+.why-tip .stat { display: inline-block; margin-right: var(--s2); color: color-mix(in srgb, var(--paper) 70%, transparent); }
 
 /* shop reference */
 .ref-search {
@@ -413,7 +433,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .ref-search:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .ref-tabs { display: flex; gap: var(--s1); margin-bottom: var(--s3); flex-wrap: wrap; }
 .ref-tab {
-  border: 1px solid var(--line-2); background: var(--panel); border-radius: 999px; padding: 6px 14px;
+  border: 1px solid var(--line-2); background: var(--panel); border-radius: 999px; padding: var(--s2) 14px;
   cursor: pointer; font-size: 13px; font-weight: 550; color: var(--ink-2);
   transition: all var(--t-fast) var(--ease);
 }
@@ -446,7 +466,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .inspector-head h3 { margin: 0; font-family: var(--display); font-size: 16px; flex: 1; }
 .inspector-dims { font: 500 12px var(--mono); color: var(--muted); padding: 0 var(--s3) var(--s2); font-variant-numeric: tabular-nums; }
 .inspector-body { padding: 0 var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
-.param { display: flex; flex-direction: column; gap: 6px; }
+.param { display: flex; flex-direction: column; gap: var(--s2); }
 .param-label { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--ink-2); font-weight: 550; }
 .param-label output { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
 .param input[type="range"] { width: 100%; accent-color: var(--accent); }
@@ -456,11 +476,11 @@ table.data tbody tr:hover { background: var(--panel-2); }
   font-family: var(--mono); font-size: 13px;
 }
 .param select {
-  border: 1px solid var(--line-2); background: var(--paper); border-radius: 8px; padding: 7px 10px; cursor: pointer; font-size: 13.5px;
+  border: 1px solid var(--line-2); background: var(--paper); border-radius: 8px; padding: var(--s2) var(--s2); cursor: pointer; font-size: 13.5px;
 }
 .seg { display: flex; border: 1px solid var(--line-2); border-radius: 9px; overflow: hidden; }
 .seg button {
-  flex: 1; border: 0; background: var(--panel); padding: 7px 4px; cursor: pointer; font-size: 12.5px; font-weight: 550; color: var(--muted);
+  flex: 1; border: 0; background: var(--panel); padding: var(--s2) var(--s1); cursor: pointer; font-size: 12.5px; font-weight: 550; color: var(--muted);
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .seg button + button { border-left: 1px solid var(--line-2); }
@@ -469,10 +489,17 @@ table.data tbody tr:hover { background: var(--panel-2); }
 /* Header units control: the same segmented pattern, compact. Switching only
  * changes text produced by BB.Units, so no layout jump. */
 .units-seg { flex: none; }
-.units-seg button { flex: none; min-width: 34px; padding: 6px 9px; font-family: var(--mono); }
+.units-seg button { flex: none; min-width: 34px; padding: var(--s1) 9px; font-family: var(--mono); }
 #dualBtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
+/* Build mode is the headline feature — the one filled, weighty control */
+.build-cta { font-weight: 650; padding: var(--s2) var(--s3); box-shadow: var(--shadow); }
+
 /* ---------------- history drawer ---------------- */
+.drawer-backdrop {
+  position: fixed; inset: 0; z-index: 65;
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
+}
 .drawer-panel {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 92vw); z-index: 70;
   background: var(--panel); border-left: 1px solid var(--line-2); box-shadow: var(--shadow-lg);
@@ -499,7 +526,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .compare-banner {
   position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%); z-index: 14;
   display: flex; align-items: center; gap: var(--s3);
-  background: var(--ink); color: var(--paper); padding: 8px 10px 8px 16px; border-radius: 999px; box-shadow: var(--shadow-lg);
+  background: var(--ink); color: var(--paper); padding: var(--s2) var(--s2) var(--s2) var(--s3); border-radius: 999px; box-shadow: var(--shadow-lg);
   font-size: 13px; white-space: nowrap;
 }
 .compare-banner .btn { border-color: color-mix(in srgb, var(--paper) 30%, transparent); background: none; color: var(--paper); }
@@ -522,21 +549,21 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--s3); }
 .gallery-card {
   text-align: left; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper);
-  padding: var(--s3); cursor: pointer; display: flex; flex-direction: column; gap: 6px;
+  padding: var(--s3); cursor: pointer; display: flex; flex-direction: column; gap: var(--s2);
   transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 .gallery-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--line-2); }
 .gallery-card .g-emoji { font-size: 26px; }
 .gallery-card .g-name { font-family: var(--display); font-weight: 650; font-size: 15px; }
 .gallery-card .g-caption { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
-.gallery-card .g-meta { font: 500 11px var(--mono); color: var(--accent); margin-top: auto; padding-top: 6px; }
+.gallery-card .g-meta { font: 500 11px var(--mono); color: var(--accent); margin-top: auto; padding-top: var(--s2); }
 .modal-foot { margin-top: var(--s4); display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 
 .help-steps { margin: var(--s2) 0 var(--s3); padding-left: 22px; font-size: 14px; line-height: 1.7; }
 .help-block { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s3); margin-bottom: var(--s3); background: var(--paper); }
 .help-block h3 { margin: 0 0 var(--s1); font-family: var(--display); font-size: 16px; }
 .help-block p { margin: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.55; }
-code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px var(--s1); }
 
 /* diff table in compare modal */
 .diff-table td.old { color: var(--brick); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--brick) 50%, transparent); }
@@ -544,6 +571,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 
 /* ---------------- mobile ---------------- */
 .sheet-handle { display: none; }
+.chat-peek { display: none; }
 @media (max-width: 880px) {
   .bench { flex-direction: column; }
   .stage { order: 0; }
@@ -552,28 +580,41 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
     order: 1; width: 100%; border-right: 0; border-top: 1px solid var(--line-2);
     position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: 46vh; z-index: 50;
     border-radius: 18px 18px 0 0; box-shadow: var(--shadow-lg);
-    transform: translateY(calc(100% - 106px));
+    transform: translateY(calc(100% - var(--sheet-peek)));
     transition: transform var(--t-slow) var(--ease);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .chat.expanded { transform: none; }
   .sheet-handle {
     display: flex; justify-content: center; padding: 8px 0 2px; cursor: grab; border: 0; background: none; width: 100%;
   }
   .sheet-handle::after { content: ""; width: 44px; height: 5px; border-radius: 3px; background: var(--line-2); }
+  /* collapsed: last message peeks above the input so the thread has a pulse */
+  .chat-peek {
+    display: block; min-height: 19px; font-size: 12.5px; color: var(--muted);
+    padding: 0 var(--s3) var(--s1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chat.expanded .chat-peek { display: none; }
   .chat-log { display: none; }
   .chat.expanded .chat-log { display: flex; }
   .chat-head { display: none; }
   .chat.expanded .chat-head { display: flex; }
-  #app { padding-bottom: 106px; }
+  #app { padding-bottom: var(--sheet-peek); }
   .inspector { width: min(300px, calc(100vw - 32px)); }
-  .advisories { right: var(--s3); top: auto; bottom: var(--s3); }
+  /* stacking: playback floats above the collapsed sheet, advisories above both */
+  .advisories {
+    position: fixed; left: var(--s3); right: var(--s3); top: auto;
+    bottom: calc(var(--sheet-peek) + 68px); z-index: 54;
+  }
   .stage-controls { flex-direction: column; }
   .control-card { padding: 8px 12px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   .topbar { flex-wrap: wrap; gap: var(--s2); }
   .design-name { width: 12ch; }
-  .playback-bar { bottom: var(--s2); }
+  .playback-bar {
+    position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
+  }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -617,7 +658,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   white-space: nowrap;
 }
 .save-state.on { opacity: .85; }
-.save-state.err { color: var(--amber); opacity: .85; }
+.save-state.err { color: var(--amber-ink); opacity: 1; }
 
 .brand { cursor: default; user-select: none; -webkit-user-select: none; }
 
@@ -634,19 +675,19 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .stamp.pass { color: var(--green); }
 .stamp.advisory { color: var(--amber); }
 .stamp.fail { color: var(--brick); }
-.load-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
-.load-row .span-note { font: 500 11px var(--mono); color: var(--muted); margin-left: 6px; }
+.load-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s2) 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.load-row .span-note { font: 500 11px var(--mono); color: var(--muted); margin-left: var(--s2); }
 .load-row select { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; color: var(--ink-2); max-width: 55%; }
 .check-card { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s3); margin-bottom: var(--s2); background: var(--paper); }
 .check-card.fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
 .check-card .check-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
 .check-card h4 { margin: 0; font-size: 14px; font-weight: 650; }
-.check-card .check-value { font: 600 12.5px var(--mono); font-variant-numeric: tabular-nums; margin-top: 6px; }
+.check-card .check-value { font: 600 12.5px var(--mono); font-variant-numeric: tabular-nums; margin-top: var(--s2); }
 .check-card .check-threshold { font: 500 11px var(--mono); color: var(--muted); margin-top: 2px; }
-.check-card .check-explain { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; margin: 6px 0 0; }
-.check-card .check-factors { margin-top: 6px; font: 500 11px var(--mono); color: var(--muted); }
+.check-card .check-explain { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; margin: var(--s2) 0 0; }
+.check-card .check-factors { margin-top: var(--s2); font: 500 11px var(--mono); color: var(--muted); }
 .check-card .check-factors div { display: flex; justify-content: space-between; }
-.check-card .fix-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
+.check-card .fix-row { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .integrity-disclaimer { font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); padding-top: var(--s2); margin-top: var(--s3); }
 .climate-row { display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s3); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
 .climate-row select { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; }
@@ -655,7 +696,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .stock-controls { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; margin-bottom: var(--s3); font-size: 13px; color: var(--ink-2); }
 .stock-controls select { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; }
 .stock-board { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s2) var(--s3) var(--s3); margin-bottom: var(--s2); background: var(--paper); }
-.stock-board .sb-title { display: flex; justify-content: space-between; align-items: baseline; font: 600 12.5px var(--mono); margin-bottom: 6px; }
+.stock-board .sb-title { display: flex; justify-content: space-between; align-items: baseline; font: 600 12.5px var(--mono); margin-bottom: var(--s2); }
 .stock-board .sb-title .offcut { color: var(--muted); font-weight: 500; }
 .stock-note { font-size: 12px; color: var(--muted); margin: var(--s2) 0; }
 .price-editor summary { cursor: pointer; font-weight: 600; font-size: 13.5px; padding: var(--s2) 0; color: var(--ink-2); }
@@ -677,18 +718,24 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   position: fixed; z-index: 90; max-width: 420px; background: var(--ink); color: var(--paper);
   border-radius: 12px; padding: var(--s3); box-shadow: var(--shadow-lg); font-size: 12.5px; line-height: 1.5;
 }
-.prov-pop h5 { margin: 0 0 6px; font: 700 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--paper) 65%, transparent); }
-.prov-pop .prov-line { margin-bottom: 6px; }
+.prov-pop .prov-head { display: flex; align-items: flex-start; gap: var(--s2); }
+.prov-pop h5 { flex: 1; margin: 0 0 var(--s1); font: 700 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--paper) 65%, transparent); }
+.prov-pop .prov-close {
+  flex: none; border: 0; background: none; color: inherit; cursor: pointer;
+  opacity: .75; font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.prov-pop .prov-close:hover { opacity: 1; }
+.prov-pop .prov-line { margin-bottom: var(--s1); }
 .prov-pop .prov-line b { display: block; font: 600 11px var(--body); color: color-mix(in srgb, var(--paper) 75%, transparent); }
 .prov-pop .prov-line span { font-family: var(--mono); font-size: 12px; }
 .prov-pop .prov-foot {
-  margin-top: 8px; padding-top: 6px; border-top: 1px solid color-mix(in srgb, var(--paper) 18%, transparent);
+  margin-top: var(--s2); padding-top: var(--s1); border-top: 1px solid color-mix(in srgb, var(--paper) 18%, transparent);
   font: 500 10.5px var(--body); letter-spacing: .06em; color: color-mix(in srgb, var(--paper) 55%, transparent);
 }
 
 /* ---------------- projects gallery ---------------- */
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--s3); max-height: 55vh; overflow-y: auto; padding: 2px; }
-.project-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); padding: var(--s2); display: flex; flex-direction: column; gap: 6px; }
+.project-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); padding: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
 .project-card.current { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .project-card .p-thumb { width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); display: block; }
 .project-card .p-thumb.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22px; }
@@ -696,24 +743,25 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .project-card .p-meta { font: 500 11px var(--mono); color: var(--muted); }
 .project-card .p-progress { height: 4px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
 .project-card .p-progress i { display: block; height: 100%; background: var(--green); }
-.project-card .p-actions { display: flex; gap: 4px; flex-wrap: wrap; }
-.project-card .p-actions .btn { padding: 3px 8px; font-size: 11.5px; }
-.project-card .confirm-row { display: flex; gap: 4px; align-items: center; font-size: 11.5px; color: var(--brick); }
+/* comfortable thumb targets: these cards get used on a phone in the shop */
+.project-card .p-actions { display: flex; gap: var(--s1); flex-wrap: wrap; }
+.project-card .p-actions .btn { padding: 8px 12px; font-size: 12.5px; min-height: 38px; flex: 1 1 auto; }
+.project-card .confirm-row { display: flex; gap: var(--s1); align-items: center; font-size: 12.5px; color: var(--brick); min-height: 38px; }
 
 /* ---------------- share ---------------- */
 .share-block { margin-bottom: var(--s3); }
-.share-label { display: block; font: 600 11px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.share-label { display: block; font: 600 11px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: var(--s2); }
 .share-code {
   width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--radius);
   background: var(--panel-2); color: var(--ink); font: 500 11.5px var(--mono); padding: var(--s2); overflow-wrap: anywhere;
 }
-.share-row { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); margin-top: 6px; }
+.share-row { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); margin-top: var(--s2); }
 .share-meta { font: 500 11.5px var(--mono); color: var(--muted); }
 .share-error:not(:empty) { color: var(--brick); }
 
 /* ---------------- species comparison ---------------- */
 .modal-wide { max-width: 860px; width: min(860px, calc(100vw - 40px)); }
-.species-pick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: var(--s3); }
+.species-pick { display: flex; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
 .species-pick button {
   border: 1px solid var(--line-2); background: var(--panel); border-radius: 999px; padding: 5px 12px;
   font-size: 12.5px; cursor: pointer; color: var(--ink-2);
@@ -727,7 +775,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .diag-summary { font: 600 12px var(--mono); }
 .diag-body { max-height: 55vh; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s2); }
 .diag-group { font: 700 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: var(--s2) 0 4px; }
-.diag-row { display: flex; gap: var(--s2); align-items: baseline; padding: 4px 6px; border-radius: 8px; font-size: 12.5px; }
+.diag-row { display: flex; gap: var(--s2); align-items: baseline; padding: var(--s1) var(--s2); border-radius: 8px; font-size: 12.5px; }
 .diag-row.fail { background: var(--brick-soft); }
 .diag-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--green); align-self: center; }
 .diag-row.fail .diag-dot { background: var(--brick); }
@@ -757,6 +805,10 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .bm-board-title {
   font: 700 clamp(14px, 1.9vw, 17px) var(--mono); padding: var(--s2) var(--s3);
   background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--radius) var(--radius) 0 0;
+}
+.bm-diagram {
+  padding: var(--s2) var(--s3); background: var(--paper);
+  border: 1px solid var(--line-2); border-top: 0;
 }
 .bm-check {
   display: flex; align-items: center; gap: var(--s3); width: 100%; text-align: left;
@@ -799,8 +851,8 @@ body.bm-playback .playback-bar { display: none !important; }
 }
 
 /* photo bubble in chat */
-.msg .photo-thumb { max-width: 180px; border-radius: 10px; border: 1px solid var(--line-2); display: block; margin-bottom: 6px; }
-.chip.caveat { background: var(--amber-soft); color: var(--amber); }
+.msg .photo-thumb { max-width: 180px; border-radius: 10px; border: 1px solid var(--line-2); display: block; margin-bottom: var(--s2); }
+.chip.caveat { background: var(--amber-soft); color: var(--amber-ink); }
 
 /* print: stock diagrams */
 @media print {
@@ -810,6 +862,8 @@ body.bm-playback .playback-bar { display: none !important; }
 }
 
 </style>
+</head>
+<body>
 
 <div id="app">
   <header class="topbar">
@@ -827,22 +881,44 @@ body.bm-playback .playback-bar { display: none !important; }
     <div class="topbar-group" role="group" aria-label="History">
       <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-      <button id="historyBtn" class="btn" aria-haspopup="dialog">History</button>
     </div>
     <div class="topbar-group">
-      <button id="projectsBtn" class="btn" aria-haspopup="dialog">Projects</button>
-      <button id="shareBtn" class="btn" aria-haspopup="dialog">Share</button>
-      <button id="buildModeBtn" class="btn" title="Full-screen shop companion">Build mode</button>
-    </div>
-    <div class="topbar-group">
-      <div class="seg units-seg" role="group" aria-label="Display units">
-        <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
-        <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
-      </div>
-      <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
       <div class="menu-wrap">
-        <button id="exportBtn" class="btn primary" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
-        <div id="exportMenu" class="menu" role="menu">
+        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More ▾</button>
+        <div id="moreMenu" class="menu" role="menu" inert>
+          <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
+          <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
+          <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-row">
+            <span class="menu-row-label">Units</span>
+            <div class="seg units-seg" role="group" aria-label="Display units">
+              <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
+              <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
+            </div>
+            <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
+          </div>
+          <div class="menu-row" id="precisionRow">
+            <span class="menu-row-label">Precision</span>
+            <select id="precisionSelect" aria-label="Fractional-inch precision">
+              <option value="8">1/8 in</option>
+              <option value="16">1/16 in</option>
+              <option value="32">1/32 in</option>
+            </select>
+          </div>
+          <div class="menu-row">
+            <span class="menu-row-label">Theme</span>
+            <div class="seg theme-seg" role="group" aria-label="Color theme">
+              <button id="themeAuto" aria-pressed="true">Auto</button>
+              <button id="themeLight" aria-pressed="false">Light</button>
+              <button id="themeDark" aria-pressed="false">Dark</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button id="exportBtn" class="btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <div id="exportMenu" class="menu" role="menu" inert>
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
@@ -853,12 +929,14 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
         </div>
       </div>
+      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion">Build mode</button>
     </div>
   </header>
 
   <main class="bench">
     <aside class="chat" id="chatPanel" aria-label="Design chat">
-      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat"></button>
+      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat" aria-expanded="false" aria-controls="chatPanel"></button>
+      <div class="chat-peek" id="chatPeek" aria-hidden="true"></div>
       <div class="chat-head">
         <h2>Design chat</h2>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
@@ -870,7 +948,7 @@ body.bm-playback .playback-bar { display: none !important; }
       <div class="chat-log" id="chatLog" aria-live="polite"></div>
       <div class="chat-input">
         <div class="chat-controls" id="chatForm">
-          <button type="button" class="btn icon ghost" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
+          <button type="button" class="btn icon photo-cta" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
             <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true"><rect x="1.2" y="3.6" width="14.6" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 3.6 6.7 1.6 h3.6 l1.3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </button>
           <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp,image/*" hidden aria-label="Furniture photo">
@@ -887,7 +965,7 @@ body.bm-playback .playback-bar { display: none !important; }
 
         <div class="advisories" id="advisories"></div>
 
-        <div class="inspector" id="inspector" role="region" aria-label="Part inspector">
+        <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
             <h3 id="inspName">Part</h3>
             <button class="btn icon ghost" id="inspClose" aria-label="Close inspector">✕</button>
@@ -897,14 +975,12 @@ body.bm-playback .playback-bar { display: none !important; }
         </div>
 
         <div class="stage-controls">
-          <div class="control-card">
+          <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
             <label for="explodeRange">Explode</label>
             <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
-          </div>
-          <div class="control-card">
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
-          </div>
-          <div class="control-card">
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
           </div>
         </div>
@@ -938,7 +1014,8 @@ body.bm-playback .playback-bar { display: none !important; }
     </section>
   </main>
 
-  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true">
+  <div class="drawer-backdrop" id="historyBackdrop" hidden></div>
+  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true" inert>
     <div class="drawer-head">
       <h2>Revisions</h2>
       <button class="btn small" id="compareBtn" disabled>Compare</button>
@@ -948,7 +1025,7 @@ body.bm-playback .playback-bar { display: none !important; }
     <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
   </aside>
 
-  <div class="scrim" id="galleryScrim" role="dialog" aria-modal="true" aria-label="Starter gallery">
+  <div class="scrim" inert id="galleryScrim" role="dialog" aria-modal="true" aria-label="Starter gallery">
     <div class="modal">
       <h2>What are we building?</h2>
       <p class="sub">Pick a starter to see full plans instantly — every one runs through the same parametric pipeline as a design you describe yourself. Refine it in the chat afterward.</p>
@@ -960,7 +1037,7 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" id="helpScrim" role="dialog" aria-modal="true" aria-label="Export help">
+  <div class="scrim" inert id="helpScrim" role="dialog" aria-modal="true" aria-label="Export help">
     <div class="modal">
       <h2>Getting your design into SketchUp</h2>
       <div class="help-block">
@@ -986,7 +1063,7 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" id="compareScrim" role="dialog" aria-modal="true" aria-label="Snapshot comparison">
+  <div class="scrim" inert id="compareScrim" role="dialog" aria-modal="true" aria-label="Snapshot comparison">
     <div class="modal">
       <h2 id="compareTitle">Compare snapshots</h2>
       <p class="sub" id="compareSub"></p>
@@ -1000,7 +1077,7 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" id="projectsScrim" role="dialog" aria-modal="true" aria-label="My projects">
+  <div class="scrim" inert id="projectsScrim" role="dialog" aria-modal="true" aria-label="My projects">
     <div class="modal">
       <h2>My projects</h2>
       <p class="sub" id="projectsSub">Designs autosave here as you work. Open, rename, duplicate, or delete — build progress travels with each project.</p>
@@ -1012,7 +1089,7 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" id="shareScrim" role="dialog" aria-modal="true" aria-label="Share design">
+  <div class="scrim" inert id="shareScrim" role="dialog" aria-modal="true" aria-label="Share design">
     <div class="modal">
       <h2>Share code</h2>
       <p class="sub">A compact code that carries the whole design. Copy it anywhere; paste one below to import.</p>
@@ -1036,7 +1113,7 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" id="speciesScrim" role="dialog" aria-modal="true" aria-label="Species comparison">
+  <div class="scrim" inert id="speciesScrim" role="dialog" aria-modal="true" aria-label="Species comparison">
     <div class="modal modal-wide">
       <h2>Compare species</h2>
       <p class="sub">The same design recomputed side by side — purchasable cost, weight, sag margin on the critical span, seasonal movement, and surface duty. Tap a column to use that species.</p>
@@ -1046,7 +1123,7 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" id="diagScrim" role="dialog" aria-modal="true" aria-label="Diagnostics">
+  <div class="scrim" inert id="diagScrim" role="dialog" aria-modal="true" aria-label="Diagnostics">
     <div class="modal modal-wide">
       <h2>Diagnostics</h2>
       <p class="sub">The self-test harness: every code-owned promise, asserted in-app. <span id="diagSummary" class="diag-summary"></span></p>
@@ -1086,7 +1163,7 @@ body.bm-playback .playback-bar { display: none !important; }
     <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
   </div>
 
-  <div class="prov-pop" id="provPop" hidden role="tooltip"></div>
+  <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance">
 </div>
 
 <div id="printRoot"></div>
@@ -4059,7 +4136,42 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
-  BB.Plans = { cutList, bom, assembly, JOINT_ALLOWANCE };
+  /* ---------------- build-mode checklist keys ----------------
+   * Single source of truth for build-progress keys: the same enumeration
+   * names the checkboxes in build mode, prunes stale progress after a
+   * re-pack, and counts completion — so the three can never disagree. */
+  function cutKey(kind, gi, ci, name, len) { return `${kind}:${gi}:${ci}:${name}:${len}`; }
+
+  function checklistKeys(stockPlan, cut, steps) {
+    const cuts = [];
+    if (stockPlan) {
+      stockPlan.boards.forEach((b, bi) => {
+        if (!b.stockLen) return;
+        b.cuts.forEach((c, ci) => cuts.push(cutKey('b', bi, ci, c.name, c.len)));
+      });
+      stockPlan.sheets.forEach((s, si) => {
+        s.placements.forEach((p, pi) => cuts.push(cutKey('s', si, pi, p.name, Math.round(p.w))));
+      });
+      if (stockPlan.mode === 'rough') {
+        // Rough stock expands quantity into per-piece checks.
+        (cut || []).filter(r => r.stock !== 'sheet').forEach((r, ri) => {
+          for (let qi = 0; qi < r.qty; qi++) cuts.push(cutKey('r', ri, qi, r.name, r.L));
+        });
+      }
+    }
+    return { cuts, steps: (steps || []).map(s => s.id) };
+  }
+
+  /* Drop progress keys that no longer exist in the live checklist — orphans
+   * left behind by an older stock layout. Mutates in place. */
+  function pruneProgress(progress, keys) {
+    const liveCuts = new Set(keys.cuts), liveSteps = new Set(keys.steps);
+    for (const k of Object.keys(progress.cuts)) if (!liveCuts.has(k)) delete progress.cuts[k];
+    for (const k of Object.keys(progress.steps)) if (!liveSteps.has(k)) delete progress.steps[k];
+    return progress;
+  }
+
+  BB.Plans = { cutList, bom, assembly, JOINT_ALLOWANCE, cutKey, checklistKeys, pruneProgress };
 })();
 </script>
 <script>/* Blueprint Buddy — exports: COLLADA (.dae), SketchUp Ruby (.rb), print sheet.
@@ -5271,9 +5383,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PRICES_KEY = 'prices:v1';
   const PREFS_KEY = 'prefs:v2';
   const LEGACY_PREFS_KEY = 'prefs:v1';
-  // Fresh installs: fractional inches at 1/16, dual display off.
+  // Fresh installs: fractional inches at 1/16, dual display off, OS theme.
   const DEFAULT_PREFS = {
-    climate: 'temperate', stockMode: {},
+    climate: 'temperate', stockMode: {}, theme: 'auto',
     units: { system: 'imperial', precision: 16, dual: false }
   };
 
@@ -6299,7 +6411,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       if (model) {
         for (const part of model.parts) {
-          const m = new THREE.Mesh(unitBox, materialFor(part.material, part.role, 'ghost'));
+          // Same geometry rules as setModel: cylinders share the unit
+          // cylinder, everything else the unit box, rotation applied X→Y→Z.
+          const isCyl = part.prim === 'cylinder';
+          const m = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'ghost'));
+          const r = part.rot || { x: 0, y: 0, z: 0 };
+          m.rotation.set((r.x || 0) * DEG, (r.y || 0) * DEG, (r.z || 0) * DEG, 'ZYX');
           m.scale.set(part.size.w, part.size.h, part.size.d);
           m.position.set(part.pos.x, part.pos.y, part.pos.z);
           ghostGroup.add(m);
@@ -6678,6 +6795,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.stockPlan = Packing.planStock(r.spec, r.model, state.cut, { prices: state.prices, stockMode: state.prefs4.stockMode });
     state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan });
     state.steps = Plans.assembly(r.spec, r.model, state.integrity);
+    // The checklist just changed shape: progress keys from an older stock
+    // layout would otherwise inflate the build percentage forever.
+    if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
     state.engine.setModel(r.model, r.spec);
   }
   /* Recompute derived layers for the SAME spec (load presets, prices,
@@ -6697,6 +6817,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     exitPlayback();
     clearCompare();
+    state.previewing = false; // any pending slider preview is superseded by this commit
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -6726,6 +6847,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function restoreTo(spec) {
     exitPlayback();
+    clearCompare(); // undo/redo/restore must never leave a stale ghost + banner
+    state.previewing = false; // a restore discards any uncommitted preview
     const r = runPipeline(spec);
     adopt(r);
     renderAll();
@@ -6741,20 +6864,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   let saveTimer = null;
   function progressPct() {
     if (!state.project) return 0;
-    const total = countChecklistItems();
+    // Count only keys that exist in the live checklist — never orphans from
+    // an older stock layout, never boards the checklist can't render.
+    const keys = Plans.checklistKeys(state.stockPlan, state.cut, state.steps);
+    const total = keys.cuts.length + keys.steps.length;
     if (!total) return 0;
-    const done = Object.values(state.project.progress.cuts).filter(Boolean).length +
-      Object.values(state.project.progress.steps).filter(Boolean).length;
+    const done = keys.cuts.filter(k => state.project.progress.cuts[k]).length +
+      keys.steps.filter(k => state.project.progress.steps[k]).length;
     return Math.min(100, Math.round(100 * done / total));
-  }
-  function countChecklistItems() {
-    let n = state.steps.length;
-    if (state.stockPlan) {
-      for (const b of state.stockPlan.boards) n += b.cuts.length;
-      for (const s of state.stockPlan.sheets) n += s.placements.length;
-      if (state.stockPlan.mode === 'rough') n += state.cut.filter(r => r.stock !== 'sheet').length;
-    }
-    return n;
   }
   function scheduleAutosave() {
     clearTimeout(saveTimer);
@@ -6794,9 +6911,21 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('unitsIn').setAttribute('aria-pressed', String(imperial));
     $('unitsMm').setAttribute('aria-pressed', String(!imperial));
     $('dualBtn').setAttribute('aria-pressed', String(!!Units.get().dual));
+    $('precisionRow').hidden = !imperial; // fractions are an imperial concept
+    $('precisionSelect').value = String(state.prefs4.units.precision);
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
+  }
+
+  /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
+   * the :root[data-theme] overrides. */
+  function applyTheme(t) {
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    else delete document.documentElement.dataset.theme;
+    for (const [id, val] of [['themeAuto', 'auto'], ['themeLight', 'light'], ['themeDark', 'dark']]) {
+      $(id).setAttribute('aria-pressed', String((t || 'auto') === val));
+    }
   }
 
   /* ---------------- render: advisories ---------------- */
@@ -6827,16 +6956,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
-    if (state.busy) {
-      const stack = el('div', 'skeleton-stack');
-      [28, 18, 18, 18, 18, 18].forEach(h => {
-        const s = el('div', 'skeleton'); s.style.height = h + 'px';
-        if (h === 28) s.style.width = '40%';
-        stack.append(s);
-      });
-      inner.append(stack);
-      return;
-    }
     if (state.tab === 'cut') renderCut(inner);
     else if (state.tab === 'stock') renderStock(inner);
     else if (state.tab === 'bom') renderBom(inner);
@@ -6845,19 +6964,30 @@ var BB = globalThis.BB = globalThis.BB || {};
     else renderReference(inner);
   }
 
-  /* ---------------- provenance popover (stretch: number provenance) ---------------- */
+  /* ---------------- provenance dialog (stretch: number provenance) ---------------- */
+  let provAnchor = null;
   function showProv(row, anchor) {
     const pop = $('provPop');
     const lines = Prov.forCutRow(state.spec, state.model, row);
-    pop.innerHTML = `<h5>${esc(row.name)} — where these numbers come from</h5>` +
+    pop.innerHTML = `<div class="prov-head"><h5>${esc(row.name)} — where these numbers come from</h5>
+      <button type="button" class="prov-close" aria-label="Close provenance">✕</button></div>` +
       lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('') +
       `<div class="prov-foot">computed internally in metric</div>`;
     pop.hidden = false;
+    provAnchor = anchor;
+    pop.querySelector('.prov-close').onclick = hideProv;
     const r = anchor.getBoundingClientRect();
     pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left)) + 'px';
     pop.style.top = (r.bottom + 8 + pop.offsetHeight > window.innerHeight ? r.top - pop.offsetHeight - 8 : r.bottom + 8) + 'px';
+    pop.querySelector('.prov-close').focus();
   }
-  function hideProv() { const pop = $('provPop'); if (pop) pop.hidden = true; }
+  function hideProv() {
+    const pop = $('provPop');
+    if (!pop || pop.hidden) return;
+    pop.hidden = true;
+    if (provAnchor && document.contains(provAnchor)) provAnchor.focus();
+    provAnchor = null;
+  }
   document.addEventListener('click', e => {
     if (!e.target.closest || (!e.target.closest('.prov-btn') && !e.target.closest('.prov-pop'))) hideProv();
   });
@@ -6870,10 +7000,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       return;
     }
     const scroll = el('div', 'table-scroll');
-    const dim = (r, v, i) => `<button type="button" class="prov-btn num" data-prov="${i}">${fmt(v)}</button>`;
+    const dim = (r, v, i, what) => `<button type="button" class="prov-btn num" data-prov="${i}" aria-label="${esc(r.name)} ${what} ${esc(fmt(v))} — show the formula">${fmt(v)}</button>`;
     const rows = state.cut.map((r, i) => `<tr>
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
-      <td class="num">${dim(r, r.L, i)}</td><td class="num">${dim(r, r.W, i)}</td><td class="num">${dim(r, r.T, i)}</td>
+      <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
       <td style="color:var(--muted);font-size:12.5px">${esc(r.note || '')}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -6989,6 +7119,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderBom(root) {
     root.append(el('h3', '', 'Bill of materials'));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
+    if (!state.bomData.items.length) {
+      root.append(el('div', 'empty-state', '<span class="big">Nothing to buy yet.</span>Describe a piece in the chat and the shopping list prices itself.'));
+      return;
+    }
     const compareBtn = el('button', 'btn small', 'Compare species side by side');
     compareBtn.onclick = openSpecies;
     root.append(compareBtn);
@@ -7020,6 +7154,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderAssembly(root) {
     root.append(el('h3', '', 'Assembly'));
     root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow.'));
+    if (!state.steps.length) {
+      root.append(el('div', 'empty-state', '<span class="big">No steps to walk yet.</span>Once a design has parts, assembly writes itself in build order.'));
+      return;
+    }
     const list = el('ol', 'step-list');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
@@ -7128,13 +7266,32 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     const tabs = el('div', 'ref-tabs');
     tabs.setAttribute('role', 'tablist');
-    for (const [key, label] of [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']]) {
+    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']];
+    for (const [key, label] of refEntries) {
       const b = el('button', 'ref-tab', esc(label));
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', state.refTab === key);
+      b.tabIndex = state.refTab === key ? 0 : -1; // roving tabindex
       b.onclick = () => { state.refTab = key; renderPanel(); };
       tabs.append(b);
     }
+    // Same arrow-key pattern as the main plan tabs.
+    tabs.addEventListener('keydown', e => {
+      const order = refEntries.map(x => x[0]);
+      const i = order.indexOf(state.refTab);
+      let next = null;
+      if (e.key === 'ArrowRight') next = order[(i + 1) % order.length];
+      if (e.key === 'ArrowLeft') next = order[(i + order.length - 1) % order.length];
+      if (e.key === 'Home') next = order[0];
+      if (e.key === 'End') next = order[order.length - 1];
+      if (next) {
+        e.preventDefault();
+        state.refTab = next;
+        renderPanel(); // rebuilds the tablist — refocus the selected tab
+        const nb = document.querySelectorAll('.ref-tab')[order.indexOf(next)];
+        if (nb) nb.focus();
+      }
+    });
     root.append(tabs);
     const body = el('div');
     root.append(body);
@@ -7199,12 +7356,24 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- chat ---------------- */
+  /* The AI round-trip is busy state for the CHAT, not the plans: panels keep
+   * their content (the last valid design is still true), while Send and
+   * Photo disable and the chat reports aria-busy. */
+  function setBusy(b) {
+    state.busy = b;
+    $('sendBtn').disabled = b;
+    $('photoBtn').disabled = b;
+    $('chatPanel').setAttribute('aria-busy', String(b));
+  }
   function chatMsg(kind, html) {
     const log = $('chatLog');
     const m = el('div', 'msg ' + kind);
     m.innerHTML = html;
     log.append(m);
     log.scrollTop = log.scrollHeight;
+    // The collapsed mobile sheet shows the tail of the conversation.
+    const peekText = m.textContent.trim();
+    if (peekText) $('chatPeek').textContent = (kind === 'user' ? 'You: ' : '') + peekText;
     return m;
   }
   function botSay(text, chips, opts) {
@@ -7310,19 +7479,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       b.style.display = 'block';
       b.textContent = t + '…';
     };
-    state.busy = true;
-    renderPanel();
+    setBusy(true);
     try {
       const promptText = image ? AI.VISION_PROMPT : text;
       const before = state.spec;
       const out = await aiPipeline(promptText, image, setStatus);
       typing.remove();
-      state.busy = false;
-      if (!out) { renderPanel(); return; }
+      setBusy(false);
+      if (!out) return;
       const okc = commit(out.final, 'ai');
       if (!okc) {
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
-        renderPanel();
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
@@ -7338,8 +7505,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     } catch (err) {
       typing.remove();
-      state.busy = false;
-      renderPanel();
+      setBusy(false);
       botSay('The design brain slipped a gear on that one. Mind rephrasing?', []);
     }
   }
@@ -7432,9 +7598,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.engine.select(part.id);
     const insp = $('inspector');
     insp.classList.add('open');
+    insp.inert = false;
     $('inspName').textContent = part.name;
     const dims = $('inspDims');
-    dims.innerHTML = `<button type="button" class="prov-btn num">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
+    dims.innerHTML = `<button type="button" class="prov-btn num" aria-label="${esc(part.name)} dimensions ${esc(fmt(part.size.w))} by ${esc(fmt(part.size.h))} by ${esc(fmt(part.size.d))} — show the formulas">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
     dims.querySelector('.prov-btn').onclick = e => {
       e.stopPropagation();
       const groupName = part.name.replace(/^Drawer \d+ /, 'Drawer ');
@@ -7490,9 +7657,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     else closeInspector();
   }
   function closeInspector() {
+    // Closing mid-drag commits the pending preview: the model on screen
+    // already shows it, and the slider's own change event commits the same
+    // way — the design must never silently diverge from history.
+    commitPreview('manual');
     state.selected = null;
     state.engine.select(null);
     $('inspector').classList.remove('open');
+    $('inspector').inert = true;
   }
 
   /* ---------------- playback ---------------- */
@@ -7625,17 +7797,82 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderHistory();
     const d = $('historyDrawer');
     d.classList.add('open');
+    d.inert = false;
     d.setAttribute('aria-hidden', 'false');
+    $('historyBackdrop').hidden = false;
+    // Everything behind the drawer goes inert: clicks and focus stay inside.
+    document.querySelector('.topbar').inert = true;
+    document.querySelector('.bench').inert = true;
+    trapFocus(d);
   }
   function closeHistoryDrawer() {
     const d = $('historyDrawer');
     d.classList.remove('open');
+    d.inert = true;
     d.setAttribute('aria-hidden', 'true');
+    $('historyBackdrop').hidden = true;
+    document.querySelector('.topbar').inert = false;
+    document.querySelector('.bench').inert = false;
+    releaseFocus(d);
   }
 
-  /* ---------------- modals ---------------- */
-  function openScrim(id) { $(id).classList.add('open'); }
-  function closeScrim(id) { $(id).classList.remove('open'); }
+  /* ---------------- focus management ----------------
+   * Every scrim and the history drawer trap Tab inside themselves while
+   * open and hand focus back to the opener on close. Traps stack, so a
+   * modal opened over the drawer restores into the drawer first. */
+  const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  const trapStack = [];
+  function trapFocus(container) {
+    if (trapStack.some(t => t.container === container)) return;
+    const restoreTo = document.activeElement;
+    const handler = e => {
+      if (e.key !== 'Tab') return;
+      const items = [...container.querySelectorAll(FOCUSABLE)].filter(x => x.getClientRects().length);
+      if (!items.length) { e.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1];
+      const inside = container.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === first)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (!inside || document.activeElement === last)) { e.preventDefault(); first.focus(); }
+    };
+    container.addEventListener('keydown', handler);
+    trapStack.push({ container, restoreTo, handler });
+    const target = container.querySelector(FOCUSABLE);
+    if (target) target.focus();
+  }
+  function releaseFocus(container) {
+    const i = trapStack.findIndex(t => t.container === container);
+    if (i < 0) return;
+    const [t] = trapStack.splice(i, 1);
+    t.container.removeEventListener('keydown', t.handler);
+    if (t.restoreTo && document.contains(t.restoreTo)) {
+      t.restoreTo.focus();
+      if (document.activeElement !== t.restoreTo) {
+        // Opener went inert with its closed menu — its menu button stands in.
+        const wrap = t.restoreTo.closest('.menu-wrap');
+        const btn = wrap && wrap.querySelector('[aria-haspopup="menu"]');
+        if (btn) btn.focus();
+      }
+    }
+  }
+
+  /* ---------------- modals ----------------
+   * Closed overlays carry `inert` so their controls leave the tab order and
+   * the accessibility tree entirely — inert flips synchronously, so focus
+   * can move in on the same tick the overlay opens. */
+  function openScrim(id) {
+    const s = $(id);
+    if (s.classList.contains('open')) return;
+    s.classList.add('open');
+    s.inert = false;
+    trapFocus(s);
+  }
+  function closeScrim(id) {
+    const s = typeof id === 'string' ? $(id) : id;
+    if (!s.classList.contains('open')) return;
+    s.classList.remove('open');
+    s.inert = true;
+    releaseFocus(s);
+  }
 
   function renderGallery() {
     const grid = $('galleryGrid');
@@ -7649,6 +7886,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <span class="g-meta">${fmt(r.spec.overall.width)} × ${fmt(r.spec.overall.depth)} × ${fmt(r.spec.overall.height)} · ${esc(K.WOOD_SPECIES[r.spec.wood.species].label)}</span>`;
       card.onclick = () => {
         closeScrim('galleryScrim');
+        hideHints(); // a loaded design replaces the first-run prompts
         state.dismissed.clear();
         state.project = null;   // a starter begins a fresh project
         state.turns = [];
@@ -7732,11 +7970,12 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   async function loadProjectIntoApp(id) {
     const rec = await Store.loadProject(id);
-    if (!rec) return;
+    if (!rec) return false;
     const spec = Spec.correctSpec(Codec.decode(rec.wire));
     exitBuildMode();
     exitPlayback();
     clearCompare();
+    hideHints(); // an opened project replaces the first-run prompts
     // Rebuild the revision history from the stored snapshots.
     let hist = null;
     for (const rev of rec.revisions || []) {
@@ -7749,6 +7988,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.project = { id, progress: rec.progress || { cuts: {}, steps: {} } };
     state.turns = [];
     state.dismissed.clear();
+    state.previewing = false; // the loaded project replaces any pending preview
     const r = runPipeline(state.history.currentSpec() || spec);
     adopt(r);
     renderAll();
@@ -7756,6 +7996,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     closeScrim('projectsScrim');
     closeScrim('galleryScrim');
     botSay(`Opened “${rec.name}” — plans, history, and build progress restored. Tell me what to change.`, []);
+    return true;
   }
 
   /* ---------------- share codes (Phase 4 item 2) ---------------- */
@@ -7901,7 +8142,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (state.buildMode && document.visibilityState === 'visible') requestWakeLock();
   });
 
-  function cutKey(kind, bi, ci, name, len) { return `${kind}:${bi}:${ci}:${name}:${len}`; }
+  const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
 
   function enterBuildMode() {
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
@@ -7909,6 +8150,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
     renderBuildChecklists();
+    trapFocus($('buildMode')); // keyboard users land on the shop surface
     requestWakeLock();
   }
   function exitBuildMode() {
@@ -7916,6 +8158,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.buildMode = false;
     exitBmPlayback();
     $('buildMode').hidden = true;
+    releaseFocus($('buildMode'));
     releaseWakeLock();
     scheduleAutosave();
   }
@@ -7949,10 +8192,18 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Cuts grouped by stock board, straight from the optimizer diagrams —
     // the user works board by board.
+    const diagram = svg => {
+      const d = el('div', 'bm-diagram');
+      d.innerHTML = svg;
+      return d;
+    };
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}`));
+      // The same drafting diagram as the Stock tab, at the saw: which piece
+      // comes out of which end of this exact board.
+      group.append(diagram(Packing.boardSVG(b, fmt)));
       b.cuts.forEach((c, ci) => {
         const key = cutKey('b', bi, ci, c.name, c.len);
         group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -7962,6 +8213,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     plan.sheets.forEach((s, si) => {
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${esc(fmt(s.thickness))} (${esc(s.fractionLabel)})`));
+      group.append(diagram(Packing.sheetSVG(s, fmt)));
       s.placements.forEach((p, pi) => {
         const key = cutKey('s', si, pi, p.name, Math.round(p.w));
         group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -7971,9 +8223,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (plan.mode === 'rough') {
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', 'Cut list (rough stock)'));
+      // One check per physical piece, not per quantity batch — you cut them
+      // one at a time, you check them one at a time.
       state.cut.filter(r => r.stock !== 'sheet').forEach((r, ri) => {
-        const key = cutKey('r', 0, ri, r.name, r.L);
-        group.append(checkButton(`${r.qty} × ${r.name}`, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
+        for (let qi = 0; qi < r.qty; qi++) {
+          const key = cutKey('r', ri, qi, r.name, r.L);
+          const label = r.qty > 1 ? `${r.name} (${qi + 1} of ${r.qty})` : r.name;
+          group.append(checkButton(label, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
+        }
       });
       cuts.append(group);
     }
@@ -8012,7 +8269,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('bmPlaybar').hidden = true;
     exitPlayback();
     state.engine.resize();
-    if (state.buildMode) renderBuildChecklists();
+    if (state.buildMode) {
+      renderBuildChecklists();
+      $('bmExit').focus(); // hand focus back into the checklist surface
+    }
   }
 
   /* ---------------- tabs ---------------- */
@@ -8080,7 +8340,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- boot ---------------- */
-  function boot() {
+  async function boot() {
     const canvas = $('view3d');
     state.engine = BB.Engine.create(canvas, {
       reducedMotion: reduceMq.matches,
@@ -8102,9 +8362,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
-    // Seed design straight through the pipeline.
+    // Persisted prices + prefs load BEFORE the first paint, so units,
+    // precision, and dual display never flash from defaults.
+    try {
+      state.prices = await Store.loadPrices();
+      state.prefs4 = await Store.loadPrefs();
+    } catch (e) { /* defaults are the product */ }
+    Units.set(state.prefs4.units);
+    applyTheme(state.prefs4.theme);
+
+    // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
     seed.meta.name = 'Seed Table';
+    seed.meta.units = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
     const r = runPipeline(seed);
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
@@ -8112,33 +8382,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderAll();
     renderHints();
     renderGallery();
-    openScrim('galleryScrim');
-    botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
 
-    // Persisted prices + prefs arrive async; recompute once they land.
-    (async () => {
-      try {
-        state.prices = await Store.loadPrices();
-        state.prefs4 = await Store.loadPrefs();
-        Units.set(state.prefs4.units); // precision + dual (+ system default)
-        // A fresh session honors the stored unit choice: a returning metric
-        // user's seed opens metric; cleared storage stays imperial.
-        const wantU = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
-        if (!state.project && state.history.snapshots.length === 1 && state.spec.meta.units !== wantU) {
-          const r2 = runPipeline(Spec.deepMerge(state.spec, { meta: { units: wantU } }));
-          adopt(r2);
-          state.history = History.createHistory(r2.spec, 'seed');
-        }
-        recompute();
-        renderAll();
-      } catch (e) { /* defaults are the product */ }
-    })();
+    // Returning users land in the studio with their latest project; the
+    // gallery is for first runs and empty shops only.
+    let opened = false;
+    try {
+      const idx = await Store.loadIndex();
+      if (idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
+    } catch (e) { /* storage unavailable: fresh session */ }
+    if (!opened) {
+      openScrim('galleryScrim');
+      botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
+    }
 
     /* top bar */
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
     $('redoBtn').onclick = () => { const s = state.history.redo(); if (s) restoreTo(s); };
     $('historyBtn').onclick = openHistoryDrawer;
     $('historyClose').onclick = closeHistoryDrawer;
+    $('historyBackdrop').onclick = closeHistoryDrawer;
     $('compareBtn').onclick = openCompare;
     $('compareClose').onclick = showCompareOverlay;
     $('compareExit').onclick = clearCompare;
@@ -8163,6 +8425,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       renderAll();
       state.engine.unitsChanged();
     };
+    $('precisionSelect').onchange = () => {
+      const precision = +$('precisionSelect').value;
+      Units.set({ precision });
+      state.prefs4.units.precision = precision;
+      Store.savePrefs(state.prefs4);
+      adopt(runPipeline(state.spec));
+      renderAll();
+      state.engine.unitsChanged();
+    };
+    const setTheme = t => {
+      state.prefs4.theme = t;
+      Store.savePrefs(state.prefs4);
+      applyTheme(t);
+    };
+    $('themeAuto').onclick = () => setTheme('auto');
+    $('themeLight').onclick = () => setTheme('light');
+    $('themeDark').onclick = () => setTheme('dark');
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -8181,27 +8460,65 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('bmPbBack').onclick = exitBmPlayback;
     bindLogoLongPress();
 
-    /* export menu */
-    const menu = $('exportMenu'), exBtn = $('exportBtn');
-    exBtn.onclick = () => {
-      const open = menu.classList.toggle('open');
-      exBtn.setAttribute('aria-expanded', String(open));
+    /* export + More menus */
+    const closeMenu = (btnId, m) => {
+      m.classList.remove('open');
+      m.inert = true;
+      $(btnId).setAttribute('aria-expanded', 'false');
     };
-    document.addEventListener('click', e => {
-      if (!menu.contains(e.target) && e.target !== exBtn) {
-        menu.classList.remove('open');
-        exBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
+    const bindMenu = (btnId, menuId) => {
+      const b = $(btnId), m = $(menuId);
+      b.onclick = () => {
+        const open = m.classList.toggle('open');
+        m.inert = !open;
+        b.setAttribute('aria-expanded', String(open));
+      };
+      document.addEventListener('click', e => {
+        if (!m.contains(e.target) && e.target !== b) closeMenu(btnId, m);
+      });
+      // Menu-button keyboard pattern: ArrowDown opens and enters the menu,
+      // arrows cycle the items, Escape (global handler) closes topmost.
+      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length || m.classList.contains('open'));
+      b.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!m.classList.contains('open')) b.click();
+          const list = items();
+          if (list.length) (e.key === 'ArrowDown' ? list[0] : list[list.length - 1]).focus();
+        }
+      });
+      m.addEventListener('keydown', e => {
+        const list = items();
+        if (!list.length) return;
+        const i = list.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); (list[i + 1] || list[0]).focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); (list[i - 1] || list[list.length - 1]).focus(); }
+        else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
+        else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
+      });
+      return m;
+    };
+    const menu = bindMenu('exportBtn', 'exportMenu');
+    const moreMenu = bindMenu('moreBtn', 'moreMenu');
     menu.querySelectorAll('[data-export]').forEach(b => {
       b.addEventListener('click', () => {
-        menu.classList.remove('open');
+        closeMenu('exportBtn', menu);
+        $('exportBtn').focus(); // menu pattern: activation returns focus to the button
         doExport(b.dataset.export);
+      });
+    });
+    // Picking a dialog from More closes the menu; the units row stays open
+    // so the seg gives instant feedback.
+    moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
+      b.addEventListener('click', () => {
+        closeMenu('moreBtn', moreMenu);
+        if (!trapStack.length) $('moreBtn').focus(); // unless a dialog already took focus
       });
     });
 
     /* chat — no form element (artifact rules); Enter and the button both send */
     const sendNow = () => {
+      if (state.busy) return; // Enter during a round-trip must not eat the draft
       const t = $('chatText');
       sendMessage(t.value);
       t.value = '';
@@ -8224,7 +8541,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       e.target.value = '';
       if (file) sendPhoto(file);
     });
-    $('sheetHandle').onclick = () => $('chatPanel').classList.toggle('expanded');
+    $('sheetHandle').onclick = () => {
+      const expanded = $('chatPanel').classList.toggle('expanded');
+      $('sheetHandle').setAttribute('aria-expanded', String(expanded));
+      $('sheetHandle').setAttribute('aria-label', expanded ? 'Collapse chat' : 'Expand chat');
+    };
 
     /* stage controls */
     $('explodeRange').addEventListener('input', e => state.engine.setExplode(e.target.value / 100));
@@ -8246,7 +8567,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('galleryClose').onclick = () => closeScrim('galleryScrim');
     $('helpClose').onclick = () => closeScrim('helpScrim');
     document.querySelectorAll('.scrim').forEach(s => {
-      s.addEventListener('click', e => { if (e.target === s) s.classList.remove('open'); });
+      s.addEventListener('click', e => { if (e.target === s) closeScrim(s); });
     });
 
     /* keyboard */
@@ -8258,14 +8579,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
         if (!typing) { e.preventDefault(); $('redoBtn').click(); }
       } else if (e.key === 'Escape') {
+        // Close the topmost overlay only — one layer per press. Build mode
+        // is the bottom layer: it exits last, never before an open modal.
+        const prov = $('provPop');
+        if (prov && !prov.hidden) { hideProv(); return; }
+        if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
+        if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
+        const scrims = [...document.querySelectorAll('.scrim.open')];
+        if (scrims.length) { closeScrim(scrims[scrims.length - 1]); return; }
+        if ($('historyDrawer').classList.contains('open')) { closeHistoryDrawer(); return; }
         if (state.bmPlayback) { exitBmPlayback(); return; }
-        if (state.buildMode) { exitBuildMode(); return; }
-        hideProv();
-        document.querySelectorAll('.scrim.open').forEach(s => s.classList.remove('open'));
-        menu.classList.remove('open');
-        closeHistoryDrawer();
-        if (state.playbackIndex >= 0) exitPlayback();
-        else closeInspector();
+        if (state.playbackIndex >= 0) { exitPlayback(); return; }
+        if (state.selected) { closeInspector(); return; }
+        if (state.buildMode) exitBuildMode();
       }
     });
 
@@ -8275,7 +8601,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     globalThis.__bb = {
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
-      openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct
+      openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
+      preview, commitPreview, closeInspector, openInspectorById
     };
 
     setTimeout(() => { const h = $('viewportHint'); if (h) h.style.opacity = '0'; }, 6000);
@@ -8285,3 +8612,5 @@ var BB = globalThis.BB = globalThis.BB || {};
   else boot();
 })();
 </script>
+</body>
+</html>

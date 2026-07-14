@@ -1,9 +1,14 @@
-<title>Blueprint Buddy</title>
+<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blueprint Buddy</title>
 <style>
 {{CSS}}
 </style>
+</head>
+<body>
 
 <div id="app">
   <header class="topbar">
@@ -21,22 +26,44 @@
     <div class="topbar-group" role="group" aria-label="History">
       <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-      <button id="historyBtn" class="btn" aria-haspopup="dialog">History</button>
     </div>
     <div class="topbar-group">
-      <button id="projectsBtn" class="btn" aria-haspopup="dialog">Projects</button>
-      <button id="shareBtn" class="btn" aria-haspopup="dialog">Share</button>
-      <button id="buildModeBtn" class="btn" title="Full-screen shop companion">Build mode</button>
-    </div>
-    <div class="topbar-group">
-      <div class="seg units-seg" role="group" aria-label="Display units">
-        <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
-        <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
-      </div>
-      <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
       <div class="menu-wrap">
-        <button id="exportBtn" class="btn primary" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
-        <div id="exportMenu" class="menu" role="menu">
+        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More ▾</button>
+        <div id="moreMenu" class="menu" role="menu" inert>
+          <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
+          <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
+          <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-row">
+            <span class="menu-row-label">Units</span>
+            <div class="seg units-seg" role="group" aria-label="Display units">
+              <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
+              <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
+            </div>
+            <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
+          </div>
+          <div class="menu-row" id="precisionRow">
+            <span class="menu-row-label">Precision</span>
+            <select id="precisionSelect" aria-label="Fractional-inch precision">
+              <option value="8">1/8 in</option>
+              <option value="16">1/16 in</option>
+              <option value="32">1/32 in</option>
+            </select>
+          </div>
+          <div class="menu-row">
+            <span class="menu-row-label">Theme</span>
+            <div class="seg theme-seg" role="group" aria-label="Color theme">
+              <button id="themeAuto" aria-pressed="true">Auto</button>
+              <button id="themeLight" aria-pressed="false">Light</button>
+              <button id="themeDark" aria-pressed="false">Dark</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button id="exportBtn" class="btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <div id="exportMenu" class="menu" role="menu" inert>
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
@@ -47,12 +74,14 @@
           <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
         </div>
       </div>
+      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion">Build mode</button>
     </div>
   </header>
 
   <main class="bench">
     <aside class="chat" id="chatPanel" aria-label="Design chat">
-      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat"></button>
+      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat" aria-expanded="false" aria-controls="chatPanel"></button>
+      <div class="chat-peek" id="chatPeek" aria-hidden="true"></div>
       <div class="chat-head">
         <h2>Design chat</h2>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
@@ -64,7 +93,7 @@
       <div class="chat-log" id="chatLog" aria-live="polite"></div>
       <div class="chat-input">
         <div class="chat-controls" id="chatForm">
-          <button type="button" class="btn icon ghost" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
+          <button type="button" class="btn icon photo-cta" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
             <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true"><rect x="1.2" y="3.6" width="14.6" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 3.6 6.7 1.6 h3.6 l1.3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </button>
           <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp,image/*" hidden aria-label="Furniture photo">
@@ -81,7 +110,7 @@
 
         <div class="advisories" id="advisories"></div>
 
-        <div class="inspector" id="inspector" role="region" aria-label="Part inspector">
+        <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
             <h3 id="inspName">Part</h3>
             <button class="btn icon ghost" id="inspClose" aria-label="Close inspector">✕</button>
@@ -91,14 +120,12 @@
         </div>
 
         <div class="stage-controls">
-          <div class="control-card">
+          <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
             <label for="explodeRange">Explode</label>
             <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
-          </div>
-          <div class="control-card">
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
-          </div>
-          <div class="control-card">
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
           </div>
         </div>
@@ -132,7 +159,8 @@
     </section>
   </main>
 
-  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true">
+  <div class="drawer-backdrop" id="historyBackdrop" hidden></div>
+  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true" inert>
     <div class="drawer-head">
       <h2>Revisions</h2>
       <button class="btn small" id="compareBtn" disabled>Compare</button>
@@ -142,7 +170,7 @@
     <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
   </aside>
 
-  <div class="scrim" id="galleryScrim" role="dialog" aria-modal="true" aria-label="Starter gallery">
+  <div class="scrim" inert id="galleryScrim" role="dialog" aria-modal="true" aria-label="Starter gallery">
     <div class="modal">
       <h2>What are we building?</h2>
       <p class="sub">Pick a starter to see full plans instantly — every one runs through the same parametric pipeline as a design you describe yourself. Refine it in the chat afterward.</p>
@@ -154,7 +182,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="helpScrim" role="dialog" aria-modal="true" aria-label="Export help">
+  <div class="scrim" inert id="helpScrim" role="dialog" aria-modal="true" aria-label="Export help">
     <div class="modal">
       <h2>Getting your design into SketchUp</h2>
       <div class="help-block">
@@ -180,7 +208,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="compareScrim" role="dialog" aria-modal="true" aria-label="Snapshot comparison">
+  <div class="scrim" inert id="compareScrim" role="dialog" aria-modal="true" aria-label="Snapshot comparison">
     <div class="modal">
       <h2 id="compareTitle">Compare snapshots</h2>
       <p class="sub" id="compareSub"></p>
@@ -194,7 +222,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="projectsScrim" role="dialog" aria-modal="true" aria-label="My projects">
+  <div class="scrim" inert id="projectsScrim" role="dialog" aria-modal="true" aria-label="My projects">
     <div class="modal">
       <h2>My projects</h2>
       <p class="sub" id="projectsSub">Designs autosave here as you work. Open, rename, duplicate, or delete — build progress travels with each project.</p>
@@ -206,7 +234,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="shareScrim" role="dialog" aria-modal="true" aria-label="Share design">
+  <div class="scrim" inert id="shareScrim" role="dialog" aria-modal="true" aria-label="Share design">
     <div class="modal">
       <h2>Share code</h2>
       <p class="sub">A compact code that carries the whole design. Copy it anywhere; paste one below to import.</p>
@@ -230,7 +258,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="speciesScrim" role="dialog" aria-modal="true" aria-label="Species comparison">
+  <div class="scrim" inert id="speciesScrim" role="dialog" aria-modal="true" aria-label="Species comparison">
     <div class="modal modal-wide">
       <h2>Compare species</h2>
       <p class="sub">The same design recomputed side by side — purchasable cost, weight, sag margin on the critical span, seasonal movement, and surface duty. Tap a column to use that species.</p>
@@ -240,7 +268,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="diagScrim" role="dialog" aria-modal="true" aria-label="Diagnostics">
+  <div class="scrim" inert id="diagScrim" role="dialog" aria-modal="true" aria-label="Diagnostics">
     <div class="modal modal-wide">
       <h2>Diagnostics</h2>
       <p class="sub">The self-test harness: every code-owned promise, asserted in-app. <span id="diagSummary" class="diag-summary"></span></p>
@@ -280,7 +308,7 @@
     <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
   </div>
 
-  <div class="prov-pop" id="provPop" hidden role="tooltip"></div>
+  <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance">
 </div>
 
 <div id="printRoot"></div>
@@ -304,3 +332,5 @@
 <script>{{JS_SELFTEST}}</script>
 <script>{{JS_ENGINE}}</script>
 <script>{{JS_UI}}</script>
+</body>
+</html>
