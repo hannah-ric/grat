@@ -703,7 +703,13 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   position: fixed; z-index: 90; max-width: 420px; background: var(--ink); color: var(--paper);
   border-radius: 12px; padding: var(--s3); box-shadow: var(--shadow-lg); font-size: 12.5px; line-height: 1.5;
 }
-.prov-pop h5 { margin: 0 0 6px; font: 700 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--paper) 65%, transparent); }
+.prov-pop .prov-head { display: flex; align-items: flex-start; gap: var(--s2); }
+.prov-pop h5 { flex: 1; margin: 0 0 6px; font: 700 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--paper) 65%, transparent); }
+.prov-pop .prov-close {
+  flex: none; border: 0; background: none; color: inherit; cursor: pointer;
+  opacity: .75; font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.prov-pop .prov-close:hover { opacity: 1; }
 .prov-pop .prov-line { margin-bottom: 6px; }
 .prov-pop .prov-line b { display: block; font: 600 11px var(--body); color: color-mix(in srgb, var(--paper) 75%, transparent); }
 .prov-pop .prov-line span { font-family: var(--mono); font-size: 12px; }

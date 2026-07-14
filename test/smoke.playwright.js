@@ -29,7 +29,7 @@ const clickMoreCtl = async sel => {
   const server = http.createServer((req, res) => {
     if (req.url === '/' || req.url.startsWith('/index')) {
       res.setHeader('content-type', 'text/html');
-      res.end('<!doctype html><html><head></head><body>' + html + '</body></html>');
+      res.end(html); // dist carries its own doctype/html/head/body shell
     } else { res.statusCode = 204; res.end(); }
   }).listen(0);
   const port = server.address().port;

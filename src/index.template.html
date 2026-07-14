@@ -1,9 +1,14 @@
-<title>Blueprint Buddy</title>
+<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blueprint Buddy</title>
 <style>
 {{CSS}}
 </style>
+</head>
+<body>
 
 <div id="app">
   <header class="topbar">
@@ -305,7 +310,7 @@
     <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
   </div>
 
-  <div class="prov-pop" id="provPop" hidden role="tooltip"></div>
+  <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance">
 </div>
 
 <div id="printRoot"></div>
@@ -329,3 +334,5 @@
 <script>{{JS_SELFTEST}}</script>
 <script>{{JS_ENGINE}}</script>
 <script>{{JS_UI}}</script>
+</body>
+</html>

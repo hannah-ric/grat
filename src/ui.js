@@ -236,19 +236,30 @@ var BB = globalThis.BB = globalThis.BB || {};
     else renderReference(inner);
   }
 
-  /* ---------------- provenance popover (stretch: number provenance) ---------------- */
+  /* ---------------- provenance dialog (stretch: number provenance) ---------------- */
+  let provAnchor = null;
   function showProv(row, anchor) {
     const pop = $('provPop');
     const lines = Prov.forCutRow(state.spec, state.model, row);
-    pop.innerHTML = `<h5>${esc(row.name)} — where these numbers come from</h5>` +
+    pop.innerHTML = `<div class="prov-head"><h5>${esc(row.name)} — where these numbers come from</h5>
+      <button type="button" class="prov-close" aria-label="Close provenance">✕</button></div>` +
       lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('') +
       `<div class="prov-foot">computed internally in metric</div>`;
     pop.hidden = false;
+    provAnchor = anchor;
+    pop.querySelector('.prov-close').onclick = hideProv;
     const r = anchor.getBoundingClientRect();
     pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left)) + 'px';
     pop.style.top = (r.bottom + 8 + pop.offsetHeight > window.innerHeight ? r.top - pop.offsetHeight - 8 : r.bottom + 8) + 'px';
+    pop.querySelector('.prov-close').focus();
   }
-  function hideProv() { const pop = $('provPop'); if (pop) pop.hidden = true; }
+  function hideProv() {
+    const pop = $('provPop');
+    if (!pop || pop.hidden) return;
+    pop.hidden = true;
+    if (provAnchor && document.contains(provAnchor)) provAnchor.focus();
+    provAnchor = null;
+  }
   document.addEventListener('click', e => {
     if (!e.target.closest || (!e.target.closest('.prov-btn') && !e.target.closest('.prov-pop'))) hideProv();
   });
@@ -261,10 +272,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       return;
     }
     const scroll = el('div', 'table-scroll');
-    const dim = (r, v, i) => `<button type="button" class="prov-btn num" data-prov="${i}">${fmt(v)}</button>`;
+    const dim = (r, v, i, what) => `<button type="button" class="prov-btn num" data-prov="${i}" aria-label="${esc(r.name)} ${what} ${esc(fmt(v))} — show the formula">${fmt(v)}</button>`;
     const rows = state.cut.map((r, i) => `<tr>
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
-      <td class="num">${dim(r, r.L, i)}</td><td class="num">${dim(r, r.W, i)}</td><td class="num">${dim(r, r.T, i)}</td>
+      <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
       <td style="color:var(--muted);font-size:12.5px">${esc(r.note || '')}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -527,13 +538,32 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     const tabs = el('div', 'ref-tabs');
     tabs.setAttribute('role', 'tablist');
-    for (const [key, label] of [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']]) {
+    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']];
+    for (const [key, label] of refEntries) {
       const b = el('button', 'ref-tab', esc(label));
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', state.refTab === key);
+      b.tabIndex = state.refTab === key ? 0 : -1; // roving tabindex
       b.onclick = () => { state.refTab = key; renderPanel(); };
       tabs.append(b);
     }
+    // Same arrow-key pattern as the main plan tabs.
+    tabs.addEventListener('keydown', e => {
+      const order = refEntries.map(x => x[0]);
+      const i = order.indexOf(state.refTab);
+      let next = null;
+      if (e.key === 'ArrowRight') next = order[(i + 1) % order.length];
+      if (e.key === 'ArrowLeft') next = order[(i + order.length - 1) % order.length];
+      if (e.key === 'Home') next = order[0];
+      if (e.key === 'End') next = order[order.length - 1];
+      if (next) {
+        e.preventDefault();
+        state.refTab = next;
+        renderPanel(); // rebuilds the tablist — refocus the selected tab
+        const nb = document.querySelectorAll('.ref-tab')[order.indexOf(next)];
+        if (nb) nb.focus();
+      }
+    });
     root.append(tabs);
     const body = el('div');
     root.append(body);
@@ -842,7 +872,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     insp.classList.add('open');
     $('inspName').textContent = part.name;
     const dims = $('inspDims');
-    dims.innerHTML = `<button type="button" class="prov-btn num">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
+    dims.innerHTML = `<button type="button" class="prov-btn num" aria-label="${esc(part.name)} dimensions ${esc(fmt(part.size.w))} by ${esc(fmt(part.size.h))} by ${esc(fmt(part.size.d))} — show the formulas">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
     dims.querySelector('.prov-btn').onclick = e => {
       e.stopPropagation();
       const groupName = part.name.replace(/^Drawer \d+ /, 'Drawer ');
@@ -1042,6 +1072,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Everything behind the drawer goes inert: clicks and focus stay inside.
     document.querySelector('.topbar').inert = true;
     document.querySelector('.bench').inert = true;
+    trapFocus(d);
   }
   function closeHistoryDrawer() {
     const d = $('historyDrawer');
@@ -1050,11 +1081,53 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('historyBackdrop').hidden = true;
     document.querySelector('.topbar').inert = false;
     document.querySelector('.bench').inert = false;
+    releaseFocus(d);
+  }
+
+  /* ---------------- focus management ----------------
+   * Every scrim and the history drawer trap Tab inside themselves while
+   * open and hand focus back to the opener on close. Traps stack, so a
+   * modal opened over the drawer restores into the drawer first. */
+  const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  const trapStack = [];
+  function trapFocus(container) {
+    if (trapStack.some(t => t.container === container)) return;
+    const restoreTo = document.activeElement;
+    const handler = e => {
+      if (e.key !== 'Tab') return;
+      const items = [...container.querySelectorAll(FOCUSABLE)].filter(x => x.getClientRects().length);
+      if (!items.length) { e.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1];
+      const inside = container.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === first)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (!inside || document.activeElement === last)) { e.preventDefault(); first.focus(); }
+    };
+    container.addEventListener('keydown', handler);
+    trapStack.push({ container, restoreTo, handler });
+    const target = container.querySelector(FOCUSABLE);
+    if (target) target.focus();
+  }
+  function releaseFocus(container) {
+    const i = trapStack.findIndex(t => t.container === container);
+    if (i < 0) return;
+    const [t] = trapStack.splice(i, 1);
+    t.container.removeEventListener('keydown', t.handler);
+    if (t.restoreTo && document.contains(t.restoreTo)) t.restoreTo.focus();
   }
 
   /* ---------------- modals ---------------- */
-  function openScrim(id) { $(id).classList.add('open'); }
-  function closeScrim(id) { $(id).classList.remove('open'); }
+  function openScrim(id) {
+    const s = $(id);
+    if (s.classList.contains('open')) return;
+    s.classList.add('open');
+    trapFocus(s);
+  }
+  function closeScrim(id) {
+    const s = typeof id === 'string' ? $(id) : id;
+    if (!s.classList.contains('open')) return;
+    s.classList.remove('open');
+    releaseFocus(s);
+  }
 
   function renderGallery() {
     const grid = $('galleryGrid');
@@ -1651,6 +1724,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       document.addEventListener('click', e => {
         if (!m.contains(e.target) && e.target !== b) closeMenu(btnId, m);
       });
+      // Menu-button keyboard pattern: ArrowDown opens and enters the menu,
+      // arrows cycle the items, Escape (global handler) closes topmost.
+      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length || m.classList.contains('open'));
+      b.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!m.classList.contains('open')) b.click();
+          const list = items();
+          if (list.length) (e.key === 'ArrowDown' ? list[0] : list[list.length - 1]).focus();
+        }
+      });
+      m.addEventListener('keydown', e => {
+        const list = items();
+        if (!list.length) return;
+        const i = list.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); (list[i + 1] || list[0]).focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); (list[i - 1] || list[list.length - 1]).focus(); }
+        else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
+        else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
+      });
       return m;
     };
     const menu = bindMenu('exportBtn', 'exportMenu');
@@ -1718,7 +1811,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('galleryClose').onclick = () => closeScrim('galleryScrim');
     $('helpClose').onclick = () => closeScrim('helpScrim');
     document.querySelectorAll('.scrim').forEach(s => {
-      s.addEventListener('click', e => { if (e.target === s) s.classList.remove('open'); });
+      s.addEventListener('click', e => { if (e.target === s) closeScrim(s); });
     });
 
     /* keyboard */
@@ -1737,7 +1830,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
         if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
         const scrims = [...document.querySelectorAll('.scrim.open')];
-        if (scrims.length) { scrims[scrims.length - 1].classList.remove('open'); return; }
+        if (scrims.length) { closeScrim(scrims[scrims.length - 1]); return; }
         if ($('historyDrawer').classList.contains('open')) { closeHistoryDrawer(); return; }
         if (state.bmPlayback) { exitBmPlayback(); return; }
         if (state.playbackIndex >= 0) { exitPlayback(); return; }
