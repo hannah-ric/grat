@@ -322,11 +322,13 @@ section('build progress: checklist keys + orphan pruning');
   const done = keys2.cuts.filter(k => allChecked.cuts[k]).length + keys2.steps.filter(k => allChecked.steps[k]).length;
   ok(done <= keys2.cuts.length + keys2.steps.length, 'checked count never exceeds the live checklist');
 
-  // Rough mode: per-row keys for solid stock, sheets still keyed.
+  // Rough mode: quantity expands into per-piece keys, sheets still keyed.
   const planR = Packing.planStock(spec, model, cut, { prices: K.defaultPrices(), stockMode: { [spec.wood.species]: 'rough' } });
   const keysR = Plans.checklistKeys(planR, cut, steps);
   eq(planR.mode, 'rough', 'rough stock mode engaged');
-  eq(keysR.cuts.filter(k => k.startsWith('r:')).length, cut.filter(r => r.stock !== 'sheet').length, 'rough mode: one key per solid cut row');
+  const solidPieces = cut.filter(r => r.stock !== 'sheet').reduce((n, r) => n + r.qty, 0);
+  eq(keysR.cuts.filter(k => k.startsWith('r:')).length, solidPieces, 'rough mode: one key per physical piece, not per batch');
+  ok(new Set(keysR.cuts).size === keysR.cuts.length, 'per-piece rough keys are unique');
   eq(keysR.cuts.filter(k => k.startsWith('s:')).length, planR.sheets.reduce((n, s) => n + s.placements.length, 0), 'rough mode: sheet placements still keyed');
 }
 

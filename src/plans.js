@@ -301,7 +301,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         s.placements.forEach((p, pi) => cuts.push(cutKey('s', si, pi, p.name, Math.round(p.w))));
       });
       if (stockPlan.mode === 'rough') {
-        (cut || []).filter(r => r.stock !== 'sheet').forEach((r, ri) => cuts.push(cutKey('r', 0, ri, r.name, r.L)));
+        // Rough stock expands quantity into per-piece checks.
+        (cut || []).filter(r => r.stock !== 'sheet').forEach((r, ri) => {
+          for (let qi = 0; qi < r.qty; qi++) cuts.push(cutKey('r', ri, qi, r.name, r.L));
+        });
       }
     }
     return { cuts, steps: (steps || []).map(s => s.id) };

@@ -183,9 +183,21 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('unitsIn').setAttribute('aria-pressed', String(imperial));
     $('unitsMm').setAttribute('aria-pressed', String(!imperial));
     $('dualBtn').setAttribute('aria-pressed', String(!!Units.get().dual));
+    $('precisionRow').hidden = !imperial; // fractions are an imperial concept
+    $('precisionSelect').value = String(state.prefs4.units.precision);
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
+  }
+
+  /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
+   * the :root[data-theme] overrides. */
+  function applyTheme(t) {
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    else delete document.documentElement.dataset.theme;
+    for (const [id, val] of [['themeAuto', 'auto'], ['themeLight', 'light'], ['themeDark', 'dark']]) {
+      $(id).setAttribute('aria-pressed', String((t || 'auto') === val));
+    }
   }
 
   /* ---------------- render: advisories ---------------- */
@@ -368,6 +380,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderBom(root) {
     root.append(el('h3', '', 'Bill of materials'));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
+    if (!state.bomData.items.length) {
+      root.append(el('div', 'empty-state', '<span class="big">Nothing to buy yet.</span>Describe a piece in the chat and the shopping list prices itself.'));
+      return;
+    }
     const compareBtn = el('button', 'btn small', 'Compare species side by side');
     compareBtn.onclick = openSpecies;
     root.append(compareBtn);
@@ -399,6 +415,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderAssembly(root) {
     root.append(el('h3', '', 'Assembly'));
     root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow.'));
+    if (!state.steps.length) {
+      root.append(el('div', 'empty-state', '<span class="big">No steps to walk yet.</span>Once a design has parts, assembly writes itself in build order.'));
+      return;
+    }
     const list = el('ol', 'step-list');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
@@ -1048,6 +1068,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <span class="g-meta">${fmt(r.spec.overall.width)} × ${fmt(r.spec.overall.depth)} × ${fmt(r.spec.overall.height)} · ${esc(K.WOOD_SPECIES[r.spec.wood.species].label)}</span>`;
       card.onclick = () => {
         closeScrim('galleryScrim');
+        hideHints(); // a loaded design replaces the first-run prompts
         state.dismissed.clear();
         state.project = null;   // a starter begins a fresh project
         state.turns = [];
@@ -1136,6 +1157,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     exitBuildMode();
     exitPlayback();
     clearCompare();
+    hideHints(); // an opened project replaces the first-run prompts
     // Rebuild the revision history from the stored snapshots.
     let hist = null;
     for (const rev of rec.revisions || []) {
@@ -1350,10 +1372,18 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Cuts grouped by stock board, straight from the optimizer diagrams —
     // the user works board by board.
+    const diagram = svg => {
+      const d = el('div', 'bm-diagram');
+      d.innerHTML = svg;
+      return d;
+    };
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}`));
+      // The same drafting diagram as the Stock tab, at the saw: which piece
+      // comes out of which end of this exact board.
+      group.append(diagram(Packing.boardSVG(b, fmt)));
       b.cuts.forEach((c, ci) => {
         const key = cutKey('b', bi, ci, c.name, c.len);
         group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -1363,6 +1393,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     plan.sheets.forEach((s, si) => {
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${esc(fmt(s.thickness))} (${esc(s.fractionLabel)})`));
+      group.append(diagram(Packing.sheetSVG(s, fmt)));
       s.placements.forEach((p, pi) => {
         const key = cutKey('s', si, pi, p.name, Math.round(p.w));
         group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -1372,9 +1403,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (plan.mode === 'rough') {
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', 'Cut list (rough stock)'));
+      // One check per physical piece, not per quantity batch — you cut them
+      // one at a time, you check them one at a time.
       state.cut.filter(r => r.stock !== 'sheet').forEach((r, ri) => {
-        const key = cutKey('r', 0, ri, r.name, r.L);
-        group.append(checkButton(`${r.qty} × ${r.name}`, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
+        for (let qi = 0; qi < r.qty; qi++) {
+          const key = cutKey('r', ri, qi, r.name, r.L);
+          const label = r.qty > 1 ? `${r.name} (${qi + 1} of ${r.qty})` : r.name;
+          group.append(checkButton(label, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
+        }
       });
       cuts.append(group);
     }
@@ -1510,6 +1546,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       state.prefs4 = await Store.loadPrefs();
     } catch (e) { /* defaults are the product */ }
     Units.set(state.prefs4.units);
+    applyTheme(state.prefs4.theme);
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -1565,6 +1602,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       renderAll();
       state.engine.unitsChanged();
     };
+    $('precisionSelect').onchange = () => {
+      const precision = +$('precisionSelect').value;
+      Units.set({ precision });
+      state.prefs4.units.precision = precision;
+      Store.savePrefs(state.prefs4);
+      adopt(runPipeline(state.spec));
+      renderAll();
+      state.engine.unitsChanged();
+    };
+    const setTheme = t => {
+      state.prefs4.theme = t;
+      Store.savePrefs(state.prefs4);
+      applyTheme(t);
+    };
+    $('themeAuto').onclick = () => setTheme('auto');
+    $('themeLight').onclick = () => setTheme('light');
+    $('themeDark').onclick = () => setTheme('dark');
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;

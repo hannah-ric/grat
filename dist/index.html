@@ -179,9 +179,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .menu > button:hover { background: var(--panel-2); }
 .menu > button .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
-/* inline control row inside a menu (units seg + dual toggle) */
+/* inline control rows inside a menu (units, precision, theme) */
 .menu .menu-row { display: flex; align-items: center; gap: var(--s2); padding: 6px 12px; }
 .menu .menu-row-label { flex: 1; font-size: 12.5px; font-weight: 550; color: var(--muted); }
+.menu .menu-row select {
+  border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px;
+  padding: 4px 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer;
+}
+.menu .menu-row .seg button { padding: 6px 10px; font-size: 12px; }
 
 /* ---------------- bench layout ---------------- */
 .bench { display: flex; flex: 1; min-height: 0; }
@@ -233,6 +238,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .chat-input { padding: var(--s2) var(--s3) var(--s3); border-top: 1px solid var(--line); }
 .chat-input .chat-controls { display: flex; gap: var(--s2); align-items: flex-end; }
 .chat-input #photoBtn { flex: none; align-self: center; }
+/* photo-to-design is a headline path, not an easter egg */
+.photo-cta {
+  min-width: 42px; min-height: 42px;
+  background: var(--accent-soft); color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.photo-cta:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .chat-input textarea {
   flex: 1; resize: none; border: 1px solid var(--line-2); background: var(--paper);
   border-radius: var(--radius); padding: 9px 12px; min-height: 40px; max-height: 120px;
@@ -706,7 +718,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 
 /* ---------------- projects gallery ---------------- */
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--s3); max-height: 55vh; overflow-y: auto; padding: 2px; }
-.project-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); padding: var(--s2); display: flex; flex-direction: column; gap: 6px; }
+.project-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); padding: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
 .project-card.current { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .project-card .p-thumb { width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); display: block; }
 .project-card .p-thumb.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22px; }
@@ -714,9 +726,10 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .project-card .p-meta { font: 500 11px var(--mono); color: var(--muted); }
 .project-card .p-progress { height: 4px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
 .project-card .p-progress i { display: block; height: 100%; background: var(--green); }
-.project-card .p-actions { display: flex; gap: 4px; flex-wrap: wrap; }
-.project-card .p-actions .btn { padding: 3px 8px; font-size: 11.5px; }
-.project-card .confirm-row { display: flex; gap: 4px; align-items: center; font-size: 11.5px; color: var(--brick); }
+/* comfortable thumb targets: these cards get used on a phone in the shop */
+.project-card .p-actions { display: flex; gap: var(--s1); flex-wrap: wrap; }
+.project-card .p-actions .btn { padding: 8px 12px; font-size: 12.5px; min-height: 38px; flex: 1 1 auto; }
+.project-card .confirm-row { display: flex; gap: var(--s1); align-items: center; font-size: 12.5px; color: var(--brick); min-height: 38px; }
 
 /* ---------------- share ---------------- */
 .share-block { margin-bottom: var(--s3); }
@@ -775,6 +788,10 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .bm-board-title {
   font: 700 clamp(14px, 1.9vw, 17px) var(--mono); padding: var(--s2) var(--s3);
   background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--radius) var(--radius) 0 0;
+}
+.bm-diagram {
+  padding: var(--s2) var(--s3); background: var(--paper);
+  border: 1px solid var(--line-2); border-top: 0;
 }
 .bm-check {
   display: flex; align-items: center; gap: var(--s3); width: 100%; text-align: left;
@@ -862,6 +879,22 @@ body.bm-playback .playback-bar { display: none !important; }
             </div>
             <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
           </div>
+          <div class="menu-row" id="precisionRow">
+            <span class="menu-row-label">Precision</span>
+            <select id="precisionSelect" aria-label="Fractional-inch precision">
+              <option value="8">1/8 in</option>
+              <option value="16">1/16 in</option>
+              <option value="32">1/32 in</option>
+            </select>
+          </div>
+          <div class="menu-row">
+            <span class="menu-row-label">Theme</span>
+            <div class="seg theme-seg" role="group" aria-label="Color theme">
+              <button id="themeAuto" aria-pressed="true">Auto</button>
+              <button id="themeLight" aria-pressed="false">Light</button>
+              <button id="themeDark" aria-pressed="false">Dark</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="menu-wrap">
@@ -896,7 +929,7 @@ body.bm-playback .playback-bar { display: none !important; }
       <div class="chat-log" id="chatLog" aria-live="polite"></div>
       <div class="chat-input">
         <div class="chat-controls" id="chatForm">
-          <button type="button" class="btn icon ghost" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
+          <button type="button" class="btn icon photo-cta" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
             <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true"><rect x="1.2" y="3.6" width="14.6" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 3.6 6.7 1.6 h3.6 l1.3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </button>
           <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp,image/*" hidden aria-label="Furniture photo">
@@ -4103,7 +4136,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         s.placements.forEach((p, pi) => cuts.push(cutKey('s', si, pi, p.name, Math.round(p.w))));
       });
       if (stockPlan.mode === 'rough') {
-        (cut || []).filter(r => r.stock !== 'sheet').forEach((r, ri) => cuts.push(cutKey('r', 0, ri, r.name, r.L)));
+        // Rough stock expands quantity into per-piece checks.
+        (cut || []).filter(r => r.stock !== 'sheet').forEach((r, ri) => {
+          for (let qi = 0; qi < r.qty; qi++) cuts.push(cutKey('r', ri, qi, r.name, r.L));
+        });
       }
     }
     return { cuts, steps: (steps || []).map(s => s.id) };
@@ -5330,9 +5366,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PRICES_KEY = 'prices:v1';
   const PREFS_KEY = 'prefs:v2';
   const LEGACY_PREFS_KEY = 'prefs:v1';
-  // Fresh installs: fractional inches at 1/16, dual display off.
+  // Fresh installs: fractional inches at 1/16, dual display off, OS theme.
   const DEFAULT_PREFS = {
-    climate: 'temperate', stockMode: {},
+    climate: 'temperate', stockMode: {}, theme: 'auto',
     units: { system: 'imperial', precision: 16, dual: false }
   };
 
@@ -6858,9 +6894,21 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('unitsIn').setAttribute('aria-pressed', String(imperial));
     $('unitsMm').setAttribute('aria-pressed', String(!imperial));
     $('dualBtn').setAttribute('aria-pressed', String(!!Units.get().dual));
+    $('precisionRow').hidden = !imperial; // fractions are an imperial concept
+    $('precisionSelect').value = String(state.prefs4.units.precision);
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
+  }
+
+  /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
+   * the :root[data-theme] overrides. */
+  function applyTheme(t) {
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    else delete document.documentElement.dataset.theme;
+    for (const [id, val] of [['themeAuto', 'auto'], ['themeLight', 'light'], ['themeDark', 'dark']]) {
+      $(id).setAttribute('aria-pressed', String((t || 'auto') === val));
+    }
   }
 
   /* ---------------- render: advisories ---------------- */
@@ -7043,6 +7091,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderBom(root) {
     root.append(el('h3', '', 'Bill of materials'));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
+    if (!state.bomData.items.length) {
+      root.append(el('div', 'empty-state', '<span class="big">Nothing to buy yet.</span>Describe a piece in the chat and the shopping list prices itself.'));
+      return;
+    }
     const compareBtn = el('button', 'btn small', 'Compare species side by side');
     compareBtn.onclick = openSpecies;
     root.append(compareBtn);
@@ -7074,6 +7126,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderAssembly(root) {
     root.append(el('h3', '', 'Assembly'));
     root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow.'));
+    if (!state.steps.length) {
+      root.append(el('div', 'empty-state', '<span class="big">No steps to walk yet.</span>Once a design has parts, assembly writes itself in build order.'));
+      return;
+    }
     const list = el('ol', 'step-list');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
@@ -7723,6 +7779,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <span class="g-meta">${fmt(r.spec.overall.width)} × ${fmt(r.spec.overall.depth)} × ${fmt(r.spec.overall.height)} · ${esc(K.WOOD_SPECIES[r.spec.wood.species].label)}</span>`;
       card.onclick = () => {
         closeScrim('galleryScrim');
+        hideHints(); // a loaded design replaces the first-run prompts
         state.dismissed.clear();
         state.project = null;   // a starter begins a fresh project
         state.turns = [];
@@ -7811,6 +7868,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     exitBuildMode();
     exitPlayback();
     clearCompare();
+    hideHints(); // an opened project replaces the first-run prompts
     // Rebuild the revision history from the stored snapshots.
     let hist = null;
     for (const rev of rec.revisions || []) {
@@ -8025,10 +8083,18 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Cuts grouped by stock board, straight from the optimizer diagrams —
     // the user works board by board.
+    const diagram = svg => {
+      const d = el('div', 'bm-diagram');
+      d.innerHTML = svg;
+      return d;
+    };
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}`));
+      // The same drafting diagram as the Stock tab, at the saw: which piece
+      // comes out of which end of this exact board.
+      group.append(diagram(Packing.boardSVG(b, fmt)));
       b.cuts.forEach((c, ci) => {
         const key = cutKey('b', bi, ci, c.name, c.len);
         group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -8038,6 +8104,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     plan.sheets.forEach((s, si) => {
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${esc(fmt(s.thickness))} (${esc(s.fractionLabel)})`));
+      group.append(diagram(Packing.sheetSVG(s, fmt)));
       s.placements.forEach((p, pi) => {
         const key = cutKey('s', si, pi, p.name, Math.round(p.w));
         group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -8047,9 +8114,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (plan.mode === 'rough') {
       const group = el('div', 'bm-board');
       group.append(el('div', 'bm-board-title', 'Cut list (rough stock)'));
+      // One check per physical piece, not per quantity batch — you cut them
+      // one at a time, you check them one at a time.
       state.cut.filter(r => r.stock !== 'sheet').forEach((r, ri) => {
-        const key = cutKey('r', 0, ri, r.name, r.L);
-        group.append(checkButton(`${r.qty} × ${r.name}`, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
+        for (let qi = 0; qi < r.qty; qi++) {
+          const key = cutKey('r', ri, qi, r.name, r.L);
+          const label = r.qty > 1 ? `${r.name} (${qi + 1} of ${r.qty})` : r.name;
+          group.append(checkButton(label, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
+        }
       });
       cuts.append(group);
     }
@@ -8185,6 +8257,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       state.prefs4 = await Store.loadPrefs();
     } catch (e) { /* defaults are the product */ }
     Units.set(state.prefs4.units);
+    applyTheme(state.prefs4.theme);
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -8240,6 +8313,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       renderAll();
       state.engine.unitsChanged();
     };
+    $('precisionSelect').onchange = () => {
+      const precision = +$('precisionSelect').value;
+      Units.set({ precision });
+      state.prefs4.units.precision = precision;
+      Store.savePrefs(state.prefs4);
+      adopt(runPipeline(state.spec));
+      renderAll();
+      state.engine.unitsChanged();
+    };
+    const setTheme = t => {
+      state.prefs4.theme = t;
+      Store.savePrefs(state.prefs4);
+      applyTheme(t);
+    };
+    $('themeAuto').onclick = () => setTheme('auto');
+    $('themeLight').onclick = () => setTheme('light');
+    $('themeDark').onclick = () => setTheme('dark');
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;

@@ -38,6 +38,22 @@
             </div>
             <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
           </div>
+          <div class="menu-row" id="precisionRow">
+            <span class="menu-row-label">Precision</span>
+            <select id="precisionSelect" aria-label="Fractional-inch precision">
+              <option value="8">1/8 in</option>
+              <option value="16">1/16 in</option>
+              <option value="32">1/32 in</option>
+            </select>
+          </div>
+          <div class="menu-row">
+            <span class="menu-row-label">Theme</span>
+            <div class="seg theme-seg" role="group" aria-label="Color theme">
+              <button id="themeAuto" aria-pressed="true">Auto</button>
+              <button id="themeLight" aria-pressed="false">Light</button>
+              <button id="themeDark" aria-pressed="false">Dark</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="menu-wrap">
@@ -72,7 +88,7 @@
       <div class="chat-log" id="chatLog" aria-live="polite"></div>
       <div class="chat-input">
         <div class="chat-controls" id="chatForm">
-          <button type="button" class="btn icon ghost" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
+          <button type="button" class="btn icon photo-cta" id="photoBtn" title="Design from a furniture photo" aria-label="Upload a furniture photo">
             <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true"><rect x="1.2" y="3.6" width="14.6" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 3.6 6.7 1.6 h3.6 l1.3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           </button>
           <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp,image/*" hidden aria-label="Furniture photo">

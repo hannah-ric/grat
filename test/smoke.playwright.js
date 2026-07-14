@@ -83,6 +83,8 @@ const clickMoreCtl = async sel => {
   ok(ns.boxW === ns.openW - 25, 'box width = opening − 25 in live app');
   ok([250, 300, 350, 400, 450, 500].includes(ns.slide), 'standard slide length in live app');
   ok(ns.bomSlides === 2, 'slide pairs in BOM');
+  ok(await page.evaluate(() => document.getElementById('hintPrompts').children.length === 0),
+    'hint prompts hide once a gallery design loads');
   await page.waitForTimeout(900);
   await page.screenshot({ path: SHOTS + '/02-nightstand.png' });
 
@@ -548,6 +550,63 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => __bb.state.buildMode && !__bb.state.bmPlayback), 'Escape exits playback, build mode survives');
   await page.keyboard.press('Escape');
   ok(await page.evaluate(() => !__bb.state.buildMode), 'next Escape exits build mode');
+
+  /* ================= Phase C: shop companion ================= */
+
+  // Build mode carries the per-board cutting diagram to the saw.
+  await page.evaluate(() => __bb.enterBuildMode());
+  await page.waitForSelector('#bmCuts .bm-diagram svg');
+  const bmDiag = await page.evaluate(() => ({
+    diagrams: document.querySelectorAll('#bmCuts .bm-diagram svg').length,
+    groups: document.querySelectorAll('#bmCuts .bm-board').length
+  }));
+  ok(bmDiag.diagrams >= 1 && bmDiag.diagrams === bmDiag.groups,
+    `every build-mode board group carries its cutting diagram (${bmDiag.diagrams}/${bmDiag.groups})`);
+
+  // Rough stock expands quantity batches into per-piece checks.
+  const rough = await page.evaluate(() => {
+    const sp = __bb.state.spec.wood.species;
+    __bb.state.prefs4.stockMode[sp] = 'rough';
+    __bb.recompute();
+    __bb.exitBuildMode(); __bb.enterBuildMode();
+    const pieces = __bb.state.cut.filter(r => r.stock !== 'sheet').reduce((n, r) => n + r.qty, 0);
+    const roughGroup = [...document.querySelectorAll('#bmCuts .bm-board')]
+      .find(g => g.textContent.includes('rough stock'));
+    const roughChecks = roughGroup ? roughGroup.querySelectorAll('.bm-check').length : 0;
+    const perPiece = roughGroup ? /\(1 of \d+\)/.test(roughGroup.textContent) : false;
+    __bb.state.prefs4.stockMode[sp] = 'dimensional';
+    __bb.recompute();
+    __bb.exitBuildMode();
+    return { pieces, roughChecks, perPiece };
+  });
+  ok(rough.roughChecks === rough.pieces, `rough mode: one check per physical piece (${rough.roughChecks} for ${rough.pieces} pieces)`);
+  ok(rough.perPiece, 'per-piece rough checks are labeled “(n of qty)”');
+
+  // Precision control + theme toggle wire to prefs and the display boundary.
+  const prefsCtl = await page.evaluate(() => {
+    document.getElementById('themeDark').click();
+    const dark = document.documentElement.dataset.theme;
+    document.getElementById('themeAuto').click();
+    const auto = document.documentElement.dataset.theme || 'unset';
+    const sel = document.getElementById('precisionSelect');
+    sel.value = '32';
+    sel.dispatchEvent(new Event('change'));
+    const out = {
+      dark, auto,
+      precision: BB.Units.get().precision,
+      savedPrecision: __bb.state.prefs4.units.precision,
+      savedTheme: __bb.state.prefs4.theme
+    };
+    sel.value = '16';
+    sel.dispatchEvent(new Event('change'));
+    return out;
+  });
+  ok(prefsCtl.dark === 'dark' && prefsCtl.auto === 'unset', 'theme toggle pins dark and returns to auto');
+  ok(prefsCtl.savedTheme === 'auto', 'theme choice persists to prefs');
+  ok(prefsCtl.precision === 32 && prefsCtl.savedPrecision === 32, 'fractional precision control drives the display boundary and prefs');
+
+  // Photo CTA is a real touch target.
+  ok(await page.evaluate(() => document.getElementById('photoBtn').offsetHeight >= 40), 'photo CTA is a 40px+ touch target');
 
   // Integrity fix buttons patch the spec through the normal pipeline.
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));

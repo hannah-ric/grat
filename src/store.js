@@ -132,9 +132,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PRICES_KEY = 'prices:v1';
   const PREFS_KEY = 'prefs:v2';
   const LEGACY_PREFS_KEY = 'prefs:v1';
-  // Fresh installs: fractional inches at 1/16, dual display off.
+  // Fresh installs: fractional inches at 1/16, dual display off, OS theme.
   const DEFAULT_PREFS = {
-    climate: 'temperate', stockMode: {},
+    climate: 'temperate', stockMode: {}, theme: 'auto',
     units: { system: 'imperial', precision: 16, dual: false }
   };
 
