@@ -520,6 +520,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
   padding: var(--s5) var(--s4); text-align: center; color: var(--muted); font-size: 14px;
 }
 .empty-state .big { font-family: var(--display); font-size: 17px; font-weight: 600; color: var(--ink-2); display: block; margin-bottom: var(--s1); }
+.empty-state .empty-actions { display: flex; gap: var(--s2); justify-content: center; margin-top: var(--s3); flex-wrap: wrap; }
 
 /* assembly */
 .step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); counter-reset: step; }
@@ -711,6 +712,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 @media (min-width: 881px) and (max-width: 1180px) {
   .chat { width: 280px; }
   .chat.collapsed { width: 46px; }
+  .chat-head .chat-head-long { display: none; } /* "Chat" fits one line */
   .panel { padding: var(--s3) var(--s3) var(--s5); }
   .inspector { width: 256px; }
   .design-name { width: 16ch; }
@@ -784,6 +786,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   .welcome-paths { grid-template-columns: 1fr; }
   .welcome-card { flex-direction: row; align-items: center; gap: var(--s2); }
   .welcome-card .w-caption { display: none; }
+  .welcome-note { display: none; }
   .playback-bar {
     position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
   }
@@ -1025,6 +1028,11 @@ body.bm-playback .playback-bar { display: none !important; }
 @media (max-width: 880px) {
   .bm-columns { flex-direction: column; }
   .modal-wide { width: calc(100vw - 24px); }
+  /* the title box may shrink below its longest word: wrap inside it, and
+     give the wake note its own line instead of colliding */
+  .bm-name { overflow-wrap: anywhere; }
+  .bm-head { flex-wrap: wrap; }
+  .bm-wake:empty { display: none; }
 }
 
 /* photo bubble in chat */

@@ -290,11 +290,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!e.target.closest || (!e.target.closest('.prov-btn') && !e.target.closest('.prov-pop'))) hideProv();
   });
 
+  /* Empty panels point at the two ways forward instead of dead-ending. */
+  function emptyState(root, big, text) {
+    const box = el('div', 'empty-state', `<span class="big">${big}</span>${text}`);
+    const row = el('div', 'empty-actions');
+    const describe = el('button', 'btn primary', 'Describe a piece');
+    describe.onclick = () => focusChat();
+    const starters = el('button', 'btn', 'Browse starters');
+    starters.onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    row.append(describe, starters);
+    box.append(row);
+    root.append(box);
+  }
+
   function renderCut(root) {
     root.append(el('h3', '', 'Cut list'));
     root.append(el('p', 'lede', `Lengths include joinery allowances — tap any dimension to see the formula behind it. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + Baltic birch ply.`));
     if (!state.cut.length) {
-      root.append(el('div', 'empty-state', '<span class="big">Nothing on the saw bench yet.</span>Describe a piece in the chat and the cut list writes itself.'));
+      emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
     }
     const scroll = el('div', 'table-scroll');
@@ -418,7 +431,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(el('h3', '', 'Bill of materials'));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
     if (!state.bomData.items.length) {
-      root.append(el('div', 'empty-state', '<span class="big">Nothing to buy yet.</span>Describe a piece in the chat and the shopping list prices itself.'));
+      emptyState(root, 'Nothing to buy yet.', 'Describe a piece and the shopping list prices itself.');
       return;
     }
     const compareBtn = el('button', 'btn small', 'Compare species side by side');
@@ -453,7 +466,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(el('h3', '', 'Assembly'));
     root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow.'));
     if (!state.steps.length) {
-      root.append(el('div', 'empty-state', '<span class="big">No steps to walk yet.</span>Once a design has parts, assembly writes itself in build order.'));
+      emptyState(root, 'No steps to walk yet.', 'Once a design has parts, assembly writes itself in build order.');
       return;
     }
     const list = el('ol', 'step-list');
@@ -1770,6 +1783,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sum = state.integrity ? state.integrity.summary : null;
     dot.hidden = !sum || (!sum.fails && !sum.advisories);
     dot.classList.toggle('fail', !!(sum && sum.fails));
+    // The dot alone is invisible to a screen reader: the tab's accessible
+    // name carries the same state.
+    const integTab = $('tab-integrity');
+    if (sum && sum.fails) integTab.setAttribute('aria-label', `Integrity — ${sum.fails} failing check${sum.fails > 1 ? 's' : ''}`);
+    else if (sum && sum.advisories) integTab.setAttribute('aria-label', `Integrity — ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`);
+    else integTab.removeAttribute('aria-label');
     syncHash();
     renderReadiness();
   }
