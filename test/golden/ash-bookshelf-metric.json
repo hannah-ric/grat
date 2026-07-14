@@ -1,0 +1,488 @@
+{
+ "spec": {
+  "specVersion": 4,
+  "meta": {
+   "name": "Floor Bookshelf",
+   "template": "bookshelf",
+   "level": "beginner",
+   "units": "mm"
+  },
+  "overall": {
+   "width": 900,
+   "depth": 300,
+   "height": 1800
+  },
+  "wood": {
+   "species": "ash",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 25,
+   "legThickness": 70,
+   "apronHeight": 90,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 4,
+   "shelfThickness": 19,
+   "sideThickness": 19,
+   "backPanel": true,
+   "toeKick": false
+  },
+  "joinery": {
+   "frame": "pocket_screws",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "wipe_poly",
+  "drawers": null,
+  "custom": null
+ },
+ "validation": {
+  "errors": [],
+  "advisories": []
+ },
+ "cutList": [
+  {
+   "name": "Back panel",
+   "qty": 1,
+   "L": 1788,
+   "W": 888,
+   "T": 6,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Side",
+   "qty": 2,
+   "L": 1800,
+   "W": 300,
+   "T": 19,
+   "material": "ash",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Top",
+   "qty": 1,
+   "L": 862,
+   "W": 300,
+   "T": 19,
+   "material": "ash",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Bottom",
+   "qty": 1,
+   "L": 862,
+   "W": 300,
+   "T": 19,
+   "material": "ash",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Shelf",
+   "qty": 4,
+   "L": 862,
+   "W": 280,
+   "T": 19,
+   "material": "ash",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": true,
+  "rackScore": 68,
+  "tip": {
+   "angEmpty": 7.913,
+   "angLoaded": 5.603,
+   "ratio": 6
+  },
+  "checks": [
+   {
+    "id": "sag:top_1",
+    "status": "advisory",
+    "data": {
+     "sagMM": 4.113,
+     "limitMM": 2.873,
+     "spanMM": 862
+    }
+   },
+   {
+    "id": "str:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_1",
+    "status": "fail",
+    "data": {
+     "sagMM": 4.407,
+     "limitMM": 2.873,
+     "spanMM": 862
+    }
+   },
+   {
+    "id": "str:shelf_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_2",
+    "status": "fail",
+    "data": {
+     "sagMM": 4.407,
+     "limitMM": 2.873,
+     "spanMM": 862
+    }
+   },
+   {
+    "id": "str:shelf_2",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_3",
+    "status": "fail",
+    "data": {
+     "sagMM": 4.407,
+     "limitMM": 2.873,
+     "spanMM": 862
+    }
+   },
+   {
+    "id": "str:shelf_3",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_4",
+    "status": "fail",
+    "data": {
+     "sagMM": 4.407,
+     "limitMM": 2.873,
+     "spanMM": 862
+    }
+   },
+   {
+    "id": "str:shelf_4",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "advisory",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "joints",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:side_1",
+    "status": "advisory",
+    "data": {
+     "movementMM": 3.288,
+     "crossWidthMM": 300,
+     "context": "captured"
+    }
+   },
+   {
+    "id": "move:top_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 3.288,
+     "crossWidthMM": 300,
+     "context": "compatible"
+    }
+   },
+   {
+    "id": "move:bottom_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 3.288,
+     "crossWidthMM": 300,
+     "context": "compatible"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "White Ash 19 x 286 x 3658 mm (1x12)",
+    "qty": 1,
+    "cost": 82.305
+   },
+   {
+    "label": "White Ash 19 x 89 x 3658 mm (1x4)",
+    "qty": 6,
+    "cost": 130.371
+   },
+   {
+    "label": "Baltic birch 6 mm — full sheet (1220 × 2440 mm base)",
+    "qty": 1,
+    "cost": 40
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x12",
+    "stockLen": 3658,
+    "offcut": 171,
+    "cuts": [
+     {
+      "name": "Shelf",
+      "len": 862,
+      "offset": 15
+     },
+     {
+      "name": "Shelf",
+      "len": 862,
+      "offset": 880
+     },
+     {
+      "name": "Shelf",
+      "len": 862,
+      "offset": 1745
+     },
+     {
+      "name": "Shelf",
+      "len": 862,
+      "offset": 2610
+     }
+    ]
+   },
+   {
+    "nominal": "1x4",
+    "stockLen": 3658,
+    "offcut": 25,
+    "cuts": [
+     {
+      "name": "Side (strip 1/4)",
+      "len": 1800,
+      "offset": 15
+     },
+     {
+      "name": "Side (strip 2/4)",
+      "len": 1800,
+      "offset": 1818
+     }
+    ]
+   },
+   {
+    "nominal": "1x4",
+    "stockLen": 3658,
+    "offcut": 25,
+    "cuts": [
+     {
+      "name": "Side (strip 3/4)",
+      "len": 1800,
+      "offset": 15
+     },
+     {
+      "name": "Side (strip 4/4)",
+      "len": 1800,
+      "offset": 1818
+     }
+    ]
+   },
+   {
+    "nominal": "1x4",
+    "stockLen": 3658,
+    "offcut": 25,
+    "cuts": [
+     {
+      "name": "Side (strip 1/4)",
+      "len": 1800,
+      "offset": 15
+     },
+     {
+      "name": "Side (strip 2/4)",
+      "len": 1800,
+      "offset": 1818
+     }
+    ]
+   },
+   {
+    "nominal": "1x4",
+    "stockLen": 3658,
+    "offcut": 25,
+    "cuts": [
+     {
+      "name": "Side (strip 3/4)",
+      "len": 1800,
+      "offset": 15
+     },
+     {
+      "name": "Side (strip 4/4)",
+      "len": 1800,
+      "offset": 1818
+     }
+    ]
+   },
+   {
+    "nominal": "1x4",
+    "stockLen": 3658,
+    "offcut": 171,
+    "cuts": [
+     {
+      "name": "Top (strip 1/4)",
+      "len": 862,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 2/4)",
+      "len": 862,
+      "offset": 880
+     },
+     {
+      "name": "Top (strip 3/4)",
+      "len": 862,
+      "offset": 1745
+     },
+     {
+      "name": "Top (strip 4/4)",
+      "len": 862,
+      "offset": 2610
+     }
+    ]
+   },
+   {
+    "nominal": "1x4",
+    "stockLen": 3658,
+    "offcut": 171,
+    "cuts": [
+     {
+      "name": "Bottom (strip 1/4)",
+      "len": 862,
+      "offset": 15
+     },
+     {
+      "name": "Bottom (strip 2/4)",
+      "len": 862,
+      "offset": 880
+     },
+     {
+      "name": "Bottom (strip 3/4)",
+      "len": 862,
+      "offset": 1745
+     },
+     {
+      "name": "Bottom (strip 4/4)",
+      "len": 862,
+      "offset": 2610
+     }
+    ]
+   }
+  ],
+  "sheets": [
+   {
+    "thickness": 6,
+    "fraction": 1,
+    "placements": [
+     {
+      "name": "Back panel",
+      "x": 0,
+      "y": 0,
+      "w": 1788,
+      "h": 888,
+      "rot": false
+     }
+    ]
+   }
+  ],
+  "totalCost": 252.68,
+  "wasteSolidPct": 15,
+  "wasteSheetPct": 47
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "White Ash 19 x 286 x 3658 mm (1x12)",
+    "qty": 1,
+    "price": 82.31
+   },
+   {
+    "kind": "lumber",
+    "label": "White Ash 19 x 89 x 3658 mm (1x4)",
+    "qty": 6,
+    "price": 130.37
+   },
+   {
+    "kind": "sheet",
+    "label": "Baltic birch 6 mm — full sheet (1220 × 2440 mm base)",
+    "qty": 1,
+    "price": 40
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 26.9 bd ft (0.06 m³)",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 15% · sheet 47%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 50 mm wood screw (pilot 3.2 mm)",
+    "qty": 30,
+    "price": 1.8
+   },
+   {
+    "kind": "fastener",
+    "label": "Figure-8 fasteners + #8 × 16 mm",
+    "qty": 4,
+    "price": 3.2
+   },
+   {
+    "kind": "hardware",
+    "label": "5 mm shelf pins",
+    "qty": 16,
+    "price": 4
+   },
+   {
+    "kind": "hardware",
+    "label": "Anti-tip wall anchor kit (strap + wall screws) — REQUIRED",
+    "qty": 1,
+    "price": 7
+   },
+   {
+    "kind": "finish",
+    "label": "Wipe-on polyurethane",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 286.68
+ },
+ "steps": [
+  "s1",
+  "s2",
+  "s3",
+  "antitip",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

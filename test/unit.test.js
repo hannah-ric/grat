@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'packing.js',
+const SRC = ['knowledge.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'selftest.js'];
 for (const f of SRC) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
@@ -101,7 +101,7 @@ section('drawer-box math (nightstand, 2 drawers)');
 
   for (const d of model.drawers) {
     const op = d.opening;
-    eq(d.box.w, op.w - 25, `drawer ${d.index + 1}: box width = opening − 25`);
+    eq(d.box.w, op.w - 25.4, `drawer ${d.index + 1}: box width = opening − 25.4 (12.7 mm per side, the slide's half inch)`);
     eq(d.box.h, op.h - 15, `drawer ${d.index + 1}: box height = opening − 15`);
     ok(K.SLIDE_LENGTHS.includes(d.slideLen), `drawer ${d.index + 1}: slide is a standard length (${d.slideLen})`);
     eq(d.box.d, d.slideLen, `drawer ${d.index + 1}: box depth = slide length`);
@@ -135,7 +135,7 @@ section('drawer-box math (nightstand, 2 drawers)');
   ok(boxFront.note.includes('locking rabbet'), 'locking rabbet allowance noted');
   const geomFront = model.parts.find(p => p.role === 'drawer_boxfront');
   const geomLen = Math.max(geomFront.size.w, geomFront.size.h, geomFront.size.d);
-  eq(boxFront.L, Math.round((geomLen + 2 * Plans.JOINT_ALLOWANCE.locking_rabbet) * 10) / 10, 'box front length = geometry + 2 joint allowances');
+  eq(boxFront.L, Math.round((geomLen + 2 * Plans.jointAllowance('locking_rabbet', 12)) * 10) / 10, 'box front length = geometry + 2 thickness-aware joint allowances');
 }
 
 section('drawer auto-correction + overlay');
@@ -364,9 +364,9 @@ section('Ruby export');
   ok(rb.includes('model.start_operation') && rb.includes('model.commit_operation'), 'single undo operation');
   ok(rb.includes('.mm'), 'uses .mm helper');
   ok(!/Point3d\.new\([^)]*\d\s*[,)]\s*(?!.*\.mm)/.test('') , 'placeholder');
-  // Every Point3d coordinate carries .mm
-  const pts = rb.match(/Geom::Point3d\.new\([^)]*\)/g) || [];
-  ok(pts.length > 0 && pts.every(p => (p.match(/\.mm/g) || []).length === 3), 'every instance coordinate uses .mm');
+  // Instances place with FULL 16-element transformations (rotation-capable)
+  const xf = rb.match(/Geom::Transformation\.new\(\[[^\]]+\]\)/g) || [];
+  ok(xf.length > 0 && xf.every(t => t.split(',').length === 16), 'every instance uses a full 16-element transformation');
   // Dedup: 4 legs → one definition, four instances.
   const legDefs = (rb.match(/defs\.add\("Leg /g) || []).length;
   eq(legDefs, 1, 'four legs = ONE ComponentDefinition');

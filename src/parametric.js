@@ -62,8 +62,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     let available;
     if (t === 'nightstand') available = o.height - st.topThickness - MIN_LEG_REVEAL;
     else if (t === 'cabinet') {
+      // Must mirror cabinet(): available = bodyH × 0.6 — probe/builder parity
+      // (audit F-S2-8).
       const base = st.toeKick ? 90 : 0;
-      available = (o.height - st.topThickness - base - st.sideThickness) * 0.6;
+      available = (o.height - st.topThickness - base) * 0.6;
     } else return Infinity;
     return bankHeights(available, count).openH;
   }
@@ -111,7 +113,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const runner = d.runner;
       let boxW, boxH, boxD, slideLen = null;
       if (runner === 'side_mount_slides') {
-        boxW = op.w - 25;                       // 12.5 mm per side
+        // Ball-bearing slides are 1/2 in (12.7 mm) per side — 12.5 binds
+        // (audit F-S1-4). The constant lives in the hardware knowledge.
+        boxW = op.w - K.SLIDE_SPACE_MM;
         boxH = op.h - 15;                       // 15 mm vertical clearance
         const maxLen = op.interiorDepth - 25;   // 25 mm rear setback
         slideLen = null;
@@ -168,12 +172,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       parts.push(...dp);
 
       // Box-corner joints. The front/back are the inserted members (tongue or
-      // tails live on them), so they carry the cut-length allowance.
+      // tails live on them), so they carry the cut-length allowance. Grooved
+      // boxes (locking rabbet / dovetail fronts) take a DADO-housed back —
+      // the standard partner to a fine front, never a screwed-on back
+      // (audit F-S3-9); slide-in boxes keep their screwed backs.
       joints.push(
         { type: boxJoint, a: dp[2].id, b: dp[0].id, pos: { x: px - boxW / 2 + boxT, y: cy, z: boxFrontZ - boxT / 2 } },
         { type: boxJoint, a: dp[2].id, b: dp[1].id, pos: { x: px + boxW / 2 - boxT, y: cy, z: boxFrontZ - boxT / 2 } },
-        { type: slideIn ? boxJoint : 'butt_screws', a: dp[3].id, b: dp[0].id, pos: { x: px - boxW / 2 + boxT, y: cy, z: boxFrontZ - boxD + boxT / 2 } },
-        { type: slideIn ? boxJoint : 'butt_screws', a: dp[3].id, b: dp[1].id, pos: { x: px + boxW / 2 - boxT, y: cy, z: boxFrontZ - boxD + boxT / 2 } }
+        { type: slideIn ? boxJoint : 'dado', a: dp[3].id, b: dp[0].id, pos: { x: px - boxW / 2 + boxT, y: cy, z: boxFrontZ - boxD + boxT / 2 } },
+        { type: slideIn ? boxJoint : 'dado', a: dp[3].id, b: dp[1].id, pos: { x: px + boxW / 2 - boxT, y: cy, z: boxFrontZ - boxD + boxT / 2 } }
       );
 
       drawers.push({

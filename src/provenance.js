@@ -88,7 +88,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         : `box depth = interior − ${fine(20)} = ${mm(d.box.d)}`);
       if (/side$/.test(name)) push('Height', d.runner === 'side_mount_slides' ? `opening − ${fine(15)} slide clearance = ${mm(op.h)} − ${fine(15)} = ${mm(d.box.h)}` : `opening − ${fine(10)} = ${mm(d.box.h)}`);
       if (/box front|box back/.test(name)) push('Width', d.runner === 'side_mount_slides'
-        ? `opening − ${fine(25)} (${fine(12.5)} per side for slides) − 2 × box side = ${mm(op.w)} − ${fine(25)} − 2×${mm(d.box.t)} = ${mm(d.box.w - 2 * d.box.t)}`
+        ? `opening − ${fine(K.SLIDE_SPACE_MM)} (${fine(K.SLIDE_SPACE_MM / 2)} per side, the slide's ½ in) − 2 × box side = ${mm(op.w)} − ${fine(K.SLIDE_SPACE_MM)} − 2×${mm(d.box.t)} = ${mm(d.box.w - 2 * d.box.t)}`
         : `opening − ${fine(4)} (fitted) − 2 × box side = ${mm(d.box.w - 2 * d.box.t)}`);
       if (/ front$/.test(name) && !/box/.test(name)) push('Size', d.frontStyle === 'inset'
         ? `inset front = opening − ${fine(2)} gap all around = ${mm(d.front.w)} × ${mm(d.front.h)}`
@@ -102,7 +102,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     if (row.allowance) {
       const j = K.JOINERY[row.allowanceJoint];
-      push('Joinery allowance', `cut length includes ${row.allowanceEnds} × ${mm(row.allowance / row.allowanceEnds)} for ${j ? j.label.toLowerCase() : row.allowanceJoint} = +${mm(row.allowance)} (geometry ${mm(row.L - row.allowance)} → cut ${mm(row.L)})`);
+      push('Joinery allowance', `cut length includes ${row.allowanceEnds} × ${mm(row.allowance / row.allowanceEnds)} for ${j ? j.label.toLowerCase() : row.allowanceJoint} = +${mm(row.allowance)} (geometry ${mm(row.L - row.allowance)} → cut ${mm(row.L)}); tenon/housing depth is capped by the mate's thickness (blind tenon ≤ mate − ${mm(6)}, housing ≤ ⅓ of the stock)`);
     }
     if (row.angles) {
       push('Angles', `saw angles from part rotation, rounded to 0.5°: ${BB.Geo.angleText(row.angles)}`);

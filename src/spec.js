@@ -105,6 +105,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (t === 'bookshelf') {
       Object.assign(base.overall, { width: 914.4, depth: 304.8, height: 1828.8 });
       base.structure.shelfCount = 4;
+      // 36 in of fully-loaded books over 3/4 in stock sags visibly once creep
+      // has its years (audit F-S0-2) — the default case ships 1 in shelves.
+      base.structure.shelfThickness = 25;
     }
     if (t === 'nightstand') {
       Object.assign(base.overall, { width: 508, depth: 406.4, height: 609.6 });
@@ -245,8 +248,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       const stock = p.stock === 'sheet' ? 'sheet' : 'solid';
       const l = r1(clamp(num(d.l !== undefined ? d.l : d.length, 100), 10, 3000));
       const w = r1(clamp(num(d.w !== undefined ? d.w : d.width, 50), 5, 1500));
+      // Solid parts snap to POST_THICKNESS (up to 100 mm): the stock planner
+      // laminates anything over 45, so thick legs survive (audit F-S2-6).
       let t = primitive === 'cylinder' ? w
-        : snap(clamp(num(d.t !== undefined ? d.t : d.thickness, 19), 3, 200), stock === 'sheet' ? K.SHEET_THICKNESS : K.SOLID_THICKNESS);
+        : snap(clamp(num(d.t !== undefined ? d.t : d.thickness, 19), 3, 200), stock === 'sheet' ? K.SHEET_THICKNESS : K.POST_THICKNESS);
       const pos = p.pos || p.position || {};
       let rot = null;
       const rr = p.rot || p.rotation;
@@ -310,6 +315,36 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
     return { parts, connections: conns };
+  }
+
+  /* World grain axis + grain-run length for a custom part (audit F-S2-7).
+   * Primitive local axes follow customPartSize: post/cylinder length is local
+   * Y, rail/panel/slab length is local X; 'width' grain swaps to the width
+   * dimension's axis. */
+  function customGrainInfo(p) {
+    const d = p.dim;
+    let axisLocal, len;
+    if (p.primitive === 'post' || p.primitive === 'cylinder') {
+      if (p.grain === 'width') { axisLocal = [1, 0, 0]; len = d.w; }
+      else { axisLocal = [0, 1, 0]; len = d.l; }
+    } else if (p.primitive === 'slab') {
+      if (p.grain === 'width') { axisLocal = [0, 0, 1]; len = d.w; }
+      else { axisLocal = [1, 0, 0]; len = d.l; }
+    } else { // rail, panel
+      if (p.grain === 'width') { axisLocal = [0, 1, 0]; len = d.w; }
+      else { axisLocal = [1, 0, 0]; len = d.l; }
+    }
+    const r = p.rot || { x: 0, y: 0, z: 0 };
+    const R = Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
+    return { axis: Geo.mulMV(R, axisLocal), len };
+  }
+  /* True when the connection to `mate` bears on p's END GRAIN: the mate sits
+   * at or beyond the outer quarter of p's grain run. */
+  function endGrainBearing(p, mate) {
+    const g = customGrainInfo(p);
+    if (!g.len) return false;
+    const d = [mate.pos.x - p.pos.x, mate.pos.y - p.pos.y, mate.pos.z - p.pos.z];
+    return Math.abs(Geo.dot3(d, g.axis)) > 0.75 * (g.len / 2);
   }
 
   function customExtents(parts) {
@@ -569,15 +604,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     }
 
-    // Drawer geometry from the built model.
+    // Drawer geometry from the built model. Thresholds come from the
+    // ergonomics table — one source of truth (audit F-SYS-3).
+    const drMinH = K.ergoRow('drawer_min_height').min;
+    const drMaxW = K.ergoRow('drawer_max_width').max;
+    const pullMax = K.ergoRow('drawer_pull_height').max;
     if (model && model.openings) {
       for (const op of model.openings) {
-        if (op.h < 80) errors.push({ id: 'op_h_' + op.index, text: `Drawer opening ${op.index + 1} is only ${fmt(op.h)} tall — the minimum workable opening is ${fmt(80)}. Reduce the drawer count or grow the piece.` });
-        if (op.w > 750) advisories.push({ id: 'op_w_' + op.index, text: `A ${fmt(op.w)} drawer is wider than the ${fmt(750)} a single slide pair handles well. Consider two banks side by side.` });
+        if (op.h < drMinH) errors.push({ id: 'op_h_' + op.index, text: `Drawer opening ${op.index + 1} is only ${fmt(op.h)} tall — the minimum workable opening is ${fmt(drMinH)}. Reduce the drawer count or grow the piece.` });
+        if (op.w > drMaxW) advisories.push({ id: 'op_w_' + op.index, text: `A ${fmt(op.w)} drawer is wider than the ${fmt(drMaxW)} a single slide pair handles well. Consider two banks side by side.` });
       }
       if (spec.drawers && model.openings.length) {
         const topOp = model.openings[0];
-        if (t === 'cabinet' && topOp.zTop > 1100) advisories.push({ id: 'pull_height', text: `The top drawer sits above comfortable pull height (${fmt(600)} to ${fmt(1100)}). Fine for occasional storage.` });
+        if (t === 'cabinet' && topOp.zTop > pullMax) advisories.push({ id: 'pull_height', text: `The top drawer sits above comfortable pull height (${fmt(K.ergoRow('drawer_pull_height').min)} to ${fmt(pullMax)}). Fine for occasional storage.` });
       }
     }
     if (model && model.drawers) {
@@ -586,6 +625,10 @@ var BB = globalThis.BB = globalThis.BB || {};
           errors.push({ id: 'dr_slide_' + d.index, text: `Drawer ${d.index + 1}'s interior is too shallow for the shortest ${fmt(250)} slide. Deepen the piece or switch to wood runners.` });
         } else if (d.box.d < 120) {
           errors.push({ id: 'dr_depth_' + d.index, text: `Drawer ${d.index + 1} would only be ${fmt(d.box.d)} deep — the interior doesn't leave a workable drawer. Deepen the piece or remove the drawers.` });
+        }
+        // A 6 mm bottom over a wide box drums and sags (audit F-S3-5).
+        if (d.box.w - 2 * d.box.t > 600) {
+          advisories.push({ id: 'dr_bottom_' + d.index, text: `Drawer ${d.index + 1}'s bottom spans ${fmt(d.box.w - 2 * d.box.t)} — over ${fmt(600)}, a ${fmt(6)} bottom drums and sags. Use ${fmt(12)} ply or add a center muntin.` });
         }
       }
     }
@@ -600,6 +643,31 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const cn of c.connections) { connected.add(cn.a); connected.add(cn.b); }
       for (const p of c.parts) {
         if (!connected.has(p.id)) errors.push({ id: 'float_' + p.id, text: `Part “${p.role}” (${p.id}) appears in no connection — free-floating geometry is invalid.` });
+      }
+      // End-grain reality (audit F-S2-7): screws barely hold in end grain and
+      // glue holds almost nothing there — name every screw-only end-grain joint.
+      const byPid = new Map(c.parts.map(p => [p.id, p]));
+      for (const cn of c.connections) {
+        if (cn.joint !== 'butt_screws' && cn.joint !== 'pocket_screws') continue;
+        const a = byPid.get(cn.a), b = byPid.get(cn.b);
+        if (!a || !b) continue;
+        if (endGrainBearing(a, b) || endGrainBearing(b, a)) {
+          advisories.push({
+            id: 'endgrain_' + cn.a + '_' + cn.b,
+            text: `“${a.role}” (${cn.a}) meets “${b.role}” (${cn.b}) on end grain with screws only — screws hold about a third less in end grain and glue there holds almost nothing. Prefer dowels, a tenon, or a cleat at this joint.`
+          });
+        }
+      }
+      // Pocket screws need meat to bite (audit F-S3-5): the jig itself bottoms
+      // out under ~12 mm of stock.
+      for (const cn of c.connections) {
+        if (cn.joint !== 'pocket_screws') continue;
+        const a = byPid.get(cn.a), b = byPid.get(cn.b);
+        for (const p of [a, b]) {
+          if (p && p.dim.t < 12) {
+            errors.push({ id: 'pocket_thin_' + p.id, text: `Pocket screws into “${p.role}” (${p.id}) at ${fmt(p.dim.t)} thick — a pocket-hole jig needs at least ${fmt(12)} of stock. Use a thicker part or a different joint.` });
+          }
+        }
       }
       // One piece, not several: the connection graph must be a single component.
       if (c.parts.length >= 2 && c.connections.length) {
@@ -645,6 +713,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
     correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
-    customPartSize, customExtents
+    customPartSize, customExtents, customGrainInfo, endGrainBearing
   };
 })();

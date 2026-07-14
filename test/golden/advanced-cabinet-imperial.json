@@ -1,0 +1,783 @@
+{
+ "spec": {
+  "specVersion": 4,
+  "meta": {
+   "name": "Sideboard Cabinet",
+   "template": "cabinet",
+   "level": "advanced",
+   "units": "in"
+  },
+  "overall": {
+   "width": 762,
+   "depth": 457.2,
+   "height": 914.4
+  },
+  "wood": {
+   "species": "white_oak",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 25,
+   "legThickness": 70,
+   "apronHeight": 90,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 1,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": true
+  },
+  "joinery": {
+   "frame": "mortise_tenon",
+   "case": "dado",
+   "box": "half_blind_dovetail"
+  },
+  "finish": "danish_oil",
+  "drawers": {
+   "count": 2,
+   "frontStyle": "overlay",
+   "runner": "side_mount_slides"
+  },
+  "custom": null
+ },
+ "validation": {
+  "errors": [],
+  "advisories": [
+   "dr_bottom_0",
+   "dr_bottom_1"
+  ]
+ },
+ "cutList": [
+  {
+   "name": "Back panel",
+   "qty": 1,
+   "L": 787.4,
+   "W": 750,
+   "T": 6,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Side",
+   "qty": 2,
+   "L": 889.4,
+   "W": 457.2,
+   "T": 18,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Top",
+   "qty": 1,
+   "L": 762,
+   "W": 457.2,
+   "T": 25,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Bottom",
+   "qty": 1,
+   "L": 738,
+   "W": 457.2,
+   "T": 19,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "includes 1/2 in for dado / housing · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Shelf",
+   "qty": 1,
+   "L": 738,
+   "W": 427.2,
+   "T": 19,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "includes 1/2 in for dado / housing · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Drawer bottom",
+   "qty": 2,
+   "L": 686.6,
+   "W": 386,
+   "T": 6,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Drawer front",
+   "qty": 2,
+   "L": 744,
+   "W": 150,
+   "T": 19,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Drawer box front",
+   "qty": 2,
+   "L": 692.6,
+   "W": 115,
+   "T": 12,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "includes 5/8 in for half-blind dovetail",
+   "angles": null
+  },
+  {
+   "name": "Drawer box back",
+   "qty": 2,
+   "L": 684.6,
+   "W": 115,
+   "T": 12,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "includes 5/16 in for dado / housing",
+   "angles": null
+  },
+  {
+   "name": "Toe-kick board",
+   "qty": 1,
+   "L": 738,
+   "W": 90,
+   "T": 19,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "includes 1/2 in for dado / housing · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Drawer side",
+   "qty": 4,
+   "L": 400,
+   "W": 115,
+   "T": 12,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Top drawer rail",
+   "qty": 1,
+   "L": 750,
+   "W": 60,
+   "T": 20,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "includes 15/16 in for mortise & tenon · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Divider rail",
+   "qty": 1,
+   "L": 750,
+   "W": 60,
+   "T": 20,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "includes 15/16 in for mortise & tenon · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Bottom drawer rail",
+   "qty": 1,
+   "L": 750,
+   "W": 60,
+   "T": 20,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "includes 15/16 in for mortise & tenon · select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": true,
+  "rackScore": 100,
+  "tip": {
+   "angEmpty": 21.85,
+   "angLoaded": 16.761,
+   "ratio": 2
+  },
+  "checks": [
+   {
+    "id": "sag:top_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.706,
+     "limitMM": 2.54,
+     "spanMM": 762
+    }
+   },
+   {
+    "id": "str:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 1.418,
+     "limitMM": 2.42,
+     "spanMM": 726
+    }
+   },
+   {
+    "id": "str:shelf_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip_f2057",
+    "status": "advisory",
+    "data": {
+     "marginRatio": 1.103,
+     "stabilizingNmm": 67872.514,
+     "overturningNmm": 61557.247,
+     "testKg": 22.7,
+     "openFraction": 0.667
+    }
+   },
+   {
+    "id": "slide:dr0",
+    "status": "pass",
+    "data": {
+     "estKg": 6.49,
+     "capKg": 34,
+     "volumeL": 27.04
+    }
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "joints",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:side_1",
+    "status": "advisory",
+    "data": {
+     "movementMM": 6.675,
+     "crossWidthMM": 457.2,
+     "context": "captured"
+    }
+   },
+   {
+    "id": "move:bottom_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 6.675,
+     "crossWidthMM": 457.2,
+     "context": "compatible"
+    }
+   },
+   {
+    "id": "move:top_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 6.675,
+     "crossWidthMM": 457.2,
+     "context": "compatible"
+    }
+   },
+   {
+    "id": "move:shelf_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 6.237,
+     "crossWidthMM": 427.2,
+     "context": "compatible"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "White Oak 1x10 x 10 ft (3/4 x 9 1/4 in)",
+    "qty": 1,
+    "cost": 77.663
+   },
+   {
+    "label": "White Oak 1x10 x 12 ft (3/4 x 9 1/4 in)",
+    "qty": 1,
+    "cost": 93.206
+   },
+   {
+    "label": "White Oak 1x6 x 6 ft (3/4 x 5 1/2 in)",
+    "qty": 1,
+    "cost": 24.728
+   },
+   {
+    "label": "White Oak 1x8 x 6 ft (3/4 x 7 1/4 in)",
+    "qty": 1,
+    "cost": 34.239
+   },
+   {
+    "label": "White Oak 5/4x4 x 6 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 21.875
+   },
+   {
+    "label": "White Oak 5/4x4 x 12 ft (1 x 3 1/2 in)",
+    "qty": 2,
+    "cost": 87.499
+   },
+   {
+    "label": "Baltic birch 1/4 in — full sheet (4 x 8 ft base)",
+    "qty": 1,
+    "cost": 40
+   },
+   {
+    "label": "Baltic birch 1/2 in — full sheet (4 x 8 ft base)",
+    "qty": 1,
+    "cost": 62
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x10",
+    "stockLen": 3658,
+    "offcut": 61.4,
+    "cuts": [
+     {
+      "name": "Side (strip 1/2)",
+      "len": 889.4,
+      "offset": 15
+     },
+     {
+      "name": "Side (strip 2/2)",
+      "len": 889.4,
+      "offset": 907.4
+     },
+     {
+      "name": "Side (strip 1/2)",
+      "len": 889.4,
+      "offset": 1799.8
+     },
+     {
+      "name": "Side (strip 2/2)",
+      "len": 889.4,
+      "offset": 2692.2
+     }
+    ]
+   },
+   {
+    "nominal": "1x10",
+    "stockLen": 3048,
+    "offcut": 57,
+    "cuts": [
+     {
+      "name": "Bottom (strip 1/2)",
+      "len": 738,
+      "offset": 15
+     },
+     {
+      "name": "Bottom (strip 2/2)",
+      "len": 738,
+      "offset": 756
+     },
+     {
+      "name": "Shelf (strip 1/2)",
+      "len": 738,
+      "offset": 1497
+     },
+     {
+      "name": "Shelf (strip 2/2)",
+      "len": 738,
+      "offset": 2238
+     }
+    ]
+   },
+   {
+    "nominal": "1x6",
+    "stockLen": 1829,
+    "offcut": 1061,
+    "cuts": [
+     {
+      "name": "Toe-kick board",
+      "len": 738,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "1x8",
+    "stockLen": 1829,
+    "offcut": 308,
+    "cuts": [
+     {
+      "name": "Drawer front",
+      "len": 744,
+      "offset": 15
+     },
+     {
+      "name": "Drawer front",
+      "len": 744,
+      "offset": 762
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3658,
+    "offcut": 571,
+    "cuts": [
+     {
+      "name": "Top (strip 1/6)",
+      "len": 762,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 2/6)",
+      "len": 762,
+      "offset": 780
+     },
+     {
+      "name": "Top (strip 3/6)",
+      "len": 762,
+      "offset": 1545
+     },
+     {
+      "name": "Top (strip 4/6)",
+      "len": 762,
+      "offset": 2310
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3658,
+    "offcut": 595,
+    "cuts": [
+     {
+      "name": "Top (strip 5/6)",
+      "len": 762,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 6/6)",
+      "len": 762,
+      "offset": 780
+     },
+     {
+      "name": "Top drawer rail",
+      "len": 750,
+      "offset": 1545
+     },
+     {
+      "name": "Divider rail",
+      "len": 750,
+      "offset": 2298
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 1829,
+    "offcut": 1049,
+    "cuts": [
+     {
+      "name": "Bottom drawer rail",
+      "len": 750,
+      "offset": 15
+     }
+    ]
+   }
+  ],
+  "sheets": [
+   {
+    "thickness": 12,
+    "fraction": 1,
+    "placements": [
+     {
+      "name": "Drawer box front",
+      "x": 0,
+      "y": 0,
+      "w": 692.6,
+      "h": 115,
+      "rot": false
+     },
+     {
+      "name": "Drawer box front",
+      "x": 695.6,
+      "y": 0,
+      "w": 692.6,
+      "h": 115,
+      "rot": false
+     },
+     {
+      "name": "Drawer box back",
+      "x": 0,
+      "y": 118,
+      "w": 684.6,
+      "h": 115,
+      "rot": false
+     },
+     {
+      "name": "Drawer box back",
+      "x": 695.6,
+      "y": 118,
+      "w": 684.6,
+      "h": 115,
+      "rot": false
+     },
+     {
+      "name": "Drawer side",
+      "x": 1391.2,
+      "y": 0,
+      "w": 400,
+      "h": 115,
+      "rot": false
+     },
+     {
+      "name": "Drawer side",
+      "x": 0,
+      "y": 236,
+      "w": 400,
+      "h": 115,
+      "rot": false
+     },
+     {
+      "name": "Drawer side",
+      "x": 1383.2,
+      "y": 118,
+      "w": 400,
+      "h": 115,
+      "rot": false
+     },
+     {
+      "name": "Drawer side",
+      "x": 695.6,
+      "y": 236,
+      "w": 400,
+      "h": 115,
+      "rot": false
+     }
+    ]
+   },
+   {
+    "thickness": 6,
+    "fraction": 1,
+    "placements": [
+     {
+      "name": "Back panel",
+      "x": 0,
+      "y": 0,
+      "w": 787.4,
+      "h": 750,
+      "rot": false
+     },
+     {
+      "name": "Drawer bottom",
+      "x": 790.4,
+      "y": 0,
+      "w": 686.6,
+      "h": 386,
+      "rot": false
+     },
+     {
+      "name": "Drawer bottom",
+      "x": 0,
+      "y": 753,
+      "w": 686.6,
+      "h": 386,
+      "rot": false
+     }
+    ]
+   }
+  ],
+  "totalCost": 441.21,
+  "wasteSolidPct": 29,
+  "wasteSheetPct": 73
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "White Oak 1x10 x 10 ft (3/4 x 9 1/4 in)",
+    "qty": 1,
+    "price": 77.66
+   },
+   {
+    "kind": "lumber",
+    "label": "White Oak 1x10 x 12 ft (3/4 x 9 1/4 in)",
+    "qty": 1,
+    "price": 93.21
+   },
+   {
+    "kind": "lumber",
+    "label": "White Oak 1x6 x 6 ft (3/4 x 5 1/2 in)",
+    "qty": 1,
+    "price": 24.73
+   },
+   {
+    "kind": "lumber",
+    "label": "White Oak 1x8 x 6 ft (3/4 x 7 1/4 in)",
+    "qty": 1,
+    "price": 34.24
+   },
+   {
+    "kind": "lumber",
+    "label": "White Oak 5/4x4 x 6 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "price": 21.87
+   },
+   {
+    "kind": "lumber",
+    "label": "White Oak 5/4x4 x 12 ft (1 x 3 1/2 in)",
+    "qty": 2,
+    "price": 87.5
+   },
+   {
+    "kind": "sheet",
+    "label": "Baltic birch 1/4 in — full sheet (4 x 8 ft base)",
+    "qty": 1,
+    "price": 40
+   },
+   {
+    "kind": "sheet",
+    "label": "Baltic birch 1/2 in — full sheet (4 x 8 ft base)",
+    "qty": 1,
+    "price": 62
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 24.3 bd ft",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 29% · sheet 73%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "Figure-8 fasteners + #8 × 5/8 in",
+    "qty": 6,
+    "price": 4.81
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 1/4 in wood screw (pilot 0.11 in)",
+    "qty": 6,
+    "price": 0.36
+   },
+   {
+    "kind": "hardware",
+    "label": "15 3/4 in side-mount slides (pair)",
+    "qty": 1,
+    "price": 14
+   },
+   {
+    "kind": "fastener",
+    "label": "M4 × 5/8 in pan-head screws (pilot 0.12 in)",
+    "qty": 8,
+    "price": 1
+   },
+   {
+    "kind": "hardware",
+    "label": "Drawer pull",
+    "qty": 1,
+    "price": 6
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 in wood screws (pilot 0.11 in)",
+    "qty": 4,
+    "price": 1
+   },
+   {
+    "kind": "hardware",
+    "label": "15 3/4 in side-mount slides (pair)",
+    "qty": 1,
+    "price": 14
+   },
+   {
+    "kind": "fastener",
+    "label": "M4 × 5/8 in pan-head screws (pilot 0.12 in)",
+    "qty": 8,
+    "price": 1
+   },
+   {
+    "kind": "hardware",
+    "label": "Drawer pull",
+    "qty": 1,
+    "price": 6
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 in wood screws (pilot 0.11 in)",
+    "qty": 4,
+    "price": 1
+   },
+   {
+    "kind": "hardware",
+    "label": "5 mm shelf pins",
+    "qty": 4,
+    "price": 1
+   },
+   {
+    "kind": "hardware",
+    "label": "Anti-tip wall anchor kit (strap + wall screws) — REQUIRED",
+    "qty": 1,
+    "price": 7
+   },
+   {
+    "kind": "finish",
+    "label": "Danish oil",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 516.38
+ },
+ "steps": [
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "s5",
+  "s6",
+  "dr1_box",
+  "dr1_runners",
+  "dr1_hang",
+  "dr1_front",
+  "dr1_pull",
+  "dr2_box",
+  "dr2_runners",
+  "dr2_hang",
+  "dr2_front",
+  "dr2_pull",
+  "antitip",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

@@ -27,6 +27,17 @@ var BB = globalThis.BB = globalThis.BB || {};
   const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'design';
   const n = v => (Math.round(v * 1000) / 1000).toString();
 
+  /* Scene (Y-up) → export (Z-up) rotation: R' = C·R·Cᵀ with C the axis swap
+   * x'=x, y'=−z, z'=y. Rotated parts must arrive rotated (audit F-S1-3). */
+  function zUpRotation(rot) {
+    const r = rot || { x: 0, y: 0, z: 0 };
+    const R = BB.Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
+    const C = [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
+    const mul = (A, B) => A.map((row, i) => row.map((_, j) => A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j]));
+    const Ct = [[1, 0, 0], [0, 0, 1], [0, -1, 0]];
+    return mul(mul(C, R), Ct);
+  }
+
   /* ---------------- COLLADA ----------------
    * INTENTIONALLY unit-exempt: the .dae declares <unit meter="0.001"> and
    * writes raw millimetre geometry regardless of the display preference.
@@ -44,14 +55,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     const materials = roles.map(r =>
       `    <material id="mat_${r}" name="${r}"><instance_effect url="#fx_${r}"/></material>`).join('\n');
 
-    // Deduplicate box geometry by exact size. Box centered at local origin,
-    // written directly in Z-up: X = scene w, Y = scene d, Z = scene h.
-    const geoms = new Map(); // sizeKey -> {id, w, d, h}
+    // Deduplicate geometry by primitive + exact size. Boxes centered at the
+    // local origin, written directly in Z-up: X = scene w, Y = scene d,
+    // Z = scene h. Cylinders (novel grammar) are 16-gon prisms about local Z
+    // — never square posts (audit F-S1-3).
+    const geoms = new Map(); // key -> {id, w, d, h, cyl}
+    const geomKey = p => (p.prim === 'cylinder' ? 'cyl_' : '') + `${p.size.w}x${p.size.h}x${p.size.d}`;
     for (const p of model.parts) {
-      const key = `${p.size.w}x${p.size.h}x${p.size.d}`;
-      if (!geoms.has(key)) geoms.set(key, { id: 'geom_' + key.replace(/\./g, '_'), w: p.size.w, d: p.size.d, h: p.size.h });
+      const key = geomKey(p);
+      if (!geoms.has(key)) geoms.set(key, { id: 'geom_' + key.replace(/\./g, '_'), w: p.size.w, d: p.size.d, h: p.size.h, cyl: p.prim === 'cylinder' });
     }
-    const geomXML = [...geoms.values()].map(g => {
+    const boxGeomXML = g => {
       const hx = g.w / 2, hy = g.d / 2, hz = g.h / 2;
       const P = [
         [-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz],
@@ -75,15 +89,50 @@ var BB = globalThis.BB = globalThis.BB || {};
         <input semantic="VERTEX" source="#${g.id}_vtx" offset="0"/><input semantic="NORMAL" source="#${g.id}_nrm" offset="1"/>
         <p>${tris}</p></triangles>
     </mesh></geometry>`;
-    }).join('\n');
+    };
+    const cylGeomXML = g => {
+      const SIDES = 16, r = g.w / 2, hz = g.h / 2;
+      const pos = [], nrm = [];
+      for (let i = 0; i < SIDES; i++) {
+        const a = (2 * Math.PI * i) / SIDES;
+        const x = r * Math.cos(a), y = r * Math.sin(a);
+        pos.push([x, y, -hz], [x, y, hz]);
+        nrm.push([Math.cos(a), Math.sin(a), 0]);
+      }
+      pos.push([0, 0, -hz], [0, 0, hz]); // cap centers: 2*SIDES, 2*SIDES+1
+      nrm.push([0, 0, -1], [0, 0, 1]);   // cap normals: SIDES, SIDES+1
+      const tris = [];
+      for (let i = 0; i < SIDES; i++) {
+        const j = (i + 1) % SIDES;
+        const b0 = 2 * i, t0 = 2 * i + 1, b1 = 2 * j, t1 = 2 * j + 1;
+        tris.push(`${b0} ${i} ${b1} ${j} ${t1} ${j}`, `${b0} ${i} ${t1} ${j} ${t0} ${i}`); // side
+        tris.push(`${2 * SIDES} ${SIDES} ${b1} ${SIDES} ${b0} ${SIDES}`);                  // bottom cap
+        tris.push(`${2 * SIDES + 1} ${SIDES + 1} ${t0} ${SIDES + 1} ${t1} ${SIDES + 1}`);  // top cap
+      }
+      const P = pos.map(v => v.map(n).join(' ')).join(' ');
+      const N = nrm.map(v => v.map(n).join(' ')).join(' ');
+      return `    <geometry id="${g.id}"><mesh>
+      <source id="${g.id}_pos"><float_array id="${g.id}_pa" count="${pos.length * 3}">${P}</float_array>
+        <technique_common><accessor source="#${g.id}_pa" count="${pos.length}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>
+      <source id="${g.id}_nrm"><float_array id="${g.id}_na" count="${nrm.length * 3}">${N}</float_array>
+        <technique_common><accessor source="#${g.id}_na" count="${nrm.length}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>
+      <vertices id="${g.id}_vtx"><input semantic="POSITION" source="#${g.id}_pos"/></vertices>
+      <triangles count="${SIDES * 4}" material="m">
+        <input semantic="VERTEX" source="#${g.id}_vtx" offset="0"/><input semantic="NORMAL" source="#${g.id}_nrm" offset="1"/>
+        <p>${tris.join(' ')}</p></triangles>
+    </mesh></geometry>`;
+    };
+    const geomXML = [...geoms.values()].map(g => (g.cyl ? cylGeomXML(g) : boxGeomXML(g))).join('\n');
 
-    // One named node per part instance, translation converted Y-up → Z-up.
+    // One named node per part instance: full rotation (Y-up → Z-up conjugated)
+    // plus the converted translation — the export matches the 3D view.
     const nodes = model.parts.map(p => {
-      const key = `${p.size.w}x${p.size.h}x${p.size.d}`;
-      const g = geoms.get(key);
+      const g = geoms.get(geomKey(p));
+      const R = zUpRotation(p.rot);
       const X = p.pos.x, Y = -p.pos.z, Z = p.pos.y;
+      const row = (i, t) => `${n(R[i][0])} ${n(R[i][1])} ${n(R[i][2])} ${n(t)}`;
       return `      <node id="${esc(p.id)}" name="${esc(p.id)}">
-        <matrix>1 0 0 ${n(X)} 0 1 0 ${n(Y)} 0 0 1 ${n(Z)} 0 0 0 1</matrix>
+        <matrix>${row(0, X)} ${row(1, Y)} ${row(2, Z)} 0 0 0 1</matrix>
         <instance_geometry url="#${g.id}"><bind_material><technique_common>
           <instance_material symbol="m" target="#mat_${p.role}"/>
         </technique_common></bind_material></instance_geometry>
@@ -126,38 +175,53 @@ ${nodes}
     const name = rb(spec.meta.name);
 
     // One ComponentDefinition per unique part (defKey), instances placed with
-    // transformations. All lengths pass through .mm — the SketchUp Ruby API
-    // measures in inches by default and this is the only exact conversion.
-    const defs = new Map(); // defKey -> {var, label, w,d,h, role, color, instances:[{id, x,y,z}]}
+    // FULL transformations (rotation + translation — audit F-S1-3). Lengths
+    // inside definitions pass through .mm; transformation origins are written
+    // in inches (the SketchUp API's native unit) via MM_IN below.
+    const MM_IN = 25.4;
+    const defs = new Map(); // defKey -> {var, label, w,d,h, role, color, cyl, instances}
     let di = 0;
     for (const p of model.parts) {
       if (!defs.has(p.defKey)) {
         defs.set(p.defKey, {
           var: 'def_' + (di++), label: `${p.name} ${p.size.w}x${p.size.h}x${p.size.d}`,
-          w: p.size.w, d: p.size.d, h: p.size.h, role: p.role, color: roleColor(p.role), instances: []
+          w: p.size.w, d: p.size.d, h: p.size.h, role: p.role, color: roleColor(p.role),
+          cyl: p.prim === 'cylinder', instances: []
         });
       }
       const d = defs.get(p.defKey);
-      // instance min-corner in SketchUp Z-up coords
+      // World = T(center′) · R′ · T(−half): definition origin is the min
+      // corner, R′ is the Y-up→Z-up conjugated part rotation.
+      const R = zUpRotation(p.rot);
+      const c = [p.pos.x, -p.pos.z, p.pos.y];
+      const half = [p.size.w / 2, p.size.d / 2, p.size.h / 2];
+      const o = [0, 1, 2].map(i => c[i] - (R[i][0] * half[0] + R[i][1] * half[1] + R[i][2] * half[2]));
       d.instances.push({
         id: p.id,
-        x: p.pos.x - p.size.w / 2,
-        y: -p.pos.z - p.size.d / 2,
-        z: p.pos.y - p.size.h / 2
+        // column-major 16-array; origin in inches (SketchUp native)
+        t: [
+          R[0][0], R[1][0], R[2][0], 0,
+          R[0][1], R[1][1], R[2][1], 0,
+          R[0][2], R[1][2], R[2][2], 0,
+          o[0] / MM_IN, o[1] / MM_IN, o[2] / MM_IN, 1
+        ].map(v => +v.toFixed(6))
       });
     }
     const roles = [...new Set(model.parts.map(p => p.role))];
 
     const defCode = [...defs.values()].map(d => `
     ${d.var} = defs.add("${rb(d.label)}")
-    face = ${d.var}.entities.add_face(
-      [0, 0, 0], [${n(d.w)}.mm, 0, 0], [${n(d.w)}.mm, ${n(d.d)}.mm, 0], [0, ${n(d.d)}.mm, 0])
+    ${d.cyl
+    ? `edge = ${d.var}.entities.add_circle([${n(d.w / 2)}.mm, ${n(d.d / 2)}.mm, 0], [0, 0, 1], ${n(d.w / 2)}.mm, 16)
+    face = ${d.var}.entities.add_face(edge)`
+    : `face = ${d.var}.entities.add_face(
+      [0, 0, 0], [${n(d.w)}.mm, 0, 0], [${n(d.w)}.mm, ${n(d.d)}.mm, 0], [0, ${n(d.d)}.mm, 0])`}
     face.reverse! if face.normal.z < 0
     face.pushpull(${n(d.h)}.mm)
     ${d.var}_mat = mats["bb_${d.role}"] || begin
       m = mats.add("bb_${d.role}"); m.color = Sketchup::Color.new(${d.color.join(', ')}); m
     end
-${d.instances.map(i => `    inst = ents.add_instance(${d.var}, Geom::Transformation.new(Geom::Point3d.new(${n(i.x)}.mm, ${n(i.y)}.mm, ${n(i.z)}.mm)))
+${d.instances.map(i => `    inst = ents.add_instance(${d.var}, Geom::Transformation.new([${i.t.join(', ')}]))
     inst.name = "${rb(i.id)}"
     inst.layer = tags["${d.role}"]
     inst.material = ${d.var}_mat`).join('\n')}`).join('\n');
@@ -238,6 +302,21 @@ BlueprintBuddyImport.build
   </section>`;
     }
 
+    // Joinery detail: fastener positions, pilots, and setout per unique joint
+    // pairing (audit F-S3-1) — what separates a plan from a picture.
+    let joineryHTML = '';
+    if (BB.Fasteners) {
+      const rows = BB.Fasteners.detailRows(spec, model);
+      if (rows.length) {
+        const jr = rows.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('');
+        joineryHTML = `
+  <section class="print-section page-break">
+    <h2>Joinery detail — locations, pilots, setout</h2>
+    <table><thead><tr><th>Joint</th><th>Qty</th><th>Where</th><th>Setout</th></tr></thead><tbody>${jr}</tbody></table>
+  </section>`;
+      }
+    }
+
     return `
   <header class="print-head">
     <h1>${esc(spec.meta.name)}</h1>
@@ -247,7 +326,8 @@ BlueprintBuddyImport.build
   <section class="print-section">
     <h2>Cut list</h2>
     <table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${cutRows}</tbody></table>
-  </section>${stockHTML}
+    <p>Load-bearing parts: select straight-grained stock free of knots — the structural numbers assume clear wood.</p>
+  </section>${joineryHTML}${stockHTML}
   <section class="print-section page-break">
     <h2>Bill of materials</h2>
     <table><thead><tr><th>Item</th><th>Qty</th><th>Detail</th></tr></thead><tbody>${bomRows}</tbody></table>
@@ -256,6 +336,7 @@ BlueprintBuddyImport.build
   <section class="print-section page-break">
     <h2>Assembly</h2>
     <ol class="print-steps">${stepBlocks}</ol>
+    <p class="print-sub">${esc(BB.K.DESIGN_BASIS)}</p>
   </section>`;
   }
 

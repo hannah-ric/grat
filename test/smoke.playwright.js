@@ -80,7 +80,7 @@ const clickMoreCtl = async sel => {
     bomSlides: __bb.state.bomData.items.filter(i => i.label.includes('slides')).length
   }));
   ok(ns.drawers === 2 && ns.rails === 3, `nightstand starter: 2 drawers, 3 rails (got ${ns.drawers}/${ns.rails})`);
-  ok(ns.boxW === ns.openW - 25, 'box width = opening − 25 in live app');
+  ok(Math.abs(ns.boxW - (ns.openW - 25.4)) < 0.01, 'box width = opening − 25.4 in live app');
   ok([250, 300, 350, 400, 450, 500].includes(ns.slide), 'standard slide length in live app');
   ok(ns.bomSlides === 2, 'slide pairs in BOM');
   ok(await page.evaluate(() => document.getElementById('hintPrompts').children.length === 0),
@@ -683,10 +683,12 @@ const clickMoreCtl = async sel => {
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
   await page.click('#tab-integrity');
   await page.waitForSelector('.fix-row .btn', { timeout: 5000 });
-  const beforeFix = await page.evaluate(() => ({ t: __bb.state.spec.structure.topThickness, sp: __bb.state.spec.wood.species, fails: __bb.state.integrity.summary.fails }));
+  const fixSnap = () => page.evaluate(() => ({ t: __bb.state.spec.structure.topThickness, a: __bb.state.spec.structure.apronHeight, sp: __bb.state.spec.wood.species, fails: __bb.state.integrity.summary.fails }));
+  const beforeFix = await fixSnap();
   await page.click('.fix-row .btn');
-  const afterFix = await page.evaluate(() => ({ t: __bb.state.spec.structure.topThickness, sp: __bb.state.spec.wood.species, fails: __bb.state.integrity.summary.fails }));
-  ok(afterFix.t !== beforeFix.t || afterFix.sp !== beforeFix.sp, `integrity fix patched the spec (${beforeFix.t}mm/${beforeFix.sp} → ${afterFix.t}mm/${afterFix.sp})`);
+  const afterFix = await fixSnap();
+  ok(afterFix.t !== beforeFix.t || afterFix.a !== beforeFix.a || afterFix.sp !== beforeFix.sp,
+    `integrity fix patched the spec (top ${beforeFix.t}→${afterFix.t}, apron ${beforeFix.a}→${afterFix.a}, ${beforeFix.sp}→${afterFix.sp})`);
   ok(afterFix.fails <= beforeFix.fails, `fix did not make things worse (${beforeFix.fails} → ${afterFix.fails} fails)`);
 
   // Projects: rename, duplicate, delete round-trip through storage.
