@@ -1669,7 +1669,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     globalThis.__bb = {
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
-      openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct
+      openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
+      preview, commitPreview, closeInspector, openInspectorById
     };
 
     setTimeout(() => { const h = $('viewportHint'); if (h) h.style.opacity = '0'; }, 6000);

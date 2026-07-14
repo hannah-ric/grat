@@ -368,6 +368,99 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   ok(revived.progress >= 1, 'build progress survives reload');
   ok(revived.version === 4, `reopened design is spec v${revived.version} via the migration registry`);
 
+  /* ================= Phase A: state integrity ================= */
+
+  // Preview adopts live without a history entry; commitPreview writes exactly
+  // one; a second commitPreview is a no-op (no duplicate entries).
+  const pv = await page.evaluate(() => {
+    const snaps0 = __bb.state.history.snapshots.length;
+    const h0 = __bb.state.spec.overall.height;
+    __bb.preview(BB.Spec.deepMerge(__bb.state.spec, { overall: { height: h0 - 20 } }));
+    const during = { previewing: __bb.state.previewing, snaps: __bb.state.history.snapshots.length, h: __bb.state.spec.overall.height, h0 };
+    __bb.commitPreview('manual');
+    const after = { previewing: __bb.state.previewing, snaps: __bb.state.history.snapshots.length };
+    __bb.commitPreview('manual');
+    return { snaps0, during, after, dupSnaps: __bb.state.history.snapshots.length };
+  });
+  ok(pv.during.previewing && pv.during.snaps === pv.snaps0 && Math.abs(pv.during.h - (pv.during.h0 - 20)) < 0.11,
+    'preview adopts live without writing history');
+  ok(!pv.after.previewing && pv.after.snaps === pv.snaps0 + 1, 'commitPreview writes exactly one history entry');
+  ok(pv.dupSnaps === pv.after.snaps, 'second commitPreview is a no-op — no duplicate entries');
+
+  // commit() supersedes a pending preview: flag cleared, no phantom entry after.
+  const pv2 = await page.evaluate(() => {
+    __bb.preview(BB.Spec.deepMerge(__bb.state.spec, { overall: { height: __bb.state.spec.overall.height - 10 } }));
+    __bb.merge({ wood: { species: 'walnut' } }, 'manual');
+    const cleared = !__bb.state.previewing;
+    const snaps = __bb.state.history.snapshots.length;
+    __bb.commitPreview('manual');
+    return { cleared, noDup: __bb.state.history.snapshots.length === snaps };
+  });
+  ok(pv2.cleared && pv2.noDup, 'commit() clears the preview flag — no phantom entry after');
+
+  // Undo with a pending preview: restoreTo clears the flag, preview dies.
+  const pv3 = await page.evaluate(() => {
+    __bb.preview(BB.Spec.deepMerge(__bb.state.spec, { overall: { height: __bb.state.spec.overall.height - 10 } }));
+    document.getElementById('undoBtn').click();
+    const snaps = __bb.state.history.snapshots.length;
+    __bb.commitPreview('manual');
+    return { previewing: __bb.state.previewing, noDup: __bb.state.history.snapshots.length === snaps };
+  });
+  ok(!pv3.previewing && pv3.noDup, 'undo clears a pending preview — no phantom history entry');
+
+  // Closing the inspector mid-drag commits the pending change: the history
+  // head must match the model on screen.
+  const pv4 = await page.evaluate(() => {
+    const snaps0 = __bb.state.history.snapshots.length;
+    __bb.openInspectorById(__bb.state.model.parts[0].id);
+    __bb.preview(BB.Spec.deepMerge(__bb.state.spec, { overall: { height: __bb.state.spec.overall.height - 15 } }));
+    __bb.closeInspector();
+    return {
+      previewing: __bb.state.previewing,
+      snapsAdded: __bb.state.history.snapshots.length - snaps0,
+      headMatchesLive: __bb.state.history.current().spec.overall.height === __bb.state.spec.overall.height
+    };
+  });
+  ok(!pv4.previewing && pv4.snapsAdded === 1, 'closing the inspector mid-drag commits exactly one entry');
+  ok(pv4.headMatchesLive, 'history head matches the live model after mid-drag close');
+
+  // Compare overlay + undo: ghost and banner clear with the restore.
+  await page.click('#historyBtn');
+  await page.waitForSelector('#historyDrawer.open');
+  const cbsA = await page.$$('#historyList input[type="checkbox"]');
+  await cbsA[0].check(); await cbsA[cbsA.length - 1].check();
+  await page.click('#compareBtn');
+  await page.waitForSelector('#compareScrim.open');
+  await page.click('#compareClose');
+  ok(await page.isVisible('#compareBanner'), 'ghost overlay banner active before undo');
+  await page.click('#undoBtn');
+  ok(await page.evaluate(() => __bb.state.compare === null && document.getElementById('compareBanner').hidden),
+    'undo clears the compare ghost and banner');
+
+  // Build progress stays truthful across a re-pack: zombie keys pruned,
+  // percentage counts only live checklist items.
+  const prog = await page.evaluate(() => {
+    __bb.enterBuildMode();
+    document.querySelector('.bm-check').click();
+    __bb.state.project.progress.cuts['b:9:9:Zombie leg:9999'] = true; // orphan from an "older layout"
+    __bb.exitBuildMode();
+    __bb.merge({ overall: { width: __bb.state.spec.overall.width + 180 } }, 'manual'); // forces a re-pack
+    const keys = BB.Plans.checklistKeys(__bb.state.stockPlan, __bb.state.cut, __bb.state.steps);
+    const live = new Set([...keys.cuts, ...keys.steps]);
+    const stored = [...Object.keys(__bb.state.project.progress.cuts), ...Object.keys(__bb.state.project.progress.steps)];
+    const done = keys.cuts.filter(k => __bb.state.project.progress.cuts[k]).length +
+      keys.steps.filter(k => __bb.state.project.progress.steps[k]).length;
+    const total = keys.cuts.length + keys.steps.length;
+    return {
+      zombieGone: !('b:9:9:Zombie leg:9999' in __bb.state.project.progress.cuts),
+      allLive: stored.every(k => live.has(k)),
+      pctTruthful: __bb.progressPct() === Math.min(100, Math.round(100 * done / total))
+    };
+  });
+  ok(prog.zombieGone, 'orphan progress key pruned on re-pack');
+  ok(prog.allLive, 'every stored progress key exists in the live checklist');
+  ok(prog.pctTruthful, 'build percentage counts only live checklist items');
+
   // Integrity fix buttons patch the spec through the normal pipeline.
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
   await page.click('#tab-integrity');
