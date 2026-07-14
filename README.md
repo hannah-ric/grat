@@ -27,7 +27,18 @@ The founding rule, unchanged since Phase 1: **the AI proposes intent; code owns 
 ## Development
 
 ```
+npm run dev              # build, serve on http://localhost:3000, watch-rebuild, /api/chat proxy
 node build.js            # inline everything into dist/index.html
 npm test                 # headless unit tests (node test/unit.test.js)
 npm run test:smoke       # build + drive the real app in headless Chromium
 ```
+
+## Deploy: Vercel & v0
+
+The repo is pre-configured for Vercel (and for import into [v0](https://v0.app)
+via **Import from GitHub**): `vercel.json` pins the framework preset (**Other**),
+install command (`npm install --ignore-scripts`), build command (`node build.js`),
+and output directory (`dist`), and `api/chat.js` is a serverless proxy that keeps
+`ANTHROPIC_API_KEY` server-side so AI chat and photo-to-design work when hosted
+outside claude.ai. Without a key the app degrades to its built-in offline parser.
+Setup steps, environment variables, and v0 caveats: **[DEPLOYMENT.md](DEPLOYMENT.md)**.

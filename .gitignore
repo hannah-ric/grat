@@ -1,3 +1,7 @@
 node_modules/
 dist/shots/
 package-lock.json
+.env
+.env.*
+!.env.example
+.vercel/
