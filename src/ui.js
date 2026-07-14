@@ -1160,9 +1160,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     releaseFocus(s);
   }
 
+  const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
+    galleryCards.length = 0;
     for (const g of Gallery.STARTERS) {
       const r = runPipeline(g.spec);
       const card = el('button', 'gallery-card');
@@ -1178,10 +1180,68 @@ var BB = globalThis.BB = globalThis.BB || {};
         state.turns = [];
         commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
         state.engine.frame();
+        // First starter ever: the piece assembles itself once — the pipeline
+        // dramatized in one shot. Reduced motion snaps it (engine-side).
+        if (!state.prefs4.seenHero) {
+          state.prefs4.seenHero = true;
+          Store.savePrefs(state.prefs4);
+          state.engine.heroAssemble();
+        }
         botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
       };
       grid.append(card);
+      galleryCards.push({ card, model: r.model, spec: r.spec });
     }
+  }
+
+  /* Real 3D thumbnails for the starter cards, rendered by a throwaway
+   * mini-engine after boot settles. Cached in storage keyed by a hash of the
+   * starter specs, so repeat boots skip GL work entirely. Failures leave the
+   * emoji cards — this pass is decoration, never load-bearing. */
+  const THUMBS_KEY = 'gallery:thumbs:v1';
+  function startersHash() {
+    const s = JSON.stringify(Gallery.STARTERS.map(g => g.spec));
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+  function patchGalleryThumbs(thumbs) {
+    galleryCards.forEach(({ card }, i) => {
+      if (!thumbs[i]) return;
+      const emoji = card.querySelector('.g-emoji');
+      if (!emoji) return;
+      const img = document.createElement('img');
+      img.className = 'g-thumb';
+      img.alt = '';
+      img.src = thumbs[i];
+      emoji.replaceWith(img);
+      requestAnimationFrame(() => img.classList.add('on'));
+    });
+  }
+  async function galleryThumbsPass() {
+    try {
+      const hash = startersHash();
+      const cached = await Store.get(THUMBS_KEY);
+      if (cached && cached.hash === hash && Array.isArray(cached.thumbs)) {
+        patchGalleryThumbs(cached.thumbs);
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:256px;height:192px;';
+      document.body.append(canvas);
+      const mini = BB.Engine.create(canvas, { reducedMotion: true });
+      const thumbs = [];
+      for (const { model, spec } of galleryCards) {
+        mini.setModel(model, spec, { snap: true });
+        mini.frame();
+        mini.snapNow();
+        thumbs.push(Store.makeThumb(mini.renderNow()));
+      }
+      mini.dispose();
+      canvas.remove();
+      patchGalleryThumbs(thumbs);
+      await Store.set(THUMBS_KEY, { hash, thumbs });
+    } catch (e) { /* emoji cards remain */ }
   }
 
   /* ---------------- My Projects (Phase 4 item 2) ---------------- */
@@ -1685,6 +1745,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       openScrim('galleryScrim');
       botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
     }
+
+    // Gallery thumbnails render off the critical path once boot settles.
+    // The render loop's rAF keeps the page from ever reporting truly idle,
+    // so the timeout is the realistic trigger.
+    if (globalThis.requestIdleCallback) requestIdleCallback(() => galleryThumbsPass(), { timeout: 1200 });
+    else setTimeout(() => galleryThumbsPass(), 1200);
 
     /* top bar */
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };

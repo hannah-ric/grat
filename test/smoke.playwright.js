@@ -68,7 +68,14 @@ const clickMoreCtl = async sel => {
 
   // Gallery on first load; load the nightstand starter through the pipeline.
   ok(await page.isVisible('#galleryScrim.open'), 'starter gallery shows on first load');
+  // Idle pass swaps the emoji cards for real rendered thumbnails.
+  const thumbs = await page.waitForSelector('.gallery-card .g-thumb', { timeout: 10000 }).then(() => true).catch(() => false);
+  ok(thumbs, 'gallery cards gain rendered 3D thumbnails after idle');
+  ok(await page.evaluate(() => [...document.querySelectorAll('.gallery-card .g-thumb')].every(i => i.src.startsWith('data:image/jpeg'))),
+    'every starter thumbnail rendered to a data URL');
   await page.screenshot({ path: SHOTS + '/01-gallery.png' });
+  // First starter pick fires the one-shot hero assemble (fresh prefs).
+  const heroBefore = await page.evaluate(() => !!__bb.state.prefs4.seenHero);
   await page.click('.gallery-card:nth-child(5)');
   await page.waitForFunction(() => __bb.state.spec.meta.template === 'nightstand');
   const ns = await page.evaluate(() => ({
@@ -80,6 +87,8 @@ const clickMoreCtl = async sel => {
     bomSlides: __bb.state.bomData.items.filter(i => i.label.includes('slides')).length
   }));
   ok(ns.drawers === 2 && ns.rails === 3, `nightstand starter: 2 drawers, 3 rails (got ${ns.drawers}/${ns.rails})`);
+  ok(!heroBefore && await page.evaluate(() => __bb.state.prefs4.seenHero === true),
+    'first starter pick marks the one-shot hero as seen');
   ok(ns.boxW === ns.openW - 25, 'box width = opening − 25 in live app');
   ok([250, 300, 350, 400, 450, 500].includes(ns.slide), 'standard slide length in live app');
   ok(ns.bomSlides === 2, 'slide pairs in BOM');

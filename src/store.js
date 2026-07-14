@@ -137,7 +137,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   const DEFAULT_PREFS = {
     climate: 'temperate', stockMode: {}, theme: 'auto',
     units: { system: 'imperial', precision: 16, dual: false },
-    render: { textured: true }
+    render: { textured: true },
+    seenHero: false // the one-shot assemble moment on first starter pick
   };
 
   async function loadPrices() {

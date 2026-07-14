@@ -547,6 +547,14 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .gallery-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--line-2); }
 .gallery-card .g-emoji { font-size: 26px; }
+/* Real rendered thumbnails replace the emoji once the idle pass paints them;
+ * the fade keeps the swap quiet. Cards read as miniature drafting sheets. */
+.gallery-card .g-thumb {
+  display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--panel-2);
+  object-fit: cover; opacity: 0; transition: opacity var(--t-slow) var(--ease);
+}
+.gallery-card .g-thumb.on { opacity: 1; }
 .gallery-card .g-name { font-family: var(--display); font-weight: 650; font-size: 15px; }
 .gallery-card .g-caption { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
 .gallery-card .g-meta { font: 500 11px var(--mono); color: var(--accent); margin-top: auto; padding-top: var(--s2); }

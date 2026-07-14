@@ -554,6 +554,14 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .gallery-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--line-2); }
 .gallery-card .g-emoji { font-size: 26px; }
+/* Real rendered thumbnails replace the emoji once the idle pass paints them;
+ * the fade keeps the swap quiet. Cards read as miniature drafting sheets. */
+.gallery-card .g-thumb {
+  display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--panel-2);
+  object-fit: cover; opacity: 0; transition: opacity var(--t-slow) var(--ease);
+}
+.gallery-card .g-thumb.on { opacity: 1; }
 .gallery-card .g-name { font-family: var(--display); font-weight: 650; font-size: 15px; }
 .gallery-card .g-caption { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
 .gallery-card .g-meta { font: 500 11px var(--mono); color: var(--accent); margin-top: auto; padding-top: var(--s2); }
@@ -5635,7 +5643,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   const DEFAULT_PREFS = {
     climate: 'temperate', stockMode: {}, theme: 'auto',
     units: { system: 'imperial', precision: 16, dual: false },
-    render: { textured: true }
+    render: { textured: true },
+    seenHero: false // the one-shot assemble moment on first starter pick
   };
 
   async function loadPrices() {
@@ -7055,6 +7064,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     const clock = new THREE.Clock();
     let raf = 0;
     function lerpN(a, b, k) { return a + (b - a) * k; }
+    function placeCamera() {
+      camera.position.set(
+        camTarget.x + camCur.dist * Math.sin(camCur.phi) * Math.sin(camCur.theta),
+        camTarget.y + camCur.dist * Math.cos(camCur.phi),
+        camTarget.z + camCur.dist * Math.sin(camCur.phi) * Math.cos(camCur.theta));
+      camera.lookAt(camTarget);
+    }
     function tick() {
       if (E.disposed) return;
       raf = requestAnimationFrame(tick);
@@ -7081,11 +7097,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       camCur.theta = lerpN(camCur.theta, camGoal.theta, kc);
       camCur.phi = lerpN(camCur.phi, camGoal.phi, kc);
       camCur.dist = lerpN(camCur.dist, camGoal.dist, kc);
-      camera.position.set(
-        camTarget.x + camCur.dist * Math.sin(camCur.phi) * Math.sin(camCur.theta),
-        camTarget.y + camCur.dist * Math.cos(camCur.phi),
-        camTarget.z + camCur.dist * Math.sin(camCur.phi) * Math.cos(camCur.theta));
-      camera.lookAt(camTarget);
+      placeCamera();
 
       const pulse = 1 + 0.22 * Math.sin(performance.now() * 0.005);
       for (const j of jointGroup.children) j.scale.setScalar(j.userData.base * (E.reducedMotion ? 1 : pulse));
@@ -7155,11 +7167,35 @@ var BB = globalThis.BB = globalThis.BB || {};
       setReducedMotion(v) { E.reducedMotion = !!v; },
       playbackEnter, playbackGoTo, playbackExit, playbackReplay,
       inPlayback() { return !!E.playback; },
+      /* One-shot hero: parts start from their fully exploded playback pose
+       * and the standing damped lerp flies them home while the camera sweeps
+       * in. Reduced motion makes k = 1 in the tick loop, i.e. an instant
+       * snap — no special case needed. */
+      heroAssemble() {
+        const spread = Math.max(E.bounds.w, E.bounds.d, E.bounds.h) * 0.45;
+        for (const rec of E.meshes.values()) {
+          const off = playbackStart(rec.part, spread);
+          rec.cur.pos = { x: rec.part.pos.x + off.x, y: rec.part.pos.y + off.y, z: rec.part.pos.z + off.z };
+        }
+        camCur.theta = camGoal.theta - 0.55;
+        camCur.dist = camGoal.dist * 1.3;
+      },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
       /* Synchronous render + return the canvas — thumbnails read pixels right
        * after this call (the drawing buffer is only valid in the same tick). */
       renderNow() { renderer.render(scene, camera); return canvas; },
-      snapNow() { for (const rec of E.meshes.values()) { rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } }; } Object.assign(camCur, camGoal); },
+      /* Snap every damped value to its target AND apply the transforms right
+       * now — callers pair this with renderNow() synchronously (thumbnails),
+       * where no tick runs between the calls. */
+      snapNow() {
+        for (const rec of E.meshes.values()) {
+          rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } };
+          rec.mesh.position.set(rec.cur.pos.x, rec.cur.pos.y, rec.cur.pos.z);
+          rec.mesh.scale.set(Math.max(0.001, rec.cur.scale.x), Math.max(0.001, rec.cur.scale.y), Math.max(0.001, rec.cur.scale.z));
+        }
+        Object.assign(camCur, camGoal);
+        placeCamera();
+      },
       dispose() {
         E.disposed = true;
         cancelAnimationFrame(raf);
@@ -8352,9 +8388,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     releaseFocus(s);
   }
 
+  const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
+    galleryCards.length = 0;
     for (const g of Gallery.STARTERS) {
       const r = runPipeline(g.spec);
       const card = el('button', 'gallery-card');
@@ -8370,10 +8408,68 @@ var BB = globalThis.BB = globalThis.BB || {};
         state.turns = [];
         commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
         state.engine.frame();
+        // First starter ever: the piece assembles itself once — the pipeline
+        // dramatized in one shot. Reduced motion snaps it (engine-side).
+        if (!state.prefs4.seenHero) {
+          state.prefs4.seenHero = true;
+          Store.savePrefs(state.prefs4);
+          state.engine.heroAssemble();
+        }
         botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
       };
       grid.append(card);
+      galleryCards.push({ card, model: r.model, spec: r.spec });
     }
+  }
+
+  /* Real 3D thumbnails for the starter cards, rendered by a throwaway
+   * mini-engine after boot settles. Cached in storage keyed by a hash of the
+   * starter specs, so repeat boots skip GL work entirely. Failures leave the
+   * emoji cards — this pass is decoration, never load-bearing. */
+  const THUMBS_KEY = 'gallery:thumbs:v1';
+  function startersHash() {
+    const s = JSON.stringify(Gallery.STARTERS.map(g => g.spec));
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+  function patchGalleryThumbs(thumbs) {
+    galleryCards.forEach(({ card }, i) => {
+      if (!thumbs[i]) return;
+      const emoji = card.querySelector('.g-emoji');
+      if (!emoji) return;
+      const img = document.createElement('img');
+      img.className = 'g-thumb';
+      img.alt = '';
+      img.src = thumbs[i];
+      emoji.replaceWith(img);
+      requestAnimationFrame(() => img.classList.add('on'));
+    });
+  }
+  async function galleryThumbsPass() {
+    try {
+      const hash = startersHash();
+      const cached = await Store.get(THUMBS_KEY);
+      if (cached && cached.hash === hash && Array.isArray(cached.thumbs)) {
+        patchGalleryThumbs(cached.thumbs);
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:256px;height:192px;';
+      document.body.append(canvas);
+      const mini = BB.Engine.create(canvas, { reducedMotion: true });
+      const thumbs = [];
+      for (const { model, spec } of galleryCards) {
+        mini.setModel(model, spec, { snap: true });
+        mini.frame();
+        mini.snapNow();
+        thumbs.push(Store.makeThumb(mini.renderNow()));
+      }
+      mini.dispose();
+      canvas.remove();
+      patchGalleryThumbs(thumbs);
+      await Store.set(THUMBS_KEY, { hash, thumbs });
+    } catch (e) { /* emoji cards remain */ }
   }
 
   /* ---------------- My Projects (Phase 4 item 2) ---------------- */
@@ -8877,6 +8973,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       openScrim('galleryScrim');
       botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
     }
+
+    // Gallery thumbnails render off the critical path once boot settles.
+    // The render loop's rAF keeps the page from ever reporting truly idle,
+    // so the timeout is the realistic trigger.
+    if (globalThis.requestIdleCallback) requestIdleCallback(() => galleryThumbsPass(), { timeout: 1200 });
+    else setTimeout(() => galleryThumbsPass(), 1200);
 
     /* top bar */
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };

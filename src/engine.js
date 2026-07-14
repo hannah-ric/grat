@@ -575,6 +575,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     const clock = new THREE.Clock();
     let raf = 0;
     function lerpN(a, b, k) { return a + (b - a) * k; }
+    function placeCamera() {
+      camera.position.set(
+        camTarget.x + camCur.dist * Math.sin(camCur.phi) * Math.sin(camCur.theta),
+        camTarget.y + camCur.dist * Math.cos(camCur.phi),
+        camTarget.z + camCur.dist * Math.sin(camCur.phi) * Math.cos(camCur.theta));
+      camera.lookAt(camTarget);
+    }
     function tick() {
       if (E.disposed) return;
       raf = requestAnimationFrame(tick);
@@ -601,11 +608,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       camCur.theta = lerpN(camCur.theta, camGoal.theta, kc);
       camCur.phi = lerpN(camCur.phi, camGoal.phi, kc);
       camCur.dist = lerpN(camCur.dist, camGoal.dist, kc);
-      camera.position.set(
-        camTarget.x + camCur.dist * Math.sin(camCur.phi) * Math.sin(camCur.theta),
-        camTarget.y + camCur.dist * Math.cos(camCur.phi),
-        camTarget.z + camCur.dist * Math.sin(camCur.phi) * Math.cos(camCur.theta));
-      camera.lookAt(camTarget);
+      placeCamera();
 
       const pulse = 1 + 0.22 * Math.sin(performance.now() * 0.005);
       for (const j of jointGroup.children) j.scale.setScalar(j.userData.base * (E.reducedMotion ? 1 : pulse));
@@ -675,11 +678,35 @@ var BB = globalThis.BB = globalThis.BB || {};
       setReducedMotion(v) { E.reducedMotion = !!v; },
       playbackEnter, playbackGoTo, playbackExit, playbackReplay,
       inPlayback() { return !!E.playback; },
+      /* One-shot hero: parts start from their fully exploded playback pose
+       * and the standing damped lerp flies them home while the camera sweeps
+       * in. Reduced motion makes k = 1 in the tick loop, i.e. an instant
+       * snap — no special case needed. */
+      heroAssemble() {
+        const spread = Math.max(E.bounds.w, E.bounds.d, E.bounds.h) * 0.45;
+        for (const rec of E.meshes.values()) {
+          const off = playbackStart(rec.part, spread);
+          rec.cur.pos = { x: rec.part.pos.x + off.x, y: rec.part.pos.y + off.y, z: rec.part.pos.z + off.z };
+        }
+        camCur.theta = camGoal.theta - 0.55;
+        camCur.dist = camGoal.dist * 1.3;
+      },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
       /* Synchronous render + return the canvas — thumbnails read pixels right
        * after this call (the drawing buffer is only valid in the same tick). */
       renderNow() { renderer.render(scene, camera); return canvas; },
-      snapNow() { for (const rec of E.meshes.values()) { rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } }; } Object.assign(camCur, camGoal); },
+      /* Snap every damped value to its target AND apply the transforms right
+       * now — callers pair this with renderNow() synchronously (thumbnails),
+       * where no tick runs between the calls. */
+      snapNow() {
+        for (const rec of E.meshes.values()) {
+          rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } };
+          rec.mesh.position.set(rec.cur.pos.x, rec.cur.pos.y, rec.cur.pos.z);
+          rec.mesh.scale.set(Math.max(0.001, rec.cur.scale.x), Math.max(0.001, rec.cur.scale.y), Math.max(0.001, rec.cur.scale.z));
+        }
+        Object.assign(camCur, camGoal);
+        placeCamera();
+      },
       dispose() {
         E.disposed = true;
         cancelAnimationFrame(raf);
