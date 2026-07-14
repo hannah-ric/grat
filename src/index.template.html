@@ -30,7 +30,7 @@
     <div class="topbar-group">
       <div class="menu-wrap">
         <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More ▾</button>
-        <div id="moreMenu" class="menu" role="menu">
+        <div id="moreMenu" class="menu" role="menu" inert>
           <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
@@ -63,7 +63,7 @@
       </div>
       <div class="menu-wrap">
         <button id="exportBtn" class="btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
-        <div id="exportMenu" class="menu" role="menu">
+        <div id="exportMenu" class="menu" role="menu" inert>
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
@@ -110,7 +110,7 @@
 
         <div class="advisories" id="advisories"></div>
 
-        <div class="inspector" id="inspector" role="region" aria-label="Part inspector">
+        <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
             <h3 id="inspName">Part</h3>
             <button class="btn icon ghost" id="inspClose" aria-label="Close inspector">✕</button>
@@ -120,14 +120,12 @@
         </div>
 
         <div class="stage-controls">
-          <div class="control-card">
+          <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
             <label for="explodeRange">Explode</label>
             <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
-          </div>
-          <div class="control-card">
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
-          </div>
-          <div class="control-card">
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
           </div>
         </div>
@@ -162,7 +160,7 @@
   </main>
 
   <div class="drawer-backdrop" id="historyBackdrop" hidden></div>
-  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true">
+  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true" inert>
     <div class="drawer-head">
       <h2>Revisions</h2>
       <button class="btn small" id="compareBtn" disabled>Compare</button>
@@ -172,7 +170,7 @@
     <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
   </aside>
 
-  <div class="scrim" id="galleryScrim" role="dialog" aria-modal="true" aria-label="Starter gallery">
+  <div class="scrim" inert id="galleryScrim" role="dialog" aria-modal="true" aria-label="Starter gallery">
     <div class="modal">
       <h2>What are we building?</h2>
       <p class="sub">Pick a starter to see full plans instantly — every one runs through the same parametric pipeline as a design you describe yourself. Refine it in the chat afterward.</p>
@@ -184,7 +182,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="helpScrim" role="dialog" aria-modal="true" aria-label="Export help">
+  <div class="scrim" inert id="helpScrim" role="dialog" aria-modal="true" aria-label="Export help">
     <div class="modal">
       <h2>Getting your design into SketchUp</h2>
       <div class="help-block">
@@ -210,7 +208,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="compareScrim" role="dialog" aria-modal="true" aria-label="Snapshot comparison">
+  <div class="scrim" inert id="compareScrim" role="dialog" aria-modal="true" aria-label="Snapshot comparison">
     <div class="modal">
       <h2 id="compareTitle">Compare snapshots</h2>
       <p class="sub" id="compareSub"></p>
@@ -224,7 +222,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="projectsScrim" role="dialog" aria-modal="true" aria-label="My projects">
+  <div class="scrim" inert id="projectsScrim" role="dialog" aria-modal="true" aria-label="My projects">
     <div class="modal">
       <h2>My projects</h2>
       <p class="sub" id="projectsSub">Designs autosave here as you work. Open, rename, duplicate, or delete — build progress travels with each project.</p>
@@ -236,7 +234,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="shareScrim" role="dialog" aria-modal="true" aria-label="Share design">
+  <div class="scrim" inert id="shareScrim" role="dialog" aria-modal="true" aria-label="Share design">
     <div class="modal">
       <h2>Share code</h2>
       <p class="sub">A compact code that carries the whole design. Copy it anywhere; paste one below to import.</p>
@@ -260,7 +258,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="speciesScrim" role="dialog" aria-modal="true" aria-label="Species comparison">
+  <div class="scrim" inert id="speciesScrim" role="dialog" aria-modal="true" aria-label="Species comparison">
     <div class="modal modal-wide">
       <h2>Compare species</h2>
       <p class="sub">The same design recomputed side by side — purchasable cost, weight, sag margin on the critical span, seasonal movement, and surface duty. Tap a column to use that species.</p>
@@ -270,7 +268,7 @@
     </div>
   </div>
 
-  <div class="scrim" id="diagScrim" role="dialog" aria-modal="true" aria-label="Diagnostics">
+  <div class="scrim" inert id="diagScrim" role="dialog" aria-modal="true" aria-label="Diagnostics">
     <div class="modal modal-wide">
       <h2>Diagnostics</h2>
       <p class="sub">The self-test harness: every code-owned promise, asserted in-app. <span id="diagSummary" class="diag-summary"></span></p>

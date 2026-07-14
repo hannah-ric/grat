@@ -870,6 +870,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.engine.select(part.id);
     const insp = $('inspector');
     insp.classList.add('open');
+    insp.inert = false;
     $('inspName').textContent = part.name;
     const dims = $('inspDims');
     dims.innerHTML = `<button type="button" class="prov-btn num" aria-label="${esc(part.name)} dimensions ${esc(fmt(part.size.w))} by ${esc(fmt(part.size.h))} by ${esc(fmt(part.size.d))} — show the formulas">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
@@ -935,6 +936,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.selected = null;
     state.engine.select(null);
     $('inspector').classList.remove('open');
+    $('inspector').inert = true;
   }
 
   /* ---------------- playback ---------------- */
@@ -1067,6 +1069,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderHistory();
     const d = $('historyDrawer');
     d.classList.add('open');
+    d.inert = false;
     d.setAttribute('aria-hidden', 'false');
     $('historyBackdrop').hidden = false;
     // Everything behind the drawer goes inert: clicks and focus stay inside.
@@ -1077,6 +1080,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function closeHistoryDrawer() {
     const d = $('historyDrawer');
     d.classList.remove('open');
+    d.inert = true;
     d.setAttribute('aria-hidden', 'true');
     $('historyBackdrop').hidden = true;
     document.querySelector('.topbar').inert = false;
@@ -1112,20 +1116,33 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (i < 0) return;
     const [t] = trapStack.splice(i, 1);
     t.container.removeEventListener('keydown', t.handler);
-    if (t.restoreTo && document.contains(t.restoreTo)) t.restoreTo.focus();
+    if (t.restoreTo && document.contains(t.restoreTo)) {
+      t.restoreTo.focus();
+      if (document.activeElement !== t.restoreTo) {
+        // Opener went inert with its closed menu — its menu button stands in.
+        const wrap = t.restoreTo.closest('.menu-wrap');
+        const btn = wrap && wrap.querySelector('[aria-haspopup="menu"]');
+        if (btn) btn.focus();
+      }
+    }
   }
 
-  /* ---------------- modals ---------------- */
+  /* ---------------- modals ----------------
+   * Closed overlays carry `inert` so their controls leave the tab order and
+   * the accessibility tree entirely — inert flips synchronously, so focus
+   * can move in on the same tick the overlay opens. */
   function openScrim(id) {
     const s = $(id);
     if (s.classList.contains('open')) return;
     s.classList.add('open');
+    s.inert = false;
     trapFocus(s);
   }
   function closeScrim(id) {
     const s = typeof id === 'string' ? $(id) : id;
     if (!s.classList.contains('open')) return;
     s.classList.remove('open');
+    s.inert = true;
     releaseFocus(s);
   }
 
@@ -1405,6 +1422,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
     renderBuildChecklists();
+    trapFocus($('buildMode')); // keyboard users land on the shop surface
     requestWakeLock();
   }
   function exitBuildMode() {
@@ -1412,6 +1430,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.buildMode = false;
     exitBmPlayback();
     $('buildMode').hidden = true;
+    releaseFocus($('buildMode'));
     releaseWakeLock();
     scheduleAutosave();
   }
@@ -1522,7 +1541,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('bmPlaybar').hidden = true;
     exitPlayback();
     state.engine.resize();
-    if (state.buildMode) renderBuildChecklists();
+    if (state.buildMode) {
+      renderBuildChecklists();
+      $('bmExit').focus(); // hand focus back into the checklist surface
+    }
   }
 
   /* ---------------- tabs ---------------- */
@@ -1713,12 +1735,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* export + More menus */
     const closeMenu = (btnId, m) => {
       m.classList.remove('open');
+      m.inert = true;
       $(btnId).setAttribute('aria-expanded', 'false');
     };
     const bindMenu = (btnId, menuId) => {
       const b = $(btnId), m = $(menuId);
       b.onclick = () => {
         const open = m.classList.toggle('open');
+        m.inert = !open;
         b.setAttribute('aria-expanded', String(open));
       };
       document.addEventListener('click', e => {
@@ -1751,13 +1775,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     menu.querySelectorAll('[data-export]').forEach(b => {
       b.addEventListener('click', () => {
         closeMenu('exportBtn', menu);
+        $('exportBtn').focus(); // menu pattern: activation returns focus to the button
         doExport(b.dataset.export);
       });
     });
     // Picking a dialog from More closes the menu; the units row stays open
     // so the seg gives instant feedback.
     moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
-      b.addEventListener('click', () => closeMenu('moreBtn', moreMenu));
+      b.addEventListener('click', () => {
+        closeMenu('moreBtn', moreMenu);
+        if (!trapStack.length) $('moreBtn').focus(); // unless a dialog already took focus
+      });
     });
 
     /* chat — no form element (artifact rules); Enter and the button both send */

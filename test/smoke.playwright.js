@@ -608,6 +608,77 @@ const clickMoreCtl = async sel => {
   // Photo CTA is a real touch target.
   ok(await page.evaluate(() => document.getElementById('photoBtn').offsetHeight >= 40), 'photo CTA is a 40px+ touch target');
 
+  /* ================= Phase D: design system + a11y ================= */
+
+  // Proper HTML shell.
+  ok(await page.evaluate(() => !!document.doctype && document.doctype.name === 'html' && document.documentElement.lang === 'en'),
+    'document ships a doctype and lang="en"');
+
+  // Closed overlays leave the tab order entirely.
+  ok(await page.evaluate(() => {
+    const b = document.querySelector('#galleryScrim .btn');
+    b.focus();
+    return document.activeElement !== b;
+  }), 'controls inside closed overlays stay out of the tab order');
+
+  // Viewport controls live in ONE toolbar.
+  ok(await page.evaluate(() => {
+    const cards = document.querySelectorAll('.stage-controls .control-card');
+    return cards.length === 1 && !!cards[0].querySelector('#explodeRange') &&
+      !!cards[0].querySelector('#dimsToggle') && !!cards[0].querySelector('#frameBtn');
+  }), 'viewport controls merged into a single toolbar');
+
+  // Menu-button keyboard pattern: ArrowDown opens + enters, arrows cycle.
+  await page.focus('#exportBtn');
+  await page.keyboard.press('ArrowDown');
+  const menuKb = await page.evaluate(() => ({
+    open: document.getElementById('exportMenu').classList.contains('open'),
+    first: document.activeElement.dataset.export
+  }));
+  ok(menuKb.open && menuKb.first === 'dae', 'ArrowDown opens the export menu onto its first item');
+  await page.keyboard.press('ArrowDown');
+  ok(await page.evaluate(() => document.activeElement.dataset.export === 'rb'), 'arrow keys cycle menu items');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() => !document.getElementById('exportMenu').classList.contains('open')), 'Escape closes the open menu');
+
+  // Focus trap + restore: open Share from the export menu, Tab stays inside,
+  // Escape hands focus back to the menu item that opened it.
+  await page.click('#exportBtn');
+  await page.click('#exportMenu [data-export="share"]');
+  await page.waitForSelector('#shareScrim.open');
+  const inTrap = await page.evaluate(() => !!document.activeElement.closest('#shareScrim'));
+  await page.keyboard.press('Shift+Tab');
+  const wrapped = await page.evaluate(() => !!document.activeElement.closest('#shareScrim'));
+  ok(inTrap && wrapped, 'share dialog traps focus (Shift+Tab wraps inside the dialog)');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() => document.activeElement && document.activeElement.id === 'exportBtn'),
+    'closing the dialog restores focus to the menu button that opened it');
+
+  // Provenance is a real dialog with a close control and focus restore.
+  await page.click('#tab-cut');
+  await page.click('#panel-main .prov-btn');
+  ok(await page.evaluate(() => {
+    const p = document.getElementById('provPop');
+    return !p.hidden && p.getAttribute('role') === 'dialog' &&
+      !!p.querySelector('.prov-close') && document.activeElement.classList.contains('prov-close');
+  }), 'provenance opens as a dialog with its close control focused');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() => document.getElementById('provPop').hidden && document.activeElement.classList.contains('prov-btn')),
+    'Escape closes provenance and restores focus to the number');
+
+  // Cut dimensions carry accessible names.
+  ok(await page.evaluate(() => /length .+ show the formula/.test(document.querySelector('#panel-main .prov-btn').getAttribute('aria-label') || '')),
+    'cut dimensions have accessible names');
+
+  // Reference tabs: roving tabindex + arrow keys.
+  await page.click('#tab-reference');
+  await page.waitForSelector('.ref-tabs');
+  await page.focus('.ref-tab[aria-selected="true"]');
+  await page.keyboard.press('ArrowRight');
+  ok(await page.evaluate(() => __bb.state.refTab === 'ergo' && document.activeElement.classList.contains('ref-tab') &&
+    document.activeElement.getAttribute('aria-selected') === 'true'),
+    'reference tabs move with arrow keys and keep focus on the selected tab');
+
   // Integrity fix buttons patch the spec through the normal pipeline.
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
   await page.click('#tab-integrity');
