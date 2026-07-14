@@ -2174,7 +2174,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       const rr = p.rot || p.rotation;
       if (rr && typeof rr === 'object') {
         rot = { x: 0, y: 0, z: 0 };
-        for (const k of ['x', 'y', 'z']) rot[k] = r1(clamp(num(rr[k], 0), -360, 360));
+        for (const k of ['x', 'y', 'z']) {
+          let v = r1(clamp(num(rr[k], 0), -360, 360));
+          // Snap near-square rotations: a part 1–2° off axis is a sloppy
+          // proposal, not design intent — left alone it reads as a rogue
+          // diagonal board. Deliberate angles (> 2.5° off square) survive.
+          const sq = Math.round(v / 90) * 90;
+          if (Math.abs(v - sq) <= 2.5) v = Math.abs(sq) === 360 ? 0 : sq;
+          rot[k] = v;
+        }
         if (!rot.x && !rot.y && !rot.z) rot = null;
       }
       const id = 'p' + (parts.length + 1);
@@ -2299,6 +2307,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (template === 'nightstand' && !s.drawers) s.drawers = { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' };
 
+    // Reduce shelf count until every shelf clears its neighbors by at least
+    // a usable gap — overlapping shelves are rogue geometry, and correction
+    // owns geometry. (Runs after drawers: the bank shrinks the shelf zone.)
+    while (st.shelfCount > 0 && BB.Parametric && BB.Parametric.shelfSpacingFor(s) < st.shelfThickness + 20) st.shelfCount--;
+
     // Custom composition: sanitize the grammar, then derive overall from the
     // piece's true oriented extents (code owns the numbers, as always).
     if (template === 'custom') {
@@ -2309,6 +2322,139 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.custom = null;
     }
     return s;
+  }
+
+  /* ---------------- geometric buildability audit ----------------
+   * Hard, template-agnostic invariants over the BUILT model. Every design —
+   * template, custom, share-code import, photo estimate — must clear these
+   * before it can be adopted: nothing below the floor, nothing floating in
+   * the air, nothing outside the declared envelope, no rogue overlap between
+   * unjointed parts, every declared joint physically touching, and a floor
+   * footprint the center of gravity actually sits inside. Failures are
+   * validate() ERRORS, so commit() refuses them on every path (chat, photo,
+   * share code, sliders) and the last valid design stays untouched.
+   */
+  const AUDIT = {
+    BELOW_EPS: 0.5,      // mm a part may dip below the floor plane
+    FLOOR_EPS: 2,        // mm the lowest part may hover above the floor
+    ENVELOPE_EPS: 2,     // mm of tolerance on the overall bounding envelope
+    FRONT_PROUD_MAX: 60, // mm pulls / applied fronts may stand proud (+z)
+    PEN_EPS: 2,          // mm unjointed parts may interpenetrate
+    CONTACT_GAP: 5,      // mm within which jointed parts must touch
+    FOOT_Y: 5,           // a part grounds if its lowest corner is under this
+    FOOT_PT_Y: 30        // corners under this height count as floor contact
+  };
+  const PROUD_ROLES = { pull: true, drawer_front: true }; // stand proud of the case front by design
+
+  function auditModel(spec, model) {
+    const errors = [];
+    if (!model || !Array.isArray(model.parts) || !model.parts.length) return errors;
+    const parts = model.parts;
+    const b = model.bounds || spec.overall && { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
+    if (!b) return errors;
+    if (parts.some(p => p.size.w <= 0 || p.size.h <= 0 || p.size.d <= 0)) return errors; // degenerate sizes already reported
+    const fine = mm => U().fmtSmall(mm);
+
+    const boxes = new Map(), corners = new Map(), minY = new Map();
+    for (const p of parts) {
+      const obb = Geo.partOBB(p);
+      boxes.set(p.id, obb);
+      const cs = Geo.obbCorners(obb);
+      corners.set(p.id, cs);
+      minY.set(p.id, Math.min(...cs.map(c => c[1])));
+    }
+
+    // 1. The floor plane is real: nothing passes through it, something rests on it.
+    let globalMinY = Infinity;
+    for (const p of parts) {
+      const my = minY.get(p.id);
+      globalMinY = Math.min(globalMinY, my);
+      if (my < -AUDIT.BELOW_EPS) {
+        errors.push({ id: 'geom_below:' + p.id, text: `“${p.name}” (${p.id}) extends ${fine(-my)} below the floor — wood can’t pass through the ground.` });
+      }
+    }
+    if (globalMinY > AUDIT.FLOOR_EPS) {
+      errors.push({ id: 'geom_floats', text: `Nothing touches the floor — the whole piece hovers ${fine(globalMinY)} in the air.` });
+    }
+
+    // 2. Envelope: every part stays inside the declared overall size. Pulls
+    // and applied drawer fronts legitimately stand proud of the front (+z).
+    for (const p of parts) {
+      const proud = PROUD_ROLES[p.role] ? AUDIT.FRONT_PROUD_MAX : 0;
+      let out = 0;
+      for (const c of corners.get(p.id)) {
+        out = Math.max(out,
+          Math.abs(c[0]) - (b.w / 2 + AUDIT.ENVELOPE_EPS),
+          c[1] - (b.h + AUDIT.ENVELOPE_EPS),
+          -c[2] - (b.d / 2 + AUDIT.ENVELOPE_EPS),
+          c[2] - (b.d / 2 + AUDIT.ENVELOPE_EPS + proud));
+      }
+      if (out > 0) {
+        errors.push({ id: 'geom_out:' + p.id, text: `“${p.name}” (${p.id}) sticks ${fine(out)} outside the piece’s stated ${U().fmtLength(b.w)} × ${U().fmtLength(b.d)} × ${U().fmtLength(b.h)} envelope — rogue geometry.` });
+      }
+    }
+
+    // 3. Joints reference real parts; jointed parts touch; unjointed parts
+    // keep out of each other's space. Same-drawer internals (grooved bottoms,
+    // captured backs) are validated by their own derivation math instead.
+    const idSet = new Set(parts.map(p => p.id));
+    const jointed = new Set();
+    for (const j of model.joints || []) {
+      if (!idSet.has(j.a) || !idSet.has(j.b)) {
+        errors.push({ id: 'geom_jref:' + j.a + '|' + j.b, text: `A ${j.type} joint references a part that doesn’t exist (${!idSet.has(j.a) ? j.a : j.b}).` });
+        continue;
+      }
+      jointed.add(j.a < j.b ? j.a + '|' + j.b : j.b + '|' + j.a);
+    }
+    const sameDrawer = (p, q) => p.group === q.group && p.group !== 'frame';
+    for (let i = 0; i < parts.length; i++) {
+      for (let k = i + 1; k < parts.length; k++) {
+        const p = parts[i], q = parts[k];
+        const key = p.id < q.id ? p.id + '|' + q.id : q.id + '|' + p.id;
+        if (jointed.has(key)) {
+          if (Geo.obbPenetration(boxes.get(p.id), boxes.get(q.id)) == null) {
+            const grown = Geo.partOBB(p);
+            grown.e = grown.e.map(e => e + AUDIT.CONTACT_GAP);
+            if (Geo.obbPenetration(grown, boxes.get(q.id)) == null) {
+              errors.push({ id: 'geom_gap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) are joined on paper but never touch — that joint can’t be built.` });
+            }
+          }
+        } else if (!sameDrawer(p, q)) {
+          const pen = Geo.obbPenetration(boxes.get(p.id), boxes.get(q.id));
+          if (pen != null && pen > AUDIT.PEN_EPS) {
+            errors.push({ id: 'geom_overlap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) occupy the same space (${fine(pen)} deep) with no joint between them.` });
+          }
+        }
+      }
+    }
+
+    // 4. It must be able to stand: the volume-weighted center of gravity has
+    // to fall inside the hull of the floor contact points. (The structural
+    // engine reports stability MARGINS; this is the hard impossibility gate.)
+    const footPts = [];
+    for (const p of parts) {
+      if (minY.get(p.id) < AUDIT.FOOT_Y) {
+        for (const c of corners.get(p.id)) if (c[1] < AUDIT.FOOT_PT_Y) footPts.push([c[0], c[2]]);
+      }
+    }
+    let mass = 0, mx = 0, mz = 0;
+    for (const p of parts) {
+      if (p.role === 'pull') continue;
+      const m = p.size.w * p.size.h * p.size.d; // uniform density is enough for a hard gate
+      mass += m; mx += m * p.pos.x; mz += m * p.pos.z;
+    }
+    const hull = Geo.convexHull2D(footPts);
+    if (globalMinY <= AUDIT.FLOOR_EPS) { // otherwise geom_floats already covers it
+      if (hull.length < 3) {
+        errors.push({ id: 'geom_footprint', text: footPts.length ? 'The floor contact points are collinear — the piece falls over sideways.' : 'No part offers a floor footprint to stand on.' });
+      } else if (mass > 0) {
+        const inDist = Geo.polyInsideDistance(hull, [mx / mass, mz / mass]);
+        if (inDist < 0) {
+          errors.push({ id: 'geom_footprint', text: `The center of gravity falls ${fine(-inDist)} outside the floor footprint — the piece tips over as built.` });
+        }
+      }
+    }
+    return errors;
   }
 
   /* ---------------- validation ----------------
@@ -2356,6 +2502,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (t === 'cabinet' && topOp.zTop > 1100) advisories.push({ id: 'pull_height', text: `The top drawer sits above comfortable pull height (${fmt(600)} to ${fmt(1100)}). Fine for occasional storage.` });
       }
     }
+    if (model && model.drawers) {
+      for (const d of model.drawers) {
+        if (d.runner === 'side_mount_slides' && !d.slideLen) {
+          errors.push({ id: 'dr_slide_' + d.index, text: `Drawer ${d.index + 1}'s interior is too shallow for the shortest ${fmt(250)} slide. Deepen the piece or switch to wood runners.` });
+        } else if (d.box.d < 120) {
+          errors.push({ id: 'dr_depth_' + d.index, text: `Drawer ${d.index + 1} would only be ${fmt(d.box.d)} deep — the interior doesn't leave a workable drawer. Deepen the piece or remove the drawers.` });
+        }
+      }
+    }
 
     // Custom grammar hard rules: enough parts, nothing free-floating.
     if (t === 'custom') {
@@ -2368,6 +2523,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const p of c.parts) {
         if (!connected.has(p.id)) errors.push({ id: 'float_' + p.id, text: `Part “${p.role}” (${p.id}) appears in no connection — free-floating geometry is invalid.` });
       }
+      // One piece, not several: the connection graph must be a single component.
+      if (c.parts.length >= 2 && c.connections.length) {
+        const adj = new Map(c.parts.map(p => [p.id, []]));
+        for (const cn of c.connections) {
+          if (adj.has(cn.a) && adj.has(cn.b)) { adj.get(cn.a).push(cn.b); adj.get(cn.b).push(cn.a); }
+        }
+        const reach = new Set([c.parts[0].id]);
+        const stack = [c.parts[0].id];
+        while (stack.length) {
+          const id = stack.pop();
+          for (const n of adj.get(id) || []) if (!reach.has(n)) { reach.add(n); stack.push(n); }
+        }
+        if (reach.size < c.parts.length) {
+          errors.push({ id: 'custom_split', text: 'The composition splits into disconnected sub-assemblies — every part must reach every other part through declared joints.' });
+        }
+      }
     }
 
     // Hard geometric errors.
@@ -2377,6 +2548,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           errors.push({ id: 'geom_' + p.id, text: `“${p.name}” computes to a non-positive dimension. The current sizes don’t leave room for it.` });
         }
       }
+      errors.push(...auditModel(spec, model));
     } else if (!model) {
       errors.push({ id: 'no_model', text: 'The parametric layer could not build this spec.' });
     }
@@ -2394,7 +2566,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
-    correctSpec, validate, fmtValue, PATH_LABELS,
+    correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
     customPartSize, customExtents
   };
 })();
@@ -2436,6 +2608,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     const bank = Math.min(desired, availableH);
     const openH = (bank - (count + 1) * RAIL_H) / count;
     return { bank, openH: Math.floor(openH * 10) / 10 };
+  }
+
+  /* Cheap probe used by spec correction to auto-reduce shelf count: the
+   * center-to-center spacing shelves would get in the carcass shelf zone. */
+  function shelfSpacingFor(spec) {
+    const t = spec.meta.template, o = spec.overall, st = spec.structure;
+    const n = st.shelfCount;
+    if (!n) return Infinity;
+    let span;
+    if (t === 'bookshelf') {
+      span = (o.height - st.shelfThickness) - (st.shelfThickness + 40);
+    } else if (t === 'cabinet') {
+      const base = st.toeKick ? 90 : 0;
+      const bodyH = o.height - st.topThickness - base;
+      const bank = spec.drawers ? bankHeights(bodyH * 0.6, spec.drawers.count).bank : 0;
+      span = (o.height - st.topThickness - bank) - (base + 19);
+    } else return Infinity;
+    return span / (n + 1);
   }
 
   /* Cheap probe used by spec correction to auto-reduce drawer count. */
@@ -2499,7 +2689,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         const maxLen = op.interiorDepth - 25;   // 25 mm rear setback
         slideLen = null;
         for (const L of K.SLIDE_LENGTHS) if (L <= maxLen) slideLen = L;
-        boxD = slideLen || Math.max(150, Math.floor(maxLen / 10) * 10);
+        // No slide fits: the box still must not punch through the back —
+        // validation reports the too-shallow interior; geometry stays honest.
+        boxD = slideLen || Math.max(10, Math.floor(maxLen / 10) * 10);
       } else {
         boxW = op.w - 4;                        // fitted wood runners
         boxH = op.h - 10;
@@ -2614,7 +2806,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y: apY, z: -lz } });
       joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y: apY, z: lz } });
     }
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: 0 } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
 
     return { parts, joints, openings: [], drawers: [] };
   }
@@ -2644,9 +2837,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (st.backPanel) {
       parts.push(part('back_1', 'back', 'back', 'Back panel', o.width - 12, o.height - 12, 6, 0, o.height / 2, -o.depth / 2 + 3,
         { material: 'baltic_birch', explode: { x: 0, y: 0, z: -1 } }));
-      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: o.height / 2, z: -o.depth / 2 + 3 } });
+      // The back sits in rabbets on all four case edges; its panel size
+      // already includes the rabbet capture, so no cut-length allowance.
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: o.height / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_2', pos: { x: o.width / 2 - sideT / 2, y: o.height / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'top_1', pos: { x: 0, y: o.height - shT / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'bottom_1', pos: { x: 0, y: shT / 2 + 40, z: -o.depth / 2 + 3 }, noCutAllowance: true });
     }
     joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
+    joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
+    joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     return { parts, joints, openings: [], drawers: [] };
   }
@@ -2686,12 +2886,18 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     parts.push(part('top_1', 'top', 'top', 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0,
       { material: sp, explode: { x: 0, y: 1, z: 0 } }));
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_1', pos: { x: 0, y: o.height - topT, z: 0 } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_1', pos: { x: -(frameW / 2 - apT / 2), y: o.height - topT, z: 0 } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_2', pos: { x: frameW / 2 - apT / 2, y: o.height - topT, z: 0 } });
 
     if (st.shelfCount > 0) {
-      parts.push(part('shelf_1', 'shelf', 'shelf', 'Lower shelf', frameW - 2 * legT + 30, st.shelfThickness, frameD - 20, 0, 170, 0,
+      // The shelf notches around the legs (its size already includes the
+      // notch capture — no cut allowance). Keep it clear of the drawer bank.
+      const shelfY = Math.min(170, bankTop - bank - st.shelfThickness / 2 - 20);
+      parts.push(part('shelf_1', 'shelf', 'shelf', 'Lower shelf', frameW - 2 * legT + 30, st.shelfThickness, frameD - 20, 0, shelfY, 0,
         { material: sp, explode: { x: 0, y: -0.5, z: 0.4 } }));
-      joints.push({ type: spec.joinery.case, a: 'shelf_1', b: 'leg_1', pos: { x: -lx, y: 170, z: -lz } });
+      [[-lx, -lz, 'leg_1'], [lx, -lz, 'leg_2'], [-lx, lz, 'leg_3'], [lx, lz, 'leg_4']].forEach(([x, z, leg]) => {
+        joints.push({ type: spec.joinery.case, a: 'shelf_1', b: leg, pos: { x, y: shelfY, z }, noCutAllowance: true });
+      });
     }
 
     const zone = {
@@ -2699,7 +2905,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       yTop: bankTop, zFront: frameD / 2,
       interiorDepth: frameD - apT, available,
       overlayMaxW: frameW - 2 * legT + Math.min(20, legT), x: 0,
-      railJointTargets: [{ id: 'leg_1', x: -lx }, { id: 'leg_2', x: lx }]
+      // Rails live at the front plane — they join into the FRONT legs.
+      railJointTargets: [{ id: 'leg_3', x: -lx }, { id: 'leg_4', x: lx }]
     };
     const bankOut = buildBank(spec, zone, parts, joints, '');
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
@@ -2711,11 +2918,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sideT = st.sideThickness, topT = st.topThickness;
     const base = st.toeKick ? 90 : 0;
     const sp = spec.wood.species;
-    const caseH = o.height - topT - base;
+    // Sides run floor to underside of top: the case stands on its own sides
+    // (with the toe board bracing the front), never on a lone 19 mm plinth.
+    const sideH = o.height - topT;
+    const bodyH = sideH - base; // interior case height above the toe space
     const innerW = o.width - 2 * sideT;
 
     [[-1, 1], [1, 2]].forEach(([s, i]) => {
-      parts.push(part(`side_${i}`, 'side', 'side', 'Side', sideT, caseH, o.depth, s * (o.width / 2 - sideT / 2), base + caseH / 2, 0,
+      parts.push(part(`side_${i}`, 'side', 'side', 'Side', sideT, sideH, o.depth, s * (o.width / 2 - sideT / 2), sideH / 2, 0,
         { material: sp, explode: { x: s, y: 0, z: 0 } }));
     });
     parts.push(part('bottom_1', 'bottom', 'bottom', 'Bottom', innerW, 19, o.depth, 0, base + 19 / 2, 0, { material: sp, explode: { x: 0, y: -0.6, z: 0 } }));
@@ -2724,17 +2934,27 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     parts.push(part('top_1', 'top', 'top', 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0, { material: sp, explode: { x: 0, y: 1, z: 0 } }));
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: o.height - topT, z: 0 } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'side_2', pos: { x: o.width / 2 - sideT / 2, y: o.height - topT, z: 0 } });
 
     if (st.toeKick) {
-      parts.push(part('plinth_1', 'plinth', 'plinth', 'Toe-kick board', o.width - 2 * sideT, 90, 19, 0, 45, o.depth / 2 - 75 - 9.5,
+      const plinthZ = o.depth / 2 - 75 - 9.5;
+      parts.push(part('plinth_1', 'plinth', 'plinth', 'Toe-kick board', innerW, 90, 19, 0, 45, plinthZ,
         { material: sp, explode: { x: 0, y: -1, z: 0.4 } }));
+      joints.push({ type: spec.joinery.case, a: 'plinth_1', b: 'side_1', pos: { x: -innerW / 2, y: 45, z: plinthZ } });
+      joints.push({ type: spec.joinery.case, a: 'plinth_1', b: 'side_2', pos: { x: innerW / 2, y: 45, z: plinthZ } });
+      joints.push({ type: 'butt_screws', a: 'plinth_1', b: 'bottom_1', pos: { x: 0, y: base, z: plinthZ }, noCutAllowance: true });
     }
     if (st.backPanel) {
-      parts.push(part('back_1', 'back', 'back', 'Back panel', o.width - 12, caseH - 12, 6, 0, base + caseH / 2, -o.depth / 2 + 3,
+      parts.push(part('back_1', 'back', 'back', 'Back panel', o.width - 12, bodyH - 12, 6, 0, base + bodyH / 2, -o.depth / 2 + 3,
         { material: 'baltic_birch', explode: { x: 0, y: 0, z: -1 } }));
+      // The back sits in rabbets: sides and bottom. Its panel size already
+      // includes the rabbet capture, so no cut-length allowance applies.
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: base + bodyH / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_2', pos: { x: o.width / 2 - sideT / 2, y: base + bodyH / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'bottom_1', pos: { x: 0, y: base + 10, z: -o.depth / 2 + 3 }, noCutAllowance: true });
     }
 
-    const available = caseH * 0.6;
+    const available = bodyH * 0.6;
     const zone = {
       clearW: innerW, railLen: innerW,
       yTop: o.height - topT, zFront: o.depth / 2,
@@ -2753,6 +2973,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, st.shelfThickness, o.depth - 30, 0, y, 5,
         { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -innerW / 2, y, z: 0 } });
+      joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: innerW / 2, y, z: 0 } });
     }
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
   }
@@ -2814,7 +3035,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     return m;
   }
 
-  BB.Parametric = { build, openingHeightFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
+  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
 })();
 </script>
 <script>/* Blueprint Buddy — structural engine (physics judge).
@@ -3870,9 +4091,12 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- cut list ---------------- */
   function cutList(spec, model) {
-    // allowance ends per part: joints where the part is the inserted member
+    // allowance ends per part: joints where the part is the inserted member.
+    // Joints flagged noCutAllowance (rabbeted backs, notched shelves) already
+    // carry the capture in their geometric size.
     const ends = {};
     for (const j of model.joints) {
+      if (j.noCutAllowance) continue;
       if (JOINT_ALLOWANCE[j.type]) {
         ends[j.a] = ends[j.a] || { n: 0, type: j.type };
         ends[j.a].n++; ends[j.a].type = j.type;
@@ -6003,7 +6227,9 @@ var BB = globalThis.BB = globalThis.BB || {};
 
       const seed = pipeline({ meta: { name: 'Rack Case', template: 'table', level: 'beginner' } });
       const seedInteg = Structural.computeIntegrity(seed.spec, seed.model, {});
-      test('structural', 'seed table racking score matches hand calculation (39)', seedInteg.racking.score === 39, seedInteg.racking.score, 39);
+      // Hand calc: 8 pocket-screw frame joints × 3.0 + 2 top butt joints × 2.0,
+      // × SG factor (red oak) × 1.2 apron multiplier → 42.
+      test('structural', 'seed table racking score matches hand calculation (42)', seedInteg.racking.score === 42, seedInteg.racking.score, 42);
 
       const movementCheck = integ.checks.find(c => c.id.startsWith('move:side'));
       test('structural', 'movement advisory names a concrete fix', !movementCheck || movementCheck.status !== 'advisory' || /elongate|button|breadboard/i.test(movementCheck.explain), movementCheck ? movementCheck.explain.slice(0, 60) + '…' : 'n/a', 'fix named');
@@ -6023,6 +6249,64 @@ var BB = globalThis.BB = globalThis.BB || {};
       const plyInteg = Structural.computeIntegrity(ply.spec, ply.model, {});
       const plyMove = plyInteg.checks.find(c => c.id.startsWith('move:'));
       test('structural', 'plywood panel is movement-exempt and says why', plyMove && plyMove.status === 'pass' && /plywood|plies/i.test(plyMove.explain), plyMove ? plyMove.explain.slice(0, 60) + '…' : 'no movement check', 'exempt, cross-laminated plies explanation');
+    }
+
+    /* ============ geometric buildability (the rogue-board net) ============ */
+    {
+      // A stray diagonal board dipping through the floor must be BLOCKED by
+      // validation — never presented as a blueprint.
+      const rogue = pipeline({
+        specVersion: 4,
+        meta: { name: 'Rogue Board Case', template: 'custom', level: 'beginner' },
+        custom: {
+          parts: [
+            { id: 'p1', role: 'top_slab', primitive: 'slab', dim: { l: 900, w: 500, t: 18 }, pos: { x: 0, y: 409, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: false, surface: 'worktop' },
+            { id: 'p2', role: 'leg_panel', primitive: 'panel', dim: { l: 500, w: 400, t: 18 }, pos: { x: -350, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+            { id: 'p3', role: 'leg_panel', primitive: 'panel', dim: { l: 500, w: 400, t: 18 }, pos: { x: 350, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+            { id: 'p4', role: 'stray_board', primitive: 'rail', dim: { l: 700, w: 60, t: 20 }, pos: { x: 150, y: 40, z: 260 }, rot: { x: 0, y: 20, z: 40 }, grain: 'length', stock: 'solid', loadBearing: false, surface: 'none' }
+          ],
+          connections: [
+            { a: 'p2', b: 'p1', joint: 'butt_screws' }, { a: 'p3', b: 'p1', joint: 'butt_screws' },
+            { a: 'p4', b: 'p2', joint: 'butt_screws' }
+          ]
+        }
+      });
+      test('buildability', 'stray diagonal board is blocked by the geometric audit',
+        rogue.report.errors.some(e => /^geom_/.test(e.id)),
+        rogue.report.errors.map(e => e.id).join(', ') || 'no errors', 'geom_* error(s)');
+
+      // Every declared joint must be physically touchable; unjointed parts
+      // must not share space; the toe-kick case must stand on its sides.
+      const tk = pipeline({
+        meta: { name: 'TK Case', template: 'cabinet', level: 'intermediate' },
+        overall: { width: 800, depth: 450, height: 900 },
+        structure: { shelfCount: 1, toeKick: true, backPanel: true },
+        drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }
+      });
+      const tkSide = tk.model.parts.find(p => p.id === 'side_1');
+      test('buildability', 'toe-kick cabinet is audit-clean and stands on its sides',
+        tk.report.errors.length === 0 && Math.abs(tkSide.pos.y - tkSide.size.h / 2) < 0.11,
+        `${tk.report.errors.length} errors, side base at ${(tkSide.pos.y - tkSide.size.h / 2).toFixed(1)}`, '0 errors, side base at 0.0');
+      const tkPairs = new Set(tk.model.joints.map(j => [j.a, j.b].sort().join('|')));
+      test('buildability', 'toe board and back panel are jointed into the case',
+        tkPairs.has('plinth_1|side_1') && tkPairs.has('plinth_1|side_2') && tkPairs.has('back_1|side_1') && tkPairs.has('back_1|side_2'),
+        [...tkPairs].filter(k => /plinth|back/.test(k)).join(', '), 'plinth + back joints present');
+
+      // Near-square rotations snap; deliberate angles survive.
+      const snap = Spec.correctSpec({
+        specVersion: 4,
+        meta: { name: 'Snap Case', template: 'custom', level: 'beginner' },
+        custom: {
+          parts: [
+            { id: 'a', role: 'seat', primitive: 'slab', dim: { l: 900, w: 400, t: 19 }, pos: { x: 0, y: 400, z: 0 }, rot: { x: 1.5, y: 88, z: -359 }, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' },
+            { id: 'b', role: 'brace', primitive: 'rail', dim: { l: 600, w: 60, t: 20 }, pos: { x: 0, y: 200, z: 0 }, rot: { x: 30, y: 0, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+          ],
+          connections: [{ a: 'a', b: 'b', joint: 'butt_screws' }]
+        }
+      });
+      test('buildability', 'near-square rotations snap to square; deliberate angles survive',
+        deepEqual(snap.custom.parts[0].rot, { x: 0, y: 90, z: 0 }) && snap.custom.parts[1].rot.x === 30,
+        JSON.stringify(snap.custom.parts[0].rot) + ' / ' + snap.custom.parts[1].rot.x, '{"x":0,"y":90,"z":0} / 30');
     }
 
     /* ============ packing invariants ============ */
@@ -7452,17 +7736,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     let turns = res.turns;
     let r = runPipeline(applied.spec);
 
-    // One validation retry with the specific errors (truncation never lands
-    // here — the continuation protocol already stitched partials together).
-    if (r.report.errors.length && !res.local) {
-      setStatus('Refining to clear validation errors');
-      const errText = 'Your proposal failed validation: ' + r.report.errors.map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
+    // Up to three validation-refinement rounds with the specific errors
+    // (truncation never lands here — the continuation protocol already
+    // stitched partials together). Geometric impossibilities — parts through
+    // the floor, outside the envelope, rogue overlaps, joints that never
+    // touch — are validation ERRORS, so a design that still fails after
+    // these rounds is never presented; the last valid design stays.
+    for (let round = 1; r.report.errors.length && !res.local && round <= 3; round++) {
+      setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
+      const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
       const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus });
-      if (res2.reply && res2.reply.kind !== 'question') {
-        applied = AI.apply(res2.reply, applied.spec);
-        turns = res2.turns;
-        r = runPipeline(applied.spec);
-      }
+      if (!res2.reply || res2.reply.kind === 'question') break;
+      applied = AI.apply(res2.reply, applied.spec);
+      turns = res2.turns;
+      r = runPipeline(applied.spec);
     }
     if (r.report.errors.length) {
       state.turns = turns.slice(-24);

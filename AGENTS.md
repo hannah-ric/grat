@@ -24,7 +24,8 @@ npm run test:smoke             # build + drive the real app in headless Chromium
 ## Layout
 
 - `src/` — one module per concern (`ai.js` transports/protocol, `spec.js`
-  correction, `parametric.js` templates, `structural.js` physics,
+  correction + validation incl. the geometric buildability audit,
+  `parametric.js` templates, `structural.js` physics,
   `packing.js` stock optimizer, `units.js` display boundary, `ui.js` DOM).
   Modules attach to the `BB` global; load order is set in `build.js`.
 - `src/index.template.html` + `build.js` — `{{PLACEHOLDER}}` inlining; adding

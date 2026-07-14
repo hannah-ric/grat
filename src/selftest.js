@@ -252,7 +252,9 @@ var BB = globalThis.BB = globalThis.BB || {};
 
       const seed = pipeline({ meta: { name: 'Rack Case', template: 'table', level: 'beginner' } });
       const seedInteg = Structural.computeIntegrity(seed.spec, seed.model, {});
-      test('structural', 'seed table racking score matches hand calculation (39)', seedInteg.racking.score === 39, seedInteg.racking.score, 39);
+      // Hand calc: 8 pocket-screw frame joints × 3.0 + 2 top butt joints × 2.0,
+      // × SG factor (red oak) × 1.2 apron multiplier → 42.
+      test('structural', 'seed table racking score matches hand calculation (42)', seedInteg.racking.score === 42, seedInteg.racking.score, 42);
 
       const movementCheck = integ.checks.find(c => c.id.startsWith('move:side'));
       test('structural', 'movement advisory names a concrete fix', !movementCheck || movementCheck.status !== 'advisory' || /elongate|button|breadboard/i.test(movementCheck.explain), movementCheck ? movementCheck.explain.slice(0, 60) + '…' : 'n/a', 'fix named');
@@ -272,6 +274,64 @@ var BB = globalThis.BB = globalThis.BB || {};
       const plyInteg = Structural.computeIntegrity(ply.spec, ply.model, {});
       const plyMove = plyInteg.checks.find(c => c.id.startsWith('move:'));
       test('structural', 'plywood panel is movement-exempt and says why', plyMove && plyMove.status === 'pass' && /plywood|plies/i.test(plyMove.explain), plyMove ? plyMove.explain.slice(0, 60) + '…' : 'no movement check', 'exempt, cross-laminated plies explanation');
+    }
+
+    /* ============ geometric buildability (the rogue-board net) ============ */
+    {
+      // A stray diagonal board dipping through the floor must be BLOCKED by
+      // validation — never presented as a blueprint.
+      const rogue = pipeline({
+        specVersion: 4,
+        meta: { name: 'Rogue Board Case', template: 'custom', level: 'beginner' },
+        custom: {
+          parts: [
+            { id: 'p1', role: 'top_slab', primitive: 'slab', dim: { l: 900, w: 500, t: 18 }, pos: { x: 0, y: 409, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: false, surface: 'worktop' },
+            { id: 'p2', role: 'leg_panel', primitive: 'panel', dim: { l: 500, w: 400, t: 18 }, pos: { x: -350, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+            { id: 'p3', role: 'leg_panel', primitive: 'panel', dim: { l: 500, w: 400, t: 18 }, pos: { x: 350, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+            { id: 'p4', role: 'stray_board', primitive: 'rail', dim: { l: 700, w: 60, t: 20 }, pos: { x: 150, y: 40, z: 260 }, rot: { x: 0, y: 20, z: 40 }, grain: 'length', stock: 'solid', loadBearing: false, surface: 'none' }
+          ],
+          connections: [
+            { a: 'p2', b: 'p1', joint: 'butt_screws' }, { a: 'p3', b: 'p1', joint: 'butt_screws' },
+            { a: 'p4', b: 'p2', joint: 'butt_screws' }
+          ]
+        }
+      });
+      test('buildability', 'stray diagonal board is blocked by the geometric audit',
+        rogue.report.errors.some(e => /^geom_/.test(e.id)),
+        rogue.report.errors.map(e => e.id).join(', ') || 'no errors', 'geom_* error(s)');
+
+      // Every declared joint must be physically touchable; unjointed parts
+      // must not share space; the toe-kick case must stand on its sides.
+      const tk = pipeline({
+        meta: { name: 'TK Case', template: 'cabinet', level: 'intermediate' },
+        overall: { width: 800, depth: 450, height: 900 },
+        structure: { shelfCount: 1, toeKick: true, backPanel: true },
+        drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }
+      });
+      const tkSide = tk.model.parts.find(p => p.id === 'side_1');
+      test('buildability', 'toe-kick cabinet is audit-clean and stands on its sides',
+        tk.report.errors.length === 0 && Math.abs(tkSide.pos.y - tkSide.size.h / 2) < 0.11,
+        `${tk.report.errors.length} errors, side base at ${(tkSide.pos.y - tkSide.size.h / 2).toFixed(1)}`, '0 errors, side base at 0.0');
+      const tkPairs = new Set(tk.model.joints.map(j => [j.a, j.b].sort().join('|')));
+      test('buildability', 'toe board and back panel are jointed into the case',
+        tkPairs.has('plinth_1|side_1') && tkPairs.has('plinth_1|side_2') && tkPairs.has('back_1|side_1') && tkPairs.has('back_1|side_2'),
+        [...tkPairs].filter(k => /plinth|back/.test(k)).join(', '), 'plinth + back joints present');
+
+      // Near-square rotations snap; deliberate angles survive.
+      const snap = Spec.correctSpec({
+        specVersion: 4,
+        meta: { name: 'Snap Case', template: 'custom', level: 'beginner' },
+        custom: {
+          parts: [
+            { id: 'a', role: 'seat', primitive: 'slab', dim: { l: 900, w: 400, t: 19 }, pos: { x: 0, y: 400, z: 0 }, rot: { x: 1.5, y: 88, z: -359 }, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' },
+            { id: 'b', role: 'brace', primitive: 'rail', dim: { l: 600, w: 60, t: 20 }, pos: { x: 0, y: 200, z: 0 }, rot: { x: 30, y: 0, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+          ],
+          connections: [{ a: 'a', b: 'b', joint: 'butt_screws' }]
+        }
+      });
+      test('buildability', 'near-square rotations snap to square; deliberate angles survive',
+        deepEqual(snap.custom.parts[0].rot, { x: 0, y: 90, z: 0 }) && snap.custom.parts[1].rot.x === 30,
+        JSON.stringify(snap.custom.parts[0].rot) + ' / ' + snap.custom.parts[1].rot.x, '{"x":0,"y":90,"z":0} / 30');
     }
 
     /* ============ packing invariants ============ */

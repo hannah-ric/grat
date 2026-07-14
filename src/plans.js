@@ -18,9 +18,12 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- cut list ---------------- */
   function cutList(spec, model) {
-    // allowance ends per part: joints where the part is the inserted member
+    // allowance ends per part: joints where the part is the inserted member.
+    // Joints flagged noCutAllowance (rabbeted backs, notched shelves) already
+    // carry the capture in their geometric size.
     const ends = {};
     for (const j of model.joints) {
+      if (j.noCutAllowance) continue;
       if (JOINT_ALLOWANCE[j.type]) {
         ends[j.a] = ends[j.a] || { n: 0, type: j.type };
         ends[j.a].n++; ends[j.a].type = j.type;
