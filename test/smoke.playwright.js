@@ -223,6 +223,27 @@ const clickMoreCtl = async sel => {
   const stats1 = await page.evaluate(() => __bb.state.engine.stats());
   ok(stats1.geometries <= stats0.geometries + 1, `geometry count stable across 12 rebuilds (${stats0.geometries} → ${stats1.geometries})`);
   ok(stats1.materials < 200, `material pool bounded (${stats1.materials})`);
+  ok(stats1.textures <= stats0.textures + 1, `texture count stable across 12 rebuilds (${stats0.textures} → ${stats1.textures})`);
+
+  // Theme flip regenerates the environment map without leaking, and quality
+  // toggling swaps the material pool without growing geometry.
+  await page.evaluate(async () => {
+    for (const t of ['dark', 'light', 'dark', 'light']) {
+      __bb.applyTheme(t);
+      await new Promise(r => setTimeout(r, 60));
+    }
+  });
+  const stats2 = await page.evaluate(() => __bb.state.engine.stats());
+  ok(stats2.textures <= stats1.textures + 1, `env map swap doesn't leak textures (${stats1.textures} → ${stats2.textures})`);
+  await page.evaluate(async () => {
+    __bb.state.prefs4.render = { textured: false }; __bb.applyRender();
+    await new Promise(r => setTimeout(r, 60));
+    __bb.state.prefs4.render = { textured: true }; __bb.applyRender();
+    await new Promise(r => setTimeout(r, 60));
+  });
+  const stats3 = await page.evaluate(() => __bb.state.engine.stats());
+  ok(stats3.geometries <= stats2.geometries + 1, `quality toggle keeps geometry shared (${stats2.geometries} → ${stats3.geometries})`);
+  ok(stats3.materials < 200, `quality toggle keeps the material pool bounded (${stats3.materials})`);
 
   // Shop reference searchable.
   await page.click('#tab-reference');

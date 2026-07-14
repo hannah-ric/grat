@@ -132,10 +132,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PRICES_KEY = 'prices:v1';
   const PREFS_KEY = 'prefs:v2';
   const LEGACY_PREFS_KEY = 'prefs:v1';
-  // Fresh installs: fractional inches at 1/16, dual display off, OS theme.
+  // Fresh installs: fractional inches at 1/16, dual display off, OS theme,
+  // textured render (wood grain + shadows).
   const DEFAULT_PREFS = {
     climate: 'temperate', stockMode: {}, theme: 'auto',
-    units: { system: 'imperial', precision: 16, dual: false }
+    units: { system: 'imperial', precision: 16, dual: false },
+    render: { textured: true }
   };
 
   async function loadPrices() {
@@ -155,6 +157,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function withPrefDefaults(stored) {
     const out = Object.assign({}, DEFAULT_PREFS, stored);
     out.units = Object.assign({}, DEFAULT_PREFS.units, stored && stored.units ? stored.units : {});
+    out.render = Object.assign({}, DEFAULT_PREFS.render, stored && stored.render ? stored.render : {});
     return out;
   }
   async function loadPrefs() {
@@ -186,7 +189,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       const c = document.createElement('canvas');
       c.width = w; c.height = h;
       const ctx = c.getContext('2d');
-      ctx.fillStyle = '#efeade';
+      // Fill with the live --paper token so dark-theme thumbs match their cards.
+      let paper = '#efeade';
+      try {
+        const v = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim();
+        if (v) paper = v;
+      } catch (e) { /* default paper */ }
+      ctx.fillStyle = paper;
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(sourceCanvas, 0, 0, w, h);
       for (const q of [0.7, 0.5, 0.3]) {

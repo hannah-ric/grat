@@ -43,6 +43,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     speciesPick: []
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
+  const darkMq = matchMedia('(prefers-color-scheme: dark)');
 
   // ALL displayed lengths go through BB.Units — the single mm→text boundary.
   const fmt = mm => Units.fmtLength(mm);
@@ -191,13 +192,26 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
-   * the :root[data-theme] overrides. */
+   * the :root[data-theme] overrides. The 3D scene follows the same choice —
+   * engine.setTheme retunes ink lines, labels, bounce light, and regenerates
+   * the environment map. */
   function applyTheme(t) {
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
     else delete document.documentElement.dataset.theme;
     for (const [id, val] of [['themeAuto', 'auto'], ['themeLight', 'light'], ['themeDark', 'dark']]) {
       $(id).setAttribute('aria-pressed', String((t || 'auto') === val));
     }
+    const dark = t === 'dark' || (t !== 'light' && darkMq.matches);
+    if (state.engine) state.engine.setTheme(dark ? 'dark' : 'light');
+  }
+
+  /* Render quality rides prefs the same way; the flat tier is one switch for
+   * both textures and shadows (grain without grounding looks worse, not better). */
+  function applyRender() {
+    const textured = !state.prefs4.render || state.prefs4.render.textured !== false;
+    $('renderRich').setAttribute('aria-pressed', String(textured));
+    $('renderFlat').setAttribute('aria-pressed', String(!textured));
+    if (state.engine) state.engine.setQuality({ textured, shadows: textured });
   }
 
   /* ---------------- render: advisories ---------------- */
@@ -1632,6 +1646,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     });
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
+    // In auto theme, the 3D scene follows the OS the same way the CSS does.
+    darkMq.addEventListener('change', () => {
+      if ((state.prefs4.theme || 'auto') === 'auto') applyTheme('auto');
+    });
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
@@ -1642,6 +1660,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     } catch (e) { /* defaults are the product */ }
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
+    applyRender();
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -1714,6 +1733,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('themeAuto').onclick = () => setTheme('auto');
     $('themeLight').onclick = () => setTheme('light');
     $('themeDark').onclick = () => setTheme('dark');
+    const setRender = textured => {
+      state.prefs4.render = { textured };
+      Store.savePrefs(state.prefs4);
+      applyRender();
+    };
+    $('renderRich').onclick = () => setRender(true);
+    $('renderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -1874,7 +1900,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
-      preview, commitPreview, closeInspector, openInspectorById
+      preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender
     };
 
     setTimeout(() => { const h = $('viewportHint'); if (h) h.style.opacity = '0'; }, 6000);

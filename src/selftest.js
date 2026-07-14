@@ -449,6 +449,56 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (savedV1) await Store.set('prefs:v1', savedV1); else await Store.del('prefs:v1');
         if (savedV2) await Store.set('prefs:v2', savedV2); else await Store.del('prefs:v2');
       }
+
+      // Render prefs deep-fill: stored prefs that predate the render block
+      // gain the textured default without touching the user's other choices.
+      const savedV2b = await Store.get('prefs:v2');
+      try {
+        await Store.set('prefs:v2', { climate: 'arid', theme: 'dark', units: { system: 'metric', precision: 16, dual: false } });
+        const filled = await Store.loadPrefs();
+        test('storage', 'prefs without render block gain textured default, keep the rest',
+          filled.render && filled.render.textured === true && filled.climate === 'arid' && filled.units.system === 'metric',
+          `render ${JSON.stringify(filled.render)}, climate ${filled.climate}, ${filled.units.system}`, 'render {"textured":true}, climate arid, metric');
+      } finally {
+        if (savedV2b) await Store.set('prefs:v2', savedV2b); else await Store.del('prefs:v2');
+      }
+    }
+
+    /* ============ procedural materials ============ */
+    {
+      const M = BB.Materials;
+      // Every species carries a full grain recipe.
+      let missing = null;
+      for (const key of Object.keys(K.WOOD_SPECIES)) {
+        const p = M.grainParams(key);
+        if (!p || !(p.grainScale > 0) || p.ringContrast === undefined || p.hueJitter === undefined || p.pores === undefined) { missing = key; break; }
+      }
+      test('materials', 'every species has a complete grain recipe', !missing, missing || 'all present', 'all present');
+      test('materials', 'unknown species yields no params (no phantom textures)', M.grainParams('unobtainium') === null, String(M.grainParams('unobtainium')), 'null');
+
+      // Deterministic grain: same key → same stream; different keys diverge.
+      const a1 = M.seededRand('walnut'), a2 = M.seededRand('walnut'), b = M.seededRand('cherry');
+      const seqA1 = [a1(), a1(), a1()], seqA2 = [a2(), a2(), a2()], seqB = [b(), b(), b()];
+      test('materials', 'seeded PRNG is deterministic per species', JSON.stringify(seqA1) === JSON.stringify(seqA2), seqA1.map(v => v.toFixed(4)).join(','), seqA2.map(v => v.toFixed(4)).join(','));
+      test('materials', 'different species get different grain streams', JSON.stringify(seqA1) !== JSON.stringify(seqB), 'streams differ', 'streams differ');
+      const inRange = seqA1.every(v => v >= 0 && v < 1);
+      test('materials', 'PRNG output stays in [0,1)', inRange, seqA1.map(v => v.toFixed(4)).join(','), 'all in [0,1)');
+
+      // Theme palettes exist and actually differ.
+      test('materials', 'environment palettes: light and dark defined and distinct',
+        M.ENV_PALETTES.light && M.ENV_PALETTES.dark && M.ENV_PALETTES.light.top !== M.ENV_PALETTES.dark.top,
+        `${M.ENV_PALETTES.light.top} vs ${M.ENV_PALETTES.dark.top}`, 'distinct palettes');
+
+      // Texture cache: one entry per species regardless of how many
+      // role/bucket materials request it (browser only — needs a canvas).
+      if (typeof document !== 'undefined' && globalThis.THREE) {
+        const before = M._cacheSize();
+        M.woodTexture(globalThis.THREE, 'walnut');
+        M.woodTexture(globalThis.THREE, 'walnut');
+        const t1 = M.woodTexture(globalThis.THREE, 'walnut');
+        const t2 = M.woodTexture(globalThis.THREE, 'walnut');
+        test('materials', 'texture cache returns one shared texture per species', t1 === t2 && M._cacheSize() <= before + 1, `cache ${before} → ${M._cacheSize()}, identical ${t1 === t2}`, 'one new entry, identical');
+      }
     }
 
     return results;

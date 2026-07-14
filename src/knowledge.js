@@ -13,6 +13,9 @@ var BB = globalThis.BB = globalThis.BB || {};
    * movement: tangential movement rating for solid stock.
    * costTier: 1 ($) .. 4 ($$$$), drives BOM pricing.
    * tone/rough: drive the 3D material so species read differently.
+   * grainScale/ringContrast/hueJitter/pores: procedural grain-texture recipe
+   *   (BB.Materials) — ring spacing in texture px, ring darkness 0..1, board
+   *   color variation 0..1, open-pore streak density 0..1.
    *
    * Structural doctrine (USDA FPL Wood Handbook, values at 12% MC):
    *   moe GPa  -> stiffness ONLY: sag / deflection predictions.
@@ -28,6 +31,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'high', outdoor: false, costTier: 2, pricePerBdFt: 5.5,
       moe: 12.5, mor: 99, sg: 0.63, ct: 0.00369, cr: 0.00158,
       tone: 0xc89a6b, rough: 0.72,
+      grainScale: 13, ringContrast: 0.5, hueJitter: 0.22, pores: 0.8,
       blurb: 'Open-grained workhorse; strong, honest, and everywhere. Loves stain, hates standing water.'
     },
     white_oak: {
@@ -35,6 +39,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: true, costTier: 3, pricePerBdFt: 8.5,
       moe: 12.3, mor: 105, sg: 0.68, ct: 0.00365, cr: 0.00180,
       tone: 0xb99d72, rough: 0.68,
+      grainScale: 15, ringContrast: 0.42, hueJitter: 0.18, pores: 0.6,
       blurb: 'Closed-pored and rot-resistant — the outdoor-worthy oak. Quartersawn ray fleck is the classic Arts & Crafts look.'
     },
     hard_maple: {
@@ -42,6 +47,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 2, pricePerBdFt: 6.5,
       moe: 12.6, mor: 109, sg: 0.63, ct: 0.00353, cr: 0.00165,
       tone: 0xe4cfa4, rough: 0.55,
+      grainScale: 22, ringContrast: 0.16, hueJitter: 0.1, pores: 0.15,
       blurb: 'Pale, dense, and crisp under a sharp edge. Blotches under stain — finish it clear.'
     },
     walnut: {
@@ -49,6 +55,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 4, pricePerBdFt: 12,
       moe: 11.6, mor: 101, sg: 0.55, ct: 0.00274, cr: 0.00190,
       tone: 0x5e4230, rough: 0.6,
+      grainScale: 17, ringContrast: 0.5, hueJitter: 0.32, pores: 0.4,
       blurb: 'Chocolate heartwood that machines like a dream. The species you save for the show piece.'
     },
     cherry: {
@@ -56,6 +63,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 3, pricePerBdFt: 9,
       moe: 10.3, mor: 85, sg: 0.50, ct: 0.00248, cr: 0.00126,
       tone: 0xa66a48, rough: 0.58,
+      grainScale: 20, ringContrast: 0.28, hueJitter: 0.2, pores: 0.3,
       blurb: 'Starts salmon-pink, deepens to auburn with light and age. Scorches if your blade dawdles.'
     },
     ash: {
@@ -63,6 +71,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 2, pricePerBdFt: 5,
       moe: 12.0, mor: 103, sg: 0.60, ct: 0.00274, cr: 0.00169,
       tone: 0xd6bd92, rough: 0.7,
+      grainScale: 12, ringContrast: 0.48, hueJitter: 0.16, pores: 0.7,
       blurb: 'Oak’s springier cousin — baseball-bat tough, bends beautifully, takes finish evenly.'
     },
     poplar: {
@@ -70,6 +79,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 1, pricePerBdFt: 3.5,
       moe: 10.9, mor: 70, sg: 0.42, ct: 0.00289, cr: 0.00158,
       tone: 0xd9cfa8, rough: 0.62,
+      grainScale: 24, ringContrast: 0.22, hueJitter: 0.3, pores: 0.2,
       blurb: 'Soft, stable, cheap, and green-streaked. The right answer for paint-grade and practice.'
     },
     pine: {
@@ -77,6 +87,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'low', outdoor: false, costTier: 1, pricePerBdFt: 2.5,
       moe: 8.5, mor: 59, sg: 0.35, ct: 0.00212, cr: 0.00071,
       tone: 0xe8cf9e, rough: 0.8,
+      grainScale: 26, ringContrast: 0.55, hueJitter: 0.28, pores: 0.25,
       blurb: 'Light, forgiving, and knotty — dents if you look at it hard, but nothing is friendlier to learn on.'
     },
     baltic_birch: {
@@ -86,6 +97,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'low', outdoor: false, costTier: 2, pricePerBdFt: 6, sheet: true,
       moe: 10.0, mor: 55, sg: 0.68, ct: 0.0002, cr: 0.0002,
       tone: 0xe9d8ae, rough: 0.5,
+      grainScale: 8, ringContrast: 0.08, hueJitter: 0.06, pores: 0.1,
       blurb: 'Void-free plywood with clean striped edges. Dead flat, dead stable — the drawer-box default.'
     }
   };

@@ -914,6 +914,13 @@ body.bm-playback .playback-bar { display: none !important; }
               <button id="themeDark" aria-pressed="false">Dark</button>
             </div>
           </div>
+          <div class="menu-row">
+            <span class="menu-row-label">Render</span>
+            <div class="seg render-seg" role="group" aria-label="Render quality">
+              <button id="renderRich" aria-pressed="true" title="Wood grain and shadows">Wood</button>
+              <button id="renderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="menu-wrap">
@@ -1191,6 +1198,9 @@ var BB = globalThis.BB = globalThis.BB || {};
    * movement: tangential movement rating for solid stock.
    * costTier: 1 ($) .. 4 ($$$$), drives BOM pricing.
    * tone/rough: drive the 3D material so species read differently.
+   * grainScale/ringContrast/hueJitter/pores: procedural grain-texture recipe
+   *   (BB.Materials) — ring spacing in texture px, ring darkness 0..1, board
+   *   color variation 0..1, open-pore streak density 0..1.
    *
    * Structural doctrine (USDA FPL Wood Handbook, values at 12% MC):
    *   moe GPa  -> stiffness ONLY: sag / deflection predictions.
@@ -1206,6 +1216,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'high', outdoor: false, costTier: 2, pricePerBdFt: 5.5,
       moe: 12.5, mor: 99, sg: 0.63, ct: 0.00369, cr: 0.00158,
       tone: 0xc89a6b, rough: 0.72,
+      grainScale: 13, ringContrast: 0.5, hueJitter: 0.22, pores: 0.8,
       blurb: 'Open-grained workhorse; strong, honest, and everywhere. Loves stain, hates standing water.'
     },
     white_oak: {
@@ -1213,6 +1224,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: true, costTier: 3, pricePerBdFt: 8.5,
       moe: 12.3, mor: 105, sg: 0.68, ct: 0.00365, cr: 0.00180,
       tone: 0xb99d72, rough: 0.68,
+      grainScale: 15, ringContrast: 0.42, hueJitter: 0.18, pores: 0.6,
       blurb: 'Closed-pored and rot-resistant — the outdoor-worthy oak. Quartersawn ray fleck is the classic Arts & Crafts look.'
     },
     hard_maple: {
@@ -1220,6 +1232,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 2, pricePerBdFt: 6.5,
       moe: 12.6, mor: 109, sg: 0.63, ct: 0.00353, cr: 0.00165,
       tone: 0xe4cfa4, rough: 0.55,
+      grainScale: 22, ringContrast: 0.16, hueJitter: 0.1, pores: 0.15,
       blurb: 'Pale, dense, and crisp under a sharp edge. Blotches under stain — finish it clear.'
     },
     walnut: {
@@ -1227,6 +1240,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 4, pricePerBdFt: 12,
       moe: 11.6, mor: 101, sg: 0.55, ct: 0.00274, cr: 0.00190,
       tone: 0x5e4230, rough: 0.6,
+      grainScale: 17, ringContrast: 0.5, hueJitter: 0.32, pores: 0.4,
       blurb: 'Chocolate heartwood that machines like a dream. The species you save for the show piece.'
     },
     cherry: {
@@ -1234,6 +1248,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 3, pricePerBdFt: 9,
       moe: 10.3, mor: 85, sg: 0.50, ct: 0.00248, cr: 0.00126,
       tone: 0xa66a48, rough: 0.58,
+      grainScale: 20, ringContrast: 0.28, hueJitter: 0.2, pores: 0.3,
       blurb: 'Starts salmon-pink, deepens to auburn with light and age. Scorches if your blade dawdles.'
     },
     ash: {
@@ -1241,6 +1256,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 2, pricePerBdFt: 5,
       moe: 12.0, mor: 103, sg: 0.60, ct: 0.00274, cr: 0.00169,
       tone: 0xd6bd92, rough: 0.7,
+      grainScale: 12, ringContrast: 0.48, hueJitter: 0.16, pores: 0.7,
       blurb: 'Oak’s springier cousin — baseball-bat tough, bends beautifully, takes finish evenly.'
     },
     poplar: {
@@ -1248,6 +1264,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 1, pricePerBdFt: 3.5,
       moe: 10.9, mor: 70, sg: 0.42, ct: 0.00289, cr: 0.00158,
       tone: 0xd9cfa8, rough: 0.62,
+      grainScale: 24, ringContrast: 0.22, hueJitter: 0.3, pores: 0.2,
       blurb: 'Soft, stable, cheap, and green-streaked. The right answer for paint-grade and practice.'
     },
     pine: {
@@ -1255,6 +1272,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'low', outdoor: false, costTier: 1, pricePerBdFt: 2.5,
       moe: 8.5, mor: 59, sg: 0.35, ct: 0.00212, cr: 0.00071,
       tone: 0xe8cf9e, rough: 0.8,
+      grainScale: 26, ringContrast: 0.55, hueJitter: 0.28, pores: 0.25,
       blurb: 'Light, forgiving, and knotty — dents if you look at it hard, but nothing is friendlier to learn on.'
     },
     baltic_birch: {
@@ -1264,6 +1282,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'low', outdoor: false, costTier: 2, pricePerBdFt: 6, sheet: true,
       moe: 10.0, mor: 55, sg: 0.68, ct: 0.0002, cr: 0.0002,
       tone: 0xe9d8ae, rough: 0.5,
+      grainScale: 8, ringContrast: 0.08, hueJitter: 0.06, pores: 0.1,
       blurb: 'Void-free plywood with clean striped edges. Dead flat, dead stable — the drawer-box default.'
     }
   };
@@ -1503,6 +1522,198 @@ var BB = globalThis.BB = globalThis.BB || {};
     LEVELS, SLIDE_LENGTHS, SOLID_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM,
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM
+  };
+})();
+</script>
+<script>/* Blueprint Buddy — procedural materials (Phase 5).
+ * Wood-grain albedo textures, the studio environment, and the contact blob
+ * are all painted on canvas at runtime — no fetched assets, so the
+ * single-file build stays self-contained. Grain is deterministic per species
+ * (seeded PRNG), so thumbnails and re-opens always look the same.
+ *
+ * Texture cache contract: ONE CanvasTexture per species for the whole app
+ * lifetime, shared across engine instances (textures upload per GL context,
+ * and the source canvas outlives any one renderer). Engines must NOT call
+ * disposeAll() in their own dispose(); it exists for tests and teardown.
+ *
+ * THREE is passed into texture builders (not read from globals) so headless
+ * tests can exercise the cache with a stub.
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const TEX_W = 256, TEX_H = 512; // V (height) runs along the grain
+
+  /* FNV-1a hash of the key seeds a mulberry32 stream — deterministic and
+   * cheap, good enough for grain jitter (not cryptographic). */
+  function seededRand(key) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+    let a = h >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* Grain recipe per species: painting parameters live in knowledge.js next
+   * to the structural data (grainScale px, ringContrast 0..1, hueJitter 0..1,
+   * pores 0..1). This helper merges them with the base tone and flags. */
+  function grainParams(speciesKey) {
+    const sp = BB.K.WOOD_SPECIES[speciesKey];
+    if (!sp) return null;
+    return {
+      key: speciesKey, tone: sp.tone, sheet: !!sp.sheet,
+      grainScale: sp.grainScale || 18,
+      ringContrast: sp.ringContrast !== undefined ? sp.ringContrast : 0.4,
+      hueJitter: sp.hueJitter !== undefined ? sp.hueJitter : 0.2,
+      pores: sp.pores !== undefined ? sp.pores : 0.3
+    };
+  }
+
+  const hex = t => ({ r: (t >> 16) & 255, g: (t >> 8) & 255, b: t & 255 });
+  const rgba = (c, a) => `rgba(${c.r | 0},${c.g | 0},${c.b | 0},${a})`;
+  const shade = (c, f) => ({ r: Math.min(255, c.r * f), g: Math.min(255, c.g * f), b: Math.min(255, c.b * f) });
+
+  /* Paint one wrap-safe wood face onto a 2D context. Grain lines are sine
+   * wobbles with an INTEGER number of vertical periods, so the texture tiles
+   * seamlessly along the grain; every stroke is drawn three times (x-W, x,
+   * x+W) so it also tiles across it. Poplar's hue patches drift green — its
+   * signature streaks — via the hueJitter green bias below.
+   */
+  function paintWood(ctx, W, H, p, rand) {
+    const base = hex(p.tone);
+    ctx.fillStyle = rgba(base, 1);
+    ctx.fillRect(0, 0, W, H);
+
+    // Low-frequency color patches: boards are not one color.
+    const patches = p.sheet ? 4 : 8;
+    for (let i = 0; i < patches; i++) {
+      const cx = rand() * W, pw = W * (0.18 + rand() * 0.3);
+      const f = 1 + (rand() - 0.5) * 0.5 * p.hueJitter * 2;
+      const c = shade(base, f);
+      if (p.key === 'poplar' && rand() < 0.4) { c.g = Math.min(255, c.g * 1.12); c.r *= 0.92; } // green streaks
+      const g = ctx.createLinearGradient(cx - pw, 0, cx + pw, 0);
+      g.addColorStop(0, rgba(c, 0));
+      g.addColorStop(0.5, rgba(c, 0.28));
+      g.addColorStop(1, rgba(c, 0));
+      ctx.fillStyle = g;
+      for (const ox of [-W, 0, W]) { ctx.save(); ctx.translate(ox, 0); ctx.fillRect(cx - pw, 0, pw * 2, H); ctx.restore(); }
+    }
+
+    // Growth-ring lines along the grain.
+    const dark = shade(base, 0.55), light = shade(base, 1.18);
+    const spacing = Math.max(4, p.grainScale);
+    for (let x0 = 0; x0 < W; x0 += spacing * (0.6 + rand() * 0.8)) {
+      const amp = p.sheet ? 0.6 : (1.5 + rand() * 4.5);           // wobble, px
+      const n = 1 + Math.floor(rand() * 3);                       // integer periods → vertical wrap
+      const phase = rand() * Math.PI * 2;
+      const late = rand() < 0.35;                                 // occasional latewood band
+      const alpha = p.ringContrast * (late ? 0.34 : 0.16) * (0.7 + rand() * 0.6);
+      ctx.strokeStyle = rgba(rand() < 0.12 ? light : dark, alpha);
+      ctx.lineWidth = late ? 1.6 + rand() * 1.4 : 0.7 + rand() * 0.8;
+      for (const ox of [-W, 0, W]) {
+        ctx.beginPath();
+        for (let y = 0; y <= H; y += 8) {
+          const x = x0 + ox + amp * Math.sin((y / H) * Math.PI * 2 * n + phase);
+          if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+    }
+
+    // Pores / fine short streaks (open-grained species read coarser).
+    const strokes = Math.round(p.pores * 260);
+    ctx.lineWidth = 0.6;
+    for (let i = 0; i < strokes; i++) {
+      const x = rand() * W, y = rand() * H, len = 8 + rand() * 30;
+      ctx.strokeStyle = rgba(dark, 0.05 + rand() * 0.07);
+      for (const [ox, oy] of [[0, 0], [0, -H], [0, H], [-W, 0], [W, 0]]) {
+        ctx.beginPath();
+        ctx.moveTo(x + ox, y + oy);
+        ctx.lineTo(x + ox + (rand() - 0.5) * 2, y + oy + len);
+        ctx.stroke();
+      }
+    }
+  }
+
+  /* ---------------- texture cache ---------------- */
+  const texCache = new Map(); // speciesKey -> CanvasTexture
+
+  function woodTexture(THREE, speciesKey) {
+    if (texCache.has(speciesKey)) return texCache.get(speciesKey);
+    const p = grainParams(speciesKey);
+    if (!p) return null;
+    const c = document.createElement('canvas');
+    c.width = TEX_W; c.height = TEX_H;
+    paintWood(c.getContext('2d'), TEX_W, TEX_H, p, seededRand(speciesKey));
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 4;
+    texCache.set(speciesKey, tex);
+    return tex;
+  }
+
+  function disposeAll() {
+    for (const t of texCache.values()) t.dispose();
+    texCache.clear();
+  }
+
+  /* ---------------- studio environment ----------------
+   * A small equirect gradient the PBR materials reflect: warm skylight above,
+   * paper-toned bounce below, one bright window blob for speculars. Palettes
+   * track the app themes so reflections never fight the page behind the
+   * transparent canvas.
+   */
+  const ENV_PALETTES = {
+    light: { top: '#fff8ec', mid: '#d9d0be', bottom: '#b4a98f', window: 'rgba(255,255,255,0.95)' },
+    dark: { top: '#4a4238', mid: '#2a241d', bottom: '#171310', window: 'rgba(255,240,214,0.85)' }
+  };
+
+  function envCanvas(theme) {
+    const pal = ENV_PALETTES[theme] || ENV_PALETTES.light;
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 32;
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, 32);
+    g.addColorStop(0, pal.top);
+    g.addColorStop(0.55, pal.mid);
+    g.addColorStop(1, pal.bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 32);
+    const w = ctx.createRadialGradient(16, 9, 1, 16, 9, 11);
+    w.addColorStop(0, pal.window);
+    w.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = w;
+    ctx.fillRect(0, 0, 64, 32);
+    return c;
+  }
+
+  /* Soft radial contact blob — the grounding fallback when real shadows are
+   * off (flat quality tier). */
+  function blobCanvas() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(64, 64, 6, 64, 64, 62);
+    g.addColorStop(0, 'rgba(0,0,0,0.26)');
+    g.addColorStop(0.55, 'rgba(0,0,0,0.10)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    return c;
+  }
+
+  BB.Materials = {
+    seededRand, grainParams, paintWood, woodTexture, disposeAll,
+    envCanvas, blobCanvas, ENV_PALETTES, TEX_W, TEX_H,
+    _cacheSize: () => texCache.size
   };
 })();
 </script>
@@ -5419,10 +5630,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PRICES_KEY = 'prices:v1';
   const PREFS_KEY = 'prefs:v2';
   const LEGACY_PREFS_KEY = 'prefs:v1';
-  // Fresh installs: fractional inches at 1/16, dual display off, OS theme.
+  // Fresh installs: fractional inches at 1/16, dual display off, OS theme,
+  // textured render (wood grain + shadows).
   const DEFAULT_PREFS = {
     climate: 'temperate', stockMode: {}, theme: 'auto',
-    units: { system: 'imperial', precision: 16, dual: false }
+    units: { system: 'imperial', precision: 16, dual: false },
+    render: { textured: true }
   };
 
   async function loadPrices() {
@@ -5442,6 +5655,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function withPrefDefaults(stored) {
     const out = Object.assign({}, DEFAULT_PREFS, stored);
     out.units = Object.assign({}, DEFAULT_PREFS.units, stored && stored.units ? stored.units : {});
+    out.render = Object.assign({}, DEFAULT_PREFS.render, stored && stored.render ? stored.render : {});
     return out;
   }
   async function loadPrefs() {
@@ -5473,7 +5687,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       const c = document.createElement('canvas');
       c.width = w; c.height = h;
       const ctx = c.getContext('2d');
-      ctx.fillStyle = '#efeade';
+      // Fill with the live --paper token so dark-theme thumbs match their cards.
+      let paper = '#efeade';
+      try {
+        const v = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim();
+        if (v) paper = v;
+      } catch (e) { /* default paper */ }
+      ctx.fillStyle = paper;
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(sourceCanvas, 0, 0, w, h);
       for (const q of [0.7, 0.5, 0.3]) {
@@ -6200,6 +6420,56 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (savedV1) await Store.set('prefs:v1', savedV1); else await Store.del('prefs:v1');
         if (savedV2) await Store.set('prefs:v2', savedV2); else await Store.del('prefs:v2');
       }
+
+      // Render prefs deep-fill: stored prefs that predate the render block
+      // gain the textured default without touching the user's other choices.
+      const savedV2b = await Store.get('prefs:v2');
+      try {
+        await Store.set('prefs:v2', { climate: 'arid', theme: 'dark', units: { system: 'metric', precision: 16, dual: false } });
+        const filled = await Store.loadPrefs();
+        test('storage', 'prefs without render block gain textured default, keep the rest',
+          filled.render && filled.render.textured === true && filled.climate === 'arid' && filled.units.system === 'metric',
+          `render ${JSON.stringify(filled.render)}, climate ${filled.climate}, ${filled.units.system}`, 'render {"textured":true}, climate arid, metric');
+      } finally {
+        if (savedV2b) await Store.set('prefs:v2', savedV2b); else await Store.del('prefs:v2');
+      }
+    }
+
+    /* ============ procedural materials ============ */
+    {
+      const M = BB.Materials;
+      // Every species carries a full grain recipe.
+      let missing = null;
+      for (const key of Object.keys(K.WOOD_SPECIES)) {
+        const p = M.grainParams(key);
+        if (!p || !(p.grainScale > 0) || p.ringContrast === undefined || p.hueJitter === undefined || p.pores === undefined) { missing = key; break; }
+      }
+      test('materials', 'every species has a complete grain recipe', !missing, missing || 'all present', 'all present');
+      test('materials', 'unknown species yields no params (no phantom textures)', M.grainParams('unobtainium') === null, String(M.grainParams('unobtainium')), 'null');
+
+      // Deterministic grain: same key → same stream; different keys diverge.
+      const a1 = M.seededRand('walnut'), a2 = M.seededRand('walnut'), b = M.seededRand('cherry');
+      const seqA1 = [a1(), a1(), a1()], seqA2 = [a2(), a2(), a2()], seqB = [b(), b(), b()];
+      test('materials', 'seeded PRNG is deterministic per species', JSON.stringify(seqA1) === JSON.stringify(seqA2), seqA1.map(v => v.toFixed(4)).join(','), seqA2.map(v => v.toFixed(4)).join(','));
+      test('materials', 'different species get different grain streams', JSON.stringify(seqA1) !== JSON.stringify(seqB), 'streams differ', 'streams differ');
+      const inRange = seqA1.every(v => v >= 0 && v < 1);
+      test('materials', 'PRNG output stays in [0,1)', inRange, seqA1.map(v => v.toFixed(4)).join(','), 'all in [0,1)');
+
+      // Theme palettes exist and actually differ.
+      test('materials', 'environment palettes: light and dark defined and distinct',
+        M.ENV_PALETTES.light && M.ENV_PALETTES.dark && M.ENV_PALETTES.light.top !== M.ENV_PALETTES.dark.top,
+        `${M.ENV_PALETTES.light.top} vs ${M.ENV_PALETTES.dark.top}`, 'distinct palettes');
+
+      // Texture cache: one entry per species regardless of how many
+      // role/bucket materials request it (browser only — needs a canvas).
+      if (typeof document !== 'undefined' && globalThis.THREE) {
+        const before = M._cacheSize();
+        M.woodTexture(globalThis.THREE, 'walnut');
+        M.woodTexture(globalThis.THREE, 'walnut');
+        const t1 = M.woodTexture(globalThis.THREE, 'walnut');
+        const t2 = M.woodTexture(globalThis.THREE, 'walnut');
+        test('materials', 'texture cache returns one shared texture per species', t1 === t2 && M._cacheSize() <= before + 1, `cache ${before} → ${M._cacheSize()}, identical ${t1 === t2}`, 'one new entry, identical');
+      }
     }
 
     return results;
@@ -6211,12 +6481,21 @@ var BB = globalThis.BB = globalThis.BB || {};
 <script>/* Blueprint Buddy — 3D engine (THREE r152, global build).
  *
  * Memory contract (Phase 1 item, re-verified in Phase 2): every part mesh
- * shares ONE unit BoxGeometry and ONE unit EdgesGeometry, scaled per part, so
+ * shares one unit geometry per (primitive, grain axis) — three UV-variant
+ * unit boxes plus one unit cylinder, allocated once — scaled per part, so
  * scene rebuilds allocate no geometry. Materials live in a bounded pool keyed
- * by (material, role, bucket) and are disposed on hard teardown. The only
- * per-rebuild GPU allocations are dimension-label textures, which are disposed
- * whenever annotations rebuild. `engine.stats()` exposes renderer.info for the
- * leak check.
+ * by (material, role, bucket, textured) and are disposed on hard teardown.
+ * Wood textures are pooled per species in BB.Materials (app lifetime, shared
+ * across engine instances). The only per-rebuild GPU allocations are
+ * dimension-label textures, which are disposed whenever annotations rebuild.
+ * `engine.stats()` exposes renderer.info for the leak check.
+ *
+ * Render pipeline (Phase 5): ACES tone mapping, a procedural PMREM studio
+ * environment (regenerated per theme, old target disposed), and one PCFSoft
+ * sun shadow onto a ShadowMaterial plane so parts stay grounded mid-flight
+ * during explode/playback. The flat quality tier trades both for a painted
+ * contact blob. Background stays transparent — the page's --paper shows
+ * through in every mode.
  *
  * Motion: one damped-lerp family drives everything — part positions, scales,
  * drawer travel, explosion, camera. Reduced motion snaps all of it.
@@ -6240,52 +6519,139 @@ var BB = globalThis.BB = globalThis.BB || {};
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, globalThis.devicePixelRatio || 1));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(42, 1, 10, 30000);
 
-    scene.add(new THREE.HemisphereLight(0xfff6e8, 0x9a8a76, 1.05));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    /* Everything a theme touches in-scene, in one table. Wood stays wood in
+     * both themes; what changes is ink, labels, bounce light, and shadows. */
+    const THEMES = {
+      light: {
+        edge: 0x2a2018, edgeSel: 0x2f7fae, dim: 0x7a614a,
+        hemiSky: 0xfff6e8, hemiGround: 0x9a8a76, hemiI: 0.8, sunI: 1.25, fillI: 0.45, shadowOp: 0.2,
+        label: { bg: 'rgba(250,247,242,0.92)', stroke: 'rgba(90,70,50,0.35)', ink: '#4a3826' }
+      },
+      dark: {
+        edge: 0xefe2cc, edgeSel: 0x6fb0d6, dim: 0xcbb695,
+        hemiSky: 0xcabfa8, hemiGround: 0x2e2921, hemiI: 0.7, sunI: 1.1, fillI: 0.35, shadowOp: 0.3,
+        label: { bg: 'rgba(30,26,20,0.92)', stroke: 'rgba(210,190,160,0.35)', ink: '#ede5d6' }
+      }
+    };
+
+    const hemi = new THREE.HemisphereLight(0xfff6e8, 0x9a8a76, 0.85);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.35);
     sun.position.set(1400, 2200, 1600);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.5);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.45);
     fill.position.set(-1600, 800, -1200);
     scene.add(fill);
 
-    // Ground: faint disc + grid.
+    // Ground: contact blob (flat tier) or shadow plane (default), plus grid.
     const groundGroup = new THREE.Group();
     const discGeo = new THREE.CircleGeometry(1, 64);
-    const discMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.05 });
+    const blobTex = new THREE.CanvasTexture(BB.Materials.blobCanvas());
+    const discMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false });
     const disc = new THREE.Mesh(discGeo, discMat);
     disc.rotation.x = -Math.PI / 2;
     groundGroup.add(disc);
+    const shadowGeo = new THREE.PlaneGeometry(1, 1);
+    const shadowMat = new THREE.ShadowMaterial({ opacity: 0.16 });
+    const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
+    shadowPlane.rotation.x = -Math.PI / 2;
+    shadowPlane.position.y = 1; // above the grid lines, under everything else
+    shadowPlane.receiveShadow = true;
+    groundGroup.add(shadowPlane);
     const grid = new THREE.GridHelper(1, 10, 0x8a7a66, 0x8a7a66);
     grid.material.transparent = true; grid.material.opacity = 0.12;
     groundGroup.add(grid);
     scene.add(groundGroup);
 
-    // Shared geometry — the whole memory story. Cylinders (novel-grammar
-    // primitive) share one unit cylinder the same way boxes share one unit box.
-    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    /* Procedural studio environment: tiny equirect canvas → PMREM. Regenerated
+     * on theme switch; the previous render target is disposed first. */
+    let envRT = null;
+    function applyEnvironment(theme) {
+      const pm = new THREE.PMREMGenerator(renderer);
+      const tex = new THREE.CanvasTexture(BB.Materials.envCanvas(theme));
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const rt = pm.fromEquirectangular(tex);
+      tex.dispose();
+      pm.dispose();
+      if (envRT) envRT.dispose();
+      envRT = rt;
+      scene.environment = rt.texture;
+    }
+
+    /* Shared geometry — the whole memory story. Three unit boxes with
+     * pre-rotated UVs (texture V along local X, Y, or Z) let grain follow
+     * each part's long axis while every part still shares geometry; cylinders
+     * (novel-grammar primitive) share one unit cylinder the same way. */
+    function makeGrainBox(axis) {
+      const g = new THREE.BoxGeometry(1, 1, 1);
+      const pos = g.attributes.position, uv = g.attributes.uv, nrm = g.attributes.normal;
+      for (let i = 0; i < pos.count; i++) {
+        const p = { x: pos.getX(i) + 0.5, y: pos.getY(i) + 0.5, z: pos.getZ(i) + 0.5 };
+        const nAxis = Math.abs(nrm.getX(i)) > 0.5 ? 'x' : Math.abs(nrm.getY(i)) > 0.5 ? 'y' : 'z';
+        if (nAxis === axis) {
+          // End-grain face: any consistent mapping; side grain reads fine here.
+          const t = axis === 'x' ? ['y', 'z'] : axis === 'y' ? ['x', 'z'] : ['x', 'y'];
+          uv.setXY(i, p[t[0]], p[t[1]]);
+        } else {
+          const other = axis !== 'x' && nAxis !== 'x' ? 'x' : axis !== 'y' && nAxis !== 'y' ? 'y' : 'z';
+          uv.setXY(i, p[other], p[axis]); // V runs along the grain axis
+        }
+      }
+      return g;
+    }
+    const unitBoxes = { x: makeGrainBox('x'), y: makeGrainBox('y'), z: makeGrainBox('z') };
+    const unitBox = unitBoxes.y;
     const unitEdges = new THREE.EdgesGeometry(unitBox);
     const unitCyl = new THREE.CylinderGeometry(0.5, 0.5, 1, 24);
     const unitCylEdges = new THREE.EdgesGeometry(unitCyl, 30);
     const DEG = Math.PI / 180;
 
-    // Bounded material pool.
+    /* Grain axis for a part: along its stated grain if the model says so,
+     * else along the longest dimension — the same rule the cut list uses. */
+    function grainAxis(part) {
+      const dims = [['x', part.size.w], ['y', part.size.h], ['z', part.size.d]].sort((a, b) => b[1] - a[1]);
+      return part.grain === 'width' ? dims[1][0] : dims[0][0];
+    }
+
+    /* Quality tiers: default is textured wood + real shadows; the flat tier
+     * (low-power devices, user choice) is solid tones + contact blob. */
+    const quality = { textured: true, shadows: true };
+    let curTheme = 'light';
+
+    // Bounded material pool. Textured wood gets the species grain map with a
+    // near-white tint (ROLE_SHADE still separates legs/tops/backs); flat mode
+    // keeps the original solid species tones.
     const matPool = new Map();
     function materialFor(matKey, role, bucket) {
-      const key = matKey + '|' + role + '|' + bucket;
+      const sp = BB.K.WOOD_SPECIES[matKey];
+      const textured = quality.textured && !!sp;
+      const key = matKey + '|' + role + '|' + bucket + (textured ? '|t' : '');
       if (matPool.has(key)) return matPool.get(key);
       let tone = 0xb98d62, rough = 0.7;
       if (matKey === 'hardware') { tone = 0x46464a; rough = 0.35; }
-      else if (BB.K.WOOD_SPECIES[matKey]) { tone = BB.K.WOOD_SPECIES[matKey].tone; rough = BB.K.WOOD_SPECIES[matKey].rough; }
-      const c = new THREE.Color(tone).multiplyScalar(ROLE_SHADE[role] || 1);
+      else if (sp) { tone = sp.tone; rough = sp.rough; }
+      const shadeF = ROLE_SHADE[role] || 1;
+      const c = textured
+        ? new THREE.Color(1, 1, 1).multiplyScalar(0.55 + 0.45 * shadeF)
+        : new THREE.Color(tone).multiplyScalar(shadeF);
       const opacity = BUCKETS[bucket] !== undefined ? BUCKETS[bucket] : 1;
       const m = new THREE.MeshStandardMaterial({
         color: c, roughness: rough, metalness: matKey === 'hardware' ? 0.6 : 0.02,
         transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
       });
+      if (textured) m.map = BB.Materials.woodTexture(THREE, matKey);
+      m.envMapIntensity = matKey === 'hardware' ? 0.9 : 0.5;
       if (bucket === 'selected') { m.emissive = new THREE.Color(0x2f7fae); m.emissiveIntensity = 0.3; }
       matPool.set(key, m);
       return m;
@@ -6403,15 +6769,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const part of model.parts) {
         seen.add(part.id);
         const isCyl = part.prim === 'cylinder';
+        // Geometry choice is (primitive, grain axis) — all variants are the
+        // module-shared unit geometries, so swapping allocates nothing.
+        const geoKey = isCyl ? 'cyl' : grainAxis(part);
         let rec = E.meshes.get(part.id);
-        if (rec && rec.isCyl !== isCyl) { partsGroup.remove(rec.mesh); E.meshes.delete(part.id); rec = null; }
+        if (rec && rec.geoKey !== geoKey) {
+          rec.mesh.geometry = isCyl ? unitCyl : unitBoxes[geoKey];
+          rec.edge.geometry = isCyl ? unitCylEdges : unitEdges;
+          rec.geoKey = geoKey;
+        }
         if (!rec) {
-          const mesh = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'solid'));
+          const mesh = new THREE.Mesh(isCyl ? unitCyl : unitBoxes[geoKey], materialFor(part.material, part.role, 'solid'));
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
           const edge = new THREE.LineSegments(isCyl ? unitCylEdges : unitEdges, edgeMat);
           mesh.add(edge);
           mesh.userData.partId = part.id;
           partsGroup.add(mesh);
-          rec = { mesh, edge, part, bucket: 'solid', cur: null, isCyl };
+          rec = { mesh, edge, part, bucket: 'solid', cur: null, geoKey };
           E.meshes.set(part.id, rec);
         }
         rec.part = part;
@@ -6435,6 +6810,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       const maxDim = Math.max(model.bounds.w, model.bounds.d, model.bounds.h);
       disc.scale.setScalar(maxDim * 1.4);
       grid.scale.setScalar(maxDim * 2.6 / 1);
+      // Sun distance and shadow frustum track model size, sized once per
+      // model to cover the fully exploded pose (offsets reach ~0.95 × maxDim).
+      sun.position.set(1400, 2200, 1600).normalize().multiplyScalar(maxDim * 2.6);
+      const sc = sun.shadow.camera, ext = maxDim * 1.6;
+      sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
+      sc.near = maxDim * 0.4; sc.far = maxDim * 5.2;
+      sc.updateProjectionMatrix();
+      sun.shadow.normalBias = Math.max(1, maxDim * 0.002);
+      shadowPlane.scale.setScalar(maxDim * 4);
       camTarget.set(0, model.bounds.h * 0.45, 0);
       E.needsAnno = true;
       retargetAll();
@@ -6451,6 +6835,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           // cylinder, everything else the unit box, rotation applied X→Y→Z.
           const isCyl = part.prim === 'cylinder';
           const m = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'ghost'));
+          m.userData.part = part; // lets setQuality re-derive the material
           const r = part.rot || { x: 0, y: 0, z: 0 };
           m.rotation.set((r.x || 0) * DEG, (r.y || 0) * DEG, (r.z || 0) * DEG, 'ZYX');
           m.scale.set(part.size.w, part.size.h, part.size.d);
@@ -6462,6 +6847,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* ---------------- dimension annotations ---------------- */
     function makeLabel(text) {
+      const pal = THEMES[curTheme].label;
       const c = document.createElement('canvas');
       const ctx = c.getContext('2d');
       const fs = 44;
@@ -6470,13 +6856,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       c.width = w; c.height = fs + 28;
       const ctx2 = c.getContext('2d');
       ctx2.font = `600 ${fs}px system-ui, sans-serif`;
-      ctx2.fillStyle = 'rgba(250,247,242,0.92)';
+      ctx2.fillStyle = pal.bg;
       const r = 14;
       ctx2.beginPath();
       ctx2.roundRect(0, 0, c.width, c.height, r);
       ctx2.fill();
-      ctx2.strokeStyle = 'rgba(90,70,50,0.35)'; ctx2.lineWidth = 2; ctx2.stroke();
-      ctx2.fillStyle = '#4a3826';
+      ctx2.strokeStyle = pal.stroke; ctx2.lineWidth = 2; ctx2.stroke();
+      ctx2.fillStyle = pal.ink;
       ctx2.textBaseline = 'middle'; ctx2.textAlign = 'center';
       ctx2.fillText(text, c.width / 2, c.height / 2 + 2);
       const tex = new THREE.CanvasTexture(c);
@@ -6489,15 +6875,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       return spr;
     }
     const dimLineMat = new THREE.LineBasicMaterial({ color: 0x7a614a, transparent: true, opacity: 0.85 });
+    const tickMat = new THREE.MeshBasicMaterial({ color: 0x7a614a });
+    const tickGeo = new THREE.SphereGeometry(1, 6, 6);
     function dimLine(a, b, label) {
       const g = new THREE.Group();
       const pts = [new THREE.Vector3(a.x, a.y, a.z), new THREE.Vector3(b.x, b.y, b.z)];
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       g.add(new THREE.Line(geo, dimLineMat));
-      // end ticks
+      // end ticks (shared geometry + shared themable material)
       for (const p of pts) {
-        const tickGeo = new THREE.SphereGeometry(1, 6, 6);
-        const tick = new THREE.Mesh(tickGeo, new THREE.MeshBasicMaterial({ color: 0x7a614a }));
+        const tick = new THREE.Mesh(tickGeo, tickMat);
         tick.position.copy(p);
         tick.scale.setScalar(Math.max(E.bounds.w, E.bounds.h) * 0.004 + 2);
         g.add(tick);
@@ -6508,10 +6895,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       return g;
     }
     function rebuildAnnotations() {
-      // Dispose every label texture + line geometry from the previous pass.
+      // Dispose every label texture, sprite material, + line geometry from
+      // the previous pass (tick geometry/material are shared — kept).
       annoGroup.traverse(o => {
-        if (o.geometry && o.geometry !== unitBox && o.geometry !== unitEdges) o.geometry.dispose();
-        if (o.material && o.material.map) { /* sprite mats disposed below */ }
+        if (o.geometry && o.geometry !== tickGeo) o.geometry.dispose();
+        if (o.isSprite && o.material) o.material.dispose();
       });
       while (annoGroup.children.length) annoGroup.remove(annoGroup.children[0]);
       for (const t of labelTextures.splice(0)) t.dispose();
@@ -6715,9 +7103,41 @@ var BB = globalThis.BB = globalThis.BB || {};
       camera.updateProjectionMatrix();
     }
 
+    /* ---------------- theme & quality ---------------- */
+    function setTheme(mode) {
+      curTheme = THEMES[mode] ? mode : 'light';
+      const th = THEMES[curTheme];
+      edgeMat.color.set(th.edge); edgeMatFaint.color.set(th.edge); selEdgeMat.color.set(th.edgeSel);
+      dimLineMat.color.set(th.dim); tickMat.color.set(th.dim);
+      hemi.color.set(th.hemiSky); hemi.groundColor.set(th.hemiGround); hemi.intensity = th.hemiI;
+      sun.intensity = th.sunI; fill.intensity = th.fillI;
+      shadowMat.opacity = th.shadowOp;
+      applyEnvironment(curTheme);
+      E.needsAnno = true; // labels repaint in the new palette
+    }
+    function applyQuality() {
+      sun.castShadow = quality.shadows;
+      shadowPlane.visible = quality.shadows;
+      disc.visible = !quality.shadows;
+      // Re-derive every pooled material so the texture mode flips at once —
+      // the pool is cleared, then live meshes get fresh materials directly
+      // (never a disposed one).
+      for (const m of matPool.values()) m.dispose();
+      matPool.clear();
+      for (const rec of E.meshes.values()) {
+        const bucket = rec.part.id === E.selected && rec.bucket === 'solid' ? 'selected' : rec.bucket;
+        rec.mesh.material = materialFor(rec.part.material, rec.part.role, bucket);
+      }
+      for (const g of ghostGroup.children) {
+        if (g.userData.part) g.material = materialFor(g.userData.part.material, g.userData.part.role, 'ghost');
+      }
+    }
+
     /* ---------------- public API ---------------- */
     const api = {
       setModel, setGhost, frame, resize,
+      setTheme,
+      setQuality(q) { Object.assign(quality, q || {}); applyQuality(); },
       setExplode(t) { E.explodeT = Math.max(0, Math.min(1, t)); retargetAll(); },
       getExplode() { return E.explodeT; },
       toggleDrawer(i) {
@@ -6745,13 +7165,21 @@ var BB = globalThis.BB = globalThis.BB || {};
         cancelAnimationFrame(raf);
         for (const m of matPool.values()) m.dispose();
         matPool.clear();
-        unitBox.dispose(); unitEdges.dispose();
+        for (const g of Object.values(unitBoxes)) g.dispose();
+        unitEdges.dispose();
         unitCyl.dispose(); unitCylEdges.dispose();
-        discGeo.dispose(); jointGeo.dispose();
+        discGeo.dispose(); shadowGeo.dispose(); jointGeo.dispose(); tickGeo.dispose();
+        for (const m of [edgeMat, edgeMatFaint, selEdgeMat, dimLineMat, tickMat, discMat, shadowMat, jointMat]) m.dispose();
+        blobTex.dispose();
+        if (envRT) envRT.dispose();
         for (const t of labelTextures.splice(0)) t.dispose();
+        // Deliberately NOT BB.Materials.disposeAll(): the species texture
+        // cache is app-lifetime and shared with other engine instances.
         renderer.dispose();
       }
     };
+    applyEnvironment(curTheme);
+    applyQuality();
     frame();
     Object.assign(camCur, camGoal);
     resize();
@@ -6807,6 +7235,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     speciesPick: []
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
+  const darkMq = matchMedia('(prefers-color-scheme: dark)');
 
   // ALL displayed lengths go through BB.Units — the single mm→text boundary.
   const fmt = mm => Units.fmtLength(mm);
@@ -6955,13 +7384,26 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
-   * the :root[data-theme] overrides. */
+   * the :root[data-theme] overrides. The 3D scene follows the same choice —
+   * engine.setTheme retunes ink lines, labels, bounce light, and regenerates
+   * the environment map. */
   function applyTheme(t) {
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
     else delete document.documentElement.dataset.theme;
     for (const [id, val] of [['themeAuto', 'auto'], ['themeLight', 'light'], ['themeDark', 'dark']]) {
       $(id).setAttribute('aria-pressed', String((t || 'auto') === val));
     }
+    const dark = t === 'dark' || (t !== 'light' && darkMq.matches);
+    if (state.engine) state.engine.setTheme(dark ? 'dark' : 'light');
+  }
+
+  /* Render quality rides prefs the same way; the flat tier is one switch for
+   * both textures and shadows (grain without grounding looks worse, not better). */
+  function applyRender() {
+    const textured = !state.prefs4.render || state.prefs4.render.textured !== false;
+    $('renderRich').setAttribute('aria-pressed', String(textured));
+    $('renderFlat').setAttribute('aria-pressed', String(!textured));
+    if (state.engine) state.engine.setQuality({ textured, shadows: textured });
   }
 
   /* ---------------- render: advisories ---------------- */
@@ -8396,6 +8838,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     });
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
+    // In auto theme, the 3D scene follows the OS the same way the CSS does.
+    darkMq.addEventListener('change', () => {
+      if ((state.prefs4.theme || 'auto') === 'auto') applyTheme('auto');
+    });
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
@@ -8406,6 +8852,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     } catch (e) { /* defaults are the product */ }
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
+    applyRender();
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -8478,6 +8925,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('themeAuto').onclick = () => setTheme('auto');
     $('themeLight').onclick = () => setTheme('light');
     $('themeDark').onclick = () => setTheme('dark');
+    const setRender = textured => {
+      state.prefs4.render = { textured };
+      Store.savePrefs(state.prefs4);
+      applyRender();
+    };
+    $('renderRich').onclick = () => setRender(true);
+    $('renderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -8638,7 +9092,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
-      preview, commitPreview, closeInspector, openInspectorById
+      preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender
     };
 
     setTimeout(() => { const h = $('viewportHint'); if (h) h.style.opacity = '0'; }, 6000);

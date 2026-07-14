@@ -1,12 +1,21 @@
 /* Blueprint Buddy — 3D engine (THREE r152, global build).
  *
  * Memory contract (Phase 1 item, re-verified in Phase 2): every part mesh
- * shares ONE unit BoxGeometry and ONE unit EdgesGeometry, scaled per part, so
+ * shares one unit geometry per (primitive, grain axis) — three UV-variant
+ * unit boxes plus one unit cylinder, allocated once — scaled per part, so
  * scene rebuilds allocate no geometry. Materials live in a bounded pool keyed
- * by (material, role, bucket) and are disposed on hard teardown. The only
- * per-rebuild GPU allocations are dimension-label textures, which are disposed
- * whenever annotations rebuild. `engine.stats()` exposes renderer.info for the
- * leak check.
+ * by (material, role, bucket, textured) and are disposed on hard teardown.
+ * Wood textures are pooled per species in BB.Materials (app lifetime, shared
+ * across engine instances). The only per-rebuild GPU allocations are
+ * dimension-label textures, which are disposed whenever annotations rebuild.
+ * `engine.stats()` exposes renderer.info for the leak check.
+ *
+ * Render pipeline (Phase 5): ACES tone mapping, a procedural PMREM studio
+ * environment (regenerated per theme, old target disposed), and one PCFSoft
+ * sun shadow onto a ShadowMaterial plane so parts stay grounded mid-flight
+ * during explode/playback. The flat quality tier trades both for a painted
+ * contact blob. Background stays transparent — the page's --paper shows
+ * through in every mode.
  *
  * Motion: one damped-lerp family drives everything — part positions, scales,
  * drawer travel, explosion, camera. Reduced motion snaps all of it.
@@ -30,52 +39,139 @@ var BB = globalThis.BB = globalThis.BB || {};
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, globalThis.devicePixelRatio || 1));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(42, 1, 10, 30000);
 
-    scene.add(new THREE.HemisphereLight(0xfff6e8, 0x9a8a76, 1.05));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    /* Everything a theme touches in-scene, in one table. Wood stays wood in
+     * both themes; what changes is ink, labels, bounce light, and shadows. */
+    const THEMES = {
+      light: {
+        edge: 0x2a2018, edgeSel: 0x2f7fae, dim: 0x7a614a,
+        hemiSky: 0xfff6e8, hemiGround: 0x9a8a76, hemiI: 0.8, sunI: 1.25, fillI: 0.45, shadowOp: 0.2,
+        label: { bg: 'rgba(250,247,242,0.92)', stroke: 'rgba(90,70,50,0.35)', ink: '#4a3826' }
+      },
+      dark: {
+        edge: 0xefe2cc, edgeSel: 0x6fb0d6, dim: 0xcbb695,
+        hemiSky: 0xcabfa8, hemiGround: 0x2e2921, hemiI: 0.7, sunI: 1.1, fillI: 0.35, shadowOp: 0.3,
+        label: { bg: 'rgba(30,26,20,0.92)', stroke: 'rgba(210,190,160,0.35)', ink: '#ede5d6' }
+      }
+    };
+
+    const hemi = new THREE.HemisphereLight(0xfff6e8, 0x9a8a76, 0.85);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.35);
     sun.position.set(1400, 2200, 1600);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.5);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.45);
     fill.position.set(-1600, 800, -1200);
     scene.add(fill);
 
-    // Ground: faint disc + grid.
+    // Ground: contact blob (flat tier) or shadow plane (default), plus grid.
     const groundGroup = new THREE.Group();
     const discGeo = new THREE.CircleGeometry(1, 64);
-    const discMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.05 });
+    const blobTex = new THREE.CanvasTexture(BB.Materials.blobCanvas());
+    const discMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false });
     const disc = new THREE.Mesh(discGeo, discMat);
     disc.rotation.x = -Math.PI / 2;
     groundGroup.add(disc);
+    const shadowGeo = new THREE.PlaneGeometry(1, 1);
+    const shadowMat = new THREE.ShadowMaterial({ opacity: 0.16 });
+    const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
+    shadowPlane.rotation.x = -Math.PI / 2;
+    shadowPlane.position.y = 1; // above the grid lines, under everything else
+    shadowPlane.receiveShadow = true;
+    groundGroup.add(shadowPlane);
     const grid = new THREE.GridHelper(1, 10, 0x8a7a66, 0x8a7a66);
     grid.material.transparent = true; grid.material.opacity = 0.12;
     groundGroup.add(grid);
     scene.add(groundGroup);
 
-    // Shared geometry — the whole memory story. Cylinders (novel-grammar
-    // primitive) share one unit cylinder the same way boxes share one unit box.
-    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    /* Procedural studio environment: tiny equirect canvas → PMREM. Regenerated
+     * on theme switch; the previous render target is disposed first. */
+    let envRT = null;
+    function applyEnvironment(theme) {
+      const pm = new THREE.PMREMGenerator(renderer);
+      const tex = new THREE.CanvasTexture(BB.Materials.envCanvas(theme));
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const rt = pm.fromEquirectangular(tex);
+      tex.dispose();
+      pm.dispose();
+      if (envRT) envRT.dispose();
+      envRT = rt;
+      scene.environment = rt.texture;
+    }
+
+    /* Shared geometry — the whole memory story. Three unit boxes with
+     * pre-rotated UVs (texture V along local X, Y, or Z) let grain follow
+     * each part's long axis while every part still shares geometry; cylinders
+     * (novel-grammar primitive) share one unit cylinder the same way. */
+    function makeGrainBox(axis) {
+      const g = new THREE.BoxGeometry(1, 1, 1);
+      const pos = g.attributes.position, uv = g.attributes.uv, nrm = g.attributes.normal;
+      for (let i = 0; i < pos.count; i++) {
+        const p = { x: pos.getX(i) + 0.5, y: pos.getY(i) + 0.5, z: pos.getZ(i) + 0.5 };
+        const nAxis = Math.abs(nrm.getX(i)) > 0.5 ? 'x' : Math.abs(nrm.getY(i)) > 0.5 ? 'y' : 'z';
+        if (nAxis === axis) {
+          // End-grain face: any consistent mapping; side grain reads fine here.
+          const t = axis === 'x' ? ['y', 'z'] : axis === 'y' ? ['x', 'z'] : ['x', 'y'];
+          uv.setXY(i, p[t[0]], p[t[1]]);
+        } else {
+          const other = axis !== 'x' && nAxis !== 'x' ? 'x' : axis !== 'y' && nAxis !== 'y' ? 'y' : 'z';
+          uv.setXY(i, p[other], p[axis]); // V runs along the grain axis
+        }
+      }
+      return g;
+    }
+    const unitBoxes = { x: makeGrainBox('x'), y: makeGrainBox('y'), z: makeGrainBox('z') };
+    const unitBox = unitBoxes.y;
     const unitEdges = new THREE.EdgesGeometry(unitBox);
     const unitCyl = new THREE.CylinderGeometry(0.5, 0.5, 1, 24);
     const unitCylEdges = new THREE.EdgesGeometry(unitCyl, 30);
     const DEG = Math.PI / 180;
 
-    // Bounded material pool.
+    /* Grain axis for a part: along its stated grain if the model says so,
+     * else along the longest dimension — the same rule the cut list uses. */
+    function grainAxis(part) {
+      const dims = [['x', part.size.w], ['y', part.size.h], ['z', part.size.d]].sort((a, b) => b[1] - a[1]);
+      return part.grain === 'width' ? dims[1][0] : dims[0][0];
+    }
+
+    /* Quality tiers: default is textured wood + real shadows; the flat tier
+     * (low-power devices, user choice) is solid tones + contact blob. */
+    const quality = { textured: true, shadows: true };
+    let curTheme = 'light';
+
+    // Bounded material pool. Textured wood gets the species grain map with a
+    // near-white tint (ROLE_SHADE still separates legs/tops/backs); flat mode
+    // keeps the original solid species tones.
     const matPool = new Map();
     function materialFor(matKey, role, bucket) {
-      const key = matKey + '|' + role + '|' + bucket;
+      const sp = BB.K.WOOD_SPECIES[matKey];
+      const textured = quality.textured && !!sp;
+      const key = matKey + '|' + role + '|' + bucket + (textured ? '|t' : '');
       if (matPool.has(key)) return matPool.get(key);
       let tone = 0xb98d62, rough = 0.7;
       if (matKey === 'hardware') { tone = 0x46464a; rough = 0.35; }
-      else if (BB.K.WOOD_SPECIES[matKey]) { tone = BB.K.WOOD_SPECIES[matKey].tone; rough = BB.K.WOOD_SPECIES[matKey].rough; }
-      const c = new THREE.Color(tone).multiplyScalar(ROLE_SHADE[role] || 1);
+      else if (sp) { tone = sp.tone; rough = sp.rough; }
+      const shadeF = ROLE_SHADE[role] || 1;
+      const c = textured
+        ? new THREE.Color(1, 1, 1).multiplyScalar(0.55 + 0.45 * shadeF)
+        : new THREE.Color(tone).multiplyScalar(shadeF);
       const opacity = BUCKETS[bucket] !== undefined ? BUCKETS[bucket] : 1;
       const m = new THREE.MeshStandardMaterial({
         color: c, roughness: rough, metalness: matKey === 'hardware' ? 0.6 : 0.02,
         transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
       });
+      if (textured) m.map = BB.Materials.woodTexture(THREE, matKey);
+      m.envMapIntensity = matKey === 'hardware' ? 0.9 : 0.5;
       if (bucket === 'selected') { m.emissive = new THREE.Color(0x2f7fae); m.emissiveIntensity = 0.3; }
       matPool.set(key, m);
       return m;
@@ -193,15 +289,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const part of model.parts) {
         seen.add(part.id);
         const isCyl = part.prim === 'cylinder';
+        // Geometry choice is (primitive, grain axis) — all variants are the
+        // module-shared unit geometries, so swapping allocates nothing.
+        const geoKey = isCyl ? 'cyl' : grainAxis(part);
         let rec = E.meshes.get(part.id);
-        if (rec && rec.isCyl !== isCyl) { partsGroup.remove(rec.mesh); E.meshes.delete(part.id); rec = null; }
+        if (rec && rec.geoKey !== geoKey) {
+          rec.mesh.geometry = isCyl ? unitCyl : unitBoxes[geoKey];
+          rec.edge.geometry = isCyl ? unitCylEdges : unitEdges;
+          rec.geoKey = geoKey;
+        }
         if (!rec) {
-          const mesh = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'solid'));
+          const mesh = new THREE.Mesh(isCyl ? unitCyl : unitBoxes[geoKey], materialFor(part.material, part.role, 'solid'));
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
           const edge = new THREE.LineSegments(isCyl ? unitCylEdges : unitEdges, edgeMat);
           mesh.add(edge);
           mesh.userData.partId = part.id;
           partsGroup.add(mesh);
-          rec = { mesh, edge, part, bucket: 'solid', cur: null, isCyl };
+          rec = { mesh, edge, part, bucket: 'solid', cur: null, geoKey };
           E.meshes.set(part.id, rec);
         }
         rec.part = part;
@@ -225,6 +330,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       const maxDim = Math.max(model.bounds.w, model.bounds.d, model.bounds.h);
       disc.scale.setScalar(maxDim * 1.4);
       grid.scale.setScalar(maxDim * 2.6 / 1);
+      // Sun distance and shadow frustum track model size, sized once per
+      // model to cover the fully exploded pose (offsets reach ~0.95 × maxDim).
+      sun.position.set(1400, 2200, 1600).normalize().multiplyScalar(maxDim * 2.6);
+      const sc = sun.shadow.camera, ext = maxDim * 1.6;
+      sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
+      sc.near = maxDim * 0.4; sc.far = maxDim * 5.2;
+      sc.updateProjectionMatrix();
+      sun.shadow.normalBias = Math.max(1, maxDim * 0.002);
+      shadowPlane.scale.setScalar(maxDim * 4);
       camTarget.set(0, model.bounds.h * 0.45, 0);
       E.needsAnno = true;
       retargetAll();
@@ -241,6 +355,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           // cylinder, everything else the unit box, rotation applied X→Y→Z.
           const isCyl = part.prim === 'cylinder';
           const m = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'ghost'));
+          m.userData.part = part; // lets setQuality re-derive the material
           const r = part.rot || { x: 0, y: 0, z: 0 };
           m.rotation.set((r.x || 0) * DEG, (r.y || 0) * DEG, (r.z || 0) * DEG, 'ZYX');
           m.scale.set(part.size.w, part.size.h, part.size.d);
@@ -252,6 +367,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* ---------------- dimension annotations ---------------- */
     function makeLabel(text) {
+      const pal = THEMES[curTheme].label;
       const c = document.createElement('canvas');
       const ctx = c.getContext('2d');
       const fs = 44;
@@ -260,13 +376,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       c.width = w; c.height = fs + 28;
       const ctx2 = c.getContext('2d');
       ctx2.font = `600 ${fs}px system-ui, sans-serif`;
-      ctx2.fillStyle = 'rgba(250,247,242,0.92)';
+      ctx2.fillStyle = pal.bg;
       const r = 14;
       ctx2.beginPath();
       ctx2.roundRect(0, 0, c.width, c.height, r);
       ctx2.fill();
-      ctx2.strokeStyle = 'rgba(90,70,50,0.35)'; ctx2.lineWidth = 2; ctx2.stroke();
-      ctx2.fillStyle = '#4a3826';
+      ctx2.strokeStyle = pal.stroke; ctx2.lineWidth = 2; ctx2.stroke();
+      ctx2.fillStyle = pal.ink;
       ctx2.textBaseline = 'middle'; ctx2.textAlign = 'center';
       ctx2.fillText(text, c.width / 2, c.height / 2 + 2);
       const tex = new THREE.CanvasTexture(c);
@@ -279,15 +395,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       return spr;
     }
     const dimLineMat = new THREE.LineBasicMaterial({ color: 0x7a614a, transparent: true, opacity: 0.85 });
+    const tickMat = new THREE.MeshBasicMaterial({ color: 0x7a614a });
+    const tickGeo = new THREE.SphereGeometry(1, 6, 6);
     function dimLine(a, b, label) {
       const g = new THREE.Group();
       const pts = [new THREE.Vector3(a.x, a.y, a.z), new THREE.Vector3(b.x, b.y, b.z)];
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       g.add(new THREE.Line(geo, dimLineMat));
-      // end ticks
+      // end ticks (shared geometry + shared themable material)
       for (const p of pts) {
-        const tickGeo = new THREE.SphereGeometry(1, 6, 6);
-        const tick = new THREE.Mesh(tickGeo, new THREE.MeshBasicMaterial({ color: 0x7a614a }));
+        const tick = new THREE.Mesh(tickGeo, tickMat);
         tick.position.copy(p);
         tick.scale.setScalar(Math.max(E.bounds.w, E.bounds.h) * 0.004 + 2);
         g.add(tick);
@@ -298,10 +415,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       return g;
     }
     function rebuildAnnotations() {
-      // Dispose every label texture + line geometry from the previous pass.
+      // Dispose every label texture, sprite material, + line geometry from
+      // the previous pass (tick geometry/material are shared — kept).
       annoGroup.traverse(o => {
-        if (o.geometry && o.geometry !== unitBox && o.geometry !== unitEdges) o.geometry.dispose();
-        if (o.material && o.material.map) { /* sprite mats disposed below */ }
+        if (o.geometry && o.geometry !== tickGeo) o.geometry.dispose();
+        if (o.isSprite && o.material) o.material.dispose();
       });
       while (annoGroup.children.length) annoGroup.remove(annoGroup.children[0]);
       for (const t of labelTextures.splice(0)) t.dispose();
@@ -505,9 +623,41 @@ var BB = globalThis.BB = globalThis.BB || {};
       camera.updateProjectionMatrix();
     }
 
+    /* ---------------- theme & quality ---------------- */
+    function setTheme(mode) {
+      curTheme = THEMES[mode] ? mode : 'light';
+      const th = THEMES[curTheme];
+      edgeMat.color.set(th.edge); edgeMatFaint.color.set(th.edge); selEdgeMat.color.set(th.edgeSel);
+      dimLineMat.color.set(th.dim); tickMat.color.set(th.dim);
+      hemi.color.set(th.hemiSky); hemi.groundColor.set(th.hemiGround); hemi.intensity = th.hemiI;
+      sun.intensity = th.sunI; fill.intensity = th.fillI;
+      shadowMat.opacity = th.shadowOp;
+      applyEnvironment(curTheme);
+      E.needsAnno = true; // labels repaint in the new palette
+    }
+    function applyQuality() {
+      sun.castShadow = quality.shadows;
+      shadowPlane.visible = quality.shadows;
+      disc.visible = !quality.shadows;
+      // Re-derive every pooled material so the texture mode flips at once —
+      // the pool is cleared, then live meshes get fresh materials directly
+      // (never a disposed one).
+      for (const m of matPool.values()) m.dispose();
+      matPool.clear();
+      for (const rec of E.meshes.values()) {
+        const bucket = rec.part.id === E.selected && rec.bucket === 'solid' ? 'selected' : rec.bucket;
+        rec.mesh.material = materialFor(rec.part.material, rec.part.role, bucket);
+      }
+      for (const g of ghostGroup.children) {
+        if (g.userData.part) g.material = materialFor(g.userData.part.material, g.userData.part.role, 'ghost');
+      }
+    }
+
     /* ---------------- public API ---------------- */
     const api = {
       setModel, setGhost, frame, resize,
+      setTheme,
+      setQuality(q) { Object.assign(quality, q || {}); applyQuality(); },
       setExplode(t) { E.explodeT = Math.max(0, Math.min(1, t)); retargetAll(); },
       getExplode() { return E.explodeT; },
       toggleDrawer(i) {
@@ -535,13 +685,21 @@ var BB = globalThis.BB = globalThis.BB || {};
         cancelAnimationFrame(raf);
         for (const m of matPool.values()) m.dispose();
         matPool.clear();
-        unitBox.dispose(); unitEdges.dispose();
+        for (const g of Object.values(unitBoxes)) g.dispose();
+        unitEdges.dispose();
         unitCyl.dispose(); unitCylEdges.dispose();
-        discGeo.dispose(); jointGeo.dispose();
+        discGeo.dispose(); shadowGeo.dispose(); jointGeo.dispose(); tickGeo.dispose();
+        for (const m of [edgeMat, edgeMatFaint, selEdgeMat, dimLineMat, tickMat, discMat, shadowMat, jointMat]) m.dispose();
+        blobTex.dispose();
+        if (envRT) envRT.dispose();
         for (const t of labelTextures.splice(0)) t.dispose();
+        // Deliberately NOT BB.Materials.disposeAll(): the species texture
+        // cache is app-lifetime and shared with other engine instances.
         renderer.dispose();
       }
     };
+    applyEnvironment(curTheme);
+    applyQuality();
     frame();
     Object.assign(camCur, camGoal);
     resize();
