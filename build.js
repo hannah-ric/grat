@@ -43,6 +43,8 @@ let html = read('src/index.template.html')
   .replace('{{JS_PROVENANCE}}', () => js('provenance.js'))
   .replace('{{JS_GALLERY}}', () => js('gallery.js'))
   .replace('{{JS_SELFTEST}}', () => js('selftest.js'))
+  .replace('{{JS_JOINERY3D}}', () => js('joinery3d.js'))
+  .replace('{{JS_JOINTVIEW}}', () => js('jointview.js'))
   .replace('{{JS_ENGINE}}', () => js('engine.js'))
   .replace('{{JS_UI}}', () => js('ui.js'));
 

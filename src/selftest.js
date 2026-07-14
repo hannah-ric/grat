@@ -671,6 +671,70 @@ var BB = globalThis.BB = globalThis.BB || {};
       } finally { BB.Units.set(savedU); }
     }
 
+    /* ============ joint inspector geometry ============ */
+    {
+      const apron = { id: 'a', name: 'Apron', material: 'red_oak', size: { w: 600, h: 89, d: 19 } };
+      const leg = { id: 'l', name: 'Leg', material: 'red_oak', size: { w: 60, h: 700, d: 60 } };
+      const shelf = { id: 's', name: 'Shelf', material: 'red_oak', size: { w: 800, h: 19, d: 280 } };
+      const side = { id: 'c', name: 'Side', material: 'baltic_birch', size: { w: 18, h: 900, d: 280 } };
+      const dSide = { id: 'ds', name: 'Drawer side', material: 'baltic_birch', size: { w: 400, h: 120, d: 12 } };
+      const dFront = { id: 'df', name: 'Drawer front', material: 'red_oak', size: { w: 450, h: 120, d: 19 } };
+      const membersFor = t => {
+        const kind = K.JOINERY[t].kinds[0];
+        return kind === 'frame' ? [apron, leg] : kind === 'case' ? [shelf, side] : [dSide, dFront];
+      };
+
+      // Every joint type builds: pieces with positive volume, both members
+      // represented, a unit-length insert axis, and at least one sizing rule.
+      let bad = null;
+      for (const t of Object.keys(K.JOINERY)) {
+        const [ma, mb] = membersFor(t);
+        const d = BB.Joinery3D.buildJoint(t, ma, mb, v => v + 'mm');
+        const volOK = d.pieces.every(p =>
+          p.kind === 'cuboid' ? p.e.every(e => e > 0)
+            : p.kind === 'cylinder' ? p.r > 0 && p.len > 0
+              : p.profile.length >= 3 && p.depth > 0);
+        const members = new Set(d.pieces.map(p => p.member));
+        const axisLen = Math.hypot(...d.insertAxis);
+        if (!volOK || !members.has('a') || !members.has('b') || Math.abs(axisLen - 1) > 1e-9 || !d.labels.length) {
+          bad = `${t}: vol ${volOK}, members ${[...members]}, axis ${axisLen}`;
+          break;
+        }
+      }
+      test('joints3d', 'all 8 joint builders return sound geometry (volumes, members, axis, rules)', !bad, bad || 'all sound', 'all sound');
+
+      // Mortise & tenon: tenon = ⅓ stock, fits the pocket exactly, 30 mm deep.
+      const mt = BB.Joinery3D.buildJoint('mortise_tenon', apron, leg, v => v + 'mm');
+      const tenon = mt.pieces.filter(p => p.member === 'a').sort((x, y) => x.e[0] * x.e[1] * x.e[2] - y.e[0] * y.e[1] * y.e[2])[0];
+      const pocketBack = mt.pieces.filter(p => p.member === 'b').sort((x, y) => x.e[0] - y.e[0])[0];
+      test('joints3d', 'tenon is ⅓ of stock thickness and 30 mm long',
+        Math.abs(tenon.e[2] * 2 - 19 / 3) < 0.01 && Math.abs(tenon.e[0] * 2 - 30) < 0.01,
+        `${(tenon.e[2] * 2).toFixed(2)} thick × ${(tenon.e[0] * 2).toFixed(1)} long`, `${(19 / 3).toFixed(2)} × 30`);
+      test('joints3d', 'mortise pocket matches the tenon section',
+        Math.abs(pocketBack.e[1] - tenon.e[1]) < 0.01 && Math.abs(pocketBack.e[2] - tenon.e[2]) < 0.01,
+        `pocket ${(pocketBack.e[1] * 2).toFixed(1)}×${(pocketBack.e[2] * 2).toFixed(2)}`, `tenon ${(tenon.e[1] * 2).toFixed(1)}×${(tenon.e[2] * 2).toFixed(2)}`);
+
+      // Dado: groove depth = ⅓ housing thickness; the shelf rides in it.
+      const dd = BB.Joinery3D.buildJoint('dado', shelf, side, v => v + 'mm');
+      const floorPiece = dd.pieces.filter(p => p.member === 'b').sort((a, b) => a.e[0] - b.e[0])[0];
+      test('joints3d', 'dado floor strip depth complements the ⅓ groove',
+        Math.abs(floorPiece.e[0] * 2 - (18 - 18 / 3)) < 0.01,
+        (floorPiece.e[0] * 2).toFixed(2), (18 - 18 / 3).toFixed(2));
+      test('joints3d', 'dado assembles along the groove (Z), not the face',
+        dd.insertAxis[2] === 1 && dd.insertAxis[0] === 0, dd.insertAxis.join(','), '0,0,1');
+
+      // Dovetail: 1:8 flare — flank angle ≈ 7.13°, tails slide along Z.
+      const dt = BB.Joinery3D.buildJoint('half_blind_dovetail', dSide, dFront, v => v + 'mm');
+      const tail = dt.pieces.find(p => p.kind === 'prism' && p.member === 'a');
+      const [p0, p1, p2] = [tail.profile[0], tail.profile[1], tail.profile[2]];
+      void p1;
+      const flank = Math.atan(Math.abs(p2[1] - tail.profile[1][1]) / Math.abs(p2[0] - tail.profile[1][0])) * 180 / Math.PI;
+      void p0;
+      test('joints3d', 'dovetail flank follows the 1:8 rule (≈7.1°, within 7–14°)',
+        flank >= 6.9 && flank <= 14, flank.toFixed(2) + '°', '7.13°');
+      test('joints3d', 'dovetail assembles along the side face normal (Z)', dt.insertAxis[2] === 1, dt.insertAxis.join(','), '0,0,1');
+    }
+
     return results;
   }
 

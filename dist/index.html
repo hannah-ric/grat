@@ -595,6 +595,22 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .gallery-card .g-meta { font: 500 11px var(--mono); color: var(--accent); margin-top: auto; padding-top: var(--s2); }
 .modal-foot { margin-top: var(--s4); display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 
+/* Joint Inspector modal */
+.joint-modal { width: min(760px, calc(100vw - 32px)); }
+.joint-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
+.joint-head h2 { margin: 0; font-size: 18px; }
+.joint-canvas-wrap {
+  position: relative; height: min(46vh, 360px); overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
+}
+.joint-canvas-wrap canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.joint-controls { display: flex; align-items: center; gap: var(--s2); margin: var(--s2) 0; font-size: 12.5px; color: var(--muted); }
+.joint-controls input[type="range"] { flex: 1; min-width: 120px; }
+.joint-notes .joint-rule { margin: var(--s1) 0; font-size: 13px; color: var(--ink-2); }
+.joint-notes .joint-know { margin: var(--s2) 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.joint-inspect { margin-top: var(--s2); }
+.joint-demo { white-space: nowrap; }
+
 .help-steps { margin: var(--s2) 0 var(--s3); padding-left: 22px; font-size: 14px; line-height: 1.7; }
 .help-block { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s3); margin-bottom: var(--s3); background: var(--paper); }
 .help-block h3 { margin: 0 0 var(--s1); font-family: var(--display); font-size: 16px; }
@@ -1223,6 +1239,26 @@ body.bm-playback .playback-bar { display: none !important; }
     <span class="bm-pblabel" id="bmPbLabel"></span>
     <button class="btn bm-big" id="bmPbNext">Next ›</button>
     <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
+  </div>
+
+  <div class="scrim" inert id="jointScrim" role="dialog" aria-modal="true" aria-label="Joint inspector">
+    <div class="modal joint-modal">
+      <div class="joint-head">
+        <h2 id="jointTitle">Joint inspector</h2>
+        <button class="btn icon ghost" id="jointClose" aria-label="Close joint inspector">✕</button>
+      </div>
+      <div class="joint-canvas-wrap">
+        <canvas id="jointCanvas" tabindex="0" aria-label="3D joint close-up. Drag to orbit, scroll to zoom."></canvas>
+      </div>
+      <div class="joint-controls">
+        <label for="jointExplode">Apart</label>
+        <input type="range" id="jointExplode" min="0" max="100" value="0" aria-label="Pull the joint apart">
+        <label aria-hidden="true">together</label>
+        <span class="vt-sep" aria-hidden="true"></span>
+        <button class="toggle" id="jointCutaway" aria-pressed="false"><span class="track"></span>Cutaway</button>
+      </div>
+      <div class="joint-notes" id="jointNotes"></div>
+    </div>
   </div>
 
   <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance">
@@ -7297,10 +7333,446 @@ var BB = globalThis.BB = globalThis.BB || {};
       } finally { BB.Units.set(savedU); }
     }
 
+    /* ============ joint inspector geometry ============ */
+    {
+      const apron = { id: 'a', name: 'Apron', material: 'red_oak', size: { w: 600, h: 89, d: 19 } };
+      const leg = { id: 'l', name: 'Leg', material: 'red_oak', size: { w: 60, h: 700, d: 60 } };
+      const shelf = { id: 's', name: 'Shelf', material: 'red_oak', size: { w: 800, h: 19, d: 280 } };
+      const side = { id: 'c', name: 'Side', material: 'baltic_birch', size: { w: 18, h: 900, d: 280 } };
+      const dSide = { id: 'ds', name: 'Drawer side', material: 'baltic_birch', size: { w: 400, h: 120, d: 12 } };
+      const dFront = { id: 'df', name: 'Drawer front', material: 'red_oak', size: { w: 450, h: 120, d: 19 } };
+      const membersFor = t => {
+        const kind = K.JOINERY[t].kinds[0];
+        return kind === 'frame' ? [apron, leg] : kind === 'case' ? [shelf, side] : [dSide, dFront];
+      };
+
+      // Every joint type builds: pieces with positive volume, both members
+      // represented, a unit-length insert axis, and at least one sizing rule.
+      let bad = null;
+      for (const t of Object.keys(K.JOINERY)) {
+        const [ma, mb] = membersFor(t);
+        const d = BB.Joinery3D.buildJoint(t, ma, mb, v => v + 'mm');
+        const volOK = d.pieces.every(p =>
+          p.kind === 'cuboid' ? p.e.every(e => e > 0)
+            : p.kind === 'cylinder' ? p.r > 0 && p.len > 0
+              : p.profile.length >= 3 && p.depth > 0);
+        const members = new Set(d.pieces.map(p => p.member));
+        const axisLen = Math.hypot(...d.insertAxis);
+        if (!volOK || !members.has('a') || !members.has('b') || Math.abs(axisLen - 1) > 1e-9 || !d.labels.length) {
+          bad = `${t}: vol ${volOK}, members ${[...members]}, axis ${axisLen}`;
+          break;
+        }
+      }
+      test('joints3d', 'all 8 joint builders return sound geometry (volumes, members, axis, rules)', !bad, bad || 'all sound', 'all sound');
+
+      // Mortise & tenon: tenon = ⅓ stock, fits the pocket exactly, 30 mm deep.
+      const mt = BB.Joinery3D.buildJoint('mortise_tenon', apron, leg, v => v + 'mm');
+      const tenon = mt.pieces.filter(p => p.member === 'a').sort((x, y) => x.e[0] * x.e[1] * x.e[2] - y.e[0] * y.e[1] * y.e[2])[0];
+      const pocketBack = mt.pieces.filter(p => p.member === 'b').sort((x, y) => x.e[0] - y.e[0])[0];
+      test('joints3d', 'tenon is ⅓ of stock thickness and 30 mm long',
+        Math.abs(tenon.e[2] * 2 - 19 / 3) < 0.01 && Math.abs(tenon.e[0] * 2 - 30) < 0.01,
+        `${(tenon.e[2] * 2).toFixed(2)} thick × ${(tenon.e[0] * 2).toFixed(1)} long`, `${(19 / 3).toFixed(2)} × 30`);
+      test('joints3d', 'mortise pocket matches the tenon section',
+        Math.abs(pocketBack.e[1] - tenon.e[1]) < 0.01 && Math.abs(pocketBack.e[2] - tenon.e[2]) < 0.01,
+        `pocket ${(pocketBack.e[1] * 2).toFixed(1)}×${(pocketBack.e[2] * 2).toFixed(2)}`, `tenon ${(tenon.e[1] * 2).toFixed(1)}×${(tenon.e[2] * 2).toFixed(2)}`);
+
+      // Dado: groove depth = ⅓ housing thickness; the shelf rides in it.
+      const dd = BB.Joinery3D.buildJoint('dado', shelf, side, v => v + 'mm');
+      const floorPiece = dd.pieces.filter(p => p.member === 'b').sort((a, b) => a.e[0] - b.e[0])[0];
+      test('joints3d', 'dado floor strip depth complements the ⅓ groove',
+        Math.abs(floorPiece.e[0] * 2 - (18 - 18 / 3)) < 0.01,
+        (floorPiece.e[0] * 2).toFixed(2), (18 - 18 / 3).toFixed(2));
+      test('joints3d', 'dado assembles along the groove (Z), not the face',
+        dd.insertAxis[2] === 1 && dd.insertAxis[0] === 0, dd.insertAxis.join(','), '0,0,1');
+
+      // Dovetail: 1:8 flare — flank angle ≈ 7.13°, tails slide along Z.
+      const dt = BB.Joinery3D.buildJoint('half_blind_dovetail', dSide, dFront, v => v + 'mm');
+      const tail = dt.pieces.find(p => p.kind === 'prism' && p.member === 'a');
+      const [p0, p1, p2] = [tail.profile[0], tail.profile[1], tail.profile[2]];
+      void p1;
+      const flank = Math.atan(Math.abs(p2[1] - tail.profile[1][1]) / Math.abs(p2[0] - tail.profile[1][0])) * 180 / Math.PI;
+      void p0;
+      test('joints3d', 'dovetail flank follows the 1:8 rule (≈7.1°, within 7–14°)',
+        flank >= 6.9 && flank <= 14, flank.toFixed(2) + '°', '7.13°');
+      test('joints3d', 'dovetail assembles along the side face normal (Z)', dt.insertAxis[2] === 1, dt.insertAxis.join(','), '0,0,1');
+    }
+
     return results;
   }
 
   BB.SelfTest = { run, V3_FIXTURE, bigComposition, deepEqual, firstDiff };
+})();
+</script>
+<script>/* Blueprint Buddy — parametric joint geometry (Phase 5 Joint Inspector).
+ * Pure data, no THREE: buildJoint(type, partA, partB, fmt) returns close-up
+ * geometry for one joint of the design, sized from the REAL parts —
+ * `a` is the inserted member and `b` the housing member, matching
+ * model.joints. All sizing rules are code-owned and mirror the cut-list
+ * doctrine (tenon = ⅓ stock and 30 mm long per JOINT_ALLOWANCE, dado depth
+ * = ⅓ housing thickness, dovetail flare 1:8, pocket holes 15°).
+ *
+ * Output, in joint-local millimetres (interface plane at x = 0, member A
+ * entering from +X, vertical = Y):
+ *   { pieces: [ {member:'a'|'b'|'fastener', kind:'cuboid', c:[x,y,z], e:[hx,hy,hz]}
+ *             | {member, kind:'cylinder', c, axis:[x,y,z], r, len}
+ *             | {member, kind:'prism', profile:[[x,y]…] (convex, CCW), z0, depth} ],
+ *     insertAxis: [x,y,z],   // member A slides along this to explode
+ *     labels: [string…],     // sizing rules, dimensions via fmt
+ *     title: string }
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  /* Cross-section of a part: thickness = smallest dimension, width = middle. */
+  function section(part) {
+    const d = [part.size.w, part.size.h, part.size.d].sort((x, y) => x - y);
+    return { t: d[0], w: d[1] };
+  }
+  const cub = (member, x0, x1, y0, y1, z0, z1) => ({
+    member, kind: 'cuboid',
+    c: [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2],
+    e: [(x1 - x0) / 2, (y1 - y0) / 2, (z1 - z0) / 2]
+  });
+  const cyl = (member, c, axis, r, len) => ({ member, kind: 'cylinder', c, axis, r, len });
+
+  function buildJoint(type, partA, partB, fmt) {
+    fmt = fmt || (v => Math.round(v) + ' mm');
+    const A = section(partA), B = section(partB);
+    const tA = A.t, wA = A.w, tB = B.t, wB = B.w;
+    const LA = clamp(tA * 3.5, 90, 170);   // stub of the inserted member
+    const LB = clamp(wA * 1.8, 140, 260);  // stub of the housing member
+    const pieces = [], labels = [];
+    let insertAxis = [1, 0, 0];
+    const J = BB.K.JOINERY[type];
+    const title = (J ? J.label : type) + ' — ' + (partA.name || partA.id) + ' → ' + (partB.name || partB.id);
+
+    if (type === 'butt_screws' || type === 'pocket_screws' || type === 'dowels') {
+      // Butt family: A's end meets B's face at x = 0.
+      const dB = Math.min(tB * 2, wB); // housing depth along the insert
+      pieces.push(cub('b', -dB, 0, -LB / 2, LB / 2, -wB / 2, wB / 2));
+      pieces.push(cub('a', 0, LA, -wA / 2, wA / 2, -tA / 2, tA / 2));
+      if (type === 'butt_screws') {
+        for (const s of [-1, 1]) {
+          pieces.push(cyl('fastener', [-dB / 2 + 12, s * wA / 4, 0], [1, 0, 0], 2.2, dB + 24));
+        }
+        labels.push('Screws drive through the housing into the end — pilot-drill both.');
+      } else if (type === 'pocket_screws') {
+        const c15 = Math.cos(15 * Math.PI / 180), s15 = Math.sin(15 * Math.PI / 180);
+        for (const s of [-1, 1]) {
+          pieces.push(cyl('fastener', [16, s * wA / 4, -tA / 2 + 9], [-c15, 0, s15], 2.4, 52));
+        }
+        labels.push('Pockets bored at 15° from the hidden face; screws bite the housing.');
+      } else {
+        for (const s of [-1, 1]) {
+          pieces.push(cyl('fastener', [0, s * wA / 4, 0], [1, 0, 0], 4, 40));
+        }
+        labels.push(`${fmt(8)} × ${fmt(40)} fluted dowels — half in each member, glued.`);
+      }
+    } else if (type === 'dado') {
+      // Housing panel B (thickness tB along X); shelf A rides a groove
+      // ⅓ tB deep, cut across the inner face. Slides in along Z.
+      const depth = tB / 3, zSpan = clamp(wB, 120, 240) / 2;
+      pieces.push(cub('b', -tB, 0, -LB / 2, -tA / 2, -zSpan, zSpan));
+      pieces.push(cub('b', -tB, 0, tA / 2, LB / 2, -zSpan, zSpan));
+      pieces.push(cub('b', -tB, -depth, -tA / 2, tA / 2, -zSpan, zSpan));
+      pieces.push(cub('a', -depth, LA, -tA / 2, tA / 2, -zSpan, zSpan));
+      insertAxis = [0, 0, 1];
+      labels.push(`Groove ${fmt(depth)} deep (⅓ of the ${fmt(tB)} side) × ${fmt(tA)} wide — cut to the measured shelf thickness.`);
+    } else if (type === 'rabbet') {
+      // Housing B rabbeted along its top edge (y = 0); panel A drops in.
+      const depth = tA, wall = tB / 2, zSpan = clamp(wB, 120, 240) / 2;
+      pieces.push(cub('b', -tB / 2, tB / 2, -LB, -depth, -zSpan, zSpan));
+      pieces.push(cub('b', 0, tB / 2, -depth, 0, -zSpan, zSpan));
+      pieces.push(cub('a', -LA, 0, -depth, 0, -zSpan, zSpan));
+      insertAxis = [-1, 0, 0];
+      labels.push(`Rabbet ${fmt(depth)} × ${fmt(wall)} — keep the wall at least half the ${fmt(tB)} stock.`);
+    } else if (type === 'locking_rabbet') {
+      // Drawer corner: front A (thickness along X), side B (thickness along
+      // Z). The side's tongue locks into a dado in the front's back half.
+      const tF = tA, tS = tB, h = clamp(wA, 80, 140);
+      const LF = clamp(tS * 4, 90, 150), LS = clamp(tF * 5, 110, 170);
+      pieces.push(cub('a', -tF, -tF / 2, -h / 2, h / 2, -LF, tS));
+      pieces.push(cub('a', -tF / 2, 0, -h / 2, h / 2, -LF, tS / 3));
+      pieces.push(cub('a', -tF / 2, 0, -h / 2, h / 2, 2 * tS / 3, tS));
+      pieces.push(cub('b', 0, LS, -h / 2, h / 2, 0, tS));
+      pieces.push(cub('b', -tF / 2, 0, -h / 2, h / 2, tS / 3, 2 * tS / 3));
+      insertAxis = [1, 0, 0];
+      labels.push(`Tongue ${fmt(tS / 3)} thick × ${fmt(tF / 2)} long locks into the front — sneak up on a hand-pressed fit.`);
+    } else if (type === 'mortise_tenon') {
+      // Leg B with a blind mortise; apron A's tenon = ⅓ stock, 30 mm long.
+      const tT = tA / 3, depth = 30, shoulder = clamp(wA * 0.12, 8, 16);
+      const wT = wA - 2 * shoulder;
+      const dB = Math.min(tB * 2, Math.max(tB, depth + 15));
+      pieces.push(cub('b', -dB, 0, -LB / 2, LB / 2, -wB / 2, -tT / 2));
+      pieces.push(cub('b', -dB, 0, -LB / 2, LB / 2, tT / 2, wB / 2));
+      pieces.push(cub('b', -dB, 0, wT / 2, LB / 2, -tT / 2, tT / 2));
+      pieces.push(cub('b', -dB, 0, -LB / 2, -wT / 2, -tT / 2, tT / 2));
+      pieces.push(cub('b', -dB, -depth, -wT / 2, wT / 2, -tT / 2, tT / 2));
+      pieces.push(cub('a', 0, LA, -wA / 2, wA / 2, -tA / 2, tA / 2));
+      pieces.push(cub('a', -depth, 0, -wT / 2, wT / 2, -tT / 2, tT / 2));
+      labels.push(`Tenon ${fmt(tT)} (⅓ of ${fmt(tA)} stock) × ${fmt(wT)} wide × ${fmt(depth)} long; ${fmt(shoulder)} shoulders.`);
+      labels.push('Aim for a firm hand-press fit — a mallet-tight tenon splits the mortise cheek.');
+    } else if (type === 'half_blind_dovetail') {
+      // Drawer side A: tails on its end; front B keeps a ⅓ lap so nothing
+      // shows from the face. Tails slide in along Z (the side's face normal).
+      const tS = tA, tF = Math.max(tB, 16), h = clamp(wA, 90, 150);
+      const lap = tF / 3, sock = tF - lap; // socket depth into the front
+      const LS = clamp(tS * 6, 110, 170);
+      const nTails = 3, flare = sock / 8; // 1:8
+      const pitch = h / (nTails + 1);
+      pieces.push(cub('a', 0, LS, -h / 2, h / 2, 0, tS)); // side body
+      pieces.push(cub('b', -tF, -sock, -h / 2, h / 2, 0, tS)); // front lap slab
+      const boundaries = [-h / 2];
+      for (let i = 1; i <= nTails; i++) {
+        const yc = -h / 2 + i * pitch;
+        const wNarrow = pitch * 0.42;
+        // tail (member a): narrow at the shoulder (x=0), wide at the lap
+        pieces.push({
+          member: 'a', kind: 'prism', z0: 0, depth: tS,
+          profile: [
+            [0, yc - wNarrow / 2], [0, yc + wNarrow / 2],
+            [-sock, yc + wNarrow / 2 + flare], [-sock, yc - wNarrow / 2 - flare]
+          ]
+        });
+        boundaries.push(yc - wNarrow / 2, yc + wNarrow / 2);
+      }
+      boundaries.push(h / 2);
+      // front pins fill the gaps between tails (complementary flare)
+      for (let i = 0; i < boundaries.length; i += 2) {
+        const y0 = boundaries[i], y1 = boundaries[i + 1];
+        if (y1 - y0 < 2) continue;
+        pieces.push({
+          member: 'b', kind: 'prism', z0: 0, depth: tS,
+          profile: [
+            [0, y0], [0, y1],
+            [-sock, y1 - (i > 0 ? flare : 0)], [-sock, y0 + (i < boundaries.length - 2 ? flare : 0)]
+          ]
+        });
+      }
+      insertAxis = [0, 0, 1];
+      labels.push(`${nTails} tails, 1:8 flare, sockets ${fmt(sock)} deep — a ${fmt(lap)} lap hides the joinery from the front.`);
+      labels.push('Chop the socket floors halfway from each side to avoid blow-out.');
+    } else {
+      // Unknown joint: honest fallback — two butted blocks, no fasteners.
+      pieces.push(cub('b', -tB, 0, -LB / 2, LB / 2, -wB / 2, wB / 2));
+      pieces.push(cub('a', 0, LA, -wA / 2, wA / 2, -tA / 2, tA / 2));
+    }
+
+    return { pieces, insertAxis, labels, title };
+  }
+
+  BB.Joinery3D = { buildJoint, section };
+})();
+</script>
+<script>/* Blueprint Buddy — Joint Inspector viewport (Phase 5).
+ * A transient THREE scene in the joint modal: builds real geometry from
+ * BB.Joinery3D piece data, species-tinted, with an assemble slider along the
+ * joint's insert axis and a cutaway section toggle (clipping plane).
+ *
+ * Lifecycle contract: the renderer is a lazy per-session singleton (contexts
+ * are expensive); geometries and materials are created per open() and
+ * disposed per close(). The render loop watches the scrim and self-disposes
+ * if the modal was closed by any path (Escape, backdrop, button).
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  let renderer = null, canvas = null;
+  let live = null; // { scene, camera, group, groupA, disposables, raf, cam, clip, spread }
+
+  function ensureRenderer() {
+    const THREE = globalThis.THREE;
+    if (renderer) return;
+    canvas = document.getElementById('jointCanvas');
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(2, globalThis.devicePixelRatio || 1));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.localClippingEnabled = true;
+  }
+
+  /* Convex profile prism (dovetail tails/pins): flat-shaded, non-indexed. */
+  function prismGeometry(THREE, profile, z0, depth) {
+    const n = profile.length;
+    const tris = [];
+    const at = (i, z) => [profile[i][0], profile[i][1], z];
+    for (let i = 1; i < n - 1; i++) { // front fan (+z)
+      tris.push(at(0, z0 + depth), at(i, z0 + depth), at(i + 1, z0 + depth));
+    }
+    for (let i = 1; i < n - 1; i++) { // back fan (reversed)
+      tris.push(at(0, z0), at(i + 1, z0), at(i, z0));
+    }
+    for (let i = 0; i < n; i++) {     // side quads
+      const j = (i + 1) % n;
+      tris.push(at(i, z0), at(j, z0), at(j, z0 + depth));
+      tris.push(at(i, z0), at(j, z0 + depth), at(i, z0 + depth));
+    }
+    const pos = new Float32Array(tris.flat());
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  }
+
+  function open(type, partA, partB, opts) {
+    const THREE = globalThis.THREE;
+    opts = opts || {};
+    ensureRenderer();
+    close(); // dispose any previous scene
+
+    const fmt = opts.fmt || (v => Math.round(v) + ' mm');
+    const data = BB.Joinery3D.buildJoint(type, partA, partB, fmt);
+
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xfff6e8, 0x8a7a66, 1.0));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+    sun.position.set(300, 500, 400);
+    scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.4);
+    fill.position.set(-400, 200, -300);
+    scene.add(fill);
+
+    const camera = new THREE.PerspectiveCamera(38, 1, 1, 10000);
+    const disposables = [];
+    const clip = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
+
+    // Species-tinted member materials: inserted member reads lighter than
+    // the housing so the mechanism is legible; fasteners are steel.
+    const toneOf = p => (BB.K.WOOD_SPECIES[p.material] || {}).tone || 0xb98d62;
+    const roughOf = p => (BB.K.WOOD_SPECIES[p.material] || {}).rough || 0.7;
+    const mats = {
+      a: new THREE.MeshStandardMaterial({ color: new THREE.Color(toneOf(partA)).multiplyScalar(1.08), roughness: roughOf(partA), metalness: 0.02, side: THREE.DoubleSide }),
+      b: new THREE.MeshStandardMaterial({ color: new THREE.Color(toneOf(partB)).multiplyScalar(0.82), roughness: roughOf(partB), metalness: 0.02, side: THREE.DoubleSide }),
+      fastener: new THREE.MeshStandardMaterial({ color: 0x8a8a90, roughness: 0.35, metalness: 0.6, side: THREE.DoubleSide })
+    };
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.34 });
+    disposables.push(mats.a, mats.b, mats.fastener, edgeMat);
+
+    const group = new THREE.Group();   // whole joint
+    const groupA = new THREE.Group();  // inserted member — the explode rider
+    group.add(groupA);
+    scene.add(group);
+
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const piece of data.pieces) {
+      let geo;
+      if (piece.kind === 'cuboid') {
+        geo = new THREE.BoxGeometry(piece.e[0] * 2, piece.e[1] * 2, piece.e[2] * 2);
+      } else if (piece.kind === 'cylinder') {
+        geo = new THREE.CylinderGeometry(piece.r, piece.r, piece.len, 16);
+      } else {
+        geo = prismGeometry(THREE, piece.profile, piece.z0, piece.depth);
+      }
+      const mesh = new THREE.Mesh(geo, mats[piece.member] || mats.a);
+      if (piece.kind === 'cuboid') mesh.position.set(piece.c[0], piece.c[1], piece.c[2]);
+      if (piece.kind === 'cylinder') {
+        mesh.position.set(piece.c[0], piece.c[1], piece.c[2]);
+        mesh.quaternion.setFromUnitVectors(up, new THREE.Vector3(...piece.axis).normalize());
+      }
+      const edgeGeo = new THREE.EdgesGeometry(geo, 25);
+      mesh.add(new THREE.LineSegments(edgeGeo, edgeMat));
+      disposables.push(geo, edgeGeo);
+      (piece.member === 'a' ? groupA : group).add(mesh);
+    }
+
+    // Frame the joint; section plane sits at the scene's z-center.
+    const box = new THREE.Box3().setFromObject(group);
+    const center = box.getCenter(new THREE.Vector3());
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    clip.constant = center.z;
+    const cam = {
+      theta: 0.7, phi: 1.15,
+      dist: sphere.radius / Math.tan(19 * Math.PI / 180) * 1.25,
+      goalTheta: 0.7, goalPhi: 1.15, goalDist: 0
+    };
+    cam.goalDist = cam.dist;
+    const spread = Math.max(60, sphere.radius * 0.9);
+
+    live = {
+      scene, camera, group, groupA, disposables, raf: 0, cam, clip, center,
+      insertAxis: data.insertAxis, spread, explodeT: 0, cutaway: false,
+      reduced: !!opts.reducedMotion
+    };
+
+    const scrim = document.getElementById('jointScrim');
+    const clock = new THREE.Clock();
+    function tick() {
+      if (!live) return;
+      if (!scrim.classList.contains('open')) { close(); return; } // self-dispose
+      live.raf = requestAnimationFrame(tick);
+      const dt = Math.min(0.05, clock.getDelta());
+      const k = live.reduced ? 1 : 1 - Math.exp(-dt * 9);
+      const c = live.cam;
+      c.theta += (c.goalTheta - c.theta) * k;
+      c.phi += (c.goalPhi - c.phi) * k;
+      c.dist += (c.goalDist - c.dist) * k;
+      camera.position.set(
+        center.x + c.dist * Math.sin(c.phi) * Math.sin(c.theta),
+        center.y + c.dist * Math.cos(c.phi),
+        center.z + c.dist * Math.sin(c.phi) * Math.cos(c.theta));
+      camera.lookAt(center);
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (w && h) {
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+      const off = live.explodeT * live.spread;
+      groupA.position.set(data.insertAxis[0] * off, data.insertAxis[1] * off, data.insertAxis[2] * off);
+      renderer.render(scene, camera);
+    }
+    tick();
+    return data; // title + labels for the caption
+  }
+
+  /* Pointer orbit + wheel zoom on the joint canvas (bound once). */
+  let bound = false;
+  function bindControls() {
+    if (bound) return;
+    bound = true;
+    const c = document.getElementById('jointCanvas');
+    let drag = null;
+    c.addEventListener('pointerdown', e => { c.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY }; });
+    c.addEventListener('pointermove', e => {
+      if (!drag || !live) return;
+      live.cam.goalTheta -= (e.clientX - drag.x) * 0.0055;
+      live.cam.goalPhi = Math.max(0.15, Math.min(1.5, live.cam.goalPhi - (e.clientY - drag.y) * 0.0045));
+      drag = { x: e.clientX, y: e.clientY };
+    });
+    c.addEventListener('pointerup', () => { drag = null; });
+    c.addEventListener('pointercancel', () => { drag = null; });
+    c.addEventListener('wheel', e => {
+      if (!live) return;
+      e.preventDefault();
+      live.cam.goalDist = Math.max(80, Math.min(4000, live.cam.goalDist * (1 + e.deltaY * 0.0011)));
+    }, { passive: false });
+  }
+
+  function setExplode(t) { if (live) live.explodeT = Math.max(0, Math.min(1, t)); }
+  function setCutaway(on) {
+    if (!live) return;
+    live.cutaway = !!on;
+    const planes = on ? [live.clip] : [];
+    live.scene.traverse(o => {
+      if (o.isMesh && o.material) o.material.clippingPlanes = planes;
+    });
+  }
+  function setReducedMotion(v) { if (live) live.reduced = !!v; }
+
+  function close() {
+    if (!live) return;
+    cancelAnimationFrame(live.raf);
+    for (const d of live.disposables) d.dispose();
+    live = null;
+  }
+
+  BB.JointView = { open, close, setExplode, setCutaway, setReducedMotion, bindControls, _live: () => live };
 })();
 </script>
 <script>/* Blueprint Buddy — 3D engine (THREE r152, global build).
@@ -8562,6 +9034,34 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(tot);
   }
 
+  /* ---------------- Joint Inspector (Phase 5) ----------------
+   * Opens the transient 3D close-up for one joint. From assembly steps it
+   * carries the REAL member parts; from the Shop Reference it demos the
+   * joint on typical members so every joint is learnable before it's used. */
+  const DEMO_MEMBERS = {
+    frame: [{ id: 'demo_apron', name: 'Apron' , size: { w: 600, h: 89, d: 19 } }, { id: 'demo_leg', name: 'Leg', size: { w: 60, h: 700, d: 60 } }],
+    case: [{ id: 'demo_shelf', name: 'Shelf', size: { w: 800, h: 19, d: 280 } }, { id: 'demo_side', name: 'Case side', size: { w: 18, h: 900, d: 280 } }],
+    box: [{ id: 'demo_side', name: 'Drawer side', size: { w: 400, h: 120, d: 12 } }, { id: 'demo_front', name: 'Drawer front', size: { w: 450, h: 120, d: 19 } }]
+  };
+  function openJointInspector(type, partA, partB) {
+    if (!partA || !partB) {
+      const kind = (K.JOINERY[type] && K.JOINERY[type].kinds[0]) || 'frame';
+      const demo = DEMO_MEMBERS[kind] || DEMO_MEMBERS.frame;
+      partA = { ...demo[0], material: state.spec.wood.species };
+      partB = { ...demo[1], material: state.spec.wood.species };
+    }
+    BB.JointView.bindControls();
+    openScrim('jointScrim'); // before open(): the viewer self-disposes when the scrim is closed
+    const data = BB.JointView.open(type, partA, partB, { fmt, reducedMotion: reduceMq.matches });
+    $('jointTitle').textContent = data.title;
+    const j = K.JOINERY[type];
+    $('jointNotes').innerHTML =
+      data.labels.map(l => `<p class="joint-rule">${esc(l)}</p>`).join('') +
+      (j ? `<p class="joint-know"><em>Watch for:</em> ${esc(j.failure)}<br><em>Tools:</em> ${esc(j.tools.join(', '))}</p>` : '');
+    $('jointExplode').value = 0;
+    $('jointCutaway').setAttribute('aria-pressed', 'false');
+  }
+
   function whyJointHTML(type) {
     const j = K.JOINERY[type];
     if (!j) return '';
@@ -8599,6 +9099,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
       body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
         (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
+      if (jointType) {
+        const j0 = s.joints[0];
+        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) + '<span>Inspect joint in 3D</span>');
+        inspect.onclick = e => {
+          e.stopPropagation();
+          openJointInspector(jointType,
+            state.model.parts.find(p => p.id === j0.a),
+            state.model.parts.find(p => p.id === j0.b));
+        };
+        body.append(inspect);
+      }
       const play = el('button', 'btn icon step-play', BB.Icons.svg('play', 15));
       play.setAttribute('aria-label', 'Play step ' + (i + 1));
       play.onclick = () => enterPlayback(i);
@@ -8752,9 +9263,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td>${esc(r.appliesTo.join(', '))}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
-      head = '<th>Joint</th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
+      head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
         <td><strong>${esc(j.label)}</strong></td>
+        <td><button type="button" class="btn small ghost joint-demo" data-joint="${esc(j.key)}" title="See this joint in 3D">${BB.Icons.svg('ruler', 13)} 3D</button></td>
         <td><span class="dots">${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span></td>
         <td><span class="dots">${'●'.repeat(j.difficulty)}${'○'.repeat(5 - j.difficulty)}</span></td>
         <td>${esc(j.level)}</td>
@@ -8785,6 +9297,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     scroll.innerHTML = `<table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
     body.append(scroll);
+    // Joinery rows carry a 3D demo button — the learning moment on demand.
+    scroll.querySelectorAll('.joint-demo').forEach(b => {
+      b.addEventListener('click', () => openJointInspector(b.dataset.joint));
+    });
   }
 
   /* ---------------- chat ---------------- */
@@ -9854,6 +10370,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('dualBtn', 'dual');
     set('inspClose', 'close', undefined);
     set('historyClose', 'close', undefined);
+    set('jointClose', 'close', undefined);
     set('frameBtn', 'fit', 'Fit');
     set('pbPrev', 'prev');
     set('pbNext', 'next');
@@ -9995,6 +10512,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('importShare').onclick = importShare;
     $('speciesClose').onclick = () => closeScrim('speciesScrim');
     $('diagClose').onclick = () => closeScrim('diagScrim');
+    $('jointClose').onclick = () => { closeScrim('jointScrim'); BB.JointView.close(); };
+    $('jointExplode').addEventListener('input', e => BB.JointView.setExplode(e.target.value / 100));
+    $('jointCutaway').onclick = () => {
+      const on = $('jointCutaway').getAttribute('aria-pressed') !== 'true';
+      $('jointCutaway').setAttribute('aria-pressed', String(on));
+      BB.JointView.setCutaway(on);
+    };
     $('diagRerun').onclick = runDiagnostics;
     $('buildModeBtn').onclick = enterBuildMode;
     $('bmExit').onclick = exitBuildMode;

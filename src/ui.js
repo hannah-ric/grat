@@ -426,6 +426,34 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(tot);
   }
 
+  /* ---------------- Joint Inspector (Phase 5) ----------------
+   * Opens the transient 3D close-up for one joint. From assembly steps it
+   * carries the REAL member parts; from the Shop Reference it demos the
+   * joint on typical members so every joint is learnable before it's used. */
+  const DEMO_MEMBERS = {
+    frame: [{ id: 'demo_apron', name: 'Apron' , size: { w: 600, h: 89, d: 19 } }, { id: 'demo_leg', name: 'Leg', size: { w: 60, h: 700, d: 60 } }],
+    case: [{ id: 'demo_shelf', name: 'Shelf', size: { w: 800, h: 19, d: 280 } }, { id: 'demo_side', name: 'Case side', size: { w: 18, h: 900, d: 280 } }],
+    box: [{ id: 'demo_side', name: 'Drawer side', size: { w: 400, h: 120, d: 12 } }, { id: 'demo_front', name: 'Drawer front', size: { w: 450, h: 120, d: 19 } }]
+  };
+  function openJointInspector(type, partA, partB) {
+    if (!partA || !partB) {
+      const kind = (K.JOINERY[type] && K.JOINERY[type].kinds[0]) || 'frame';
+      const demo = DEMO_MEMBERS[kind] || DEMO_MEMBERS.frame;
+      partA = { ...demo[0], material: state.spec.wood.species };
+      partB = { ...demo[1], material: state.spec.wood.species };
+    }
+    BB.JointView.bindControls();
+    openScrim('jointScrim'); // before open(): the viewer self-disposes when the scrim is closed
+    const data = BB.JointView.open(type, partA, partB, { fmt, reducedMotion: reduceMq.matches });
+    $('jointTitle').textContent = data.title;
+    const j = K.JOINERY[type];
+    $('jointNotes').innerHTML =
+      data.labels.map(l => `<p class="joint-rule">${esc(l)}</p>`).join('') +
+      (j ? `<p class="joint-know"><em>Watch for:</em> ${esc(j.failure)}<br><em>Tools:</em> ${esc(j.tools.join(', '))}</p>` : '');
+    $('jointExplode').value = 0;
+    $('jointCutaway').setAttribute('aria-pressed', 'false');
+  }
+
   function whyJointHTML(type) {
     const j = K.JOINERY[type];
     if (!j) return '';
@@ -463,6 +491,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
       body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
         (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
+      if (jointType) {
+        const j0 = s.joints[0];
+        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) + '<span>Inspect joint in 3D</span>');
+        inspect.onclick = e => {
+          e.stopPropagation();
+          openJointInspector(jointType,
+            state.model.parts.find(p => p.id === j0.a),
+            state.model.parts.find(p => p.id === j0.b));
+        };
+        body.append(inspect);
+      }
       const play = el('button', 'btn icon step-play', BB.Icons.svg('play', 15));
       play.setAttribute('aria-label', 'Play step ' + (i + 1));
       play.onclick = () => enterPlayback(i);
@@ -616,9 +655,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td>${esc(r.appliesTo.join(', '))}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
-      head = '<th>Joint</th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
+      head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
         <td><strong>${esc(j.label)}</strong></td>
+        <td><button type="button" class="btn small ghost joint-demo" data-joint="${esc(j.key)}" title="See this joint in 3D">${BB.Icons.svg('ruler', 13)} 3D</button></td>
         <td><span class="dots">${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span></td>
         <td><span class="dots">${'●'.repeat(j.difficulty)}${'○'.repeat(5 - j.difficulty)}</span></td>
         <td>${esc(j.level)}</td>
@@ -649,6 +689,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     scroll.innerHTML = `<table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
     body.append(scroll);
+    // Joinery rows carry a 3D demo button — the learning moment on demand.
+    scroll.querySelectorAll('.joint-demo').forEach(b => {
+      b.addEventListener('click', () => openJointInspector(b.dataset.joint));
+    });
   }
 
   /* ---------------- chat ---------------- */
@@ -1718,6 +1762,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('dualBtn', 'dual');
     set('inspClose', 'close', undefined);
     set('historyClose', 'close', undefined);
+    set('jointClose', 'close', undefined);
     set('frameBtn', 'fit', 'Fit');
     set('pbPrev', 'prev');
     set('pbNext', 'next');
@@ -1859,6 +1904,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('importShare').onclick = importShare;
     $('speciesClose').onclick = () => closeScrim('speciesScrim');
     $('diagClose').onclick = () => closeScrim('diagScrim');
+    $('jointClose').onclick = () => { closeScrim('jointScrim'); BB.JointView.close(); };
+    $('jointExplode').addEventListener('input', e => BB.JointView.setExplode(e.target.value / 100));
+    $('jointCutaway').onclick = () => {
+      const on = $('jointCutaway').getAttribute('aria-pressed') !== 'true';
+      $('jointCutaway').setAttribute('aria-pressed', String(on));
+      BB.JointView.setCutaway(on);
+    };
     $('diagRerun').onclick = runDiagnostics;
     $('buildModeBtn').onclick = enterBuildMode;
     $('bmExit').onclick = exitBuildMode;

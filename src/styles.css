@@ -588,6 +588,22 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .gallery-card .g-meta { font: 500 11px var(--mono); color: var(--accent); margin-top: auto; padding-top: var(--s2); }
 .modal-foot { margin-top: var(--s4); display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 
+/* Joint Inspector modal */
+.joint-modal { width: min(760px, calc(100vw - 32px)); }
+.joint-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
+.joint-head h2 { margin: 0; font-size: 18px; }
+.joint-canvas-wrap {
+  position: relative; height: min(46vh, 360px); overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
+}
+.joint-canvas-wrap canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.joint-controls { display: flex; align-items: center; gap: var(--s2); margin: var(--s2) 0; font-size: 12.5px; color: var(--muted); }
+.joint-controls input[type="range"] { flex: 1; min-width: 120px; }
+.joint-notes .joint-rule { margin: var(--s1) 0; font-size: 13px; color: var(--ink-2); }
+.joint-notes .joint-know { margin: var(--s2) 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.joint-inspect { margin-top: var(--s2); }
+.joint-demo { white-space: nowrap; }
+
 .help-steps { margin: var(--s2) 0 var(--s3); padding-left: 22px; font-size: 14px; line-height: 1.7; }
 .help-block { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s3); margin-bottom: var(--s3); background: var(--paper); }
 .help-block h3 { margin: 0 0 var(--s1); font-family: var(--display); font-size: 16px; }

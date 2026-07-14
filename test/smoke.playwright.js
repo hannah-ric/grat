@@ -269,6 +269,32 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => !__bb.state.engine.getDrafting() && __bb.state.engine.getProjection() === 'persp'),
     'blueprint off restores the perspective studio view');
 
+  // Joint Inspector: open from an assembly step, drive explode + cutaway, close.
+  await page.click('#tab-assembly');
+  await page.waitForSelector('.joint-inspect');
+  await page.click('.joint-inspect');
+  await page.waitForSelector('#jointScrim.open');
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => !!BB.JointView._live() && document.getElementById('jointTitle').textContent.includes('→')),
+    'joint inspector opens a live scene titled with the real members');
+  await page.evaluate(() => { BB.JointView.setExplode(1); BB.JointView.setCutaway(true); });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: SHOTS + '/22-joint.png' });
+  await page.click('#jointClose');
+  await page.waitForTimeout(150);
+  ok(await page.evaluate(() => !BB.JointView._live()), 'closing the inspector disposes its scene');
+  // Reference-tab demo: every joint learnable before it is used.
+  await page.click('#tab-reference');
+  await page.waitForSelector('.ref-search');
+  await page.click('.ref-tabs .ref-tab:nth-child(3)');
+  await page.waitForSelector('.joint-demo');
+  ok(await page.evaluate(() => document.querySelectorAll('.joint-demo').length === Object.keys(BB.K.JOINERY).length),
+    'shop reference offers a 3D demo for every joint type');
+  await page.click('.joint-demo');
+  await page.waitForSelector('#jointScrim.open');
+  ok(await page.evaluate(() => !!BB.JointView._live()), 'reference demo opens on typical members');
+  await page.click('#jointClose');
+
   // Shop reference searchable.
   await page.click('#tab-reference');
   await page.waitForSelector('.ref-search');
