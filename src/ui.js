@@ -1018,11 +1018,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     const d = $('historyDrawer');
     d.classList.add('open');
     d.setAttribute('aria-hidden', 'false');
+    $('historyBackdrop').hidden = false;
+    // Everything behind the drawer goes inert: clicks and focus stay inside.
+    document.querySelector('.topbar').inert = true;
+    document.querySelector('.bench').inert = true;
   }
   function closeHistoryDrawer() {
     const d = $('historyDrawer');
     d.classList.remove('open');
     d.setAttribute('aria-hidden', 'true');
+    $('historyBackdrop').hidden = true;
+    document.querySelector('.topbar').inert = false;
+    document.querySelector('.bench').inert = false;
   }
 
   /* ---------------- modals ---------------- */
@@ -1533,6 +1540,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('redoBtn').onclick = () => { const s = state.history.redo(); if (s) restoreTo(s); };
     $('historyBtn').onclick = openHistoryDrawer;
     $('historyClose').onclick = closeHistoryDrawer;
+    $('historyBackdrop').onclick = closeHistoryDrawer;
     $('compareBtn').onclick = openCompare;
     $('compareClose').onclick = showCompareOverlay;
     $('compareExit').onclick = clearCompare;
@@ -1575,23 +1583,34 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('bmPbBack').onclick = exitBmPlayback;
     bindLogoLongPress();
 
-    /* export menu */
-    const menu = $('exportMenu'), exBtn = $('exportBtn');
-    exBtn.onclick = () => {
-      const open = menu.classList.toggle('open');
-      exBtn.setAttribute('aria-expanded', String(open));
+    /* export + More menus */
+    const closeMenu = (btnId, m) => {
+      m.classList.remove('open');
+      $(btnId).setAttribute('aria-expanded', 'false');
     };
-    document.addEventListener('click', e => {
-      if (!menu.contains(e.target) && e.target !== exBtn) {
-        menu.classList.remove('open');
-        exBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
+    const bindMenu = (btnId, menuId) => {
+      const b = $(btnId), m = $(menuId);
+      b.onclick = () => {
+        const open = m.classList.toggle('open');
+        b.setAttribute('aria-expanded', String(open));
+      };
+      document.addEventListener('click', e => {
+        if (!m.contains(e.target) && e.target !== b) closeMenu(btnId, m);
+      });
+      return m;
+    };
+    const menu = bindMenu('exportBtn', 'exportMenu');
+    const moreMenu = bindMenu('moreBtn', 'moreMenu');
     menu.querySelectorAll('[data-export]').forEach(b => {
       b.addEventListener('click', () => {
-        menu.classList.remove('open');
+        closeMenu('exportBtn', menu);
         doExport(b.dataset.export);
       });
+    });
+    // Picking a dialog from More closes the menu; the units row stays open
+    // so the seg gives instant feedback.
+    moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
+      b.addEventListener('click', () => closeMenu('moreBtn', moreMenu));
     });
 
     /* chat — no form element (artifact rules); Enter and the button both send */
@@ -1657,14 +1676,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
         if (!typing) { e.preventDefault(); $('redoBtn').click(); }
       } else if (e.key === 'Escape') {
+        // Close the topmost overlay only — one layer per press. Build mode
+        // is the bottom layer: it exits last, never before an open modal.
+        const prov = $('provPop');
+        if (prov && !prov.hidden) { hideProv(); return; }
+        if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
+        if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
+        const scrims = [...document.querySelectorAll('.scrim.open')];
+        if (scrims.length) { scrims[scrims.length - 1].classList.remove('open'); return; }
+        if ($('historyDrawer').classList.contains('open')) { closeHistoryDrawer(); return; }
         if (state.bmPlayback) { exitBmPlayback(); return; }
-        if (state.buildMode) { exitBuildMode(); return; }
-        hideProv();
-        document.querySelectorAll('.scrim.open').forEach(s => s.classList.remove('open'));
-        menu.classList.remove('open');
-        closeHistoryDrawer();
-        if (state.playbackIndex >= 0) exitPlayback();
-        else closeInspector();
+        if (state.playbackIndex >= 0) { exitPlayback(); return; }
+        if (state.selected) { closeInspector(); return; }
+        if (state.buildMode) exitBuildMode();
       }
     });
 

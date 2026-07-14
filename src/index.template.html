@@ -21,21 +21,27 @@
     <div class="topbar-group" role="group" aria-label="History">
       <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-      <button id="historyBtn" class="btn" aria-haspopup="dialog">History</button>
     </div>
     <div class="topbar-group">
-      <button id="projectsBtn" class="btn" aria-haspopup="dialog">Projects</button>
-      <button id="shareBtn" class="btn" aria-haspopup="dialog">Share</button>
-      <button id="buildModeBtn" class="btn" title="Full-screen shop companion">Build mode</button>
-    </div>
-    <div class="topbar-group">
-      <div class="seg units-seg" role="group" aria-label="Display units">
-        <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
-        <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
-      </div>
-      <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
       <div class="menu-wrap">
-        <button id="exportBtn" class="btn primary" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More ▾</button>
+        <div id="moreMenu" class="menu" role="menu">
+          <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
+          <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
+          <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-row">
+            <span class="menu-row-label">Units</span>
+            <div class="seg units-seg" role="group" aria-label="Display units">
+              <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
+              <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
+            </div>
+            <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
+          </div>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button id="exportBtn" class="btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
         <div id="exportMenu" class="menu" role="menu">
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
@@ -47,6 +53,7 @@
           <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
         </div>
       </div>
+      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion">Build mode</button>
     </div>
   </header>
 
@@ -133,6 +140,7 @@
     </section>
   </main>
 
+  <div class="drawer-backdrop" id="historyBackdrop" hidden></div>
   <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true">
     <div class="drawer-head">
       <h2>Revisions</h2>

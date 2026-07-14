@@ -15,6 +15,14 @@ const SHOTS = path.join(__dirname, '..', 'dist', 'shots');
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m); } };
 
+/* Secondary topbar controls (History, units, dual) live in the More menu —
+ * open it first, then click, the way a user would. */
+let page;
+const clickMoreCtl = async sel => {
+  if (!(await page.isVisible('#moreMenu.open'))) await page.click('#moreBtn');
+  await page.click(sel);
+};
+
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const html = fs.readFileSync(DIST, 'utf8');
@@ -31,7 +39,7 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
     args: ['--no-sandbox', '--enable-unsafe-swiftshader']
   });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const page = await ctx.newPage();
+  page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -122,7 +130,7 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
     'manual edit lands on the same history stack');
 
   // History restore + compare.
-  await page.click('#historyBtn');
+  await clickMoreCtl('#historyBtn');
   await page.waitForSelector('#historyDrawer.open');
   const snapCount = await page.$$eval('#historyList .snap', s => s.length);
   ok(snapCount >= 5, `history drawer lists ${snapCount} snapshots`);
@@ -228,16 +236,16 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   await page.click('#tab-cut');
   const cutImp = await page.textContent('#panel-main');
   ok(/\d+(?: \d+\/\d+)? in\b/.test(cutImp) && !/\d ?mm\b/.test(cutImp), 'cut list renders fractional inches by default');
-  await page.click('#unitsMm');
+  await clickMoreCtl('#unitsMm');
   const cutMet = await page.textContent('#panel-main');
   ok(/\d ?mm\b/.test(cutMet) && !/\d+(?: \d+\/\d+)? in\b/.test(cutMet), 'cut list switches to millimetres instantly');
   ok(await page.evaluate(() => __bb.state.prefs4.units.system === 'metric'), 'metric choice persisted to prefs');
-  await page.click('#unitsIn');
+  await clickMoreCtl('#unitsIn');
   ok(await page.evaluate(() => __bb.state.prefs4.units.system === 'imperial'), 'imperial choice persisted to prefs');
-  await page.click('#dualBtn');
+  await clickMoreCtl('#dualBtn');
   const cutDual = await page.textContent('#panel-main');
   ok(/in \(\d[\d.]* mm\)/.test(cutDual), 'dual display renders primary + secondary units');
-  await page.click('#dualBtn');
+  await clickMoreCtl('#dualBtn');
 
   // Beginner never gets dovetails, even via chat.
   await page.evaluate(() => __bb.merge({ meta: { level: 'beginner' }, joinery: { box: 'half_blind_dovetail' } }, 'manual'));
@@ -256,14 +264,37 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   await page.emulateMedia({ reducedMotion: 'reduce' });
   ok(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), 'reduced-motion honored');
 
-  // Mobile layout.
+  // Mobile layout: collapsed sheet peeks the last message, handle reports
+  // expanded state, playback floats clear of the sheet.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(500);
   ok(await page.isVisible('#sheetHandle'), 'bottom-sheet chat on mobile');
+  const peek = await page.evaluate(() => ({
+    visible: getComputedStyle(document.getElementById('chatPeek')).display !== 'none',
+    text: document.getElementById('chatPeek').textContent,
+    expanded: document.getElementById('sheetHandle').getAttribute('aria-expanded')
+  }));
+  ok(peek.visible && peek.text.length > 0, `collapsed sheet peeks the last message (“${peek.text.slice(0, 40)}…”)`);
+  ok(peek.expanded === 'false', 'sheet handle reports collapsed state');
+  await page.click('#sheetHandle');
+  ok(await page.evaluate(() => document.getElementById('sheetHandle').getAttribute('aria-expanded') === 'true'),
+    'expanding the sheet flips aria-expanded');
+  await page.click('#sheetHandle');
+  await page.waitForTimeout(600); // let the sheet transition settle
+  await page.evaluate(() => __bb.enterPlayback(0));
+  const stackCheck = await page.evaluate(() => {
+    const pb = document.getElementById('playbackBar').getBoundingClientRect();
+    const sheet = document.getElementById('chatPanel').getBoundingClientRect();
+    return { pbBottom: pb.bottom, sheetTop: sheet.top };
+  });
+  ok(stackCheck.pbBottom <= stackCheck.sheetTop + 1,
+    `playback bar clears the chat peek (${Math.round(stackCheck.pbBottom)} <= ${Math.round(stackCheck.sheetTop)})`);
+  await page.evaluate(() => __bb.exitPlayback());
   await page.screenshot({ path: SHOTS + '/12-mobile.png' });
 
   // keyboard: tab bar arrow navigation (Stock sits after Cut list in Phase 4)
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.click('#tab-cut');
   await page.focus('#tab-cut');
   await page.keyboard.press('ArrowRight');
   ok(await page.evaluate(() => __bb.state.tab === 'stock'), 'arrow keys move tabs');
@@ -354,10 +385,13 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   await page.evaluate(() => __bb.exitBuildMode());
   await page.waitForTimeout(900); // let autosave flush progress
 
-  // Reload: project + progress survive through storage.
+  // Reload: project + progress survive through storage. A returning user
+  // lands straight in the studio — latest project loaded, no gallery.
   const projId = await page.evaluate(() => __bb.state.project.id);
   await page.reload();
   await page.waitForFunction(() => globalThis.__bb && __bb.state.model, null, { timeout: 15000 });
+  ok(!(await page.isVisible('#galleryScrim.open')), 'returning user: no gallery on boot');
+  ok(await page.evaluate(() => !!__bb.state.project), 'returning user: latest project auto-loaded into the studio');
   await page.evaluate(id => __bb.loadProjectIntoApp(id), projId);
   await page.waitForFunction(() => __bb.state.project, null, { timeout: 5000 });
   const revived = await page.evaluate(() => ({
@@ -425,7 +459,7 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   ok(pv4.headMatchesLive, 'history head matches the live model after mid-drag close');
 
   // Compare overlay + undo: ghost and banner clear with the restore.
-  await page.click('#historyBtn');
+  await clickMoreCtl('#historyBtn');
   await page.waitForSelector('#historyDrawer.open');
   const cbsA = await page.$$('#historyList input[type="checkbox"]');
   await cbsA[0].check(); await cbsA[cbsA.length - 1].check();
@@ -460,6 +494,60 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   ok(prog.zombieGone, 'orphan progress key pruned on re-pack');
   ok(prog.allLive, 'every stored progress key exists in the live checklist');
   ok(prog.pctTruthful, 'build percentage counts only live checklist items');
+
+  /* ================= Phase B: shell behavior ================= */
+
+  // Busy round-trip: panels keep their content, Send/Photo disable, chat
+  // reports aria-busy — then everything re-enables.
+  const busy = await page.evaluate(async () => {
+    let release;
+    BB.AI.setTransport(() => new Promise(res => {
+      release = () => res({ text: JSON.stringify({ q: 'Which way?', a: ['Wider', 'Taller'] }), stopReason: 'end_turn' });
+    }));
+    const flight = __bb.sendMessage('make it fancier somehow');
+    await new Promise(r => setTimeout(r, 80));
+    const during = {
+      sendDisabled: document.getElementById('sendBtn').disabled,
+      photoDisabled: document.getElementById('photoBtn').disabled,
+      ariaBusy: document.getElementById('chatPanel').getAttribute('aria-busy'),
+      panelAlive: !!document.querySelector('#panel-main .panel-inner') &&
+        document.querySelector('#panel-main .panel-inner').children.length > 0 &&
+        !document.querySelector('#panel-main .skeleton')
+    };
+    release();
+    await flight;
+    BB.AI.setTransport(null);
+    return { during, after: { sendDisabled: document.getElementById('sendBtn').disabled, ariaBusy: document.getElementById('chatPanel').getAttribute('aria-busy') } };
+  });
+  ok(busy.during.sendDisabled && busy.during.photoDisabled, 'Send and Photo disable during the round-trip');
+  ok(busy.during.ariaBusy === 'true' && busy.after.ariaBusy === 'false', 'chat reports aria-busy during flight only');
+  ok(busy.during.panelAlive, 'plan panels keep their content while the AI is busy');
+  ok(!busy.after.sendDisabled, 'Send re-enables after the reply');
+
+  // Escape closes the TOPMOST overlay first: modal above drawer above studio.
+  await clickMoreCtl('#historyBtn');
+  await page.waitForSelector('#historyDrawer.open');
+  ok(await page.evaluate(() => !document.getElementById('historyBackdrop').hidden), 'history drawer shows a backdrop');
+  ok(await page.evaluate(() => document.querySelector('main.bench').inert === true), 'content behind the drawer is inert');
+  await page.evaluate(() => __bb.openProjects());
+  await page.waitForSelector('#projectsScrim.open');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() =>
+    !document.getElementById('projectsScrim').classList.contains('open') &&
+    document.getElementById('historyDrawer').classList.contains('open')),
+    'Escape closes the modal, drawer survives');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() =>
+    !document.getElementById('historyDrawer').classList.contains('open') &&
+    document.querySelector('main.bench').inert === false),
+    'second Escape closes the drawer and lifts inert');
+
+  // In build mode, Escape unwinds playback before build mode itself.
+  await page.evaluate(() => { __bb.enterBuildMode(); __bb.enterBmPlayback(0); });
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() => __bb.state.buildMode && !__bb.state.bmPlayback), 'Escape exits playback, build mode survives');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() => !__bb.state.buildMode), 'next Escape exits build mode');
 
   // Integrity fix buttons patch the spec through the normal pipeline.
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
@@ -560,7 +648,7 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
   // raw millimetre value; in metric, none may render inches. (bd ft is the
   // trade unit in both systems; "M4" / "5 mm shelf pin" are literal trade
   // names — neither applies to this bench.)
-  await page.click('#unitsIn');
+  await clickMoreCtl('#unitsIn');
   const sweep = await page.evaluate(() => {
     const grab = (tabs, re) => {
       const out = {};
@@ -575,7 +663,7 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
     return grab(['cut', 'stock', 'bom', 'assembly', 'integrity'], /\d\s?mm\b/);
   });
   ok(Object.keys(sweep).length === 0, 'imperial sweep finds zero stale mm: ' + JSON.stringify(sweep));
-  await page.click('#unitsMm');
+  await clickMoreCtl('#unitsMm');
   const sweepMet = await page.evaluate(() => {
     const out = {};
     for (const tab of ['cut', 'stock', 'bom', 'assembly', 'integrity']) {
@@ -587,7 +675,7 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.error('  ✗ ' + m)
     return out;
   });
   ok(Object.keys(sweepMet).length === 0, 'metric sweep finds zero stale imperial: ' + JSON.stringify(sweepMet));
-  await page.click('#unitsIn');
+  await clickMoreCtl('#unitsIn');
   await page.click('#tab-stock');
 
   // Display mode never touches export geometry: both SketchUp exports are

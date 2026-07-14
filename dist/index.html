@@ -57,6 +57,10 @@
   --t-fast: 150ms; --t-med: 240ms; --t-slow: 420ms;
 
   --radius: 10px; --radius-lg: 16px;
+
+  /* collapsed mobile chat sheet: handle + last-message peek + input,
+     padded for the device safe area */
+  --sheet-peek: calc(150px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -167,14 +171,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
   z-index: 60;
 }
 .menu.open { opacity: 1; transform: none; pointer-events: auto; }
-.menu button {
+.menu > button {
   display: flex; width: 100%; text-align: left; gap: 10px; align-items: baseline;
   background: none; border: 0; border-radius: 8px; padding: 9px 12px; cursor: pointer;
   transition: background var(--t-fast) var(--ease);
 }
-.menu button:hover { background: var(--panel-2); }
-.menu button .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+.menu > button:hover { background: var(--panel-2); }
+.menu > button .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
+/* inline control row inside a menu (units seg + dual toggle) */
+.menu .menu-row { display: flex; align-items: center; gap: var(--s2); padding: 6px 12px; }
+.menu .menu-row-label { flex: 1; font-size: 12.5px; font-weight: 550; color: var(--muted); }
 
 /* ---------------- bench layout ---------------- */
 .bench { display: flex; flex: 1; min-height: 0; }
@@ -355,16 +362,6 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .empty-state .big { font-family: var(--display); font-size: 17px; font-weight: 600; color: var(--ink-2); display: block; margin-bottom: var(--s1); }
 
-/* skeletons */
-.skeleton { border-radius: 8px; background: var(--panel-2); position: relative; overflow: hidden; min-height: 14px; }
-.skeleton::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--line) 60%, transparent), transparent);
-  animation: shimmer 1.4s infinite var(--ease);
-}
-@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-.skeleton-stack { display: flex; flex-direction: column; gap: var(--s2); }
-
 /* assembly */
 .step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); counter-reset: step; }
 .step-item {
@@ -472,7 +469,14 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .units-seg button { flex: none; min-width: 34px; padding: 6px 9px; font-family: var(--mono); }
 #dualBtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
+/* Build mode is the headline feature — the one filled, weighty control */
+.build-cta { font-weight: 650; padding: 7px 16px; box-shadow: var(--shadow); }
+
 /* ---------------- history drawer ---------------- */
+.drawer-backdrop {
+  position: fixed; inset: 0; z-index: 65;
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
+}
 .drawer-panel {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 92vw); z-index: 70;
   background: var(--panel); border-left: 1px solid var(--line-2); box-shadow: var(--shadow-lg);
@@ -544,6 +548,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 
 /* ---------------- mobile ---------------- */
 .sheet-handle { display: none; }
+.chat-peek { display: none; }
 @media (max-width: 880px) {
   .bench { flex-direction: column; }
   .stage { order: 0; }
@@ -552,28 +557,41 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
     order: 1; width: 100%; border-right: 0; border-top: 1px solid var(--line-2);
     position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: 46vh; z-index: 50;
     border-radius: 18px 18px 0 0; box-shadow: var(--shadow-lg);
-    transform: translateY(calc(100% - 106px));
+    transform: translateY(calc(100% - var(--sheet-peek)));
     transition: transform var(--t-slow) var(--ease);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .chat.expanded { transform: none; }
   .sheet-handle {
     display: flex; justify-content: center; padding: 8px 0 2px; cursor: grab; border: 0; background: none; width: 100%;
   }
   .sheet-handle::after { content: ""; width: 44px; height: 5px; border-radius: 3px; background: var(--line-2); }
+  /* collapsed: last message peeks above the input so the thread has a pulse */
+  .chat-peek {
+    display: block; min-height: 19px; font-size: 12.5px; color: var(--muted);
+    padding: 0 var(--s3) var(--s1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chat.expanded .chat-peek { display: none; }
   .chat-log { display: none; }
   .chat.expanded .chat-log { display: flex; }
   .chat-head { display: none; }
   .chat.expanded .chat-head { display: flex; }
-  #app { padding-bottom: 106px; }
+  #app { padding-bottom: var(--sheet-peek); }
   .inspector { width: min(300px, calc(100vw - 32px)); }
-  .advisories { right: var(--s3); top: auto; bottom: var(--s3); }
+  /* stacking: playback floats above the collapsed sheet, advisories above both */
+  .advisories {
+    position: fixed; left: var(--s3); right: var(--s3); top: auto;
+    bottom: calc(var(--sheet-peek) + 68px); z-index: 54;
+  }
   .stage-controls { flex-direction: column; }
   .control-card { padding: 8px 12px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   .topbar { flex-wrap: wrap; gap: var(--s2); }
   .design-name { width: 12ch; }
-  .playback-bar { bottom: var(--s2); }
+  .playback-bar {
+    position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
+  }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -827,21 +845,27 @@ body.bm-playback .playback-bar { display: none !important; }
     <div class="topbar-group" role="group" aria-label="History">
       <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-      <button id="historyBtn" class="btn" aria-haspopup="dialog">History</button>
     </div>
     <div class="topbar-group">
-      <button id="projectsBtn" class="btn" aria-haspopup="dialog">Projects</button>
-      <button id="shareBtn" class="btn" aria-haspopup="dialog">Share</button>
-      <button id="buildModeBtn" class="btn" title="Full-screen shop companion">Build mode</button>
-    </div>
-    <div class="topbar-group">
-      <div class="seg units-seg" role="group" aria-label="Display units">
-        <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
-        <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
-      </div>
-      <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
       <div class="menu-wrap">
-        <button id="exportBtn" class="btn primary" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More ▾</button>
+        <div id="moreMenu" class="menu" role="menu">
+          <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
+          <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
+          <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-row">
+            <span class="menu-row-label">Units</span>
+            <div class="seg units-seg" role="group" aria-label="Display units">
+              <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
+              <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
+            </div>
+            <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
+          </div>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button id="exportBtn" class="btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
         <div id="exportMenu" class="menu" role="menu">
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
@@ -853,12 +877,14 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
         </div>
       </div>
+      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion">Build mode</button>
     </div>
   </header>
 
   <main class="bench">
     <aside class="chat" id="chatPanel" aria-label="Design chat">
-      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat"></button>
+      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat" aria-expanded="false" aria-controls="chatPanel"></button>
+      <div class="chat-peek" id="chatPeek" aria-hidden="true"></div>
       <div class="chat-head">
         <h2>Design chat</h2>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
@@ -938,6 +964,7 @@ body.bm-playback .playback-bar { display: none !important; }
     </section>
   </main>
 
+  <div class="drawer-backdrop" id="historyBackdrop" hidden></div>
   <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true">
     <div class="drawer-head">
       <h2>Revisions</h2>
@@ -6864,16 +6891,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
-    if (state.busy) {
-      const stack = el('div', 'skeleton-stack');
-      [28, 18, 18, 18, 18, 18].forEach(h => {
-        const s = el('div', 'skeleton'); s.style.height = h + 'px';
-        if (h === 28) s.style.width = '40%';
-        stack.append(s);
-      });
-      inner.append(stack);
-      return;
-    }
     if (state.tab === 'cut') renderCut(inner);
     else if (state.tab === 'stock') renderStock(inner);
     else if (state.tab === 'bom') renderBom(inner);
@@ -7236,12 +7253,24 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- chat ---------------- */
+  /* The AI round-trip is busy state for the CHAT, not the plans: panels keep
+   * their content (the last valid design is still true), while Send and
+   * Photo disable and the chat reports aria-busy. */
+  function setBusy(b) {
+    state.busy = b;
+    $('sendBtn').disabled = b;
+    $('photoBtn').disabled = b;
+    $('chatPanel').setAttribute('aria-busy', String(b));
+  }
   function chatMsg(kind, html) {
     const log = $('chatLog');
     const m = el('div', 'msg ' + kind);
     m.innerHTML = html;
     log.append(m);
     log.scrollTop = log.scrollHeight;
+    // The collapsed mobile sheet shows the tail of the conversation.
+    const peekText = m.textContent.trim();
+    if (peekText) $('chatPeek').textContent = (kind === 'user' ? 'You: ' : '') + peekText;
     return m;
   }
   function botSay(text, chips, opts) {
@@ -7347,19 +7376,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       b.style.display = 'block';
       b.textContent = t + '…';
     };
-    state.busy = true;
-    renderPanel();
+    setBusy(true);
     try {
       const promptText = image ? AI.VISION_PROMPT : text;
       const before = state.spec;
       const out = await aiPipeline(promptText, image, setStatus);
       typing.remove();
-      state.busy = false;
-      if (!out) { renderPanel(); return; }
+      setBusy(false);
+      if (!out) return;
       const okc = commit(out.final, 'ai');
       if (!okc) {
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
-        renderPanel();
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
@@ -7375,8 +7402,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     } catch (err) {
       typing.remove();
-      state.busy = false;
-      renderPanel();
+      setBusy(false);
       botSay('The design brain slipped a gear on that one. Mind rephrasing?', []);
     }
   }
@@ -7667,11 +7693,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     const d = $('historyDrawer');
     d.classList.add('open');
     d.setAttribute('aria-hidden', 'false');
+    $('historyBackdrop').hidden = false;
+    // Everything behind the drawer goes inert: clicks and focus stay inside.
+    document.querySelector('.topbar').inert = true;
+    document.querySelector('.bench').inert = true;
   }
   function closeHistoryDrawer() {
     const d = $('historyDrawer');
     d.classList.remove('open');
     d.setAttribute('aria-hidden', 'true');
+    $('historyBackdrop').hidden = true;
+    document.querySelector('.topbar').inert = false;
+    document.querySelector('.bench').inert = false;
   }
 
   /* ---------------- modals ---------------- */
@@ -7773,7 +7806,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   async function loadProjectIntoApp(id) {
     const rec = await Store.loadProject(id);
-    if (!rec) return;
+    if (!rec) return false;
     const spec = Spec.correctSpec(Codec.decode(rec.wire));
     exitBuildMode();
     exitPlayback();
@@ -7798,6 +7831,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     closeScrim('projectsScrim');
     closeScrim('galleryScrim');
     botSay(`Opened “${rec.name}” — plans, history, and build progress restored. Tell me what to change.`, []);
+    return true;
   }
 
   /* ---------------- share codes (Phase 4 item 2) ---------------- */
@@ -8122,7 +8156,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- boot ---------------- */
-  function boot() {
+  async function boot() {
     const canvas = $('view3d');
     state.engine = BB.Engine.create(canvas, {
       reducedMotion: reduceMq.matches,
@@ -8144,9 +8178,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
-    // Seed design straight through the pipeline.
+    // Persisted prices + prefs load BEFORE the first paint, so units,
+    // precision, and dual display never flash from defaults.
+    try {
+      state.prices = await Store.loadPrices();
+      state.prefs4 = await Store.loadPrefs();
+    } catch (e) { /* defaults are the product */ }
+    Units.set(state.prefs4.units);
+
+    // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
     seed.meta.name = 'Seed Table';
+    seed.meta.units = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
     const r = runPipeline(seed);
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
@@ -8154,33 +8197,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderAll();
     renderHints();
     renderGallery();
-    openScrim('galleryScrim');
-    botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
 
-    // Persisted prices + prefs arrive async; recompute once they land.
-    (async () => {
-      try {
-        state.prices = await Store.loadPrices();
-        state.prefs4 = await Store.loadPrefs();
-        Units.set(state.prefs4.units); // precision + dual (+ system default)
-        // A fresh session honors the stored unit choice: a returning metric
-        // user's seed opens metric; cleared storage stays imperial.
-        const wantU = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
-        if (!state.project && state.history.snapshots.length === 1 && state.spec.meta.units !== wantU) {
-          const r2 = runPipeline(Spec.deepMerge(state.spec, { meta: { units: wantU } }));
-          adopt(r2);
-          state.history = History.createHistory(r2.spec, 'seed');
-        }
-        recompute();
-        renderAll();
-      } catch (e) { /* defaults are the product */ }
-    })();
+    // Returning users land in the studio with their latest project; the
+    // gallery is for first runs and empty shops only.
+    let opened = false;
+    try {
+      const idx = await Store.loadIndex();
+      if (idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
+    } catch (e) { /* storage unavailable: fresh session */ }
+    if (!opened) {
+      openScrim('galleryScrim');
+      botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
+    }
 
     /* top bar */
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
     $('redoBtn').onclick = () => { const s = state.history.redo(); if (s) restoreTo(s); };
     $('historyBtn').onclick = openHistoryDrawer;
     $('historyClose').onclick = closeHistoryDrawer;
+    $('historyBackdrop').onclick = closeHistoryDrawer;
     $('compareBtn').onclick = openCompare;
     $('compareClose').onclick = showCompareOverlay;
     $('compareExit').onclick = clearCompare;
@@ -8223,27 +8258,39 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('bmPbBack').onclick = exitBmPlayback;
     bindLogoLongPress();
 
-    /* export menu */
-    const menu = $('exportMenu'), exBtn = $('exportBtn');
-    exBtn.onclick = () => {
-      const open = menu.classList.toggle('open');
-      exBtn.setAttribute('aria-expanded', String(open));
+    /* export + More menus */
+    const closeMenu = (btnId, m) => {
+      m.classList.remove('open');
+      $(btnId).setAttribute('aria-expanded', 'false');
     };
-    document.addEventListener('click', e => {
-      if (!menu.contains(e.target) && e.target !== exBtn) {
-        menu.classList.remove('open');
-        exBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
+    const bindMenu = (btnId, menuId) => {
+      const b = $(btnId), m = $(menuId);
+      b.onclick = () => {
+        const open = m.classList.toggle('open');
+        b.setAttribute('aria-expanded', String(open));
+      };
+      document.addEventListener('click', e => {
+        if (!m.contains(e.target) && e.target !== b) closeMenu(btnId, m);
+      });
+      return m;
+    };
+    const menu = bindMenu('exportBtn', 'exportMenu');
+    const moreMenu = bindMenu('moreBtn', 'moreMenu');
     menu.querySelectorAll('[data-export]').forEach(b => {
       b.addEventListener('click', () => {
-        menu.classList.remove('open');
+        closeMenu('exportBtn', menu);
         doExport(b.dataset.export);
       });
+    });
+    // Picking a dialog from More closes the menu; the units row stays open
+    // so the seg gives instant feedback.
+    moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
+      b.addEventListener('click', () => closeMenu('moreBtn', moreMenu));
     });
 
     /* chat — no form element (artifact rules); Enter and the button both send */
     const sendNow = () => {
+      if (state.busy) return; // Enter during a round-trip must not eat the draft
       const t = $('chatText');
       sendMessage(t.value);
       t.value = '';
@@ -8266,7 +8313,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       e.target.value = '';
       if (file) sendPhoto(file);
     });
-    $('sheetHandle').onclick = () => $('chatPanel').classList.toggle('expanded');
+    $('sheetHandle').onclick = () => {
+      const expanded = $('chatPanel').classList.toggle('expanded');
+      $('sheetHandle').setAttribute('aria-expanded', String(expanded));
+      $('sheetHandle').setAttribute('aria-label', expanded ? 'Collapse chat' : 'Expand chat');
+    };
 
     /* stage controls */
     $('explodeRange').addEventListener('input', e => state.engine.setExplode(e.target.value / 100));
@@ -8300,14 +8351,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
         if (!typing) { e.preventDefault(); $('redoBtn').click(); }
       } else if (e.key === 'Escape') {
+        // Close the topmost overlay only — one layer per press. Build mode
+        // is the bottom layer: it exits last, never before an open modal.
+        const prov = $('provPop');
+        if (prov && !prov.hidden) { hideProv(); return; }
+        if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
+        if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
+        const scrims = [...document.querySelectorAll('.scrim.open')];
+        if (scrims.length) { scrims[scrims.length - 1].classList.remove('open'); return; }
+        if ($('historyDrawer').classList.contains('open')) { closeHistoryDrawer(); return; }
         if (state.bmPlayback) { exitBmPlayback(); return; }
-        if (state.buildMode) { exitBuildMode(); return; }
-        hideProv();
-        document.querySelectorAll('.scrim.open').forEach(s => s.classList.remove('open'));
-        menu.classList.remove('open');
-        closeHistoryDrawer();
-        if (state.playbackIndex >= 0) exitPlayback();
-        else closeInspector();
+        if (state.playbackIndex >= 0) { exitPlayback(); return; }
+        if (state.selected) { closeInspector(); return; }
+        if (state.buildMode) exitBuildMode();
       }
     });
 
