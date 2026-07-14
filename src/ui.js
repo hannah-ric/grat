@@ -119,6 +119,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function restoreTo(spec) {
     exitPlayback();
+    clearCompare(); // undo/redo/restore must never leave a stale ghost + banner
     state.previewing = false; // a restore discards any uncommitted preview
     const r = runPipeline(spec);
     adopt(r);
