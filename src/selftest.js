@@ -213,13 +213,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* ============ beam check (±1% vs hand calculation) ============ */
     {
       // Bookshelf 900×300×1800, sides 18 → span 864; shelf 280 × 19 section;
-      // books preset 55 kg/m; red oak MOE 12.5 GPa.
-      // Hand: I = 280·19³/12 = 160043.33; w = 0.53955 N/mm;
-      //       sag = 5wL⁴/384EI = 1.9569 mm.
-      const HAND_SAG = 1.9569415106555312;
+      // books preset 60 kg/m (BIFMA X5.9 40 lb/ft); red oak MOE 12.5 GPa.
+      // Hand: I = 280·19³/12 = 160043.33; w = 60×9.81/1000 = 0.5886 N/mm;
+      //       elastic = 5wL⁴/384EI = 2.13485 mm; books are a SUSTAINED load,
+      //       so the reported figure carries ×2 creep (Wood Handbook ch. 4):
+      //       sag = 4.26970 mm.
+      const HAND_ELASTIC = 2.1348497758;
+      const HAND_SAG = HAND_ELASTIC * 2.0;
       const cases = Structural.loadCasesFor('books', 864, 'ss');
       const { sag } = Structural.evalBeam(cases, 864, 12500, Structural.I_rect(280, 19));
-      test('beam', 'shelf deflection matches hand calculation within 1%', Math.abs(sag - HAND_SAG) / HAND_SAG < 0.01, sag.toFixed(4) + ' mm', HAND_SAG.toFixed(4) + ' mm');
+      test('beam', 'shelf deflection matches hand calculation within 1% (incl. creep)', Math.abs(sag - HAND_SAG) / HAND_SAG < 0.01, sag.toFixed(4) + ' mm', HAND_SAG.toFixed(4) + ' mm');
 
       const { spec, model } = pipeline({
         meta: { name: 'Beam Case', template: 'bookshelf', level: 'beginner' },
@@ -231,6 +234,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Raw numbers ride check.data — display text is unit-dependent and never parsed.
       const got = shelfSag && shelfSag.data && shelfSag.data.sagMM;
       test('beam', 'integrity panel reports the same computed sag', got && Math.abs(got - HAND_SAG) < 0.06, got && got.toFixed(4) + ' mm', HAND_SAG.toFixed(4) + ' mm');
+    }
+
+    /* ============ digest integrity (audit F-S3-8) ============
+     * The AI proposes from these digests; every generated line must equal a
+     * fresh regeneration from its source table, so a table edit that forgets
+     * the digest turns this red instead of silently wasting critique rounds. */
+    {
+      const line = K.levelMatrixLine();
+      const expectLine = 'LEVEL MATRIX: ' + K.LEVELS.map((lvl, i) =>
+        `${lvl}=${i ? '+' : ''}{${Object.values(K.JOINERY).filter(j => j.level === lvl).map(j => j.key).join(',')}}`).join(' ');
+      test('digest', 'level-matrix digest equals a fresh regeneration from JOINERY', line === expectLine, line, expectLine);
+      test('digest', 'knowledgeDigest embeds the generated level matrix', K.knowledgeDigest().includes(line), 'embedded', 'embedded');
+      const sys = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('table')));
+      test('digest', 'system prompt carries the generated matrix, not a hand copy', sys.includes(line), 'generated line present', 'generated line present');
+      const vis = K.visionRangesLine();
+      const nightR = K.ergoRow('nightstand_height');
+      test('digest', 'vision-prompt ranges regenerate from ERGONOMICS', BB.AI.VISION_PROMPT.includes(vis) && vis.includes(`${nightR.min}-${nightR.max}`), vis, `contains ${nightR.min}-${nightR.max}`);
+      const wLine = K.knowledgeDigest().split('\n')[0];
+      const wOk = Object.values(K.WOOD_SPECIES).every(s => wLine.includes(`${s.key}(janka ${s.janka}`));
+      test('digest', 'wood digest line carries every species from the table', wOk, wOk ? 'all present' : 'missing species', 'all present');
     }
 
     /* ============ structural: movement / tipping / racking (fixed values) ============ */

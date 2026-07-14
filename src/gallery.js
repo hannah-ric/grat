@@ -47,7 +47,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'in' },
         overall: { width: 914.4, depth: 304.8, height: 1828.8 },
         wood: { species: 'ash' },
-        structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true },
+        // 25 mm (1 in) shelves: 914 mm of loaded books over 19 mm stock sags
+        // once creep has its years — the starter ships the honest section.
+        structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 25, backPanel: true },
         finish: 'wipe_poly'
       }
     },

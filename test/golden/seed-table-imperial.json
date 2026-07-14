@@ -1,0 +1,441 @@
+{
+ "spec": {
+  "specVersion": 4,
+  "meta": {
+   "name": "Seed Table",
+   "template": "table",
+   "level": "beginner",
+   "units": "in"
+  },
+  "overall": {
+   "width": 1524,
+   "depth": 863.6,
+   "height": 736.6
+  },
+  "wood": {
+   "species": "red_oak",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 25,
+   "legThickness": 70,
+   "apronHeight": 90,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false
+  },
+  "joinery": {
+   "frame": "pocket_screws",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "wipe_poly",
+  "drawers": null,
+  "custom": null
+ },
+ "validation": {
+  "errors": [],
+  "advisories": [
+   "movement_red_oak"
+  ]
+ },
+ "cutList": [
+  {
+   "name": "Top",
+   "qty": 1,
+   "L": 1524,
+   "W": 863.6,
+   "T": 25,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Long apron",
+   "qty": 2,
+   "L": 1314,
+   "W": 90,
+   "T": 20,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Short apron",
+   "qty": 2,
+   "L": 653.6,
+   "W": 90,
+   "T": 20,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Leg",
+   "qty": 4,
+   "L": 711.6,
+   "W": 70,
+   "T": 70,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "rackScore": 42,
+  "tip": {
+   "angEmpty": 32.565,
+   "angLoaded": 29.319,
+   "ratio": 0.928
+  },
+  "checks": [
+   {
+    "id": "sag:apron:top_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 2.776,
+     "limitMM": 4.38,
+     "spanMM": 1314
+    }
+   },
+   {
+    "id": "str:apron:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:top_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 1.118,
+     "limitMM": 2.432,
+     "spanMM": 729.6
+    }
+   },
+   {
+    "id": "str:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "slender",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "joints",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:top_1",
+    "status": "advisory",
+    "data": {
+     "movementMM": 12.747,
+     "crossWidthMM": 863.6,
+     "context": "floated"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Red Oak 5/4x4 x 6 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 15.144
+   },
+   {
+    "label": "Red Oak 5/4x4 x 12 ft (1 x 3 1/2 in)",
+    "qty": 2,
+    "cost": 60.576
+   },
+   {
+    "label": "Red Oak 5/4x6 x 6 ft (1 x 5 1/2 in)",
+    "qty": 1,
+    "cost": 23.704
+   },
+   {
+    "label": "Red Oak 5/4x6 x 12 ft (1 x 5 1/2 in)",
+    "qty": 1,
+    "cost": 47.408
+   },
+   {
+    "label": "Red Oak 5/4x8 x 6 ft (1 x 7 1/4 in)",
+    "qty": 1,
+    "cost": 32.264
+   },
+   {
+    "label": "Red Oak 5/4x8 x 12 ft (1 x 7 1/4 in)",
+    "qty": 2,
+    "cost": 129.054
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3658,
+    "offcut": 58,
+    "cuts": [
+     {
+      "name": "Leg (layer 1/3)",
+      "len": 711.6,
+      "offset": 15
+     },
+     {
+      "name": "Leg (layer 2/3)",
+      "len": 711.6,
+      "offset": 729.6
+     },
+     {
+      "name": "Leg (layer 3/3)",
+      "len": 711.6,
+      "offset": 1444.2
+     },
+     {
+      "name": "Leg (layer 1/3)",
+      "len": 711.6,
+      "offset": 2158.8
+     },
+     {
+      "name": "Leg (layer 2/3)",
+      "len": 711.6,
+      "offset": 2873.4
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3658,
+    "offcut": 58,
+    "cuts": [
+     {
+      "name": "Leg (layer 3/3)",
+      "len": 711.6,
+      "offset": 15
+     },
+     {
+      "name": "Leg (layer 1/3)",
+      "len": 711.6,
+      "offset": 729.6
+     },
+     {
+      "name": "Leg (layer 2/3)",
+      "len": 711.6,
+      "offset": 1444.2
+     },
+     {
+      "name": "Leg (layer 3/3)",
+      "len": 711.6,
+      "offset": 2158.8
+     },
+     {
+      "name": "Leg (layer 1/3)",
+      "len": 711.6,
+      "offset": 2873.4
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 1829,
+    "offcut": 372.8,
+    "cuts": [
+     {
+      "name": "Leg (layer 2/3)",
+      "len": 711.6,
+      "offset": 15
+     },
+     {
+      "name": "Leg (layer 3/3)",
+      "len": 711.6,
+      "offset": 729.6
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x6",
+    "stockLen": 3658,
+    "offcut": 340.4,
+    "cuts": [
+     {
+      "name": "Long apron",
+      "len": 1314,
+      "offset": 15
+     },
+     {
+      "name": "Long apron",
+      "len": 1314,
+      "offset": 1332
+     },
+     {
+      "name": "Short apron",
+      "len": 653.6,
+      "offset": 2649
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x6",
+    "stockLen": 1829,
+    "offcut": 1145.4,
+    "cuts": [
+     {
+      "name": "Short apron",
+      "len": 653.6,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x8",
+    "stockLen": 3658,
+    "offcut": 577,
+    "cuts": [
+     {
+      "name": "Top (strip 1/5)",
+      "len": 1524,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 2/5)",
+      "len": 1524,
+      "offset": 1542
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x8",
+    "stockLen": 3658,
+    "offcut": 577,
+    "cuts": [
+     {
+      "name": "Top (strip 3/5)",
+      "len": 1524,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 4/5)",
+      "len": 1524,
+      "offset": 1542
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x8",
+    "stockLen": 1829,
+    "offcut": 275,
+    "cuts": [
+     {
+      "name": "Top (strip 5/5)",
+      "len": 1524,
+      "offset": 15
+     }
+    ]
+   }
+  ],
+  "sheets": [],
+  "totalCost": 308.15,
+  "wasteSolidPct": 34,
+  "wasteSheetPct": null
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x4 x 6 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "price": 15.14
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x4 x 12 ft (1 x 3 1/2 in)",
+    "qty": 2,
+    "price": 60.58
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x6 x 6 ft (1 x 5 1/2 in)",
+    "qty": 1,
+    "price": 23.7
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x6 x 12 ft (1 x 5 1/2 in)",
+    "qty": 1,
+    "price": 47.41
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x8 x 6 ft (1 x 7 1/4 in)",
+    "qty": 1,
+    "price": 32.26
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x8 x 12 ft (1 x 7 1/4 in)",
+    "qty": 2,
+    "price": 129.05
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 29.8 bd ft",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 34%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "1 1/4 in coarse pocket screw",
+    "qty": 16,
+    "price": 1.28
+   },
+   {
+    "kind": "fastener",
+    "label": "Figure-8 fasteners + #8 × 5/8 in",
+    "qty": 12,
+    "price": 9.61
+   },
+   {
+    "kind": "finish",
+    "label": "Wipe-on polyurethane",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 337.03
+ },
+ "steps": [
+  "s1",
+  "s2",
+  "s3",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

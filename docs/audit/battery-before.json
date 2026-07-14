@@ -1,0 +1,1076 @@
+{
+  "meta": {
+    "date": "2026-07-14T13:36:37.784Z"
+  },
+  "cases": [
+    {
+      "name": "representative: nightstand 20×16×24in walnut 2-drawer",
+      "template": "nightstand",
+      "overall": {
+        "width": 508,
+        "depth": 406.4,
+        "height": 609.6
+      },
+      "errors": [],
+      "advisories": [],
+      "parts": 26,
+      "checks": [
+        {
+          "id": "sag:top_1",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 14 7/8 in span"
+        },
+        {
+          "id": "str:top_1",
+          "status": "pass",
+          "value": "bending stress 0.1 MPa · margin 390.4×"
+        },
+        {
+          "id": "sag:shelf_1",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 16 1/16 in span"
+        },
+        {
+          "id": "str:shelf_1",
+          "status": "pass",
+          "value": "bending stress 0.1 MPa · margin 257.8×"
+        },
+        {
+          "id": "tip",
+          "status": "pass",
+          "value": "tipping angle 23.8° loaded · 26.3° empty · height/depth 1.7"
+        },
+        {
+          "id": "rack",
+          "status": "pass",
+          "value": "score 100 / 100"
+        },
+        {
+          "id": "slender",
+          "status": "pass",
+          "value": "worst L/t = 7.9 (braced)"
+        },
+        {
+          "id": "joints",
+          "status": "pass",
+          "value": "weakest: butt joint + screws at shelf–leg — 2 lb per joint vs 124 lb capacity"
+        },
+        {
+          "id": "move:top_1",
+          "status": "advisory",
+          "value": "0.18 in seasonal movement across 16 in"
+        },
+        {
+          "id": "move:shelf_1",
+          "status": "advisory",
+          "value": "0.15 in seasonal movement across 13 5/8 in"
+        }
+      ],
+      "fails": 0,
+      "antiTip": false,
+      "cutRows": [
+        "1× Top 508×406.4×20 ",
+        "1× Back apron 440×378×20 ",
+        "1× Lower shelf 408×346.4×19 ",
+        "2× Side apron 440×276.4×20 ",
+        "2× Drawer bottom 339×282×6 ",
+        "2× Drawer front 374×126×19 ",
+        "2× Drawer box front 329×115×12 ",
+        "4× Drawer side 300×115×12 ",
+        "2× Drawer box back 329×99×12 ",
+        "4× Leg 589.6×45×45 ",
+        "1× Top drawer rail 378×60×20 ",
+        "1× Divider rail 378×60×20 ",
+        "1× Bottom drawer rail 378×60×20 "
+      ],
+      "bomTotal": 480.67,
+      "stockCost": 408.67,
+      "waste": [
+        49,
+        87
+      ],
+      "drawer0": {
+        "box": {
+          "w": 353,
+          "h": 115,
+          "d": 300,
+          "t": 12
+        },
+        "slideLen": 300,
+        "front": {
+          "w": 374,
+          "h": 126,
+          "t": 19
+        }
+      }
+    },
+    {
+      "name": "representative: bookshelf 36×12×72in ash",
+      "template": "bookshelf",
+      "overall": {
+        "width": 914.4,
+        "depth": 304.8,
+        "height": 1828.8
+      },
+      "errors": [],
+      "advisories": [],
+      "parts": 9,
+      "checks": [
+        {
+          "id": "sag:top_1",
+          "status": "pass",
+          "value": "predicted sag 0.08 in over a 34 1/2 in span"
+        },
+        {
+          "id": "str:top_1",
+          "status": "pass",
+          "value": "bending stress 2.8 MPa · margin 9.1×"
+        },
+        {
+          "id": "sag:shelf_1",
+          "status": "pass",
+          "value": "predicted sag 0.08 in over a 34 1/2 in span"
+        },
+        {
+          "id": "str:shelf_1",
+          "status": "pass",
+          "value": "bending stress 3.0 MPa · margin 8.5×"
+        },
+        {
+          "id": "sag:shelf_2",
+          "status": "pass",
+          "value": "predicted sag 0.08 in over a 34 1/2 in span"
+        },
+        {
+          "id": "str:shelf_2",
+          "status": "pass",
+          "value": "bending stress 3.0 MPa · margin 8.5×"
+        },
+        {
+          "id": "sag:shelf_3",
+          "status": "pass",
+          "value": "predicted sag 0.08 in over a 34 1/2 in span"
+        },
+        {
+          "id": "str:shelf_3",
+          "status": "pass",
+          "value": "bending stress 3.0 MPa · margin 8.5×"
+        },
+        {
+          "id": "sag:shelf_4",
+          "status": "pass",
+          "value": "predicted sag 0.08 in over a 34 1/2 in span"
+        },
+        {
+          "id": "str:shelf_4",
+          "status": "pass",
+          "value": "bending stress 3.0 MPa · margin 8.5×"
+        },
+        {
+          "id": "tip",
+          "status": "advisory",
+          "value": "tipping angle 5.7° loaded · 7.9° empty · height/depth 6.0"
+        },
+        {
+          "id": "rack",
+          "status": "pass",
+          "value": "score 68 / 100"
+        },
+        {
+          "id": "joints",
+          "status": "pass",
+          "value": "weakest: butt joint + screws at top–side — 53 lb per joint vs 135 lb capacity"
+        },
+        {
+          "id": "move:side_1",
+          "status": "advisory",
+          "value": "0.13 in seasonal movement across 12 in"
+        },
+        {
+          "id": "move:top_1",
+          "status": "advisory",
+          "value": "0.13 in seasonal movement across 12 in"
+        },
+        {
+          "id": "move:bottom_1",
+          "status": "advisory",
+          "value": "0.13 in seasonal movement across 12 in"
+        }
+      ],
+      "fails": 0,
+      "antiTip": true,
+      "sag": [
+        "predicted sag 0.08 in over a 34 1/2 in span",
+        "predicted sag 0.08 in over a 34 1/2 in span",
+        "predicted sag 0.08 in over a 34 1/2 in span",
+        "predicted sag 0.08 in over a 34 1/2 in span",
+        "predicted sag 0.08 in over a 34 1/2 in span"
+      ],
+      "tip": {
+        "angEmpty": 7.911194011000696,
+        "angLoaded": 5.665740383374304,
+        "ratio": 6,
+        "loadKg": 48.202,
+        "massKg": 36.8704064256
+      }
+    },
+    {
+      "name": "representative: advanced cabinet w/ drawers (M&T rails!)",
+      "template": "cabinet",
+      "overall": {
+        "width": 762,
+        "depth": 457.2,
+        "height": 914.4
+      },
+      "errors": [],
+      "advisories": [],
+      "parts": 24,
+      "checks": [
+        {
+          "id": "sag:top_1",
+          "status": "pass",
+          "value": "predicted sag 0.01 in over a 30 in span"
+        },
+        {
+          "id": "str:top_1",
+          "status": "pass",
+          "value": "bending stress 0.8 MPa · margin 31.9×"
+        },
+        {
+          "id": "sag:shelf_1",
+          "status": "pass",
+          "value": "predicted sag 0.03 in over a 28 9/16 in span"
+        },
+        {
+          "id": "str:shelf_1",
+          "status": "pass",
+          "value": "bending stress 1.4 MPa · margin 19.0×"
+        },
+        {
+          "id": "tip",
+          "status": "pass",
+          "value": "tipping angle 16.9° loaded · 21.8° empty · height/depth 2.0"
+        },
+        {
+          "id": "rack",
+          "status": "pass",
+          "value": "score 100 / 100"
+        },
+        {
+          "id": "joints",
+          "status": "pass",
+          "value": "weakest: dado / housing at top–side — 46 lb per joint vs 367 lb capacity"
+        },
+        {
+          "id": "move:side_1",
+          "status": "advisory",
+          "value": "0.26 in seasonal movement across 18 in"
+        },
+        {
+          "id": "move:bottom_1",
+          "status": "advisory",
+          "value": "0.26 in seasonal movement across 18 in"
+        },
+        {
+          "id": "move:top_1",
+          "status": "advisory",
+          "value": "0.26 in seasonal movement across 18 in"
+        },
+        {
+          "id": "move:shelf_1",
+          "status": "advisory",
+          "value": "0.25 in seasonal movement across 16 13/16 in"
+        }
+      ],
+      "fails": 0,
+      "antiTip": false,
+      "railRows": [
+        "1× Top drawer rail L=786 (includes 2 3/8 in for mortise & tenon) — sideThickness=18",
+        "1× Divider rail L=786 (includes 2 3/8 in for mortise & tenon) — sideThickness=18",
+        "1× Bottom drawer rail L=786 (includes 2 3/8 in for mortise & tenon) — sideThickness=18"
+      ],
+      "sideT": 18
+    },
+    {
+      "name": "boundary: 3000mm-wide single-span shelf ask (clamps?)",
+      "template": "bookshelf",
+      "overall": {
+        "width": 2400,
+        "depth": 300,
+        "height": 900
+      },
+      "errors": [],
+      "advisories": [],
+      "parts": 6,
+      "checks": [
+        {
+          "id": "sag:top_1",
+          "status": "fail",
+          "value": "predicted sag 5.93 in over a 93 1/16 in span"
+        },
+        {
+          "id": "str:top_1",
+          "status": "fail",
+          "value": "bending stress 20.9 MPa · margin 0.7×"
+        },
+        {
+          "id": "sag:shelf_1",
+          "status": "fail",
+          "value": "predicted sag 6.35 in over a 93 1/16 in span"
+        },
+        {
+          "id": "str:shelf_1",
+          "status": "fail",
+          "value": "bending stress 22.4 MPa · margin 0.7×"
+        },
+        {
+          "id": "tip",
+          "status": "advisory",
+          "value": "tipping angle 9.8° loaded · 12.6° empty · height/depth 3.0"
+        },
+        {
+          "id": "rack",
+          "status": "advisory",
+          "value": "score 27 / 100"
+        },
+        {
+          "id": "joints",
+          "status": "fail",
+          "value": "weakest: butt joint + screws at top–side — 143 lb per joint vs 79 lb capacity"
+        },
+        {
+          "id": "move:side_1",
+          "status": "pass",
+          "value": "0.1 in seasonal movement across 11 13/16 in"
+        },
+        {
+          "id": "move:top_1",
+          "status": "pass",
+          "value": "0.1 in seasonal movement across 11 13/16 in"
+        },
+        {
+          "id": "move:bottom_1",
+          "status": "pass",
+          "value": "0.1 in seasonal movement across 11 13/16 in"
+        }
+      ],
+      "fails": 5,
+      "antiTip": true,
+      "clampedWidth": 2400,
+      "shelfSag": {
+        "id": "sag:shelf_1",
+        "title": "Sag — Shelf 1",
+        "status": "fail",
+        "value": "predicted sag 6.35 in over a 93 1/16 in span",
+        "threshold": "≤ 0.31 in (0.04 in/ft)",
+        "explain": "Eastern White Pine at 3/4 in thick under the “Books” preset (37 lb/ft). Stiffness comes from MOE (8.5 GPa) and thickness cubed.",
+        "fixes": [
+          {
+            "id": "thick-shelf",
+            "label": "Thicken to 13/16 in",
+            "patch": {
+              "structure": {
+                "shelfThickness": 20
+              }
+            }
+          },
+          {
+            "id": "maple",
+            "label": "Switch to hard maple",
+            "patch": {
+              "wood": {
+                "species": "hard_maple"
+              }
+            }
+          }
+        ],
+        "data": {
+          "sagMM": 161.28866670009117,
+          "limitMM": 7.88,
+          "spanMM": 2364
+        },
+        "prov": {
+          "rule": "sag = Σ load cases (5wL⁴/384EI and friends) with E = 8.5 GPa, I = bh³/12 = 160,043 mm⁴, L = 2364 mm"
+        }
+      }
+    },
+    {
+      "name": "boundary: 150mm-tall table",
+      "template": "table",
+      "overall": {
+        "width": 600,
+        "depth": 400,
+        "height": 150
+      },
+      "errors": [],
+      "advisories": [
+        "ergo_dining_height"
+      ],
+      "parts": 9,
+      "checks": [
+        {
+          "id": "sag:top_1",
+          "status": "pass",
+          "value": "predicted sag 0.01 in over a 15 3/8 in span"
+        },
+        {
+          "id": "str:top_1",
+          "status": "pass",
+          "value": "bending stress 2.9 MPa · margin 8.5×"
+        },
+        {
+          "id": "tip",
+          "status": "pass",
+          "value": "tipping angle 50.4° loaded · 55.8° empty · height/depth 0.5"
+        },
+        {
+          "id": "rack",
+          "status": "pass",
+          "value": "score 42 / 100"
+        },
+        {
+          "id": "slender",
+          "status": "pass",
+          "value": "worst L/t = 1.8"
+        },
+        {
+          "id": "joints",
+          "status": "pass",
+          "value": "weakest: pocket screws at apron–leg — 45 lb per joint vs 198 lb capacity"
+        },
+        {
+          "id": "move:top_1",
+          "status": "advisory",
+          "value": "0.23 in seasonal movement across 15 3/4 in"
+        }
+      ],
+      "fails": 0,
+      "antiTip": false,
+      "legH": 125,
+      "apronH": 65
+    },
+    {
+      "name": "boundary: 4-drawer bank at 600mm height (auto-reduce?)",
+      "template": "nightstand",
+      "overall": {
+        "width": 500,
+        "depth": 400,
+        "height": 600
+      },
+      "errors": [],
+      "advisories": [],
+      "parts": 25,
+      "checks": [
+        {
+          "id": "sag:top_1",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 14 9/16 in span"
+        },
+        {
+          "id": "str:top_1",
+          "status": "pass",
+          "value": "bending stress 0.1 MPa · margin 393.2×"
+        },
+        {
+          "id": "tip",
+          "status": "pass",
+          "value": "tipping angle 22.9° loaded · 25° empty · height/depth 1.7"
+        },
+        {
+          "id": "rack",
+          "status": "pass",
+          "value": "score 100 / 100"
+        },
+        {
+          "id": "slender",
+          "status": "pass",
+          "value": "worst L/t = 7.7 (braced)"
+        },
+        {
+          "id": "joints",
+          "status": "pass",
+          "value": "weakest: pocket screws at apron–leg — 1 lb per joint vs 198 lb capacity"
+        },
+        {
+          "id": "move:top_1",
+          "status": "advisory",
+          "value": "0.23 in seasonal movement across 15 3/4 in"
+        }
+      ],
+      "fails": 0,
+      "antiTip": false,
+      "finalCount": 2,
+      "openings": [
+        130,
+        130
+      ]
+    },
+    {
+      "name": "boundary: 40-part novel composition (max)",
+      "template": "custom",
+      "overall": {
+        "width": 705,
+        "depth": 405,
+        "height": 1660
+      },
+      "errors": [
+        "custom_split: The composition splits into disconnected sub-assemblies — every part must reach every other part through declared joints.",
+        "geom_overlap:p1|p6: “Post” (p1) and “Shelf slab” (p6) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p8: “Post” (p1) and “Shelf slab” (p8) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p10: “Post” (p1) and “Shelf slab” (p10) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p12: “Post” (p1) and “Shelf slab” (p12) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p14: “Post” (p1) and “Shelf slab” (p14) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p16: “Post” (p1) and “Shelf slab” (p16) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p18: “Post” (p1) and “Shelf slab” (p18) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p20: “Post” (p1) and “Shelf slab” (p20) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p22: “Post” (p1) and “Shelf slab” (p22) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p24: “Post” (p1) and “Shelf slab” (p24) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p1|p26: “Post” (p1) and “Brace 26” (p26) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p1|p30: “Post” (p1) and “Brace 30” (p30) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p1|p34: “Post” (p1) and “Brace 34” (p34) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p1|p38: “Post” (p1) and “Brace 38” (p38) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p2|p5: “Post” (p2) and “Shelf slab” (p5) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p2|p7: “Post” (p2) and “Shelf slab” (p7) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p2|p9: “Post” (p2) and “Shelf slab” (p9) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p11|p2: “Post” (p2) and “Shelf slab” (p11) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p13|p2: “Post” (p2) and “Shelf slab” (p13) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p15|p2: “Post” (p2) and “Shelf slab” (p15) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p17|p2: “Post” (p2) and “Shelf slab” (p17) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p19|p2: “Post” (p2) and “Shelf slab” (p19) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p2|p21: “Post” (p2) and “Shelf slab” (p21) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p2|p23: “Post” (p2) and “Shelf slab” (p23) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p2|p25: “Post” (p2) and “Shelf slab” (p25) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p2|p26: “Post” (p2) and “Brace 26” (p26) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p2|p28: “Post” (p2) and “Brace 28” (p28) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_gap:p2|p29: “Post” (p2) and “Brace 29” (p29) are joined on paper but never touch — that joint can’t be built.",
+        "geom_overlap:p2|p30: “Post” (p2) and “Brace 30” (p30) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p2|p32: “Post” (p2) and “Brace 32” (p32) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_gap:p2|p33: “Post” (p2) and “Brace 33” (p33) are joined on paper but never touch — that joint can’t be built.",
+        "geom_overlap:p2|p34: “Post” (p2) and “Brace 34” (p34) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p2|p36: “Post” (p2) and “Brace 36” (p36) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_gap:p2|p37: “Post” (p2) and “Brace 37” (p37) are joined on paper but never touch — that joint can’t be built.",
+        "geom_overlap:p2|p38: “Post” (p2) and “Brace 38” (p38) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p2|p40: “Post” (p2) and “Brace 40” (p40) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p3|p5: “Post” (p3) and “Shelf slab” (p5) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p3|p7: “Post” (p3) and “Shelf slab” (p7) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p3|p9: “Post” (p3) and “Shelf slab” (p9) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p11|p3: “Post” (p3) and “Shelf slab” (p11) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p13|p3: “Post” (p3) and “Shelf slab” (p13) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p15|p3: “Post” (p3) and “Shelf slab” (p15) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p17|p3: “Post” (p3) and “Shelf slab” (p17) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p19|p3: “Post” (p3) and “Shelf slab” (p19) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p21|p3: “Post” (p3) and “Shelf slab” (p21) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p23|p3: “Post” (p3) and “Shelf slab” (p23) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p25|p3: “Post” (p3) and “Shelf slab” (p25) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_gap:p26|p3: “Post” (p3) and “Brace 26” (p26) are joined on paper but never touch — that joint can’t be built.",
+        "geom_overlap:p27|p3: “Post” (p3) and “Brace 27” (p27) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p29|p3: “Post” (p3) and “Brace 29” (p29) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_gap:p3|p30: “Post” (p3) and “Brace 30” (p30) are joined on paper but never touch — that joint can’t be built.",
+        "geom_overlap:p3|p31: “Post” (p3) and “Brace 31” (p31) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p3|p33: “Post” (p3) and “Brace 33” (p33) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_gap:p3|p34: “Post” (p3) and “Brace 34” (p34) are joined on paper but never touch — that joint can’t be built.",
+        "geom_overlap:p3|p35: “Post” (p3) and “Brace 35” (p35) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p3|p37: “Post” (p3) and “Brace 37” (p37) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_gap:p3|p38: “Post” (p3) and “Brace 38” (p38) are joined on paper but never touch — that joint can’t be built.",
+        "geom_overlap:p3|p39: “Post” (p3) and “Brace 39” (p39) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p4|p6: “Post” (p4) and “Shelf slab” (p6) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p4|p8: “Post” (p4) and “Shelf slab” (p8) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p10|p4: “Post” (p4) and “Shelf slab” (p10) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p12|p4: “Post” (p4) and “Shelf slab” (p12) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p14|p4: “Post” (p4) and “Shelf slab” (p14) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p16|p4: “Post” (p4) and “Shelf slab” (p16) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p18|p4: “Post” (p4) and “Shelf slab” (p18) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p20|p4: “Post” (p4) and “Shelf slab” (p20) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p22|p4: “Post” (p4) and “Shelf slab” (p22) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p24|p4: “Post” (p4) and “Shelf slab” (p24) occupy the same space (1.77 in deep) with no joint between them.",
+        "geom_overlap:p29|p4: “Post” (p4) and “Brace 29” (p29) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p33|p4: “Post” (p4) and “Brace 33” (p33) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p37|p4: “Post” (p4) and “Brace 37” (p37) occupy the same space (0.89 in deep) with no joint between them.",
+        "geom_overlap:p27|p6: “Shelf slab” (p6) and “Brace 27” (p27) occupy the same space (0.87 in deep) with no joint between them.",
+        "geom_overlap:p28|p7: “Shelf slab” (p7) and “Brace 28” (p28) occupy the same space (0.28 in deep) with no joint between them.",
+        "geom_overlap:p29|p9: “Shelf slab” (p9) and “Brace 29” (p29) occupy the same space (0.67 in deep) with no joint between them.",
+        "geom_overlap:p10|p30: “Shelf slab” (p10) and “Brace 30” (p30) occupy the same space (0.47 in deep) with no joint between them.",
+        "geom_overlap:p12|p31: “Shelf slab” (p12) and “Brace 31” (p31) occupy the same space (0.47 in deep) with no joint between them.",
+        "geom_overlap:p13|p32: “Shelf slab” (p13) and “Brace 32” (p32) occupy the same space (0.67 in deep) with no joint between them.",
+        "geom_overlap:p15|p33: “Shelf slab” (p15) and “Brace 33” (p33) occupy the same space (0.28 in deep) with no joint between them.",
+        "geom_overlap:p16|p34: “Shelf slab” (p16) and “Brace 34” (p34) occupy the same space (0.87 in deep) with no joint between them.",
+        "geom_overlap:p19|p36: “Shelf slab” (p19) and “Brace 36” (p36) occupy the same space (1.06 in deep) with no joint between them.",
+        "geom_overlap:p22|p38: “Shelf slab” (p22) and “Brace 38” (p38) occupy the same space (1.26 in deep) with no joint between them.",
+        "geom_overlap:p25|p40: “Shelf slab” (p25) and “Brace 40” (p40) occupy the same space (1.06 in deep) with no joint between them."
+      ],
+      "advisories": [],
+      "parts": 40,
+      "checks": [
+        {
+          "id": "conn",
+          "status": "fail",
+          "value": "19 disconnected part(s)"
+        },
+        {
+          "id": "stand",
+          "status": "pass",
+          "value": "COG margin 7.94 in"
+        },
+        {
+          "id": "collide",
+          "status": "fail",
+          "value": "75 accidental intersection(s)"
+        },
+        {
+          "id": "sag:p5",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p5",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p6",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p6",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p7",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p7",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p8",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p8",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p9",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p9",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p10",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p10",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p11",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p11",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p12",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p12",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p13",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p13",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p14",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p14",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p15",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p15",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p16",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p16",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p17",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p17",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p18",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p18",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p19",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p19",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p20",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p20",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p21",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p21",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p22",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p22",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p23",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p23",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p24",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p24",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "sag:p25",
+          "status": "pass",
+          "value": "predicted sag 0 in over a 26 in span"
+        },
+        {
+          "id": "str:p25",
+          "status": "pass",
+          "value": "bending stress 0.2 MPa · margin 117.5×"
+        },
+        {
+          "id": "tip",
+          "status": "advisory",
+          "value": "tipping angle 12.8° loaded · 13.6° empty · height/depth 4.1"
+        },
+        {
+          "id": "rack",
+          "status": "pass",
+          "value": "score 100 / 100"
+        },
+        {
+          "id": "slender",
+          "status": "advisory",
+          "value": "worst L/t = 22.1 (braced)"
+        },
+        {
+          "id": "joints",
+          "status": "pass",
+          "value": "weakest: dado / housing at p5 — 7 lb per joint vs 324 lb capacity"
+        },
+        {
+          "id": "move:p5",
+          "status": "advisory",
+          "value": "0.17 in seasonal movement across 15 15/16 in"
+        }
+      ],
+      "fails": 2,
+      "antiTip": true,
+      "pipelineMs": 17,
+      "boards": 26
+    },
+    {
+      "name": "contradictory: delicate pine bench + heavy load",
+      "template": "table",
+      "overall": {
+        "width": 1500,
+        "depth": 600,
+        "height": 900
+      },
+      "errors": [],
+      "advisories": [
+        "ergo_dining_height"
+      ],
+      "parts": 9,
+      "checks": [
+        {
+          "id": "sag:top_1",
+          "status": "fail",
+          "value": "predicted sag 0.5 in over a 52 3/4 in span"
+        },
+        {
+          "id": "str:top_1",
+          "status": "pass",
+          "value": "bending stress 5.5 MPa · margin 2.7×"
+        },
+        {
+          "id": "duty:top_1",
+          "status": "advisory",
+          "value": "Eastern White Pine Janka 380 lbf"
+        },
+        {
+          "id": "tip",
+          "status": "pass",
+          "value": "tipping angle 16.7° loaded · 18.9° empty · height/depth 1.7"
+        },
+        {
+          "id": "rack",
+          "status": "advisory",
+          "value": "score 24 / 100"
+        },
+        {
+          "id": "slender",
+          "status": "pass",
+          "value": "worst L/t = 19.6"
+        },
+        {
+          "id": "joints",
+          "status": "pass",
+          "value": "weakest: pocket screws at apron–leg — 33 lb per joint vs 110 lb capacity"
+        },
+        {
+          "id": "move:top_1",
+          "status": "advisory",
+          "value": "0.2 in seasonal movement across 23 5/8 in"
+        }
+      ],
+      "fails": 1,
+      "antiTip": false,
+      "strength": {
+        "id": "str:top_1",
+        "title": "Strength — Top",
+        "status": "pass",
+        "value": "bending stress 5.5 MPa · margin 2.7×",
+        "threshold": "≤ 14.8 MPa (MOR 59 MPa ÷ safety factor 4)",
+        "explain": "Comfortably below the breaking stress of Eastern White Pine with the standard ×4 wood safety factor.",
+        "fixes": []
+      },
+      "sagTop": {
+        "id": "sag:top_1",
+        "title": "Sag — Top",
+        "status": "fail",
+        "value": "predicted sag 0.5 in over a 52 3/4 in span",
+        "threshold": "≤ 0.18 in (0.04 in/ft)",
+        "explain": "Eastern White Pine at 3/4 in thick under the “Heavy storage” preset (60 lb/ft). Stiffness comes from MOE (8.5 GPa) and thickness cubed.",
+        "fixes": [
+          {
+            "id": "thick-top",
+            "label": "Thicken top to 13/16 in",
+            "patch": {
+              "structure": {
+                "topThickness": 20
+              }
+            }
+          },
+          {
+            "id": "maple",
+            "label": "Switch to hard maple",
+            "patch": {
+              "wood": {
+                "species": "hard_maple"
+              }
+            }
+          }
+        ],
+        "data": {
+          "sagMM": 12.715099333421955,
+          "limitMM": 4.466666666666667,
+          "spanMM": 1340
+        },
+        "prov": {
+          "rule": "sag = Σ load cases (5wL⁴/384EI and friends) with E = 8.5 GPa, I = bh³/12 = 342,950 mm⁴, L = 1340 mm"
+        }
+      },
+      "joints": {
+        "id": "joints",
+        "title": "Joint adequacy",
+        "status": "pass",
+        "value": "weakest: pocket screws at apron–leg — 33 lb per joint vs 110 lb capacity",
+        "threshold": "≥ 1.5× capacity margin (SG-scaled joint ratings)",
+        "explain": "Every joint carries its share of the load path with room to spare.",
+        "fixes": []
+      }
+    },
+    {
+      "name": "mixed units text",
+      "normalized": "about four feet wide, 762mm tall, 550mm deep",
+      "replyKind": "diff",
+      "patch": {
+        "overall": {
+          "height": 762,
+          "depth": 550
+        }
+      }
+    },
+    {
+      "name": "adversarial",
+      "smuggledJoints": {
+        "frame": "pocket_screws",
+        "case": "butt_screws",
+        "box": "pocket_screws"
+      },
+      "absurdDims": {
+        "width": 2400,
+        "depth": 406.4,
+        "height": 120
+      },
+      "bombParts": 40
+    },
+    {
+      "name": "share round trip",
+      "identical": true,
+      "codeLen": 238
+    },
+    {
+      "name": "continuation",
+      "calls": 3,
+      "okParts": true
+    },
+    {
+      "name": "photo path: simulated 4-drawer dresser (1200mm tall, drawers)",
+      "template": "cabinet",
+      "overall": {
+        "width": 900,
+        "depth": 480,
+        "height": 1200
+      },
+      "errors": [],
+      "advisories": [
+        "ergo_counter_height",
+        "op_w_0",
+        "pull_height"
+      ],
+      "parts": 39,
+      "checks": [
+        {
+          "id": "sag:top_1",
+          "status": "pass",
+          "value": "predicted sag 0.02 in over a 35 7/16 in span"
+        },
+        {
+          "id": "str:top_1",
+          "status": "pass",
+          "value": "bending stress 1.1 MPa · margin 24.9×"
+        },
+        {
+          "id": "tip",
+          "status": "pass",
+          "value": "tipping angle 13.2° loaded · 16.1° empty · height/depth 2.5"
+        },
+        {
+          "id": "rack",
+          "status": "pass",
+          "value": "score 100 / 100"
+        },
+        {
+          "id": "joints",
+          "status": "pass",
+          "value": "weakest: butt joint + screws at top–side — 55 lb per joint vs 142 lb capacity"
+        },
+        {
+          "id": "move:side_1",
+          "status": "advisory",
+          "value": "0.27 in seasonal movement across 18 7/8 in"
+        },
+        {
+          "id": "move:bottom_1",
+          "status": "advisory",
+          "value": "0.27 in seasonal movement across 18 7/8 in"
+        },
+        {
+          "id": "move:top_1",
+          "status": "advisory",
+          "value": "0.27 in seasonal movement across 18 7/8 in"
+        }
+      ],
+      "fails": 0,
+      "antiTip": false,
+      "tip": {
+        "angEmpty": 16.114857413167496,
+        "angLoaded": 13.166626807003555,
+        "ratio": 2.5,
+        "loadKg": 49.5,
+        "massKg": 47.67597319199998
+      },
+      "drawerCount": 4
+    }
+  ]
+}

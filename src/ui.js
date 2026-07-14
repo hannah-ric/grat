@@ -66,7 +66,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.cut = Plans.cutList(r.spec, r.model);
     state.stockPlan = Packing.planStock(r.spec, r.model, state.cut, { prices: state.prices, stockMode: state.prefs4.stockMode });
     state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan });
-    state.steps = Plans.assembly(r.spec, r.model, state.integrity);
+    state.steps = Plans.assembly(r.spec, r.model, state.integrity, { stockPlan: state.stockPlan });
     // The checklist just changed shape: progress keys from an older stock
     // layout would otherwise inflate the build percentage forever.
     if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
@@ -522,7 +522,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       root.append(card);
     }
-    root.append(el('p', 'integrity-disclaimer', 'Estimates for hobby woodworking based on Wood Handbook material properties. Not certified structural engineering.'));
+    // Design-value basis disclosed in full (audit F-S3-7): what the numbers
+    // rest on, what the safety factor absorbs, and the clear-stock rule.
+    root.append(el('p', 'integrity-disclaimer', esc(K.DESIGN_BASIS)));
   }
 
   /* ---------------- shop reference ---------------- */

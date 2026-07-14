@@ -30,7 +30,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   const IN = 25.4, FT = 304.8;
   const KG_LB = 2.2046226218, KGM_LBFT = KG_LB / 3.280839895;
-  const M3_PER_BDFT = 0.002359737;
+  // Derived from the single shared board-foot constant (knowledge loads first).
+  const M3_PER_BDFT = BB.K.BF_MM3 * 1e-9;
 
   const DEFAULTS = { system: 'imperial', precision: 16, dual: false };
   const prefs = { ...DEFAULTS };
