@@ -442,6 +442,178 @@ section('knowledge bases');
   ok(K.FINISHES.every(f => f.coats && f.recoatHrs !== undefined && f.cureDays), 'finishes carry coats + dry times');
 }
 
+/* ---------------- geometric buildability audit ----------------
+ * The rogue-board net: no design — template, custom, import, or photo —
+ * may present geometry that can't be built. These invariants are the hard
+ * gate; the structural engine only reports margins on what passes them. */
+section('geometric buildability audit');
+{
+  // The reported field failure: a cabinet-like piece with a stray diagonal
+  // board poking through the floor. Grounding re-levels on the rogue tip,
+  // the real case ends up hovering, and the footprint cannot stand — the
+  // audit must block it instead of presenting it.
+  const rogue = pipeline({
+    specVersion: 4,
+    meta: { name: 'Rogue Cabinet', template: 'custom', level: 'beginner' },
+    custom: {
+      parts: [
+        { id: 's1', role: 'side_panel', primitive: 'panel', dim: { l: 450, w: 900, t: 18 }, pos: { x: -220, y: 450, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+        { id: 's2', role: 'side_panel', primitive: 'panel', dim: { l: 450, w: 900, t: 18 }, pos: { x: 220, y: 450, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+        { id: 'top', role: 'top_slab', primitive: 'slab', dim: { l: 460, w: 450, t: 18 }, pos: { x: 0, y: 909, z: 0 }, rot: null, grain: 'length', stock: 'sheet', loadBearing: false, surface: 'worktop' },
+        { id: 'bot', role: 'bottom_slab', primitive: 'slab', dim: { l: 422, w: 450, t: 18 }, pos: { x: 0, y: 91, z: 0 }, rot: null, grain: 'length', stock: 'sheet', loadBearing: false, surface: 'shelf' },
+        { id: 'stray', role: 'stray_board', primitive: 'rail', dim: { l: 700, w: 60, t: 20 }, pos: { x: 140, y: 60, z: 220 }, rot: { x: 0, y: 20, z: 40 }, grain: 'length', stock: 'solid', loadBearing: false, surface: 'none' }
+      ],
+      connections: [
+        { a: 's1', b: 'top', joint: 'butt_screws' }, { a: 's2', b: 'top', joint: 'butt_screws' },
+        { a: 's1', b: 'bot', joint: 'butt_screws' }, { a: 's2', b: 'bot', joint: 'butt_screws' },
+        { a: 'stray', b: 'bot', joint: 'butt_screws' }
+      ]
+    }
+  });
+  ok(rogue.report.errors.length > 0, 'rogue diagonal board is blocked, never presented');
+  ok(rogue.report.errors.some(e => /^geom_/.test(e.id)), 'the block comes from the geometric audit');
+
+  // Same case minus the stray board must sail through — the audit gates
+  // rogue geometry, not honest casework.
+  const cleanCustom = pipeline({
+    specVersion: 4,
+    meta: { name: 'Clean Case', template: 'custom', level: 'beginner' },
+    custom: {
+      parts: [
+        { id: 's1', role: 'side_panel', primitive: 'panel', dim: { l: 450, w: 900, t: 18 }, pos: { x: -220, y: 450, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+        { id: 's2', role: 'side_panel', primitive: 'panel', dim: { l: 450, w: 900, t: 18 }, pos: { x: 220, y: 450, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+        { id: 'top', role: 'top_slab', primitive: 'slab', dim: { l: 460, w: 450, t: 18 }, pos: { x: 0, y: 909, z: 0 }, rot: null, grain: 'length', stock: 'sheet', loadBearing: false, surface: 'worktop' },
+        { id: 'bot', role: 'bottom_slab', primitive: 'slab', dim: { l: 422, w: 450, t: 18 }, pos: { x: 0, y: 91, z: 0 }, rot: null, grain: 'length', stock: 'sheet', loadBearing: false, surface: 'shelf' }
+      ],
+      connections: [
+        { a: 's1', b: 'top', joint: 'butt_screws' }, { a: 's2', b: 'top', joint: 'butt_screws' },
+        { a: 's1', b: 'bot', joint: 'butt_screws' }, { a: 's2', b: 'bot', joint: 'butt_screws' }
+      ]
+    }
+  });
+  eq(cleanCustom.report.errors.length, 0, 'the same case without the stray board validates clean');
+
+  // A "connected" part that never touches its partner is a rogue board too.
+  const gapped = Spec.clone(cleanCustom.spec);
+  gapped.custom.parts.push({ id: 'p9', role: 'floating_rail', primitive: 'rail', dim: { l: 300, w: 60, t: 20 }, pos: { x: 0, y: 1400, z: 900 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'none' });
+  gapped.custom.connections.push({ a: 'p9', b: gapped.custom.parts[2].id, joint: 'butt_screws' });
+  const gappedR = pipeline(gapped);
+  ok(gappedR.report.errors.some(e => e.id.startsWith('geom_gap:')), 'joined-on-paper-but-never-touching is a blocking error');
+
+  // Two internally-connected clusters are two pieces of furniture, not one.
+  const splitR = pipeline({
+    specVersion: 4,
+    meta: { name: 'Two Stools', template: 'custom', level: 'beginner' },
+    custom: {
+      parts: [
+        { id: 'a_top', role: 'seat', primitive: 'slab', dim: { l: 350, w: 300, t: 38 }, pos: { x: -400, y: 419, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' },
+        { id: 'a_leg', role: 'leg_panel', primitive: 'panel', dim: { l: 300, w: 400, t: 38 }, pos: { x: -400, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'b_top', role: 'seat', primitive: 'slab', dim: { l: 350, w: 300, t: 38 }, pos: { x: 400, y: 419, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' },
+        { id: 'b_leg', role: 'leg_panel', primitive: 'panel', dim: { l: 300, w: 400, t: 38 }, pos: { x: 400, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: [
+        { a: 'a_leg', b: 'a_top', joint: 'butt_screws' },
+        { a: 'b_leg', b: 'b_top', joint: 'butt_screws' }
+      ]
+    }
+  });
+  ok(splitR.report.errors.some(e => e.id === 'custom_split'), 'disconnected sub-assemblies are blocked');
+
+  // Near-square rotations are sloppy output, not intent: snap them.
+  const snapped = Spec.correctSpec({
+    specVersion: 4,
+    meta: { name: 'Snap', template: 'custom', level: 'beginner' },
+    custom: {
+      parts: [
+        { id: 'a', role: 'seat', primitive: 'slab', dim: { l: 900, w: 400, t: 19 }, pos: { x: 0, y: 400, z: 0 }, rot: { x: 1.5, y: 88, z: -359 }, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' },
+        { id: 'b', role: 'brace', primitive: 'rail', dim: { l: 600, w: 60, t: 20 }, pos: { x: 0, y: 200, z: 0 }, rot: { x: 30, y: 0, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: [{ a: 'a', b: 'b', joint: 'butt_screws' }]
+    }
+  });
+  eq(snapped.custom.parts[0].rot, { x: 0, y: 90, z: 0 }, 'rotations within 2.5° of square snap to square');
+  eq(snapped.custom.parts[1].rot.x, 30, 'deliberate angles survive the snap');
+  eq(Spec.correctSpec(snapped), snapped, 'rotation snapping is idempotent');
+
+  // Cabinet construction: the case stands on its sides, never on a lone
+  // 19 mm toe board, and every touching panel is jointed.
+  const cab = pipeline({
+    meta: { name: 'TK', template: 'cabinet', level: 'intermediate' },
+    overall: { width: 800, depth: 450, height: 900 },
+    structure: { shelfCount: 1, toeKick: true, backPanel: true },
+    drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }
+  });
+  eq(cab.report.errors.length, 0, 'toe-kick cabinet validates clean');
+  const side = cab.model.parts.find(p => p.id === 'side_1');
+  ok(Math.abs(side.pos.y - side.size.h / 2) < 0.11, 'cabinet sides reach the floor');
+  eq(side.size.h, 900 - cab.spec.structure.topThickness, 'side height runs floor to underside of top');
+  const jointPairs = new Set(cab.model.joints.map(j => [j.a, j.b].sort().join('|')));
+  for (const want of ['plinth_1|side_1', 'plinth_1|side_2', 'back_1|side_1', 'back_1|side_2', 'back_1|bottom_1', 'side_2|top_1']) {
+    ok(jointPairs.has(want), `cabinet joint graph includes ${want}`);
+  }
+
+  // Nightstand rails join the FRONT legs they actually touch.
+  const ns = pipeline({ meta: { name: 'NS', template: 'nightstand', level: 'beginner' }, structure: { shelfCount: 1 } });
+  eq(ns.report.errors.length, 0, 'nightstand validates clean');
+  const railJoints = ns.model.joints.filter(j => j.a.startsWith('rail_') || j.b.startsWith('rail_'));
+  ok(railJoints.length > 0 && railJoints.every(j => ['leg_3', 'leg_4'].includes(j.a) || ['leg_3', 'leg_4'].includes(j.b)), 'drawer rails joint into the front legs');
+  const shelfJoints = ns.model.joints.filter(j => j.a === 'shelf_1');
+  eq(shelfJoints.length, 4, 'notched nightstand shelf is jointed to all four legs');
+
+  // Rabbeted backs and notched shelves already carry their capture in the
+  // geometric size — no cut-length allowance on top.
+  const bs = pipeline({ meta: { name: 'BS', template: 'bookshelf', level: 'intermediate' }, structure: { shelfCount: 2, backPanel: true }, joinery: { case: 'dado' } });
+  eq(bs.report.errors.length, 0, 'bookshelf validates clean');
+  const backRow = Plans.cutList(bs.spec, bs.model).find(r => r.role === 'back');
+  eq(backRow.L, bs.spec.overall.height - 12, 'back panel cut length carries no rabbet allowance');
+  const shelfRow = Plans.cutList(bs.spec, bs.model).find(r => r.role === 'shelf');
+  eq(shelfRow.L, (bs.spec.overall.width - 2 * bs.spec.structure.sideThickness) + 12, 'dado-housed shelf still gets its 6 mm per end');
+
+  // Too-shallow interiors refuse drawers honestly instead of punching the
+  // box through the back apron.
+  const shallow = pipeline({
+    meta: { name: 'Shallow', template: 'nightstand', level: 'intermediate' },
+    overall: { width: 500, depth: 220, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  ok(shallow.report.errors.some(e => e.id.startsWith('dr_slide') || e.id.startsWith('dr_depth')), 'shallow interior blocks slides with a clear error');
+  ok(!shallow.report.errors.some(e => e.id.startsWith('geom_overlap')), 'the drawer box never punches through the back apron');
+
+  // Shelf count auto-reduces before shelves could ever overlap.
+  const squeezed = pipeline({ meta: { name: 'Sq', template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 400 }, structure: { shelfCount: 8, shelfThickness: 19 } });
+  ok(squeezed.spec.structure.shelfCount < 8, `shelf count auto-reduced (${squeezed.spec.structure.shelfCount})`);
+  eq(squeezed.report.errors.length, 0, 'squeezed bookshelf still validates clean');
+
+  // The invariant sweep: every reachable template configuration is free of
+  // rogue geometry. (Degenerate sizes may be BLOCKED — that's the gate doing
+  // its job — but overlap/float/envelope/gap errors mean the template math
+  // itself is wrong.)
+  let swept = 0, roguecfg = 0, firstBad = null;
+  for (const template of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet']) {
+    for (const overall of [
+      { width: 250, depth: 200, height: 120 }, { width: 500, depth: 380, height: 400 },
+      { width: 900, depth: 600, height: 750 }, { width: 1500, depth: 450, height: 1300 },
+      { width: 2400, depth: 1200, height: 2400 }
+    ]) {
+      for (const extras of [
+        {},
+        { structure: { shelfCount: 8, toeKick: true, backPanel: true } },
+        { structure: { shelfCount: 2, toeKick: true, backPanel: false }, drawers: { count: 4, frontStyle: 'overlay', runner: 'side_mount_slides' } },
+        { drawers: { count: 2, frontStyle: 'inset', runner: 'wood_runners' }, joinery: { frame: 'mortise_tenon', case: 'dado', box: 'half_blind_dovetail' }, level: 'advanced' }
+      ]) {
+        const r = pipeline(Object.assign({ meta: { name: 'S', template, level: extras.level || 'intermediate' }, overall },
+          extras.structure ? { structure: extras.structure } : {},
+          extras.drawers !== undefined ? { drawers: extras.drawers } : {},
+          extras.joinery ? { joinery: extras.joinery } : {}));
+        swept++;
+        const bad = r.report.errors.filter(e => /^geom_(below|out|gap|overlap|floats|footprint|jref)/.test(e.id));
+        if (bad.length) { roguecfg++; if (!firstBad) firstBad = `${template} ${JSON.stringify(overall)}: ${bad[0].id}`; }
+      }
+    }
+  }
+  ok(roguecfg === 0, `template sweep free of rogue geometry (${swept} configs${firstBad ? '; first: ' + firstBad : ''})`);
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
   section('self-test suite (headless run)');

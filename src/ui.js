@@ -688,17 +688,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     let turns = res.turns;
     let r = runPipeline(applied.spec);
 
-    // One validation retry with the specific errors (truncation never lands
-    // here — the continuation protocol already stitched partials together).
-    if (r.report.errors.length && !res.local) {
-      setStatus('Refining to clear validation errors');
-      const errText = 'Your proposal failed validation: ' + r.report.errors.map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
+    // Up to three validation-refinement rounds with the specific errors
+    // (truncation never lands here — the continuation protocol already
+    // stitched partials together). Geometric impossibilities — parts through
+    // the floor, outside the envelope, rogue overlaps, joints that never
+    // touch — are validation ERRORS, so a design that still fails after
+    // these rounds is never presented; the last valid design stays.
+    for (let round = 1; r.report.errors.length && !res.local && round <= 3; round++) {
+      setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
+      const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
       const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus });
-      if (res2.reply && res2.reply.kind !== 'question') {
-        applied = AI.apply(res2.reply, applied.spec);
-        turns = res2.turns;
-        r = runPipeline(applied.spec);
-      }
+      if (!res2.reply || res2.reply.kind === 'question') break;
+      applied = AI.apply(res2.reply, applied.spec);
+      turns = res2.turns;
+      r = runPipeline(applied.spec);
     }
     if (r.report.errors.length) {
       state.turns = turns.slice(-24);

@@ -37,6 +37,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { bank, openH: Math.floor(openH * 10) / 10 };
   }
 
+  /* Cheap probe used by spec correction to auto-reduce shelf count: the
+   * center-to-center spacing shelves would get in the carcass shelf zone. */
+  function shelfSpacingFor(spec) {
+    const t = spec.meta.template, o = spec.overall, st = spec.structure;
+    const n = st.shelfCount;
+    if (!n) return Infinity;
+    let span;
+    if (t === 'bookshelf') {
+      span = (o.height - st.shelfThickness) - (st.shelfThickness + 40);
+    } else if (t === 'cabinet') {
+      const base = st.toeKick ? 90 : 0;
+      const bodyH = o.height - st.topThickness - base;
+      const bank = spec.drawers ? bankHeights(bodyH * 0.6, spec.drawers.count).bank : 0;
+      span = (o.height - st.topThickness - bank) - (base + 19);
+    } else return Infinity;
+    return span / (n + 1);
+  }
+
   /* Cheap probe used by spec correction to auto-reduce drawer count. */
   function openingHeightFor(spec) {
     const t = spec.meta.template, o = spec.overall, st = spec.structure;
@@ -98,7 +116,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         const maxLen = op.interiorDepth - 25;   // 25 mm rear setback
         slideLen = null;
         for (const L of K.SLIDE_LENGTHS) if (L <= maxLen) slideLen = L;
-        boxD = slideLen || Math.max(150, Math.floor(maxLen / 10) * 10);
+        // No slide fits: the box still must not punch through the back —
+        // validation reports the too-shallow interior; geometry stays honest.
+        boxD = slideLen || Math.max(10, Math.floor(maxLen / 10) * 10);
       } else {
         boxW = op.w - 4;                        // fitted wood runners
         boxH = op.h - 10;
@@ -213,7 +233,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y: apY, z: -lz } });
       joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y: apY, z: lz } });
     }
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: 0 } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
 
     return { parts, joints, openings: [], drawers: [] };
   }
@@ -243,9 +264,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (st.backPanel) {
       parts.push(part('back_1', 'back', 'back', 'Back panel', o.width - 12, o.height - 12, 6, 0, o.height / 2, -o.depth / 2 + 3,
         { material: 'baltic_birch', explode: { x: 0, y: 0, z: -1 } }));
-      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: o.height / 2, z: -o.depth / 2 + 3 } });
+      // The back sits in rabbets on all four case edges; its panel size
+      // already includes the rabbet capture, so no cut-length allowance.
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: o.height / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_2', pos: { x: o.width / 2 - sideT / 2, y: o.height / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'top_1', pos: { x: 0, y: o.height - shT / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'bottom_1', pos: { x: 0, y: shT / 2 + 40, z: -o.depth / 2 + 3 }, noCutAllowance: true });
     }
     joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
+    joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
+    joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     return { parts, joints, openings: [], drawers: [] };
   }
@@ -285,12 +313,18 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     parts.push(part('top_1', 'top', 'top', 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0,
       { material: sp, explode: { x: 0, y: 1, z: 0 } }));
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_1', pos: { x: 0, y: o.height - topT, z: 0 } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_1', pos: { x: -(frameW / 2 - apT / 2), y: o.height - topT, z: 0 } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_2', pos: { x: frameW / 2 - apT / 2, y: o.height - topT, z: 0 } });
 
     if (st.shelfCount > 0) {
-      parts.push(part('shelf_1', 'shelf', 'shelf', 'Lower shelf', frameW - 2 * legT + 30, st.shelfThickness, frameD - 20, 0, 170, 0,
+      // The shelf notches around the legs (its size already includes the
+      // notch capture — no cut allowance). Keep it clear of the drawer bank.
+      const shelfY = Math.min(170, bankTop - bank - st.shelfThickness / 2 - 20);
+      parts.push(part('shelf_1', 'shelf', 'shelf', 'Lower shelf', frameW - 2 * legT + 30, st.shelfThickness, frameD - 20, 0, shelfY, 0,
         { material: sp, explode: { x: 0, y: -0.5, z: 0.4 } }));
-      joints.push({ type: spec.joinery.case, a: 'shelf_1', b: 'leg_1', pos: { x: -lx, y: 170, z: -lz } });
+      [[-lx, -lz, 'leg_1'], [lx, -lz, 'leg_2'], [-lx, lz, 'leg_3'], [lx, lz, 'leg_4']].forEach(([x, z, leg]) => {
+        joints.push({ type: spec.joinery.case, a: 'shelf_1', b: leg, pos: { x, y: shelfY, z }, noCutAllowance: true });
+      });
     }
 
     const zone = {
@@ -298,7 +332,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       yTop: bankTop, zFront: frameD / 2,
       interiorDepth: frameD - apT, available,
       overlayMaxW: frameW - 2 * legT + Math.min(20, legT), x: 0,
-      railJointTargets: [{ id: 'leg_1', x: -lx }, { id: 'leg_2', x: lx }]
+      // Rails live at the front plane — they join into the FRONT legs.
+      railJointTargets: [{ id: 'leg_3', x: -lx }, { id: 'leg_4', x: lx }]
     };
     const bankOut = buildBank(spec, zone, parts, joints, '');
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
@@ -310,11 +345,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sideT = st.sideThickness, topT = st.topThickness;
     const base = st.toeKick ? 90 : 0;
     const sp = spec.wood.species;
-    const caseH = o.height - topT - base;
+    // Sides run floor to underside of top: the case stands on its own sides
+    // (with the toe board bracing the front), never on a lone 19 mm plinth.
+    const sideH = o.height - topT;
+    const bodyH = sideH - base; // interior case height above the toe space
     const innerW = o.width - 2 * sideT;
 
     [[-1, 1], [1, 2]].forEach(([s, i]) => {
-      parts.push(part(`side_${i}`, 'side', 'side', 'Side', sideT, caseH, o.depth, s * (o.width / 2 - sideT / 2), base + caseH / 2, 0,
+      parts.push(part(`side_${i}`, 'side', 'side', 'Side', sideT, sideH, o.depth, s * (o.width / 2 - sideT / 2), sideH / 2, 0,
         { material: sp, explode: { x: s, y: 0, z: 0 } }));
     });
     parts.push(part('bottom_1', 'bottom', 'bottom', 'Bottom', innerW, 19, o.depth, 0, base + 19 / 2, 0, { material: sp, explode: { x: 0, y: -0.6, z: 0 } }));
@@ -323,17 +361,27 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     parts.push(part('top_1', 'top', 'top', 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0, { material: sp, explode: { x: 0, y: 1, z: 0 } }));
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: o.height - topT, z: 0 } });
+    joints.push({ type: 'butt_screws', a: 'top_1', b: 'side_2', pos: { x: o.width / 2 - sideT / 2, y: o.height - topT, z: 0 } });
 
     if (st.toeKick) {
-      parts.push(part('plinth_1', 'plinth', 'plinth', 'Toe-kick board', o.width - 2 * sideT, 90, 19, 0, 45, o.depth / 2 - 75 - 9.5,
+      const plinthZ = o.depth / 2 - 75 - 9.5;
+      parts.push(part('plinth_1', 'plinth', 'plinth', 'Toe-kick board', innerW, 90, 19, 0, 45, plinthZ,
         { material: sp, explode: { x: 0, y: -1, z: 0.4 } }));
+      joints.push({ type: spec.joinery.case, a: 'plinth_1', b: 'side_1', pos: { x: -innerW / 2, y: 45, z: plinthZ } });
+      joints.push({ type: spec.joinery.case, a: 'plinth_1', b: 'side_2', pos: { x: innerW / 2, y: 45, z: plinthZ } });
+      joints.push({ type: 'butt_screws', a: 'plinth_1', b: 'bottom_1', pos: { x: 0, y: base, z: plinthZ }, noCutAllowance: true });
     }
     if (st.backPanel) {
-      parts.push(part('back_1', 'back', 'back', 'Back panel', o.width - 12, caseH - 12, 6, 0, base + caseH / 2, -o.depth / 2 + 3,
+      parts.push(part('back_1', 'back', 'back', 'Back panel', o.width - 12, bodyH - 12, 6, 0, base + bodyH / 2, -o.depth / 2 + 3,
         { material: 'baltic_birch', explode: { x: 0, y: 0, z: -1 } }));
+      // The back sits in rabbets: sides and bottom. Its panel size already
+      // includes the rabbet capture, so no cut-length allowance applies.
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: base + bodyH / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'side_2', pos: { x: o.width / 2 - sideT / 2, y: base + bodyH / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
+      joints.push({ type: 'rabbet', a: 'back_1', b: 'bottom_1', pos: { x: 0, y: base + 10, z: -o.depth / 2 + 3 }, noCutAllowance: true });
     }
 
-    const available = caseH * 0.6;
+    const available = bodyH * 0.6;
     const zone = {
       clearW: innerW, railLen: innerW,
       yTop: o.height - topT, zFront: o.depth / 2,
@@ -352,6 +400,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, st.shelfThickness, o.depth - 30, 0, y, 5,
         { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -innerW / 2, y, z: 0 } });
+      joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: innerW / 2, y, z: 0 } });
     }
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
   }
@@ -413,5 +462,5 @@ var BB = globalThis.BB = globalThis.BB || {};
     return m;
   }
 
-  BB.Parametric = { build, openingHeightFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
+  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
 })();
