@@ -86,6 +86,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     exitPlayback();
     clearCompare();
+    state.previewing = false; // any pending slider preview is superseded by this commit
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -115,6 +116,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function restoreTo(spec) {
     exitPlayback();
+    state.previewing = false; // a restore discards any uncommitted preview
     const r = runPipeline(spec);
     adopt(r);
     renderAll();
@@ -879,6 +881,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     else closeInspector();
   }
   function closeInspector() {
+    // Closing mid-drag commits the pending preview: the model on screen
+    // already shows it, and the slider's own change event commits the same
+    // way — the design must never silently diverge from history.
+    commitPreview('manual');
     state.selected = null;
     state.engine.select(null);
     $('inspector').classList.remove('open');
@@ -1138,6 +1144,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.project = { id, progress: rec.progress || { cuts: {}, steps: {} } };
     state.turns = [];
     state.dismissed.clear();
+    state.previewing = false; // the loaded project replaces any pending preview
     const r = runPipeline(state.history.currentSpec() || spec);
     adopt(r);
     renderAll();
