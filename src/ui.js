@@ -593,6 +593,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     m.innerHTML = html;
     log.append(m);
     log.scrollTop = log.scrollHeight;
+    // The collapsed mobile sheet shows the tail of the conversation.
+    const peekText = m.textContent.trim();
+    if (peekText) $('chatPeek').textContent = (kind === 'user' ? 'You: ' : '') + peekText;
     return m;
   }
   function botSay(text, chips, opts) {
@@ -1616,7 +1619,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       e.target.value = '';
       if (file) sendPhoto(file);
     });
-    $('sheetHandle').onclick = () => $('chatPanel').classList.toggle('expanded');
+    $('sheetHandle').onclick = () => {
+      const expanded = $('chatPanel').classList.toggle('expanded');
+      $('sheetHandle').setAttribute('aria-expanded', String(expanded));
+      $('sheetHandle').setAttribute('aria-label', expanded ? 'Collapse chat' : 'Expand chat');
+    };
 
     /* stage controls */
     $('explodeRange').addEventListener('input', e => state.engine.setExplode(e.target.value / 100));

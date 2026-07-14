@@ -52,7 +52,8 @@
 
   <main class="bench">
     <aside class="chat" id="chatPanel" aria-label="Design chat">
-      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat"></button>
+      <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat" aria-expanded="false" aria-controls="chatPanel"></button>
+      <div class="chat-peek" id="chatPeek" aria-hidden="true"></div>
       <div class="chat-head">
         <h2>Design chat</h2>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
