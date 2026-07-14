@@ -76,6 +76,7 @@
           <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
           <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
           <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
@@ -134,6 +135,15 @@
             <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
+            <span class="vt-sep" aria-hidden="true"></span>
+            <button class="toggle" id="draftToggle" aria-pressed="false" title="Technical-drawing view"><span class="track"></span>Blueprint</button>
+            <span class="vt-sep" aria-hidden="true"></span>
+            <div class="seg view-seg" role="group" aria-label="Camera view">
+              <button id="viewFront" title="Front elevation (orthographic)">F</button>
+              <button id="viewSide" title="Side elevation (orthographic)">S</button>
+              <button id="viewTop" title="Plan view (orthographic)">T</button>
+              <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+            </div>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
           </div>
@@ -337,6 +347,7 @@
 <script>{{JS_STRUCTURAL}}</script>
 <script>{{JS_PACKING}}</script>
 <script>{{JS_PLANS}}</script>
+<script>{{JS_DRAFTING}}</script>
 <script>{{JS_GLTF}}</script>
 <script>{{JS_EXPORTS}}</script>
 <script>{{JS_HISTORY}}</script>

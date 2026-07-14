@@ -1680,6 +1680,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (kind === 'csv') {
       Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut), 'text/csv');
       botSay('Exported the cut list as CSV — display units and raw millimetres side by side, ready for a spreadsheet.', []);
+    } else if (kind === 'svg') {
+      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt)), 'image/svg+xml');
+      botSay('Exported the drawing sheet — front, side, and plan elevations with dimensions, plus a title block. Opens in any browser or vector editor.', []);
     } else if (kind === 'share') {
       openShare();
     } else if (kind === 'print') {
@@ -1957,6 +1960,33 @@ var BB = globalThis.BB = globalThis.BB || {};
       const on = $('dimsToggle').getAttribute('aria-pressed') !== 'true';
       $('dimsToggle').setAttribute('aria-pressed', String(on));
       state.engine.setDims(on);
+    };
+    /* Blueprint mode: the interactive technical drawing — orthographic
+     * projection, ink-line rendering, dimensions on. One toggle. */
+    const setView = name => {
+      state.engine.setProjection(name === 'iso' ? 'persp' : 'ortho');
+      state.engine.setView(name);
+      for (const [id, v] of [['viewFront', 'front'], ['viewSide', 'side'], ['viewTop', 'top'], ['viewIso', 'iso']]) {
+        $(id).setAttribute('aria-pressed', String(v === name));
+      }
+    };
+    $('viewFront').onclick = () => setView('front');
+    $('viewSide').onclick = () => setView('side');
+    $('viewTop').onclick = () => setView('top');
+    $('viewIso').onclick = () => setView('iso');
+    $('draftToggle').onclick = () => {
+      const on = $('draftToggle').getAttribute('aria-pressed') !== 'true';
+      $('draftToggle').setAttribute('aria-pressed', String(on));
+      document.body.classList.toggle('drafting', on);
+      state.engine.setDrafting(on);
+      if (on) {
+        // Entering the drawing: front elevation with dimensions showing.
+        if (!state.engine.inPlayback()) setView('front');
+        $('dimsToggle').setAttribute('aria-pressed', 'true');
+        state.engine.setDims(true);
+      } else {
+        setView('iso');
+      }
     };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;

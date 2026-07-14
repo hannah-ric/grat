@@ -308,6 +308,12 @@ BlueprintBuddyImport.build
     <h2>Cut list</h2>
     <table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${cutRows}</tbody></table>
   </section>
+  <section class="print-section page-break">
+    <h2>Drawings — stylized elevations (not hidden-line)</h2>
+    <div class="print-drawings">
+      ${['front', 'side', 'top'].map(v => `<div class="print-elevation">${printSVG(BB.Drafting.elevationSVG(spec, model, v, dim))}</div>`).join('\n      ')}
+    </div>
+  </section>
   <section class="print-section">
     <h2>Tools &amp; shop time</h2>
     <p>${BB.Plans.toolList(spec, model, stock).map(esc).join(' · ')}</p>
@@ -338,5 +344,5 @@ BlueprintBuddyImport.build
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
   }
 
-  BB.Exports = { toDAE, toRuby, toCSV, printHTML, download, slug, ROLE_COLORS };
+  BB.Exports = { toDAE, toRuby, toCSV, printHTML, printSVG, download, slug, ROLE_COLORS };
 })();

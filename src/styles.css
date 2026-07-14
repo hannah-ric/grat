@@ -56,6 +56,10 @@
 
   --radius: 10px; --radius-lg: 16px;
 
+  /* blueprint mode: drafting field behind the transparent canvas */
+  --blueprint-field: #eef3f7;
+  --blueprint-grid: rgba(27, 93, 130, 0.08);
+
   /* collapsed mobile chat sheet: handle + last-message peek + input,
      padded for the device safe area */
   --sheet-peek: calc(150px + env(safe-area-inset-bottom, 0px));
@@ -81,6 +85,8 @@
     --brick-soft: #40201a;
     --brick-ink: #f0a396;
     --green: #8fbc7f;
+    --blueprint-field: #0e2a3d;
+    --blueprint-grid: rgba(168, 204, 228, 0.09);
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
     --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
   }
@@ -91,6 +97,7 @@
   --accent-soft: #e3edf3; --amber: #8f6316; --amber-soft: #f4e8cf; --amber-ink: #684a0e;
   --brick: #a33d2a; --brick-soft: #f6e2dc; --brick-ink: #8c2f1e;
   --green: #4a7c3f;
+  --blueprint-field: #eef3f7; --blueprint-grid: rgba(27, 93, 130, 0.08);
   --shadow: 0 1px 2px rgba(43, 36, 25, .07), 0 8px 24px -12px rgba(43, 36, 25, .25);
   --shadow-lg: 0 2px 4px rgba(43, 36, 25, .08), 0 24px 48px -16px rgba(43, 36, 25, .35);
 }
@@ -100,6 +107,7 @@
   --accent-soft: #1e3648; --amber: #d9a94e; --amber-soft: #3a2f17; --amber-ink: #eac37a;
   --brick: #e0796a; --brick-soft: #40201a; --brick-ink: #f0a396;
   --green: #8fbc7f;
+  --blueprint-field: #0e2a3d; --blueprint-grid: rgba(168, 204, 228, 0.09);
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
   --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
 }
@@ -262,9 +270,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------------- stage ---------------- */
 .stage { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
-.viewport-wrap { position: relative; flex: 1.4; min-height: 240px; }
+.viewport-wrap { position: relative; flex: 1.4; min-height: 240px; transition: background var(--t-med) var(--ease); }
 .viewport-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; border-radius: 0; }
 .viewport-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+/* Blueprint mode: the transparent canvas sits on a drafting field with a
+ * faint grid — ink-on-paper in light, true cyanotype in dark. */
+body.drafting .viewport-wrap {
+  background:
+    linear-gradient(var(--blueprint-grid) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, var(--blueprint-grid) 1px, transparent 1px) 0 0 / 48px 48px,
+    var(--blueprint-field);
+}
+.view-seg button { min-width: 34px; }
 
 .stage-controls {
   position: absolute; top: var(--s3); right: var(--s3); display: flex; flex-direction: column; gap: var(--s2);
@@ -871,4 +888,7 @@ body.bm-playback .playback-bar { display: none !important; }
   .print-board { margin: 10px 0; break-inside: avoid; }
   .print-board p { margin: 0 0 4px; font: 600 11px ui-monospace, monospace; }
   .print-board svg { width: 100%; height: auto; }
+  .print-drawings { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .print-elevation { break-inside: avoid; }
+  .print-elevation svg { width: 100%; height: auto; }
 }

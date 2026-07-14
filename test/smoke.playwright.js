@@ -254,6 +254,21 @@ const clickMoreCtl = async sel => {
   ok(stats3.geometries <= stats2.geometries + 1, `quality toggle keeps geometry shared (${stats2.geometries} → ${stats3.geometries})`);
   ok(stats3.materials < 200, `quality toggle keeps the material pool bounded (${stats3.materials})`);
 
+  // Blueprint mode: one toggle → drafting render, orthographic front view, dims on.
+  await page.click('#draftToggle');
+  await page.waitForTimeout(500);
+  ok(await page.evaluate(() =>
+    document.body.classList.contains('drafting') &&
+    __bb.state.engine.getDrafting() &&
+    __bb.state.engine.getProjection() === 'ortho' &&
+    document.getElementById('dimsToggle').getAttribute('aria-pressed') === 'true'),
+    'blueprint mode: drafting render + orthographic + dimensions on');
+  await page.screenshot({ path: SHOTS + '/21-blueprint.png' });
+  await page.click('#draftToggle');
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => !__bb.state.engine.getDrafting() && __bb.state.engine.getProjection() === 'persp'),
+    'blueprint off restores the perspective studio view');
+
   // Shop reference searchable.
   await page.click('#tab-reference');
   await page.waitForSelector('.ref-search');

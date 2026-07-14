@@ -623,6 +623,54 @@ var BB = globalThis.BB = globalThis.BB || {};
         `${(rb2.match(/Transformation\.axes/g) || []).length} axes placements`, '1 axes placement');
     }
 
+    /* ============ drafting: dimensioned elevations ============ */
+    {
+      const savedU = BB.Units.get();
+      try {
+        BB.Units.set({ system: 'imperial', precision: 16, dual: false });
+        const fmt = v => BB.Units.fmtLength(v);
+
+        const seed = pipeline(Spec.defaultSpec('table'));
+        const front = BB.Drafting.elevationSVG(seed.spec, seed.model, 'front', fmt);
+        const rects = (front.match(/<rect /g) || []).length;
+        test('drafting', 'front elevation draws every part (≥9 shapes for the seed table)',
+          rects >= 9, rects + ' rects', '≥ 9');
+        test('drafting', 'overall width dimension label routes through BB.Units',
+          front.includes('>' + fmt(seed.model.bounds.w) + '<') && front.includes('>' + fmt(seed.model.bounds.h) + '<'),
+          `${fmt(seed.model.bounds.w)} / ${fmt(seed.model.bounds.h)} present: ${front.includes(fmt(seed.model.bounds.w))}`, 'width + height labels present');
+        const side = BB.Drafting.elevationSVG(seed.spec, seed.model, 'side', fmt);
+        test('drafting', 'side elevation carries depth + height dimensions',
+          side.includes('>' + fmt(seed.model.bounds.d) + '<') && side.includes('SIDE ELEVATION'),
+          'depth label + title', 'depth label + title');
+
+        // Drawer openings appear as dashed callouts on the nightstand front.
+        const ns2 = pipeline({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate' }, drawers: { count: 2 } });
+        const nsFront = BB.Drafting.elevationSVG(ns2.spec, ns2.model, 'front', fmt);
+        const openN = (nsFront.match(/class="opening"/g) || []).length;
+        test('drafting', 'front elevation calls out each drawer opening',
+          openN === ns2.model.openings.length, openN, ns2.model.openings.length);
+
+        // A compound-rotated part projects as its convex-hull silhouette (6 corners).
+        const modelRot = {
+          bounds: { w: 600, d: 200, h: 700 },
+          parts: [{ id: 'b', name: 'Brace', role: 'rail', defKey: 'b', material: 'red_oak', size: { w: 500, h: 60, d: 30 }, pos: { x: 0, y: 350, z: 0 }, rot: { x: 30, y: 30, z: 0 } }],
+          openings: []
+        };
+        const rotSVG = BB.Drafting.elevationSVG(seed.spec, modelRot, 'front', fmt);
+        const poly = rotSVG.match(/<polygon points="([^"]+)"/);
+        const nPts = poly ? poly[1].trim().split(/\s+/).length : 0;
+        test('drafting', 'compound-rotated part renders as a 6-vertex hull polygon',
+          nPts === 6, nPts + ' vertices', '6 vertices');
+
+        // Drawing sheet: three views + title block, no unresolved CSS vars after print swap.
+        const sheet = BB.Exports.printSVG(BB.Drafting.sheetSVG(seed.spec, seed.model, fmt));
+        test('drafting', 'drawing sheet composes 3 elevations + title block, print-safe',
+          sheet.includes('FRONT ELEVATION') && sheet.includes('SIDE ELEVATION') && sheet.includes('PLAN ELEVATION') &&
+          sheet.includes('BLUEPRINT BUDDY') && !sheet.includes('var(--'),
+          'views + title block, vars swapped', 'views + title block, vars swapped');
+      } finally { BB.Units.set(savedU); }
+    }
+
     return results;
   }
 
