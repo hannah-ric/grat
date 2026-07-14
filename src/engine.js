@@ -237,7 +237,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       if (model) {
         for (const part of model.parts) {
-          const m = new THREE.Mesh(unitBox, materialFor(part.material, part.role, 'ghost'));
+          // Same geometry rules as setModel: cylinders share the unit
+          // cylinder, everything else the unit box, rotation applied X→Y→Z.
+          const isCyl = part.prim === 'cylinder';
+          const m = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'ghost'));
+          const r = part.rot || { x: 0, y: 0, z: 0 };
+          m.rotation.set((r.x || 0) * DEG, (r.y || 0) * DEG, (r.z || 0) * DEG, 'ZYX');
           m.scale.set(part.size.w, part.size.h, part.size.d);
           m.position.set(part.pos.x, part.pos.y, part.pos.z);
           ghostGroup.add(m);
