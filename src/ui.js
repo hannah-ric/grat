@@ -216,16 +216,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
-    if (state.busy) {
-      const stack = el('div', 'skeleton-stack');
-      [28, 18, 18, 18, 18, 18].forEach(h => {
-        const s = el('div', 'skeleton'); s.style.height = h + 'px';
-        if (h === 28) s.style.width = '40%';
-        stack.append(s);
-      });
-      inner.append(stack);
-      return;
-    }
     if (state.tab === 'cut') renderCut(inner);
     else if (state.tab === 'stock') renderStock(inner);
     else if (state.tab === 'bom') renderBom(inner);
@@ -588,6 +578,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- chat ---------------- */
+  /* The AI round-trip is busy state for the CHAT, not the plans: panels keep
+   * their content (the last valid design is still true), while Send and
+   * Photo disable and the chat reports aria-busy. */
+  function setBusy(b) {
+    state.busy = b;
+    $('sendBtn').disabled = b;
+    $('photoBtn').disabled = b;
+    $('chatPanel').setAttribute('aria-busy', String(b));
+  }
   function chatMsg(kind, html) {
     const log = $('chatLog');
     const m = el('div', 'msg ' + kind);
@@ -699,19 +698,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       b.style.display = 'block';
       b.textContent = t + '…';
     };
-    state.busy = true;
-    renderPanel();
+    setBusy(true);
     try {
       const promptText = image ? AI.VISION_PROMPT : text;
       const before = state.spec;
       const out = await aiPipeline(promptText, image, setStatus);
       typing.remove();
-      state.busy = false;
-      if (!out) { renderPanel(); return; }
+      setBusy(false);
+      if (!out) return;
       const okc = commit(out.final, 'ai');
       if (!okc) {
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
-        renderPanel();
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
@@ -727,8 +724,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     } catch (err) {
       typing.remove();
-      state.busy = false;
-      renderPanel();
+      setBusy(false);
       botSay('The design brain slipped a gear on that one. Mind rephrasing?', []);
     }
   }
@@ -1125,7 +1121,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   async function loadProjectIntoApp(id) {
     const rec = await Store.loadProject(id);
-    if (!rec) return;
+    if (!rec) return false;
     const spec = Spec.correctSpec(Codec.decode(rec.wire));
     exitBuildMode();
     exitPlayback();
@@ -1150,6 +1146,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     closeScrim('projectsScrim');
     closeScrim('galleryScrim');
     botSay(`Opened “${rec.name}” — plans, history, and build progress restored. Tell me what to change.`, []);
+    return true;
   }
 
   /* ---------------- share codes (Phase 4 item 2) ---------------- */
@@ -1474,7 +1471,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- boot ---------------- */
-  function boot() {
+  async function boot() {
     const canvas = $('view3d');
     state.engine = BB.Engine.create(canvas, {
       reducedMotion: reduceMq.matches,
@@ -1496,9 +1493,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
-    // Seed design straight through the pipeline.
+    // Persisted prices + prefs load BEFORE the first paint, so units,
+    // precision, and dual display never flash from defaults.
+    try {
+      state.prices = await Store.loadPrices();
+      state.prefs4 = await Store.loadPrefs();
+    } catch (e) { /* defaults are the product */ }
+    Units.set(state.prefs4.units);
+
+    // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
     seed.meta.name = 'Seed Table';
+    seed.meta.units = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
     const r = runPipeline(seed);
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
@@ -1506,27 +1512,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderAll();
     renderHints();
     renderGallery();
-    openScrim('galleryScrim');
-    botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
 
-    // Persisted prices + prefs arrive async; recompute once they land.
-    (async () => {
-      try {
-        state.prices = await Store.loadPrices();
-        state.prefs4 = await Store.loadPrefs();
-        Units.set(state.prefs4.units); // precision + dual (+ system default)
-        // A fresh session honors the stored unit choice: a returning metric
-        // user's seed opens metric; cleared storage stays imperial.
-        const wantU = state.prefs4.units.system === 'metric' ? 'mm' : 'in';
-        if (!state.project && state.history.snapshots.length === 1 && state.spec.meta.units !== wantU) {
-          const r2 = runPipeline(Spec.deepMerge(state.spec, { meta: { units: wantU } }));
-          adopt(r2);
-          state.history = History.createHistory(r2.spec, 'seed');
-        }
-        recompute();
-        renderAll();
-      } catch (e) { /* defaults are the product */ }
-    })();
+    // Returning users land in the studio with their latest project; the
+    // gallery is for first runs and empty shops only.
+    let opened = false;
+    try {
+      const idx = await Store.loadIndex();
+      if (idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
+    } catch (e) { /* storage unavailable: fresh session */ }
+    if (!opened) {
+      openScrim('galleryScrim');
+      botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
+    }
 
     /* top bar */
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
@@ -1596,6 +1593,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* chat — no form element (artifact rules); Enter and the button both send */
     const sendNow = () => {
+      if (state.busy) return; // Enter during a round-trip must not eat the draft
       const t = $('chatText');
       sendMessage(t.value);
       t.value = '';
