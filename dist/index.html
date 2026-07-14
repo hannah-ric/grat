@@ -386,6 +386,17 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .empty-state .big { font-family: var(--display); font-size: 17px; font-weight: 600; color: var(--ink-2); display: block; margin-bottom: var(--s1); }
 
 /* assembly */
+/* Shop-truth header on the Assembly tab: time estimate + tool wall. */
+.shop-facts {
+  display: flex; flex-direction: column; gap: var(--s2); margin-bottom: var(--s3);
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); padding: var(--s2) var(--s3);
+}
+.shop-time { font-size: 13.5px; color: var(--ink-2); cursor: help; }
+.shop-time strong { font-family: var(--display); color: var(--ink); }
+.tool-wall summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
+.tool-wall ul { margin: var(--s2) 0 0; padding-left: 20px; font-size: 13px; color: var(--ink-2); line-height: 1.7; columns: 2; }
+@media (max-width: 880px) { .tool-wall ul { columns: 1; } }
+
 .step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); counter-reset: step; }
 .step-item {
   display: flex; gap: var(--s3); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius-lg);
@@ -937,6 +948,7 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
           <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
@@ -1531,6 +1543,49 @@ var BB = globalThis.BB = globalThis.BB || {};
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM
   };
+})();
+</script>
+<script>/* Blueprint Buddy — icon set (Phase 5).
+ * One drafting-instrument style: 20×20 grid, 1.7px stroke, round caps,
+ * stroke = currentColor so icons inherit button/text color and theme freely.
+ * Replaces the platform-dependent Unicode glyphs (↶ ↷ ▾ ✕ ⤢ ‹ › ↺ ▶ ⇄) that
+ * rendered with inconsistent metrics across OSes.
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const PATHS = {
+    undo: 'M7.5 4.5 4 8 7.5 11.5 M4 8 h8.2 a4.4 4.4 0 0 1 0 8.8 H9',
+    redo: 'M12.5 4.5 16 8 12.5 11.5 M16 8 H7.8 a4.4 4.4 0 0 0 0 8.8 H11',
+    caret: 'M6 8.2 l4 4 4 -4',
+    dual: 'M4 6.8 h10.5 m0 0 -3 -3 m3 3 -3 3 M16 13.2 H5.5 m0 0 3 -3 m-3 3 3 3',
+    close: 'M5.5 5.5 14.5 14.5 M14.5 5.5 5.5 14.5',
+    fit: 'M7.5 3.5 H4.5 a1 1 0 0 0 -1 1 v3 M12.5 3.5 h3 a1 1 0 0 1 1 1 v3 M3.5 12.5 v3 a1 1 0 0 0 1 1 h3 M16.5 12.5 v3 a1 1 0 0 1 -1 1 h-3',
+    prev: 'M12 4.5 6.5 10 12 15.5',
+    next: 'M8 4.5 13.5 10 8 15.5',
+    replay: 'M15.8 12 a6.2 6.2 0 1 1 -1 -6.5 M15.5 2.8 v3.4 h-3.4',
+    ruler: 'M3 13.5 13.5 3 17 6.5 6.5 17 Z M6.8 10.2 l1.6 1.6 M9.3 7.7 l1.6 1.6 M11.8 5.2 l1.6 1.6',
+    board: 'M3 6.5 h14 v7 H3 Z M6.5 6.5 c0 2.3 0 4.7 0 7 M13 6.5 c0 2.3 0 4.7 0 7',
+    camera: 'M3.5 6.5 h3 l1.5 -2 h4 l1.5 2 h3 v9 h-13 Z M10 13.8 a2.8 2.8 0 1 0 0 -5.6 a2.8 2.8 0 0 0 0 5.6'
+  };
+  const FILLED = {
+    play: 'M7 4.5 15.2 10 7 15.5 Z'
+  };
+
+  function svg(name, size) {
+    size = size || 17;
+    const filled = FILLED[name];
+    const d = filled || PATHS[name];
+    if (!d) return '';
+    const paint = filled
+      ? 'fill="currentColor" stroke="none"'
+      : 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+    return `<svg width="${size}" height="${size}" viewBox="0 0 20 20" ${paint} aria-hidden="true"><path d="${d}"/></svg>`;
+  }
+
+  BB.Icons = { svg, PATHS, FILLED };
 })();
 </script>
 <script>/* Blueprint Buddy — procedural materials (Phase 5).
@@ -4359,6 +4414,80 @@ var BB = globalThis.BB = globalThis.BB || {};
    * Single source of truth for build-progress keys: the same enumeration
    * names the checkboxes in build mode, prunes stale progress after a
    * re-pack, and counts completion — so the three can never disagree. */
+  /* ---------------- tools & time (Phase 5 shop-truth) ----------------
+   * The consolidated tool wall: a base kit every build needs, plus what the
+   * joints actually in this model demand (from the knowledge base), plus
+   * operation-driven extras read off the real plan — never declared by hand.
+   */
+  const BASE_TOOLS = [
+    'Tape measure', 'Combination square', 'Table saw or circular saw with a guide',
+    'Drill/driver', 'Bar or pipe clamps', 'Sandpaper (120 / 180 / 220 grit)'
+  ];
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  function toolList(spec, model, stockPlan) {
+    const tools = new Set(BASE_TOOLS);
+    for (const t of new Set(model.joints.map(j => j.type))) {
+      for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(cap(tool));
+    }
+    if (model.parts.some(p => BB.Geo.cutAngles(p.rot))) tools.add('Miter saw (angled cuts)');
+    if (model.parts.some(p => p.material === 'baltic_birch')) tools.add('Circular saw + straightedge (sheet breakdown)');
+    if (stockPlan && ((stockPlan.glueups || []).length || (stockPlan.laminations || []).length)) {
+      tools.add('Glue + cauls (panel glue-up)');
+      if ((stockPlan.laminations || []).length) tools.add('Hand plane or thickness planer (laminations)');
+    }
+    if (model.drawers && model.drawers.length) tools.add('Shims + spacers (drawer fitting)');
+    const fin = K.FINISHES.find(f => f.key === spec.finish);
+    if (fin) tools.add(`Rags / applicator (${fin.label.toLowerCase()})`);
+    return [...tools];
+  }
+
+  /* Shop-time estimate: per-operation minutes × counts from the real plan,
+   * scaled by skill level (beginners measure twice — and should). Active
+   * bench time only; finish recoat/cure wall time is reported separately.
+   * Every number here is a count × constant — no geometry, no AI. */
+  const OP_MINUTES = {
+    solidCut: 5, sheetCut: 8, sand: 4, assemblyStep: 10,
+    glueUp: 30, lamination: 25, finishCoat: 20,
+    joint: {
+      butt_screws: 6, pocket_screws: 8, dowels: 12, dado: 15, rabbet: 12,
+      locking_rabbet: 15, mortise_tenon: 40, half_blind_dovetail: 60
+    }
+  };
+  const LEVEL_FACTOR = { beginner: 1.5, intermediate: 1.2, advanced: 1 };
+  function timeEstimate(spec, model, cut, steps, stockPlan) {
+    const breakdown = [];
+    const add = (label, min) => { if (min > 0) breakdown.push({ label, min: Math.round(min) }); };
+    const solidSticks = cut.filter(r => r.stock !== 'sheet').reduce((n, r) => n + r.qty, 0);
+    const sheetPieces = cut.filter(r => r.stock === 'sheet').reduce((n, r) => n + r.qty, 0);
+    add(`${solidSticks} board cuts`, solidSticks * OP_MINUTES.solidCut);
+    add(`${sheetPieces} sheet cuts`, sheetPieces * OP_MINUTES.sheetCut);
+    const byJoint = new Map();
+    for (const j of model.joints) byJoint.set(j.type, (byJoint.get(j.type) || 0) + 1);
+    for (const [type, n] of byJoint) {
+      const label = K.JOINERY[type] ? K.JOINERY[type].label.toLowerCase() : type;
+      add(`${n} × ${label}`, n * (OP_MINUTES.joint[type] || 10));
+    }
+    const glueups = stockPlan ? (stockPlan.glueups || []).length : 0;
+    const laminations = stockPlan ? (stockPlan.laminations || []).length : 0;
+    add(`${glueups} panel glue-up${glueups === 1 ? '' : 's'}`, glueups * OP_MINUTES.glueUp);
+    add(`${laminations} lamination${laminations === 1 ? '' : 's'}`, laminations * OP_MINUTES.lamination);
+    add('Sanding', model.parts.length * OP_MINUTES.sand);
+    add(`${steps.length} assembly steps`, steps.length * OP_MINUTES.assemblyStep);
+    const fin = K.FINISHES.find(f => f.key === spec.finish);
+    const coats = fin ? fin.coats : 0;
+    add(`${coats} finish coats`, coats * OP_MINUTES.finishCoat);
+    const factor = LEVEL_FACTOR[spec.meta.level] || 1.2;
+    const activeMin = Math.round(breakdown.reduce((n, b) => n + b.min, 0) * factor);
+    const hoursLow = Math.max(1, Math.round(activeMin / 60));
+    const hoursHigh = Math.max(hoursLow + 1, Math.round(activeMin * 1.35 / 60));
+    return {
+      activeMin, hoursLow, hoursHigh,
+      sessions: Math.max(1, Math.ceil(hoursHigh / 4)), // ~4 h shop sessions
+      factor, breakdown,
+      finishWait: fin ? { coats, recoatHrs: fin.recoatHrs, cureDays: fin.cureDays, label: fin.label } : null
+    };
+  }
+
   function cutKey(kind, gi, ci, name, len) { return `${kind}:${gi}:${ci}:${name}:${len}`; }
 
   function checklistKeys(stockPlan, cut, steps) {
@@ -4390,7 +4519,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     return progress;
   }
 
-  BB.Plans = { cutList, bom, assembly, JOINT_ALLOWANCE, cutKey, checklistKeys, pruneProgress };
+  BB.Plans = { cutList, bom, assembly, toolList, timeEstimate, JOINT_ALLOWANCE, BASE_TOOLS, cutKey, checklistKeys, pruneProgress };
 })();
 </script>
 <script>/* Blueprint Buddy — exports: COLLADA (.dae), SketchUp Ruby (.rb), print sheet.
@@ -4592,6 +4721,27 @@ BlueprintBuddyImport.build
 `;
   }
 
+  /* ---------------- CSV cut list ----------------
+   * A display surface like the print sheet: dimensions in the current
+   * display units AND raw millimetres, so the same file works at the bench
+   * and in other software. RFC-4180 quoting; CRLF for spreadsheet apps. */
+  function toCSV(spec, cut) {
+    const U = BB.Units;
+    const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+    const rows = [[
+      'Part', 'Qty', 'Length', 'Width', 'Thickness',
+      'Length (mm)', 'Width (mm)', 'Thickness (mm)', 'Material', 'Stock', 'Grain', 'Notes'
+    ].map(q).join(',')];
+    for (const r of cut) {
+      const mat = BB.K.WOOD_SPECIES[r.material] ? BB.K.WOOD_SPECIES[r.material].label : r.material;
+      rows.push([
+        q(r.name), r.qty, q(U.fmtLength(r.L)), q(U.fmtLength(r.W)), q(U.fmtLength(r.T)),
+        r.L, r.W, r.T, q(mat), q(r.stock), q(r.grain), q(r.note || '')
+      ].join(','));
+    }
+    return rows.join('\r\n') + '\r\n';
+  }
+
   /* ---------------- print sheet ---------------- */
   /* The stock diagrams use CSS variables for the screen; print swaps them for
    * fixed ink-on-paper colors so the sheet works regardless of theme. */
@@ -4642,6 +4792,15 @@ BlueprintBuddyImport.build
   <section class="print-section">
     <h2>Cut list</h2>
     <table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${cutRows}</tbody></table>
+  </section>
+  <section class="print-section">
+    <h2>Tools &amp; shop time</h2>
+    <p>${BB.Plans.toolList(spec, model, stock).map(esc).join(' · ')}</p>
+    ${(() => {
+      const t = BB.Plans.timeEstimate(spec, model, cut, steps, stock);
+      const wait = t.finishWait ? ` Plus finish wall time: ${t.finishWait.coats} coats of ${esc(t.finishWait.label.toLowerCase())}, recoat every ${t.finishWait.recoatHrs} h, cure ${t.finishWait.cureDays} days.` : '';
+      return `<p class="print-total">≈ ${t.hoursLow}–${t.hoursHigh} hours of bench time (${t.sessions} session${t.sessions === 1 ? '' : 's'} of ~4 h) at the ${esc(spec.meta.level)} pace.${wait}</p>`;
+    })()}
   </section>${stockHTML}
   <section class="print-section page-break">
     <h2>Bill of materials</h2>
@@ -4664,7 +4823,7 @@ BlueprintBuddyImport.build
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
   }
 
-  BB.Exports = { toDAE, toRuby, printHTML, download, slug, ROLE_COLORS };
+  BB.Exports = { toDAE, toRuby, toCSV, printHTML, download, slug, ROLE_COLORS };
 })();
 </script>
 <script>/* Blueprint Buddy — revision history.
@@ -6481,6 +6640,57 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* ============ shop truth: tools, time, CSV ============ */
+    {
+      // Advanced mortise-and-tenon table: the tool wall must demand the
+      // joint's real tools on top of the base kit.
+      const mt = pipeline({ meta: { name: 'MT Table', template: 'table', level: 'advanced' }, joinery: { frame: 'mortise_tenon' } });
+      const mtTools = Plans.toolList(mt.spec, mt.model, null);
+      test('shop', 'tool wall = base kit + joint tools (mortise & tenon adds chisels)',
+        Plans.BASE_TOOLS.every(t => mtTools.includes(t)) && mtTools.some(t => /chisel/i.test(t)),
+        mtTools.filter(t => /chisel|mortis/i.test(t)).join(', ') || 'no joint tools', 'chisels present');
+
+      // Drawered nightstand: sheet goods + drawer fitting appear.
+      const ns = pipeline({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate' }, drawers: { count: 2 } });
+      const nsTools = Plans.toolList(ns.spec, ns.model, null);
+      test('shop', 'drawer build adds sheet breakdown + drawer fitting tools',
+        nsTools.some(t => /sheet/i.test(t)) && nsTools.some(t => /drawer/i.test(t)),
+        nsTools.filter(t => /sheet|drawer/i.test(t)).join(', '), 'sheet + drawer tools');
+
+      // Time estimate: level factor orders the estimates; breakdown is honest.
+      const cutMT = Plans.cutList(mt.spec, mt.model);
+      const stepsMT = Plans.assembly(mt.spec, mt.model, null);
+      const tAdv = Plans.timeEstimate(mt.spec, mt.model, cutMT, stepsMT, null);
+      const beg = pipeline({ meta: { name: 'B Table', template: 'table', level: 'beginner' } });
+      const tBeg = Plans.timeEstimate(beg.spec, beg.model, Plans.cutList(beg.spec, beg.model), Plans.assembly(beg.spec, beg.model, null), null);
+      const sum = tAdv.breakdown.reduce((n, b) => n + b.min, 0);
+      test('shop', 'time estimate: breakdown × level factor = active minutes',
+        Math.abs(tAdv.activeMin - Math.round(sum * tAdv.factor)) <= 1, `${tAdv.activeMin} vs ${Math.round(sum * tAdv.factor)}`, 'equal ±1');
+      test('shop', 'beginner pace multiplier exceeds advanced', tBeg.factor > tAdv.factor, `${tBeg.factor} vs ${tAdv.factor}`, '1.5 vs 1');
+      test('shop', 'estimate is bounded and session count follows hours',
+        tAdv.hoursLow >= 1 && tAdv.hoursHigh > tAdv.hoursLow && tAdv.sessions === Math.ceil(tAdv.hoursHigh / 4),
+        `${tAdv.hoursLow}–${tAdv.hoursHigh} h, ${tAdv.sessions} sessions`, 'low < high, sessions = ceil(high/4)');
+
+      // CSV: one line per row + header, display units AND raw mm, RFC quoting.
+      // Display prefs are pinned imperial for the assertion and restored.
+      const savedUnits = BB.Units.get();
+      let csvLines, nsCut;
+      try {
+        BB.Units.set({ system: 'imperial', precision: 16, dual: false });
+        nsCut = Plans.cutList(ns.spec, ns.model);
+        csvLines = BB.Exports.toCSV(ns.spec, nsCut).trim().split('\r\n');
+      } finally { BB.Units.set(savedUnits); }
+      test('shop', 'CSV has header + one line per cut row', csvLines.length === nsCut.length + 1, csvLines.length, nsCut.length + 1);
+      test('shop', 'CSV carries display units and raw mm side by side',
+        csvLines[0].includes('"Length (mm)"') && / in"/.test(csvLines[1]) && /,\d+(\.\d+)?,/.test(csvLines[1]),
+        csvLines[1].slice(0, 80) + '…', 'formatted + numeric mm columns');
+
+      // Icons: strings, themable, unknown-safe.
+      test('shop', 'icon set emits currentColor SVGs and empty string for unknown names',
+        BB.Icons.svg('undo').includes('currentColor') && BB.Icons.svg('nope') === '',
+        `undo ${BB.Icons.svg('undo').length} chars, unknown "${BB.Icons.svg('nope')}"`, 'svg + empty');
+    }
+
     return results;
   }
 
@@ -7455,7 +7665,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (state.dismissed.has(a.id)) continue;
       const chip = el('div', 'advisory');
       chip.append(el('span', '', esc(a.text)));
-      const x = el('button', 'dismiss', '✕');
+      const x = el('button', 'dismiss', BB.Icons.svg('close', 13));
       x.setAttribute('aria-label', 'Dismiss advisory');
       x.onclick = () => { state.dismissed.add(a.id); chip.remove(); };
       chip.append(x);
@@ -7672,6 +7882,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('div', 'empty-state', '<span class="big">No steps to walk yet.</span>Once a design has parts, assembly writes itself in build order.'));
       return;
     }
+    // Shop-truth header: honest time estimate + the consolidated tool wall,
+    // both derived from the real plan (joints, cuts, glue-ups, finish).
+    const t = Plans.timeEstimate(state.spec, state.model, state.cut, state.steps, state.stockPlan);
+    const tools = Plans.toolList(state.spec, state.model, state.stockPlan);
+    const facts = el('div', 'shop-facts');
+    const wait = t.finishWait ? ` · finish: ${t.finishWait.coats} coats, recoat ${t.finishWait.recoatHrs} h, cure ${t.finishWait.cureDays} d` : '';
+    facts.innerHTML = `<div class="shop-time" title="${esc(t.breakdown.map(b => `${b.label} — ${b.min} min`).join('\n') + `\n× ${t.factor} ${state.spec.meta.level} pace`)}">
+        <strong>≈ ${t.hoursLow}–${t.hoursHigh} h</strong> bench time · ${t.sessions} session${t.sessions === 1 ? '' : 's'} of ~4 h${wait}</div>
+      <details class="tool-wall"><summary>Tools for this build (${tools.length})</summary><ul>${tools.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
+    root.append(facts);
     const list = el('ol', 'step-list');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
@@ -7681,7 +7901,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
       body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
         (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
-      const play = el('button', 'btn icon step-play', '▶');
+      const play = el('button', 'btn icon step-play', BB.Icons.svg('play', 15));
       play.setAttribute('aria-label', 'Play step ' + (i + 1));
       play.onclick = () => enterPlayback(i);
       item.append(num, body, play);
@@ -8892,6 +9112,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay('Exported the build script. Paste it into SketchUp’s Ruby Console (Window > Ruby Console) — the model rebuilds as components, one undo step.', []);
     } else if (kind === 'json') {
       Exports.download(name + '.designspec.json', JSON.stringify(state.spec, null, 2), 'application/json');
+    } else if (kind === 'csv') {
+      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut), 'text/csv');
+      botSay('Exported the cut list as CSV — display units and raw millimetres side by side, ready for a spreadsheet.', []);
     } else if (kind === 'share') {
       openShare();
     } else if (kind === 'print') {
@@ -8914,7 +9137,31 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- boot ---------------- */
+  /* One drafting-instrument icon set (BB.Icons) replaces the platform
+   * Unicode glyphs in the chrome — consistent weight and metrics everywhere. */
+  function applyIcons() {
+    const icon = BB.Icons.svg;
+    const set = (id, name, text, textFirst) => {
+      const b = $(id);
+      if (b) b.innerHTML = textFirst ? `<span>${text}</span>${icon(name)}` : icon(name) + (text ? `<span>${text}</span>` : '');
+    };
+    set('undoBtn', 'undo');
+    set('redoBtn', 'redo');
+    set('dualBtn', 'dual');
+    set('inspClose', 'close', undefined);
+    set('historyClose', 'close', undefined);
+    set('frameBtn', 'fit', 'Fit');
+    set('pbPrev', 'prev');
+    set('pbNext', 'next');
+    set('pbReplay', 'replay');
+    set('bmPbPrev', 'prev', 'Prev');
+    set('bmPbNext', 'next', 'Next', true);
+    $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
+    $('exportBtn').innerHTML = `Export ${icon('caret', 13)}`;
+  }
+
   async function boot() {
+    applyIcons();
     const canvas = $('view3d');
     state.engine = BB.Engine.create(canvas, {
       reducedMotion: reduceMq.matches,

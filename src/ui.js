@@ -227,7 +227,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (state.dismissed.has(a.id)) continue;
       const chip = el('div', 'advisory');
       chip.append(el('span', '', esc(a.text)));
-      const x = el('button', 'dismiss', '✕');
+      const x = el('button', 'dismiss', BB.Icons.svg('close', 13));
       x.setAttribute('aria-label', 'Dismiss advisory');
       x.onclick = () => { state.dismissed.add(a.id); chip.remove(); };
       chip.append(x);
@@ -444,6 +444,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('div', 'empty-state', '<span class="big">No steps to walk yet.</span>Once a design has parts, assembly writes itself in build order.'));
       return;
     }
+    // Shop-truth header: honest time estimate + the consolidated tool wall,
+    // both derived from the real plan (joints, cuts, glue-ups, finish).
+    const t = Plans.timeEstimate(state.spec, state.model, state.cut, state.steps, state.stockPlan);
+    const tools = Plans.toolList(state.spec, state.model, state.stockPlan);
+    const facts = el('div', 'shop-facts');
+    const wait = t.finishWait ? ` · finish: ${t.finishWait.coats} coats, recoat ${t.finishWait.recoatHrs} h, cure ${t.finishWait.cureDays} d` : '';
+    facts.innerHTML = `<div class="shop-time" title="${esc(t.breakdown.map(b => `${b.label} — ${b.min} min`).join('\n') + `\n× ${t.factor} ${state.spec.meta.level} pace`)}">
+        <strong>≈ ${t.hoursLow}–${t.hoursHigh} h</strong> bench time · ${t.sessions} session${t.sessions === 1 ? '' : 's'} of ~4 h${wait}</div>
+      <details class="tool-wall"><summary>Tools for this build (${tools.length})</summary><ul>${tools.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
+    root.append(facts);
     const list = el('ol', 'step-list');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
@@ -453,7 +463,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
       body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
         (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
-      const play = el('button', 'btn icon step-play', '▶');
+      const play = el('button', 'btn icon step-play', BB.Icons.svg('play', 15));
       play.setAttribute('aria-label', 'Play step ' + (i + 1));
       play.onclick = () => enterPlayback(i);
       item.append(num, body, play);
@@ -1664,6 +1674,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay('Exported the build script. Paste it into SketchUp’s Ruby Console (Window > Ruby Console) — the model rebuilds as components, one undo step.', []);
     } else if (kind === 'json') {
       Exports.download(name + '.designspec.json', JSON.stringify(state.spec, null, 2), 'application/json');
+    } else if (kind === 'csv') {
+      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut), 'text/csv');
+      botSay('Exported the cut list as CSV — display units and raw millimetres side by side, ready for a spreadsheet.', []);
     } else if (kind === 'share') {
       openShare();
     } else if (kind === 'print') {
@@ -1686,7 +1699,31 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- boot ---------------- */
+  /* One drafting-instrument icon set (BB.Icons) replaces the platform
+   * Unicode glyphs in the chrome — consistent weight and metrics everywhere. */
+  function applyIcons() {
+    const icon = BB.Icons.svg;
+    const set = (id, name, text, textFirst) => {
+      const b = $(id);
+      if (b) b.innerHTML = textFirst ? `<span>${text}</span>${icon(name)}` : icon(name) + (text ? `<span>${text}</span>` : '');
+    };
+    set('undoBtn', 'undo');
+    set('redoBtn', 'redo');
+    set('dualBtn', 'dual');
+    set('inspClose', 'close', undefined);
+    set('historyClose', 'close', undefined);
+    set('frameBtn', 'fit', 'Fit');
+    set('pbPrev', 'prev');
+    set('pbNext', 'next');
+    set('pbReplay', 'replay');
+    set('bmPbPrev', 'prev', 'Prev');
+    set('bmPbNext', 'next', 'Next', true);
+    $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
+    $('exportBtn').innerHTML = `Export ${icon('caret', 13)}`;
+  }
+
   async function boot() {
+    applyIcons();
     const canvas = $('view3d');
     state.engine = BB.Engine.create(canvas, {
       reducedMotion: reduceMq.matches,

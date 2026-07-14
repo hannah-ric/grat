@@ -197,6 +197,27 @@ BlueprintBuddyImport.build
 `;
   }
 
+  /* ---------------- CSV cut list ----------------
+   * A display surface like the print sheet: dimensions in the current
+   * display units AND raw millimetres, so the same file works at the bench
+   * and in other software. RFC-4180 quoting; CRLF for spreadsheet apps. */
+  function toCSV(spec, cut) {
+    const U = BB.Units;
+    const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+    const rows = [[
+      'Part', 'Qty', 'Length', 'Width', 'Thickness',
+      'Length (mm)', 'Width (mm)', 'Thickness (mm)', 'Material', 'Stock', 'Grain', 'Notes'
+    ].map(q).join(',')];
+    for (const r of cut) {
+      const mat = BB.K.WOOD_SPECIES[r.material] ? BB.K.WOOD_SPECIES[r.material].label : r.material;
+      rows.push([
+        q(r.name), r.qty, q(U.fmtLength(r.L)), q(U.fmtLength(r.W)), q(U.fmtLength(r.T)),
+        r.L, r.W, r.T, q(mat), q(r.stock), q(r.grain), q(r.note || '')
+      ].join(','));
+    }
+    return rows.join('\r\n') + '\r\n';
+  }
+
   /* ---------------- print sheet ---------------- */
   /* The stock diagrams use CSS variables for the screen; print swaps them for
    * fixed ink-on-paper colors so the sheet works regardless of theme. */
@@ -247,6 +268,15 @@ BlueprintBuddyImport.build
   <section class="print-section">
     <h2>Cut list</h2>
     <table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${cutRows}</tbody></table>
+  </section>
+  <section class="print-section">
+    <h2>Tools &amp; shop time</h2>
+    <p>${BB.Plans.toolList(spec, model, stock).map(esc).join(' · ')}</p>
+    ${(() => {
+      const t = BB.Plans.timeEstimate(spec, model, cut, steps, stock);
+      const wait = t.finishWait ? ` Plus finish wall time: ${t.finishWait.coats} coats of ${esc(t.finishWait.label.toLowerCase())}, recoat every ${t.finishWait.recoatHrs} h, cure ${t.finishWait.cureDays} days.` : '';
+      return `<p class="print-total">≈ ${t.hoursLow}–${t.hoursHigh} hours of bench time (${t.sessions} session${t.sessions === 1 ? '' : 's'} of ~4 h) at the ${esc(spec.meta.level)} pace.${wait}</p>`;
+    })()}
   </section>${stockHTML}
   <section class="print-section page-break">
     <h2>Bill of materials</h2>
@@ -269,5 +299,5 @@ BlueprintBuddyImport.build
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
   }
 
-  BB.Exports = { toDAE, toRuby, printHTML, download, slug, ROLE_COLORS };
+  BB.Exports = { toDAE, toRuby, toCSV, printHTML, download, slug, ROLE_COLORS };
 })();

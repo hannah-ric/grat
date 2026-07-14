@@ -501,6 +501,57 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* ============ shop truth: tools, time, CSV ============ */
+    {
+      // Advanced mortise-and-tenon table: the tool wall must demand the
+      // joint's real tools on top of the base kit.
+      const mt = pipeline({ meta: { name: 'MT Table', template: 'table', level: 'advanced' }, joinery: { frame: 'mortise_tenon' } });
+      const mtTools = Plans.toolList(mt.spec, mt.model, null);
+      test('shop', 'tool wall = base kit + joint tools (mortise & tenon adds chisels)',
+        Plans.BASE_TOOLS.every(t => mtTools.includes(t)) && mtTools.some(t => /chisel/i.test(t)),
+        mtTools.filter(t => /chisel|mortis/i.test(t)).join(', ') || 'no joint tools', 'chisels present');
+
+      // Drawered nightstand: sheet goods + drawer fitting appear.
+      const ns = pipeline({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate' }, drawers: { count: 2 } });
+      const nsTools = Plans.toolList(ns.spec, ns.model, null);
+      test('shop', 'drawer build adds sheet breakdown + drawer fitting tools',
+        nsTools.some(t => /sheet/i.test(t)) && nsTools.some(t => /drawer/i.test(t)),
+        nsTools.filter(t => /sheet|drawer/i.test(t)).join(', '), 'sheet + drawer tools');
+
+      // Time estimate: level factor orders the estimates; breakdown is honest.
+      const cutMT = Plans.cutList(mt.spec, mt.model);
+      const stepsMT = Plans.assembly(mt.spec, mt.model, null);
+      const tAdv = Plans.timeEstimate(mt.spec, mt.model, cutMT, stepsMT, null);
+      const beg = pipeline({ meta: { name: 'B Table', template: 'table', level: 'beginner' } });
+      const tBeg = Plans.timeEstimate(beg.spec, beg.model, Plans.cutList(beg.spec, beg.model), Plans.assembly(beg.spec, beg.model, null), null);
+      const sum = tAdv.breakdown.reduce((n, b) => n + b.min, 0);
+      test('shop', 'time estimate: breakdown × level factor = active minutes',
+        Math.abs(tAdv.activeMin - Math.round(sum * tAdv.factor)) <= 1, `${tAdv.activeMin} vs ${Math.round(sum * tAdv.factor)}`, 'equal ±1');
+      test('shop', 'beginner pace multiplier exceeds advanced', tBeg.factor > tAdv.factor, `${tBeg.factor} vs ${tAdv.factor}`, '1.5 vs 1');
+      test('shop', 'estimate is bounded and session count follows hours',
+        tAdv.hoursLow >= 1 && tAdv.hoursHigh > tAdv.hoursLow && tAdv.sessions === Math.ceil(tAdv.hoursHigh / 4),
+        `${tAdv.hoursLow}–${tAdv.hoursHigh} h, ${tAdv.sessions} sessions`, 'low < high, sessions = ceil(high/4)');
+
+      // CSV: one line per row + header, display units AND raw mm, RFC quoting.
+      // Display prefs are pinned imperial for the assertion and restored.
+      const savedUnits = BB.Units.get();
+      let csvLines, nsCut;
+      try {
+        BB.Units.set({ system: 'imperial', precision: 16, dual: false });
+        nsCut = Plans.cutList(ns.spec, ns.model);
+        csvLines = BB.Exports.toCSV(ns.spec, nsCut).trim().split('\r\n');
+      } finally { BB.Units.set(savedUnits); }
+      test('shop', 'CSV has header + one line per cut row', csvLines.length === nsCut.length + 1, csvLines.length, nsCut.length + 1);
+      test('shop', 'CSV carries display units and raw mm side by side',
+        csvLines[0].includes('"Length (mm)"') && / in"/.test(csvLines[1]) && /,\d+(\.\d+)?,/.test(csvLines[1]),
+        csvLines[1].slice(0, 80) + '…', 'formatted + numeric mm columns');
+
+      // Icons: strings, themable, unknown-safe.
+      test('shop', 'icon set emits currentColor SVGs and empty string for unknown names',
+        BB.Icons.svg('undo').includes('currentColor') && BB.Icons.svg('nope') === '',
+        `undo ${BB.Icons.svg('undo').length} chars, unknown "${BB.Icons.svg('nope')}"`, 'svg + empty');
+    }
+
     return results;
   }
 
