@@ -284,5 +284,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
-  BB.Plans = { cutList, bom, assembly, JOINT_ALLOWANCE };
+  /* ---------------- build-mode checklist keys ----------------
+   * Single source of truth for build-progress keys: the same enumeration
+   * names the checkboxes in build mode, prunes stale progress after a
+   * re-pack, and counts completion — so the three can never disagree. */
+  function cutKey(kind, gi, ci, name, len) { return `${kind}:${gi}:${ci}:${name}:${len}`; }
+
+  function checklistKeys(stockPlan, cut, steps) {
+    const cuts = [];
+    if (stockPlan) {
+      stockPlan.boards.forEach((b, bi) => {
+        if (!b.stockLen) return;
+        b.cuts.forEach((c, ci) => cuts.push(cutKey('b', bi, ci, c.name, c.len)));
+      });
+      stockPlan.sheets.forEach((s, si) => {
+        s.placements.forEach((p, pi) => cuts.push(cutKey('s', si, pi, p.name, Math.round(p.w))));
+      });
+      if (stockPlan.mode === 'rough') {
+        (cut || []).filter(r => r.stock !== 'sheet').forEach((r, ri) => cuts.push(cutKey('r', 0, ri, r.name, r.L)));
+      }
+    }
+    return { cuts, steps: (steps || []).map(s => s.id) };
+  }
+
+  /* Drop progress keys that no longer exist in the live checklist — orphans
+   * left behind by an older stock layout. Mutates in place. */
+  function pruneProgress(progress, keys) {
+    const liveCuts = new Set(keys.cuts), liveSteps = new Set(keys.steps);
+    for (const k of Object.keys(progress.cuts)) if (!liveCuts.has(k)) delete progress.cuts[k];
+    for (const k of Object.keys(progress.steps)) if (!liveSteps.has(k)) delete progress.steps[k];
+    return progress;
+  }
+
+  BB.Plans = { cutList, bom, assembly, JOINT_ALLOWANCE, cutKey, checklistKeys, pruneProgress };
 })();

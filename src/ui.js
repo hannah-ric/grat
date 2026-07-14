@@ -67,6 +67,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.stockPlan = Packing.planStock(r.spec, r.model, state.cut, { prices: state.prices, stockMode: state.prefs4.stockMode });
     state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan });
     state.steps = Plans.assembly(r.spec, r.model, state.integrity);
+    // The checklist just changed shape: progress keys from an older stock
+    // layout would otherwise inflate the build percentage forever.
+    if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
     state.engine.setModel(r.model, r.spec);
   }
   /* Recompute derived layers for the SAME spec (load presets, prices,
@@ -132,20 +135,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   let saveTimer = null;
   function progressPct() {
     if (!state.project) return 0;
-    const total = countChecklistItems();
+    // Count only keys that exist in the live checklist — never orphans from
+    // an older stock layout, never boards the checklist can't render.
+    const keys = Plans.checklistKeys(state.stockPlan, state.cut, state.steps);
+    const total = keys.cuts.length + keys.steps.length;
     if (!total) return 0;
-    const done = Object.values(state.project.progress.cuts).filter(Boolean).length +
-      Object.values(state.project.progress.steps).filter(Boolean).length;
+    const done = keys.cuts.filter(k => state.project.progress.cuts[k]).length +
+      keys.steps.filter(k => state.project.progress.steps[k]).length;
     return Math.min(100, Math.round(100 * done / total));
-  }
-  function countChecklistItems() {
-    let n = state.steps.length;
-    if (state.stockPlan) {
-      for (const b of state.stockPlan.boards) n += b.cuts.length;
-      for (const s of state.stockPlan.sheets) n += s.placements.length;
-      if (state.stockPlan.mode === 'rough') n += state.cut.filter(r => r.stock !== 'sheet').length;
-    }
-    return n;
   }
   function scheduleAutosave() {
     clearTimeout(saveTimer);
@@ -1297,7 +1294,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (state.buildMode && document.visibilityState === 'visible') requestWakeLock();
   });
 
-  function cutKey(kind, bi, ci, name, len) { return `${kind}:${bi}:${ci}:${name}:${len}`; }
+  const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
 
   function enterBuildMode() {
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
