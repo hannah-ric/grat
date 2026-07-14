@@ -3,8 +3,13 @@
   "version": "4.0.0",
   "description": "AI-guided parametric furniture design studio and workshop companion — chat proposes intent, code owns the geometry",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
+    "dev": "node serve.js",
     "build": "node build.js",
+    "start": "node serve.js --no-watch",
     "test": "node test/unit.test.js",
     "test:smoke": "node build.js && node test/smoke.playwright.js"
   },
