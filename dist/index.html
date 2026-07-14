@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Blueprint Buddy</title>
 <style>
 /* Blueprint Buddy — design system.
@@ -124,32 +124,73 @@ button, input, select, textarea { font: inherit; color: inherit; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* keyboard users get a way past the header/chat straight to the plans */
+.skip-link {
+  position: fixed; top: -48px; left: var(--s3); z-index: 200;
+  background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 13.5px;
+  padding: var(--s2) var(--s3); border-radius: 0 0 var(--radius) var(--radius);
+  transition: top var(--t-fast) var(--ease);
+}
+.skip-link:focus-visible { top: 0; outline-offset: -3px; }
+
 #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 
-/* ---------------- top bar ---------------- */
+/* ---------------- top bar ----------------
+   One compact row at every width: the design name yields first, then the
+   readiness strip slims to dots, then the brand wordmark drops. */
 .topbar {
-  display: flex; align-items: center; gap: var(--s3);
-  padding: var(--s2) var(--s3);
+  display: flex; align-items: center; gap: var(--s2);
+  padding: 6px var(--s3);
   background: var(--panel); border-bottom: 1px solid var(--line);
-  flex: none; z-index: 30;
+  flex: none; z-index: 30; min-height: 50px;
 }
 .brand { display: flex; align-items: center; gap: var(--s2); flex: none; }
 .brand svg { display: block; }
 .brand-name {
   font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: -.01em;
-  white-space: nowrap;
+  white-space: nowrap; margin: 0;
 }
 .brand-name span { color: var(--accent); }
 .design-name {
   font-family: var(--display); font-weight: 600; font-size: 15px;
   background: transparent; border: 1px solid transparent; border-radius: var(--radius);
-  padding: var(--s1) var(--s2); min-width: 60px; max-width: 320px; width: 24ch;
+  padding: var(--s1) var(--s2); min-width: 56px; max-width: 320px; width: 24ch; flex: 0 1 auto;
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   text-overflow: ellipsis;
 }
 .design-name:hover, .design-name:focus { border-color: var(--line-2); background: var(--panel-2); }
 .topbar-spacer { flex: 1; }
 .topbar-group { display: flex; align-items: center; gap: var(--s1); }
+.build-cta .cta-short { display: none; }
+
+/* ---------------- readiness strip ----------------
+   Derived, never stored: Design → Validate → Plans → Build, each step a
+   real button that jumps to its surface. States paint the dot. */
+.readiness { display: flex; align-items: center; gap: 2px; flex: none; }
+.ready-step {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0; background: none; cursor: pointer; border-radius: 999px;
+  padding: 5px 9px; font-size: 12px; font-weight: 600; color: var(--muted);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  white-space: nowrap;
+}
+.ready-step:hover { background: var(--panel-2); color: var(--ink-2); }
+.ready-step .dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: transparent; border: 1.5px solid var(--line-2);
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.ready-step[data-state="done"] .dot { background: var(--green); border-color: var(--green); }
+.ready-step[data-state="attn"] .dot { background: var(--amber); border-color: var(--amber); }
+.ready-step[data-state="fail"] .dot { background: var(--brick); border-color: var(--brick); }
+.ready-step[aria-current="step"] { color: var(--ink); background: var(--panel-2); }
+.ready-step[data-state="done"] { color: var(--ink-2); }
+.ready-sep { color: var(--line-2); font-size: 10px; user-select: none; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
@@ -204,6 +245,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   width: 340px; flex: none; display: flex; flex-direction: column;
   border-right: 1px solid var(--line); background: var(--panel);
   min-height: 0; z-index: 20;
+  transition: width var(--t-med) var(--ease);
 }
 .chat-head {
   padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line);
@@ -214,8 +256,35 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px;
   padding: 4px 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer;
 }
-.chat-log { flex: 1; overflow-y: auto; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s3); scroll-behavior: smooth; }
+.chat-log { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s3); scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { .chat-log { scroll-behavior: auto; } }
+
+/* Collapsed chat (pointer layouts): the column folds to a slim rail so the
+ * bench goes to the 3D view and plans; the rail re-opens it and shows a dot
+ * when a reply landed while folded. The mobile sheet has its own physics —
+ * these rules never apply under the 880px breakpoint. */
+.chat-rail { display: none; }
+@media (min-width: 881px) {
+  .chat.collapsed { width: 46px; }
+  .chat.collapsed .chat-head, .chat.collapsed .chat-log,
+  .chat.collapsed .chat-input { display: none; }
+  .chat.collapsed .chat-rail { display: flex; }
+  .chat-rail {
+    flex: 1; flex-direction: column; align-items: center; gap: var(--s2);
+    border: 0; background: none; cursor: pointer; padding: var(--s3) 0;
+    color: var(--ink-2); position: relative;
+    transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .chat-rail:hover { background: var(--panel-2); color: var(--accent); }
+  .chat-rail-label {
+    writing-mode: vertical-rl; font: 600 12px var(--body); letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+  .chat-rail-dot {
+    position: absolute; top: 10px; right: 9px; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--accent);
+  }
+}
 
 .msg { max-width: 92%; animation: rise var(--t-med) var(--ease); }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
@@ -267,11 +336,32 @@ button, input, select, textarea { font: inherit; color: inherit; }
   white-space: normal; text-align: left; line-height: 1.35;
 }
 
-/* ---------------- stage ---------------- */
-.stage { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
-.viewport-wrap { position: relative; flex: 1.4; min-height: 240px; }
+/* ---------------- stage ----------------
+   The viewport/plans split is a draggable, keyboard-operable separator:
+   --vp-split is the viewport's share of the stage height in percent. */
+.stage { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; --vp-split: 58; }
+.viewport-wrap { position: relative; flex: 0 1 calc(var(--vp-split) * 1%); min-height: 180px; }
 .viewport-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; border-radius: 0; }
 .viewport-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+.splitter {
+  flex: none; height: 9px; margin: -2px 0; cursor: row-resize; z-index: 12;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: none; position: relative; background: none; border: 0;
+}
+.splitter::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+  background: var(--line); transition: background var(--t-fast) var(--ease);
+}
+.splitter-grip {
+  width: 44px; height: 5px; border-radius: 3px; background: var(--line-2);
+  position: relative; z-index: 1;
+  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.splitter:hover .splitter-grip, .splitter.dragging .splitter-grip { background: var(--accent); }
+.splitter:hover::before, .splitter.dragging::before { background: var(--accent); }
+.splitter:focus-visible { outline: none; }
+.splitter:focus-visible .splitter-grip { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .stage-controls {
   position: absolute; top: var(--s3); right: var(--s3); display: flex; flex-direction: column; gap: var(--s2);
@@ -314,12 +404,60 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: var(--radius-lg); padding: var(--s2) 12px; font-size: 13px; line-height: 1.45;
   box-shadow: var(--shadow); animation: rise var(--t-med) var(--ease);
 }
+.advisory .adv-icon { flex: none; font-size: 12px; line-height: 1.45; }
 .advisory.error { background: var(--brick-soft); color: var(--brick-ink); border-color: color-mix(in srgb, var(--brick) 30%, transparent); }
 .advisory .dismiss {
   border: 0; background: none; cursor: pointer; color: inherit; opacity: .6; padding: 0 2px; font-size: 15px; line-height: 1;
   flex: none; margin-left: auto;
 }
 .advisory .dismiss:hover { opacity: 1; }
+/* past the cap the stack folds: one quiet row says how many more wait */
+.advisory-more {
+  pointer-events: auto; align-self: flex-start;
+  border: 1px solid var(--line-2); background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--ink-2); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 600;
+  cursor: pointer; box-shadow: var(--shadow);
+}
+.advisory-more:hover { color: var(--ink); border-color: var(--muted); }
+
+/* ---------------- welcome (first run, never blocking) ---------------- */
+.welcome {
+  position: absolute; z-index: 11; top: 64px; left: 50%; transform: translateX(-50%);
+  width: min(660px, calc(100% - var(--s4) * 2));
+  background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(10px);
+  border: 1px solid var(--line-2); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  padding: var(--s3) var(--s3) var(--s2); animation: rise var(--t-slow) var(--ease);
+}
+.welcome-head { display: flex; align-items: baseline; gap: var(--s2); }
+.welcome-head h2 { font-family: var(--display); font-weight: 700; font-size: 19px; margin: 0 0 var(--s2); flex: 1; text-wrap: balance; }
+.welcome-paths { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
+.welcome-card {
+  text-align: left; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
+  padding: var(--s2) var(--s3); cursor: pointer; display: flex; flex-direction: column; gap: 3px;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.welcome-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+.welcome-card .w-emoji { font-size: 20px; }
+.welcome-card .w-name { font-family: var(--display); font-weight: 650; font-size: 14px; }
+.welcome-card .w-caption { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.welcome-note { margin: var(--s2) 0 2px; font-size: 12px; color: var(--muted); text-align: center; }
+@media (max-height: 620px) { .welcome-note { display: none; } }
+
+/* ---------------- viewport help ---------------- */
+.vp-help {
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: var(--s3); width: 264px;
+  animation: rise var(--t-fast) var(--ease);
+}
+.vp-help h3 { margin: 0 0 var(--s2); font-family: var(--display); font-size: 14px; }
+.vp-help dl { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.vp-help dl > div { display: flex; justify-content: space-between; gap: var(--s2); font-size: 12.5px; }
+.vp-help dt { color: var(--ink-2); font-weight: 600; }
+.vp-help dd { margin: 0; color: var(--muted); text-align: right; }
+.vp-help kbd {
+  font: 600 10.5px var(--mono); background: var(--panel-2); border: 1px solid var(--line-2);
+  border-bottom-width: 2px; border-radius: 4px; padding: 1px 4px;
+}
 
 .viewport-hint {
   position: absolute; bottom: var(--s2); left: 50%; transform: translateX(-50%);
@@ -341,7 +479,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------------- tabs + panel ---------------- */
 .tabs {
-  display: flex; gap: var(--s1); padding: var(--s2) var(--s3) 0; border-top: 1px solid var(--line);
+  display: flex; gap: var(--s1); padding: var(--s1) var(--s3) 0;
   background: var(--panel); flex: none; overflow-x: auto; scrollbar-width: none;
 }
 .tabs::-webkit-scrollbar { display: none; }
@@ -359,15 +497,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tab[aria-selected="true"]::after { transform: scaleX(1); }
 
 .panel {
-  flex: 1; overflow-y: auto; background: var(--panel); border-top: 1px solid var(--line);
-  padding: var(--s3) var(--s4) var(--s5); min-height: 160px;
+  flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable;
+  background: var(--panel); border-top: 1px solid var(--line);
+  padding: var(--s3) var(--s4) var(--s5); min-height: 120px;
 }
 .panel-inner { max-width: 880px; animation: rise var(--t-med) var(--ease); }
 .panel h3 { font-family: var(--display); font-weight: 700; font-size: 18px; margin: var(--s3) 0 var(--s2); text-wrap: balance; }
 .panel h3:first-child { margin-top: 0; }
 .panel .lede { color: var(--muted); font-size: 13.5px; margin: 0 0 var(--s3); }
 
-.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.table-scroll { overflow-x: auto; overscroll-behavior-x: contain; border: 1px solid var(--line); border-radius: var(--radius-lg); }
 table.data { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
 table.data th {
   text-align: left; font: 600 11.5px var(--body); letter-spacing: .07em; text-transform: uppercase;
@@ -377,6 +516,10 @@ table.data th {
 table.data td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.data tr:last-child td { border-bottom: 0; }
 table.data td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
+/* numbers scan as columns: right-aligned under right-aligned headers */
+table.data td.num, table.data th.num { text-align: right; }
+table.data td.num .prov-btn { text-align: right; }
+table.data tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel-2) 45%, transparent); }
 table.data tbody tr { transition: background var(--t-fast) var(--ease); }
 table.data tbody tr:hover { background: var(--panel-2); }
 
@@ -509,7 +652,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .drawer-panel.open { transform: none; }
 .drawer-head { display: flex; align-items: center; gap: var(--s2); padding: var(--s3); border-bottom: 1px solid var(--line); }
 .drawer-head h2 { font-family: var(--display); font-size: 18px; margin: 0; flex: 1; }
-.drawer-body { flex: 1; overflow-y: auto; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+.drawer-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
 .snap {
   border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s2) var(--s3);
   display: flex; gap: var(--s2); align-items: flex-start; background: var(--panel);
@@ -540,7 +683,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .scrim.open { opacity: 1; pointer-events: auto; }
 .modal {
   background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; box-shadow: var(--shadow-lg);
-  width: min(720px, 100%); max-height: min(86vh, 720px); overflow-y: auto; padding: var(--s4);
+  width: min(720px, 100%); max-height: min(86dvh, 720px); overflow-y: auto; overscroll-behavior: contain; padding: var(--s4);
   transform: translateY(14px) scale(.985); transition: transform var(--t-med) var(--ease);
 }
 .scrim.open .modal { transform: none; }
@@ -569,13 +712,36 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .diff-table td.old { color: var(--brick); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--brick) 50%, transparent); }
 .diff-table td.new { color: var(--green); font-weight: 600; }
 
+/* ---------------- tablet ----------------
+   Between the phone sheet and the full bench: the chat narrows, paddings
+   tighten, and the readiness strip slims to dots so the header stays one row. */
+@media (min-width: 881px) and (max-width: 1180px) {
+  .chat { width: 280px; }
+  .chat.collapsed { width: 46px; }
+  .panel { padding: var(--s3) var(--s3) var(--s5); }
+  .inspector { width: 256px; }
+  .design-name { width: 16ch; }
+  .control-card input[type="range"] { width: 84px; }
+}
+/* readiness: labels need the widest desks; dots carry the state elsewhere */
+@media (max-width: 1280px) {
+  .ready-step { padding: 5px 5px; }
+  .ready-step .ready-label { display: none; }
+  .ready-step[aria-current="step"] .ready-label { display: inline; }
+  .ready-sep { display: none; }
+}
+@media (max-width: 660px) {
+  .readiness { display: none; }
+}
+
 /* ---------------- mobile ---------------- */
 .sheet-handle { display: none; }
 .chat-peek { display: none; }
 @media (max-width: 880px) {
   .bench { flex-direction: column; }
   .stage { order: 0; }
-  .viewport-wrap { flex: 1; min-height: 200px; }
+  .viewport-wrap { min-height: 180px; }
+  .splitter { height: 14px; }
   .chat {
     order: 1; width: 100%; border-right: 0; border-top: 1px solid var(--line-2);
     position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: 46vh; z-index: 50;
@@ -599,6 +765,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   .chat.expanded .chat-log { display: flex; }
   .chat-head { display: none; }
   .chat.expanded .chat-head { display: flex; }
+  .chat-collapse { display: none; } /* the sheet handle owns expand/collapse here */
   #app { padding-bottom: var(--sheet-peek); }
   .inspector { width: min(300px, calc(100vw - 32px)); }
   /* stacking: playback floats above the collapsed sheet, advisories above both */
@@ -607,14 +774,29 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
     bottom: calc(var(--sheet-peek) + 68px); z-index: 54;
   }
   .stage-controls { flex-direction: column; }
-  .control-card { padding: 8px 12px; }
+  .control-card { padding: 6px 10px; }
+  .control-card input[type="range"] { width: 80px; }
+  .viewport-toolbar label { display: none; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
-  .topbar { flex-wrap: wrap; gap: var(--s2); }
-  .design-name { width: 12ch; }
+  /* one header row, always: the wordmark yields, the design name flexes,
+     Build shortens — nothing wraps into a second row. */
+  .topbar { flex-wrap: nowrap; gap: var(--s1); padding: 6px var(--s2); min-height: 48px; }
+  .brand-name { display: none; }
+  .design-name { width: auto; flex: 1 1 56px; min-width: 44px; }
+  .topbar .btn { padding: 8px 9px; font-size: 13px; }
+  .build-cta .cta-long { display: none; }
+  .build-cta .cta-short { display: inline; }
+  .welcome { top: 56px; width: min(420px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); overflow-y: auto; overscroll-behavior: contain; }
+  .welcome-paths { grid-template-columns: 1fr; }
+  .welcome-card { flex-direction: row; align-items: center; gap: var(--s2); }
+  .welcome-card .w-caption { display: none; }
   .playback-bar {
     position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
   }
+}
+@media (max-width: 560px) {
+  .save-state { display: none; }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -655,10 +837,11 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .save-state {
   font: 550 11px var(--body); letter-spacing: .06em; text-transform: uppercase;
   color: var(--green); opacity: 0; transition: opacity var(--t-med) var(--ease);
-  white-space: nowrap;
+  white-space: nowrap; flex: none;
 }
 .save-state.on { opacity: .85; }
 .save-state.err { color: var(--amber-ink); opacity: 1; }
+.save-state.pending { color: var(--muted); opacity: .7; }
 
 .brand { cursor: default; user-select: none; -webkit-user-select: none; }
 
@@ -734,7 +917,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 }
 
 /* ---------------- projects gallery ---------------- */
-.projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--s3); max-height: 55vh; overflow-y: auto; padding: 2px; }
+.projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--s3); max-height: 55vh; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
 .project-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); padding: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
 .project-card.current { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .project-card .p-thumb { width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); display: block; }
@@ -773,7 +956,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 
 /* ---------------- diagnostics ---------------- */
 .diag-summary { font: 600 12px var(--mono); }
-.diag-body { max-height: 55vh; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s2); }
+.diag-body { max-height: 55vh; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s2); }
 .diag-group { font: 700 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: var(--s2) 0 4px; }
 .diag-row { display: flex; gap: var(--s2); align-items: baseline; padding: var(--s1) var(--s2); border-radius: 8px; font-size: 12.5px; }
 .diag-row.fail { background: var(--brick-soft); }
@@ -798,7 +981,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .bm-progress { font: 650 clamp(14px, 2vw, 18px) var(--mono); color: var(--green); }
 .bm-wake { font: 550 12px var(--body); color: var(--muted); }
 .bm-exit { padding: 14px 22px; font-size: 16px; font-weight: 650; }
-.bm-columns { flex: 1; display: flex; gap: var(--s3); padding: var(--s3) var(--s4) var(--s5); overflow: auto; }
+.bm-columns { flex: 1; display: flex; gap: var(--s3); padding: var(--s3) var(--s4) var(--s5); overflow: auto; overscroll-behavior: contain; }
 .bm-col { flex: 1; min-width: 280px; }
 .bm-col h2 { font-family: var(--display); font-size: clamp(17px, 2.4vw, 22px); margin: var(--s2) 0 var(--s3); }
 .bm-board { margin-bottom: var(--s4); }
@@ -833,7 +1016,8 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 
 /* build-mode playback: the stage becomes the whole screen */
 body.bm-playback .build-mode { display: none; }
-body.bm-playback .topbar, body.bm-playback .chat, body.bm-playback .tabs, body.bm-playback .panel { display: none !important; }
+body.bm-playback .topbar, body.bm-playback .chat, body.bm-playback .tabs, body.bm-playback .panel,
+body.bm-playback .splitter { display: none !important; }
 body.bm-playback .bench, body.bm-playback .stage, body.bm-playback .viewport-wrap { position: fixed; inset: 0; z-index: 110; }
 body.bm-playback .playback-bar { display: none !important; }
 .bm-playbar {
@@ -861,9 +1045,15 @@ body.bm-playback .playback-bar { display: none !important; }
   .print-board svg { width: 100%; height: auto; }
 }
 
+@media (max-width: 400px) {
+  #redoBtn { display: none; }
+}
+
 </style>
 </head>
 <body>
+
+<a class="skip-link" href="#panel-main">Skip to plans</a>
 
 <div id="app">
   <header class="topbar">
@@ -873,10 +1063,12 @@ body.bm-playback .playback-bar { display: none !important; }
         <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
         <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
       </svg>
-      <span class="brand-name">Blueprint<span>Buddy</span></span>
+      <h1 class="brand-name">Blueprint<span>Buddy</span></h1>
     </div>
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
     <span class="save-state" id="saveState" aria-live="polite"></span>
+    <div class="topbar-spacer"></div>
+    <nav class="readiness" id="readiness" aria-label="Design readiness"></nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
       <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
@@ -888,6 +1080,7 @@ body.bm-playback .playback-bar { display: none !important; }
         <div id="moreMenu" class="menu" role="menu" inert>
           <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
+          <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
           <div class="menu-sep"></div>
           <div class="menu-row">
@@ -929,7 +1122,7 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
         </div>
       </div>
-      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion">Build mode</button>
+      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion"><span class="cta-long">Build mode</span><span class="cta-short" aria-hidden="true">Build</span></button>
     </div>
   </header>
 
@@ -937,6 +1130,11 @@ body.bm-playback .playback-bar { display: none !important; }
     <aside class="chat" id="chatPanel" aria-label="Design chat">
       <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat" aria-expanded="false" aria-controls="chatPanel"></button>
       <div class="chat-peek" id="chatPeek" aria-hidden="true"></div>
+      <button class="chat-rail" id="chatRail" hidden aria-label="Expand design chat" title="Expand design chat">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2.5 3.5 h13 a1.5 1.5 0 0 1 1.5 1.5 v6 a1.5 1.5 0 0 1 -1.5 1.5 h-7 l-4 3 v-3 h-2 a1.5 1.5 0 0 1 -1.5 -1.5 v-6 a1.5 1.5 0 0 1 1.5 -1.5 z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <span class="chat-rail-label">Chat</span>
+        <span class="chat-rail-dot" id="chatRailDot" hidden></span>
+      </button>
       <div class="chat-head">
         <h2>Design chat</h2>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
@@ -944,6 +1142,9 @@ body.bm-playback .playback-bar { display: none !important; }
           <option value="intermediate">Intermediate</option>
           <option value="advanced">Advanced</option>
         </select>
+        <button class="btn icon ghost chat-collapse" id="chatCollapse" aria-label="Collapse chat" title="Collapse chat" aria-expanded="true" aria-controls="chatPanel">
+          <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><path d="M9.5 2.5 4.5 7.5 l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 2.5 v10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
       </div>
       <div class="chat-log" id="chatLog" aria-live="polite"></div>
       <div class="chat-input">
@@ -959,11 +1160,36 @@ body.bm-playback .playback-bar { display: none !important; }
       </div>
     </aside>
 
-    <section class="stage">
+    <section class="stage" id="stage">
       <div class="viewport-wrap" id="viewportWrap">
         <canvas id="view3d" tabindex="0" aria-label="3D model viewport. Drag or use arrow keys to orbit, plus and minus to zoom, Home to reframe. Click a part to inspect it; double-click to isolate."></canvas>
 
-        <div class="advisories" id="advisories"></div>
+        <div class="advisories" id="advisories" aria-live="polite"></div>
+
+        <div class="welcome" id="welcomeOverlay" role="region" aria-label="Ways to start" hidden>
+          <div class="welcome-head">
+            <h2 id="welcomeTitle">Where should we start?</h2>
+            <button class="btn icon ghost" id="welcomeClose" aria-label="Dismiss welcome">✕</button>
+          </div>
+          <div class="welcome-paths">
+            <button class="welcome-card" id="welcomeDescribe">
+              <span class="w-emoji" aria-hidden="true">💬</span>
+              <span class="w-name">Describe it</span>
+              <span class="w-caption">Type a piece in plain words — or drop in a photo — and full plans appear.</span>
+            </button>
+            <button class="welcome-card" id="welcomeStarter">
+              <span class="w-emoji" aria-hidden="true">📐</span>
+              <span class="w-name">Pick a starter</span>
+              <span class="w-caption">Six proven designs, plans ready instantly. Refine any of them in chat.</span>
+            </button>
+            <button class="welcome-card" id="welcomeResume">
+              <span class="w-emoji" aria-hidden="true">🗂</span>
+              <span class="w-name" id="welcomeResumeName">Import a design</span>
+              <span class="w-caption" id="welcomeResumeCaption">Paste a BB4: share code to pick up a design from anywhere.</span>
+            </button>
+          </div>
+          <p class="welcome-note">The table behind this card is live — orbit it, click a part, or just start typing. Nothing here blocks you.</p>
+        </div>
 
         <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
@@ -982,6 +1208,19 @@ body.bm-playback .playback-bar { display: none !important; }
             <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
+            <span class="vt-sep" aria-hidden="true"></span>
+            <button class="btn small ghost" id="vpHelpBtn" aria-label="Viewport controls help" aria-haspopup="dialog" aria-expanded="false">?</button>
+          </div>
+          <div class="vp-help" id="vpHelp" role="dialog" aria-label="Viewport controls help" hidden>
+            <h3>Moving around</h3>
+            <dl>
+              <div><dt>Orbit</dt><dd>drag · arrow keys</dd></div>
+              <div><dt>Zoom</dt><dd>scroll or pinch · <kbd>+</kbd> <kbd>−</kbd></dd></div>
+              <div><dt>Reframe</dt><dd><kbd>Home</kbd> or ⤢ Fit</dd></div>
+              <div><dt>Inspect a part</dt><dd>click / tap it</dd></div>
+              <div><dt>Isolate a part</dt><dd>double-click it</dd></div>
+              <div><dt>Undo · redo</dt><dd><kbd>Ctrl</kbd><kbd>Z</kbd> · <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></dd></div>
+            </dl>
           </div>
         </div>
 
@@ -1002,6 +1241,10 @@ body.bm-playback .playback-bar { display: none !important; }
         <div class="viewport-hint" id="viewportHint">drag to orbit · scroll to zoom · click a part to tune it</div>
       </div>
 
+      <div class="splitter" id="vpSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize 3D viewport against the plans panel" aria-controls="viewportWrap" tabindex="0" aria-valuemin="24" aria-valuemax="78" aria-valuenow="58" title="Drag to resize — arrow keys work too">
+        <span class="splitter-grip" aria-hidden="true"></span>
+      </div>
+
       <nav class="tabs" role="tablist" aria-label="Plans" id="tabBar">
         <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="true">Cut list</button>
         <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Stock</button>
@@ -1015,9 +1258,9 @@ body.bm-playback .playback-bar { display: none !important; }
   </main>
 
   <div class="drawer-backdrop" id="historyBackdrop" hidden></div>
-  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-label="Revision history" aria-hidden="true" inert>
+  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyTitle" aria-hidden="true" inert>
     <div class="drawer-head">
-      <h2>Revisions</h2>
+      <h2 id="historyTitle">Revisions</h2>
       <button class="btn small" id="compareBtn" disabled>Compare</button>
       <button class="btn icon ghost" id="historyClose" aria-label="Close history">✕</button>
     </div>
@@ -1025,9 +1268,9 @@ body.bm-playback .playback-bar { display: none !important; }
     <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
   </aside>
 
-  <div class="scrim" inert id="galleryScrim" role="dialog" aria-modal="true" aria-label="Starter gallery">
+  <div class="scrim" inert id="galleryScrim" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
     <div class="modal">
-      <h2>What are we building?</h2>
+      <h2 id="galleryTitle">What are we building?</h2>
       <p class="sub">Pick a starter to see full plans instantly — every one runs through the same parametric pipeline as a design you describe yourself. Refine it in the chat afterward.</p>
       <div class="gallery-grid" id="galleryGrid"></div>
       <div class="modal-foot">
@@ -1037,9 +1280,9 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" inert id="helpScrim" role="dialog" aria-modal="true" aria-label="Export help">
+  <div class="scrim" inert id="helpScrim" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <div class="modal">
-      <h2>Getting your design into SketchUp</h2>
+      <h2 id="helpTitle">Getting your design into SketchUp</h2>
       <div class="help-block">
         <h3>Mesh import (.dae)</h3>
         <ol class="help-steps">
@@ -1063,7 +1306,7 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" inert id="compareScrim" role="dialog" aria-modal="true" aria-label="Snapshot comparison">
+  <div class="scrim" inert id="compareScrim" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
     <div class="modal">
       <h2 id="compareTitle">Compare snapshots</h2>
       <p class="sub" id="compareSub"></p>
@@ -1077,9 +1320,9 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" inert id="projectsScrim" role="dialog" aria-modal="true" aria-label="My projects">
+  <div class="scrim" inert id="projectsScrim" role="dialog" aria-modal="true" aria-labelledby="projectsTitle">
     <div class="modal">
-      <h2>My projects</h2>
+      <h2 id="projectsTitle">My projects</h2>
       <p class="sub" id="projectsSub">Designs autosave here as you work. Open, rename, duplicate, or delete — build progress travels with each project.</p>
       <div class="projects-grid" id="projectsGrid"></div>
       <div class="modal-foot">
@@ -1089,9 +1332,9 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" inert id="shareScrim" role="dialog" aria-modal="true" aria-label="Share design">
+  <div class="scrim" inert id="shareScrim" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
     <div class="modal">
-      <h2>Share code</h2>
+      <h2 id="shareTitle">Share code</h2>
       <p class="sub">A compact code that carries the whole design. Copy it anywhere; paste one below to import.</p>
       <div class="share-block">
         <label class="share-label" for="shareCode">This design</label>
@@ -1113,9 +1356,9 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" inert id="speciesScrim" role="dialog" aria-modal="true" aria-label="Species comparison">
+  <div class="scrim" inert id="speciesScrim" role="dialog" aria-modal="true" aria-labelledby="speciesTitle">
     <div class="modal modal-wide">
-      <h2>Compare species</h2>
+      <h2 id="speciesTitle">Compare species</h2>
       <p class="sub">The same design recomputed side by side — purchasable cost, weight, sag margin on the critical span, seasonal movement, and surface duty. Tap a column to use that species.</p>
       <div class="species-pick" id="speciesPick" role="group" aria-label="Pick up to three species"></div>
       <div class="table-scroll" id="speciesTableWrap"></div>
@@ -1123,9 +1366,9 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="scrim" inert id="diagScrim" role="dialog" aria-modal="true" aria-label="Diagnostics">
+  <div class="scrim" inert id="diagScrim" role="dialog" aria-modal="true" aria-labelledby="diagTitle">
     <div class="modal modal-wide">
-      <h2>Diagnostics</h2>
+      <h2 id="diagTitle">Diagnostics</h2>
       <p class="sub">The self-test harness: every code-owned promise, asserted in-app. <span id="diagSummary" class="diag-summary"></span></p>
       <div class="diag-body" id="diagBody"><p class="sub">Running…</p></div>
       <div class="modal-foot">
@@ -6420,9 +6663,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PREFS_KEY = 'prefs:v2';
   const LEGACY_PREFS_KEY = 'prefs:v1';
   // Fresh installs: fractional inches at 1/16, dual display off, OS theme.
+  // ui: shell layout — chat panel collapsed (desktop) and the viewport/plans
+  // split as a percentage of the stage height.
   const DEFAULT_PREFS = {
     climate: 'temperate', stockMode: {}, theme: 'auto',
-    units: { system: 'imperial', precision: 16, dual: false }
+    units: { system: 'imperial', precision: 16, dual: false },
+    ui: { chatCollapsed: false, split: 58 }
   };
 
   async function loadPrices() {
@@ -6442,6 +6688,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function withPrefDefaults(stored) {
     const out = Object.assign({}, DEFAULT_PREFS, stored);
     out.units = Object.assign({}, DEFAULT_PREFS.units, stored && stored.units ? stored.units : {});
+    out.ui = Object.assign({}, DEFAULT_PREFS.ui, stored && stored.ui ? stored.ui : {});
     return out;
   }
   async function loadPrefs() {
@@ -7881,6 +8128,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     busy: false,
     firstRun: true,
     previewing: false,
+    advisoriesExpanded: false,
     // Phase 4
     turns: [],                      // AI conversation, wire format
     loadChoices: {},                // per-surface load presets
@@ -7938,7 +8186,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     exitPlayback();
     clearCompare();
+    hideWelcome(); // a committed design is a chosen path
     state.previewing = false; // any pending slider preview is superseded by this commit
+    state.advisoriesExpanded = false; // a new change re-folds the warning stack
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -7996,6 +8246,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function scheduleAutosave() {
     clearTimeout(saveTimer);
+    // Honest feedback across the debounce: "saving…" until the write lands.
+    const elS = $('saveState');
+    clearTimeout(saveFlashTimer);
+    elS.textContent = 'saving…';
+    elS.classList.remove('err');
+    elS.classList.add('on', 'pending');
     saveTimer = setTimeout(doAutosave, 700);
   }
   async function doAutosave() {
@@ -8019,7 +8275,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   function flashSave(persistent) {
     const elS = $('saveState');
     elS.textContent = persistent ? 'saved' : 'session only';
+    elS.title = persistent
+      ? 'Autosaved to this device — find it under More › Projects'
+      : 'Storage is unavailable — this design lives for this session only. Export a share code to keep it.';
     elS.classList.toggle('err', !persistent);
+    elS.classList.remove('pending');
     elS.classList.add('on');
     clearTimeout(saveFlashTimer);
     saveFlashTimer = setTimeout(() => elS.classList.remove('on'), 1600);
@@ -8049,24 +8309,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
-  /* ---------------- render: advisories ---------------- */
+  /* ---------------- render: advisories ----------------
+   * Errors first, then live advisories. Past the cap the stack folds into a
+   * "+N more" row so warnings never wallpaper the model. */
+  const ADVISORY_CAP = 3;
   function renderAdvisories(report) {
     const wrap = $('advisories');
     wrap.textContent = '';
-    for (const e of report.errors) {
-      const chip = el('div', 'advisory error');
-      chip.append(el('span', '', '🛑 ' + esc(e.text)));
+    const items = [];
+    for (const e of report.errors) items.push({ error: true, text: e.text });
+    for (const a of report.advisories) {
+      if (!state.dismissed.has(a.id)) items.push({ error: false, text: a.text, id: a.id });
+    }
+    const visible = state.advisoriesExpanded ? items : items.slice(0, ADVISORY_CAP);
+    for (const it of visible) {
+      const chip = el('div', 'advisory' + (it.error ? ' error' : ''));
+      chip.append(el('span', 'adv-icon', it.error ? '🛑' : '⚠️'));
+      chip.append(el('span', '', esc(it.text)));
+      if (!it.error) {
+        const x = el('button', 'dismiss', '✕');
+        x.setAttribute('aria-label', 'Dismiss advisory');
+        x.onclick = () => { state.dismissed.add(it.id); renderAdvisories(report); renderReadiness(); };
+        chip.append(x);
+      }
       wrap.append(chip);
     }
-    for (const a of report.advisories) {
-      if (state.dismissed.has(a.id)) continue;
-      const chip = el('div', 'advisory');
-      chip.append(el('span', '', esc(a.text)));
-      const x = el('button', 'dismiss', '✕');
-      x.setAttribute('aria-label', 'Dismiss advisory');
-      x.onclick = () => { state.dismissed.add(a.id); chip.remove(); };
-      chip.append(x);
-      wrap.append(chip);
+    if (items.length > ADVISORY_CAP) {
+      const more = el('button', 'advisory-more',
+        state.advisoriesExpanded ? 'Show fewer' : `+${items.length - ADVISORY_CAP} more`);
+      more.setAttribute('aria-expanded', String(!!state.advisoriesExpanded));
+      more.onclick = () => { state.advisoriesExpanded = !state.advisoriesExpanded; renderAdvisories(report); };
+      wrap.append(more);
     }
   }
 
@@ -8127,7 +8400,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
       <td style="color:var(--muted);font-size:12.5px">${esc(r.note || '')}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
     scroll.querySelectorAll('.prov-btn').forEach(b => {
       b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
     });
@@ -8164,7 +8437,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // shopping list
     const scroll = el('div', 'table-scroll');
     const shopRows = plan.shopping.map(s => `<tr><td>${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th>Buy</th><th>Qty</th><th>Unit</th><th>Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" style="color:var(--muted)">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" style="color:var(--muted)">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
     root.append(scroll);
     const waste = [];
     if (plan.wasteSolidPct != null) waste.push(`solid waste ${plan.wasteSolidPct}%`);
@@ -8254,7 +8527,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td>${esc(i.label)}</td><td class="num">${i.qty}</td>
       <td style="color:var(--muted);font-size:12.5px">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th></th><th>Item</th><th>Qty</th><th>Detail</th><th>Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
     root.append(scroll);
     const tot = el('div', 'bom-total');
     tot.innerHTML = `<span>Estimated materials cost</span><strong>$${state.bomData.total.toFixed(2)}</strong>`;
@@ -8428,7 +8701,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const scroll = el('div', 'table-scroll');
     let rows = '', head = '';
     if (state.refTab === 'wood') {
-      head = '<th>Species</th><th>Janka</th><th>MOE GPa</th><th>MOR MPa</th><th>SG</th><th>Move ct/1%MC</th><th>Cost</th><th>Character</th>';
+      head = '<th>Species</th><th class="num">Janka</th><th class="num">MOE GPa</th><th class="num">MOR MPa</th><th class="num">SG</th><th class="num">Move ct/1%MC</th><th class="num">Cost</th><th>Character</th>';
       rows = Object.values(K.WOOD_SPECIES).filter(s => hit(s.label, s.blurb, s.movement)).map(s => `<tr>
         <td><strong>${esc(s.label)}</strong></td><td class="num">${s.janka} lbf</td>
         <td class="num">${s.moe.toFixed(1)}</td><td class="num">${s.mor}</td><td class="num">${s.sg.toFixed(2)}</td>
@@ -8436,7 +8709,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td class="num">${'$'.repeat(s.costTier)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
     } else if (state.refTab === 'ergo') {
-      head = '<th>Measure</th><th>Range</th><th>Applies to</th><th>Note</th>';
+      head = '<th>Measure</th><th class="num">Range</th><th>Applies to</th><th>Note</th>';
       rows = K.ERGONOMICS.filter(r => hit(r.label, r.note)).map(r => `<tr>
         <td><strong>${esc(r.label)}</strong></td>
         <td class="num">${isFinite(r.max) ? `${fmt(r.min)} – ${fmt(r.max)}` : `≥ ${fmt(r.min)}`}</td>
@@ -8453,13 +8726,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.failure)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
     } else if (state.refTab === 'lumber') {
-      head = '<th>Nominal</th><th>Actual (T × W)</th><th>Stock lengths</th>';
+      head = '<th>Nominal</th><th class="num">Actual (T × W)</th><th class="num">Stock lengths</th>';
       rows = Object.entries(K.LUMBER.NOMINALS).filter(([n]) => hit(n)).map(([n, a]) => `<tr>
         <td><strong>${esc(n)}</strong></td><td class="num">${esc(`${fmt(a.t)} × ${fmt(a.w)}`)}</td>
         <td class="num">${esc(K.LUMBER.STOCK_LENGTHS.map(l => Units.fmtBoardLength(l)).join(' / '))}</td></tr>`).join('');
       rows += `<tr><td><strong>Sheet goods</strong></td><td class="num">${esc(Units.fmtSheet(K.LUMBER.SHEET.W, K.LUMBER.SHEET.L))} · ${esc(K.LUMBER.SHEET.THICKNESSES.map(t => fmt(t)).join(' / '))}</td><td>sold whole, half, or quarter</td></tr>`;
     } else {
-      head = '<th>Item</th><th>Pilot / spec</th><th>Use</th>';
+      head = '<th>Item</th><th class="num">Pilot / spec</th><th>Use</th>';
       const f = K.FASTENERS;
       rows = [...f.screws, ...f.dowels, ...f.hardware].filter(x => hit(x.label, x.use)).map(x => `<tr>
         <td><strong>${esc(Units.fmtTemplate(x.label))}</strong></td>
@@ -8485,6 +8758,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function setBusy(b) {
     state.busy = b;
     $('sendBtn').disabled = b;
+    $('sendBtn').textContent = b ? '…' : 'Send';
     $('photoBtn').disabled = b;
     $('chatPanel').setAttribute('aria-busy', String(b));
   }
@@ -8497,6 +8771,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     // The collapsed mobile sheet shows the tail of the conversation.
     const peekText = m.textContent.trim();
     if (peekText) $('chatPeek').textContent = (kind === 'user' ? 'You: ' : '') + peekText;
+    // A reply landing while the desktop chat is folded lights the rail dot.
+    if (kind === 'bot' && state.prefs4.ui.chatCollapsed) $('chatRailDot').hidden = false;
     return m;
   }
   function botSay(text, chips, opts) {
@@ -8652,6 +8928,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function hideHints() {
+    hideWelcome(); // any design action outgrows the welcome card
     if (!state.firstRun) return;
     state.firstRun = false;
     $('hintPrompts').textContent = '';
@@ -9294,6 +9571,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     btn.setAttribute('aria-pressed', String(!!map[key]));
     btn.querySelector('.box').textContent = map[key] ? '✓' : '';
     $('bmProgress').textContent = progressPct() + '% built';
+    renderReadiness(); // the Build step tracks shop progress live
     scheduleAutosave();
   }
 
@@ -9401,22 +9679,200 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* ---------------- shell: chat collapse (pointer layouts) ----------------
+   * The mobile sheet keeps its own handle; this fold only means anything at
+   * ≥881px, where the chat is a column. State persists across sessions. */
+  function setChatCollapsed(on, opts) {
+    on = !!on;
+    state.prefs4.ui.chatCollapsed = on;
+    $('chatPanel').classList.toggle('collapsed', on);
+    $('chatRail').hidden = !on;
+    $('chatCollapse').setAttribute('aria-expanded', String(!on));
+    if (!on) $('chatRailDot').hidden = true;
+    if (!opts || opts.persist !== false) Store.savePrefs(state.prefs4);
+  }
+  /* Bring the chat input into reach whatever the layout: unfold the desktop
+   * rail or raise the mobile sheet, then focus the box. */
+  function focusChat() {
+    if (matchMedia('(max-width: 880px)').matches) {
+      const panel = $('chatPanel');
+      if (!panel.classList.contains('expanded')) $('sheetHandle').click();
+    } else if (state.prefs4.ui.chatCollapsed) {
+      setChatCollapsed(false);
+    }
+    $('chatText').focus();
+  }
+
+  /* ---------------- shell: viewport/plans splitter ----------------
+   * --vp-split is the viewport's share of the stage height (%). Pointer drag,
+   * arrow keys, PageUp/Down, Home/End, Enter-to-reset — all one code path. */
+  const SPLIT_MIN = 24, SPLIT_MAX = 78, SPLIT_DEFAULT = 58;
+  function setSplit(pct, opts) {
+    pct = Math.round(Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, pct)));
+    state.prefs4.ui.split = pct;
+    $('stage').style.setProperty('--vp-split', pct);
+    // Belt and braces: the inline basis guarantees a layout pass even where
+    // a var()-inside-calc() change fails to invalidate flex layout.
+    $('viewportWrap').style.flexBasis = pct + '%';
+    const sp = $('vpSplitter');
+    sp.setAttribute('aria-valuenow', String(pct));
+    sp.setAttribute('aria-valuetext', `3D viewport ${pct}% of the stage`);
+    if (!opts || opts.persist !== false) Store.savePrefs(state.prefs4);
+  }
+  function bindSplitter() {
+    const sp = $('vpSplitter'), stage = $('stage');
+    let dragging = false;
+    sp.addEventListener('pointerdown', e => {
+      dragging = true;
+      sp.classList.add('dragging');
+      sp.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    sp.addEventListener('pointermove', e => {
+      if (!dragging) return;
+      const r = stage.getBoundingClientRect();
+      if (r.height > 0) setSplit(((e.clientY - r.top) / r.height) * 100, { persist: false });
+    });
+    const endDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      sp.classList.remove('dragging');
+      Store.savePrefs(state.prefs4);
+    };
+    sp.addEventListener('pointerup', endDrag);
+    sp.addEventListener('pointercancel', endDrag);
+    sp.addEventListener('dblclick', () => setSplit(SPLIT_DEFAULT));
+    sp.addEventListener('keydown', e => {
+      const cur = state.prefs4.ui.split;
+      let next = null;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = cur - 3;
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = cur + 3;
+      else if (e.key === 'PageUp') next = cur - 10;
+      else if (e.key === 'PageDown') next = cur + 10;
+      else if (e.key === 'Home') next = SPLIT_MIN;
+      else if (e.key === 'End') next = SPLIT_MAX;
+      else if (e.key === 'Enter') next = SPLIT_DEFAULT;
+      if (next !== null) { e.preventDefault(); setSplit(next); }
+    });
+  }
+
+  /* ---------------- shell: readiness strip ----------------
+   * Design → Validate → Plans → Build, every state DERIVED from what the
+   * pipeline already knows — nothing stored, nothing to get stale. Each step
+   * is a button that jumps to its surface. */
+  function readinessSteps() {
+    const sum = state.integrity.summary;
+    const designed = !!state.project || state.history.snapshots.length > 1;
+    const stockTrouble = state.stockPlan && state.stockPlan.errors.length > 0;
+    const pct = progressPct();
+    return [
+      {
+        label: 'Design', state: designed ? 'done' : 'todo',
+        aria: designed ? 'Design captured — open the chat to refine it' : 'Start here — describe a piece, or pick a starter',
+        go: focusChat
+      },
+      {
+        label: 'Validate',
+        state: sum.fails ? 'fail' : sum.advisories ? 'attn' : 'done',
+        aria: sum.fails ? `${sum.fails} failing structural check${sum.fails > 1 ? 's' : ''} — open the integrity report`
+          : sum.advisories ? `Checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''} — open the integrity report`
+            : 'All structural checks pass — open the integrity report',
+        go: () => selectTab('integrity')
+      },
+      {
+        label: 'Plans',
+        state: state.cut.length ? (stockTrouble ? 'attn' : 'done') : 'todo',
+        aria: state.cut.length ? `Plans ready — ${state.cut.length} part${state.cut.length > 1 ? 's' : ''} in the cut list` : 'Plans appear once the design has parts',
+        go: () => selectTab('cut')
+      },
+      {
+        label: 'Build',
+        state: pct >= 100 ? 'done' : pct > 0 ? 'active' : 'todo',
+        aria: pct >= 100 ? 'Build complete — open build mode' : pct > 0 ? `${pct}% built — back to build mode` : 'Open build mode when you head to the shop',
+        go: enterBuildMode
+      }
+    ];
+  }
+  function renderReadiness() {
+    const nav = $('readiness');
+    nav.textContent = '';
+    if (!state.integrity) return;
+    const steps = readinessSteps();
+    const complete = st => st === 'done' || st === 'attn';
+    let currentSet = false;
+    steps.forEach((s, i) => {
+      if (i) nav.append(el('span', 'ready-sep', '›'));
+      const b = el('button', 'ready-step');
+      b.type = 'button';
+      b.dataset.state = s.state;
+      b.dataset.step = s.label.toLowerCase();
+      b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
+      b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
+      b.title = s.aria;
+      if (!currentSet && !complete(s.state)) {
+        b.setAttribute('aria-current', 'step');
+        currentSet = true;
+      }
+      b.onclick = s.go;
+      nav.append(b);
+    });
+  }
+
+  /* ---------------- shell: welcome (first run, never blocking) ---------------- */
+  function showWelcome(hasProjects) {
+    $('welcomeResumeName').textContent = hasProjects ? 'Open a project' : 'Import a design';
+    $('welcomeResumeCaption').textContent = hasProjects
+      ? 'Pick up where you left off — plans and build progress included.'
+      : 'Paste a BB4: share code to pick up a design from anywhere.';
+    $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
+    $('welcomeOverlay').hidden = false;
+  }
+  function hideWelcome() {
+    $('welcomeOverlay').hidden = true;
+  }
+
+  /* ---------------- shell: URL-restorable tabs ----------------
+   * The active plan tab (and reference subtab) mirrors into location.hash via
+   * replaceState — deep-linkable and reload-safe, with no history spam. */
+  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'lumber'];
+  function syncHash() {
+    const h = '#' + state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    if (location.hash !== h) {
+      try { history.replaceState(null, '', h); } catch (e) { /* sandboxed frame: tabs still work, hash doesn't */ }
+    }
+  }
+  function applyHash() {
+    const parts = (location.hash || '').replace(/^#/, '').split('/');
+    if (!TABS.includes(parts[0])) return false;
+    state.tab = parts[0];
+    if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    return true;
+  }
+
   /* ---------------- tabs ---------------- */
   const TABS = ['cut', 'stock', 'bom', 'assembly', 'integrity', 'reference'];
+  function selectTab(t) {
+    state.tab = t;
+    renderTabs();
+    renderPanel();
+  }
   function renderTabs() {
     for (const t of TABS) {
       $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
       $('tab-' + t).tabIndex = state.tab === t ? 0 : -1;
     }
+    $('panel-main').setAttribute('aria-labelledby', 'tab-' + state.tab);
     const dot = $('integrityDot');
     const sum = state.integrity ? state.integrity.summary : null;
     dot.hidden = !sum || (!sum.fails && !sum.advisories);
     dot.classList.toggle('fail', !!(sum && sum.fails));
+    syncHash();
+    renderReadiness();
   }
   function bindTabs() {
     const bar = $('tabBar');
     for (const t of TABS) {
-      $('tab-' + t).addEventListener('click', () => { state.tab = t; renderTabs(); renderPanel(); });
+      $('tab-' + t).addEventListener('click', () => selectTab(t));
     }
     bar.addEventListener('keydown', e => {
       const i = TABS.indexOf(state.tab);
@@ -9427,9 +9883,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (e.key === 'End') next = TABS[TABS.length - 1];
       if (next) {
         e.preventDefault();
-        state.tab = next; renderTabs(); renderPanel();
+        selectTab(next);
         $('tab-' + next).focus();
       }
+    });
+    window.addEventListener('hashchange', () => {
+      if (applyHash()) { renderTabs(); renderPanel(); }
     });
   }
 
@@ -9489,13 +9948,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
-    // precision, and dual display never flash from defaults.
+    // precision, dual display, and the shell layout never flash from defaults.
     try {
       state.prices = await Store.loadPrices();
       state.prefs4 = await Store.loadPrefs();
     } catch (e) { /* defaults are the product */ }
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
+    setChatCollapsed(state.prefs4.ui.chatCollapsed, { persist: false });
+    setSplit(state.prefs4.ui.split, { persist: false });
+    bindSplitter();
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -9505,20 +9967,23 @@ var BB = globalThis.BB = globalThis.BB || {};
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
     state.engine.snapNow();
+    applyHash(); // a deep-linked tab survives the reload
     renderAll();
     renderHints();
     renderGallery();
 
-    // Returning users land in the studio with their latest project; the
-    // gallery is for first runs and empty shops only.
-    let opened = false;
+    // Returning users land in the studio with their latest project. First
+    // runs get a welcome card with the three ways in — floating over a live,
+    // fully working bench: nothing blocks, everything behind it responds.
+    let opened = false, projectCount = 0;
     try {
       const idx = await Store.loadIndex();
+      projectCount = idx.length;
       if (idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
-      openScrim('galleryScrim');
-      botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
+      showWelcome(projectCount > 0);
+      botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
     }
 
     /* top bar */
@@ -9572,6 +10037,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
+    $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    /* chat fold + welcome paths */
+    $('chatCollapse').onclick = () => setChatCollapsed(true);
+    $('chatRail').onclick = () => { setChatCollapsed(false); $('chatText').focus(); };
+    $('welcomeClose').onclick = hideWelcome;
+    $('welcomeDescribe').onclick = () => { hideWelcome(); focusChat(); };
+    $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    $('welcomeResume').onclick = () => {
+      hideWelcome();
+      if ($('welcomeOverlay').dataset.mode === 'projects') openProjects();
+      else { openShare(); $('importCode').focus(); }
+    };
     $('shareBtn').onclick = openShare;
     $('shareClose').onclick = () => closeScrim('shareScrim');
     $('copyShare').onclick = copyShare;
@@ -9682,6 +10159,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;
+    /* viewport help: a small non-modal card under the toolbar */
+    const setVpHelp = open => {
+      $('vpHelp').hidden = !open;
+      $('vpHelpBtn').setAttribute('aria-expanded', String(open));
+    };
+    $('vpHelpBtn').onclick = () => setVpHelp($('vpHelp').hidden);
+    document.addEventListener('click', e => {
+      if (!$('vpHelp').hidden && !e.target.closest('.stage-controls')) setVpHelp(false);
+    });
 
     /* playback bar */
     $('pbPrev').onclick = () => scrubPlayback(state.playbackIndex - 1);
@@ -9709,6 +10195,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         // is the bottom layer: it exits last, never before an open modal.
         const prov = $('provPop');
         if (prov && !prov.hidden) { hideProv(); return; }
+        if (!$('vpHelp').hidden) { setVpHelp(false); $('vpHelpBtn').focus(); return; }
         if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
         if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
         const scrims = [...document.querySelectorAll('.scrim.open')];
@@ -9728,10 +10215,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
-      preview, commitPreview, closeInspector, openInspectorById
+      preview, commitPreview, closeInspector, openInspectorById,
+      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness
     };
 
-    setTimeout(() => { const h = $('viewportHint'); if (h) h.style.opacity = '0'; }, 6000);
+    // Viewport guidance speaks the input language it sees, and steps aside
+    // the moment the user proves they don't need it (or after 8 s).
+    const hint = $('viewportHint');
+    if (matchMedia('(pointer: coarse)').matches) {
+      hint.textContent = 'one finger to orbit · pinch to zoom · tap a part to tune it';
+    }
+    const dismissHint = () => {
+      hint.style.opacity = '0';
+      canvas.removeEventListener('pointerdown', dismissHint);
+    };
+    canvas.addEventListener('pointerdown', dismissHint);
+    setTimeout(dismissHint, 8000);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
