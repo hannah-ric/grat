@@ -73,6 +73,7 @@
         <div id="exportMenu" class="menu" role="menu" inert>
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
           <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
           <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
@@ -206,6 +207,10 @@
         <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter. (Or drop the file into your Plugins folder.) Serious users want this one — components stay editable.</p>
       </div>
       <div class="help-block">
+        <h3>3D model / AR (.glb)</h3>
+        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer (or the three.js editor) reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter to get an AR Quick Look file. Geometry is exact millimetres, rotations included.</p>
+      </div>
+      <div class="help-block">
         <h3>Integrations: SketchUp connector in Claude</h3>
         <p>Working inside Claude with the Trimble SketchUp connector? Export your <strong>DesignSpec (.json)</strong>, paste it into the conversation, and ask Claude to build the piece directly in your live SketchUp model. The spec carries every dimension, so nothing is lost in translation.</p>
       </div>
@@ -332,6 +337,7 @@
 <script>{{JS_STRUCTURAL}}</script>
 <script>{{JS_PACKING}}</script>
 <script>{{JS_PLANS}}</script>
+<script>{{JS_GLTF}}</script>
 <script>{{JS_EXPORTS}}</script>
 <script>{{JS_HISTORY}}</script>
 <script>{{JS_CODEC}}</script>

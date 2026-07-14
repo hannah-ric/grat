@@ -27,6 +27,19 @@ var BB = globalThis.BB = globalThis.BB || {};
   const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'design';
   const n = v => (Math.round(v * 1000) / 1000).toString();
 
+  /* Y-up scene rotation → Z-up export rotation: R' = A·R·Aᵀ with A the axis
+   * map above (x'=x, y'=-z, z'=y). Null when the part carries no rotation —
+   * callers keep the cheaper translation-only path. Fixes the Phase 4 gap
+   * where custom-part rotation was silently dropped from both exporters. */
+  const AXIS = [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
+  const matMul = (X, Y) => X.map(row => [0, 1, 2].map(j => row[0] * Y[0][j] + row[1] * Y[1][j] + row[2] * Y[2][j]));
+  const transpose = X => [0, 1, 2].map(j => X.map(r => r[j]));
+  function zUpRot(rot) {
+    if (!rot || (!rot.x && !rot.y && !rot.z)) return null;
+    const M = BB.Geo.rotMat(rot.x || 0, rot.y || 0, rot.z || 0);
+    return matMul(matMul(AXIS, M), transpose(AXIS));
+  }
+
   /* ---------------- COLLADA ----------------
    * INTENTIONALLY unit-exempt: the .dae declares <unit meter="0.001"> and
    * writes raw millimetre geometry regardless of the display preference.
@@ -77,13 +90,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     </mesh></geometry>`;
     }).join('\n');
 
-    // One named node per part instance, translation converted Y-up → Z-up.
+    // One named node per part instance: full pose (rotation + translation)
+    // converted Y-up → Z-up.
     const nodes = model.parts.map(p => {
       const key = `${p.size.w}x${p.size.h}x${p.size.d}`;
       const g = geoms.get(key);
       const X = p.pos.x, Y = -p.pos.z, Z = p.pos.y;
+      const R = zUpRot(p.rot) || [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+      const mtx = `${n(R[0][0])} ${n(R[0][1])} ${n(R[0][2])} ${n(X)} ` +
+        `${n(R[1][0])} ${n(R[1][1])} ${n(R[1][2])} ${n(Y)} ` +
+        `${n(R[2][0])} ${n(R[2][1])} ${n(R[2][2])} ${n(Z)} 0 0 0 1`;
       return `      <node id="${esc(p.id)}" name="${esc(p.id)}">
-        <matrix>1 0 0 ${n(X)} 0 1 0 ${n(Y)} 0 0 1 ${n(Z)} 0 0 0 1</matrix>
+        <matrix>${mtx}</matrix>
         <instance_geometry url="#${g.id}"><bind_material><technique_common>
           <instance_material symbol="m" target="#mat_${p.role}"/>
         </technique_common></bind_material></instance_geometry>
@@ -138,15 +156,36 @@ ${nodes}
         });
       }
       const d = defs.get(p.defKey);
-      // instance min-corner in SketchUp Z-up coords
-      d.instances.push({
-        id: p.id,
-        x: p.pos.x - p.size.w / 2,
-        y: -p.pos.z - p.size.d / 2,
-        z: p.pos.y - p.size.h / 2
-      });
+      // Definition geometry is drawn from its min corner; the scene rotates
+      // parts about their center. Rotated instances place via full axes
+      // (origin = center − R·halfExtents, axes = R columns); plain instances
+      // keep the cheap min-corner translation.
+      const R = zUpRot(p.rot);
+      const cX = p.pos.x, cY = -p.pos.z, cZ = p.pos.y;
+      if (R) {
+        const half = [p.size.w / 2, p.size.d / 2, p.size.h / 2]; // SketchUp local X,Y,Z
+        const o = [
+          cX - (R[0][0] * half[0] + R[0][1] * half[1] + R[0][2] * half[2]),
+          cY - (R[1][0] * half[0] + R[1][1] * half[1] + R[1][2] * half[2]),
+          cZ - (R[2][0] * half[0] + R[2][1] * half[1] + R[2][2] * half[2])
+        ];
+        d.instances.push({ id: p.id, axes: { o, cols: [0, 1, 2].map(j => [R[0][j], R[1][j], R[2][j]]) } });
+      } else {
+        d.instances.push({
+          id: p.id,
+          x: cX - p.size.w / 2,
+          y: cY - p.size.d / 2,
+          z: cZ - p.size.h / 2
+        });
+      }
     }
     const roles = [...new Set(model.parts.map(p => p.role))];
+
+    const placement = i => i.axes
+      ? `Geom::Transformation.axes(
+      Geom::Point3d.new(${i.axes.o.map(v => n(v) + '.mm').join(', ')}),
+      ${i.axes.cols.map(c => `Geom::Vector3d.new(${c.map(n).join(', ')})`).join(',\n      ')})`
+      : `Geom::Transformation.new(Geom::Point3d.new(${n(i.x)}.mm, ${n(i.y)}.mm, ${n(i.z)}.mm))`;
 
     const defCode = [...defs.values()].map(d => `
     ${d.var} = defs.add("${rb(d.label)}")
@@ -157,7 +196,7 @@ ${nodes}
     ${d.var}_mat = mats["bb_${d.role}"] || begin
       m = mats.add("bb_${d.role}"); m.color = Sketchup::Color.new(${d.color.join(', ')}); m
     end
-${d.instances.map(i => `    inst = ents.add_instance(${d.var}, Geom::Transformation.new(Geom::Point3d.new(${n(i.x)}.mm, ${n(i.y)}.mm, ${n(i.z)}.mm)))
+${d.instances.map(i => `    inst = ents.add_instance(${d.var}, ${placement(i)})
     inst.name = "${rb(i.id)}"
     inst.layer = tags["${d.role}"]
     inst.material = ${d.var}_mat`).join('\n')}`).join('\n');

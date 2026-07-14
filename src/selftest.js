@@ -552,6 +552,77 @@ var BB = globalThis.BB = globalThis.BB || {};
         `undo ${BB.Icons.svg('undo').length} chars, unknown "${BB.Icons.svg('nope')}"`, 'svg + empty');
     }
 
+    /* ============ glTF export + rotation in every exporter ============ */
+    {
+      // Minimal hand-built model: a plain box, a 45°-rotated box, and a
+      // cylinder — exercises dedup, the quaternion path, and prism geometry.
+      const spec2 = Spec.correctSpec(Spec.defaultSpec('table'));
+      const model2 = {
+        parts: [
+          { id: 'leg_a', name: 'Leg', role: 'leg', defKey: 'leg', material: spec2.wood.species, size: { w: 60, h: 700, d: 60 }, pos: { x: -200, y: 350, z: 0 } },
+          { id: 'leg_b', name: 'Leg', role: 'leg', defKey: 'leg', material: spec2.wood.species, size: { w: 60, h: 700, d: 60 }, pos: { x: 200, y: 350, z: 0 } },
+          { id: 'brace', name: 'Brace', role: 'rail', defKey: 'brace', material: spec2.wood.species, size: { w: 500, h: 60, d: 30 }, pos: { x: 0, y: 600, z: 100 }, rot: { x: 0, y: 45, z: 0 } },
+          { id: 'peg', name: 'Peg', role: 'pull', defKey: 'peg', material: 'hardware', prim: 'cylinder', size: { w: 20, h: 80, d: 20 }, pos: { x: 0, y: 640, z: 0 } }
+        ]
+      };
+
+      const glb = BB.GLTF.toGLB(spec2, model2);
+      const dv = new DataView(glb);
+      test('gltf', 'GLB header: magic, version 2, declared length = actual bytes',
+        dv.getUint32(0, true) === 0x46546C67 && dv.getUint32(4, true) === 2 && dv.getUint32(8, true) === glb.byteLength,
+        `magic ${dv.getUint32(0, true).toString(16)}, v${dv.getUint32(4, true)}, ${dv.getUint32(8, true)}/${glb.byteLength}`,
+        '46546c67, v2, lengths equal');
+      const jsonLen = dv.getUint32(12, true);
+      test('gltf', 'chunks 4-byte aligned with JSON + BIN\\0 tags',
+        jsonLen % 4 === 0 && dv.getUint32(16, true) === 0x4E4F534A && dv.getUint32(20 + jsonLen + 4, true) === 0x004E4942,
+        `jsonLen ${jsonLen}, tags ok`, 'aligned, JSON then BIN');
+      const gj = JSON.parse(new TextDecoder().decode(new Uint8Array(glb, 20, jsonLen)));
+      test('gltf', 'one node per part, all POSITION accessors carry min/max',
+        gj.nodes.length === model2.parts.length &&
+        gj.meshes.every(m => { const acc = gj.accessors[m.primitives[0].attributes.POSITION]; return acc.min && acc.max; }),
+        `${gj.nodes.length} nodes`, `${model2.parts.length} nodes, min/max present`);
+      const braceNode = gj.nodes.find(nd => nd.name === 'brace');
+      const q = braceNode && braceNode.rotation;
+      const qy = Math.sin(Math.PI / 8), qw = Math.cos(Math.PI / 8);
+      test('gltf', 'rotated part carries the y=45° quaternion [0, sin22.5°, 0, cos22.5°]',
+        q && Math.abs(q[0]) < 1e-6 && Math.abs(q[1] - qy) < 1e-6 && Math.abs(q[2]) < 1e-6 && Math.abs(q[3] - qw) < 1e-6,
+        q ? q.map(v => v.toFixed(4)).join(', ') : 'missing', `0, ${qy.toFixed(4)}, 0, ${qw.toFixed(4)}`);
+      test('gltf', 'unrotated nodes omit rotation; identical legs share one mesh',
+        !gj.nodes.find(nd => nd.name === 'leg_a').rotation &&
+        gj.nodes.find(nd => nd.name === 'leg_a').mesh === gj.nodes.find(nd => nd.name === 'leg_b').mesh,
+        'shared mesh, no rotation', 'shared mesh, no rotation');
+
+      // Quaternion → matrix round-trip against the source rotation matrix.
+      const R = BB.Geo.rotMat(20, 45, 10);
+      const [x, y, z, w] = BB.GLTF.mat3ToQuat(R);
+      const RQ = [
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]
+      ];
+      let worstQ = 0;
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) worstQ = Math.max(worstQ, Math.abs(R[i][j] - RQ[i][j]));
+      test('gltf', 'mat3ToQuat round-trips a compound rotation within 1e-6', worstQ < 1e-6, worstQ.toExponential(2), '< 1e-6');
+
+      // Cylinder prism data: 16-gon sides + caps, indices in range.
+      const cd = BB.GLTF.cylData(20, 80);
+      test('gltf', 'cylinder prism: 66 verts, 192 indices, all in range',
+        cd.pos.length === 66 * 3 && cd.idx.length === 192 && cd.idx.every(i => i < 66),
+        `${cd.pos.length / 3} verts, ${cd.idx.length} idx`, '66 verts, 192 idx');
+
+      // Rotation fix in the legacy exporters: DAE writes the Z-up rotation
+      // block (y=45° about scene-up = Rz(45): row "0.707 -0.707 0"), Ruby
+      // places rotated instances via Transformation.axes.
+      const dae2 = BB.Exports.toDAE(spec2, model2);
+      test('gltf', 'DAE carries rotation for rotated parts (Rz45 rows present)',
+        dae2.includes('0.707 -0.707 0') && dae2.includes('0.707 0.707 0'),
+        dae2.match(/<matrix>[^<]{0,40}/g).filter(s => s.includes('0.707')).length + ' rotated matrices', 'Rz(45) rows present');
+      const rb2 = BB.Exports.toRuby(spec2, model2);
+      test('gltf', 'Ruby: rotated instance uses Transformation.axes, plain ones stay Point3d',
+        (rb2.match(/Transformation\.axes/g) || []).length === 1 && rb2.includes('Transformation.new(Geom::Point3d.new('),
+        `${(rb2.match(/Transformation\.axes/g) || []).length} axes placements`, '1 axes placement');
+    }
+
     return results;
   }
 

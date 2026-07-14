@@ -1672,6 +1672,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (kind === 'rb') {
       Exports.download(name + '.rb', Exports.toRuby(state.spec, state.model), 'text/x-ruby');
       botSay('Exported the build script. Paste it into SketchUp’s Ruby Console (Window > Ruby Console) — the model rebuilds as components, one undo step.', []);
+    } else if (kind === 'glb') {
+      Exports.download(name + '.glb', BB.GLTF.toGLB(state.spec, state.model), 'model/gltf-binary');
+      botSay('Exported the 3D model as .glb — the universal format. On Android, opening it offers "View in your space" (AR); on desktop, any glTF viewer or the three.js editor reads it; on iOS, convert with Reality Converter for AR Quick Look.', []);
     } else if (kind === 'json') {
       Exports.download(name + '.designspec.json', JSON.stringify(state.spec, null, 2), 'application/json');
     } else if (kind === 'csv') {

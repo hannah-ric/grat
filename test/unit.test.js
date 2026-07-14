@@ -7,7 +7,7 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = ['knowledge.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'packing.js',
-  'plans.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'selftest.js'];
+  'plans.js', 'gltf.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'selftest.js'];
 for (const f of SRC) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
 }
