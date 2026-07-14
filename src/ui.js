@@ -32,6 +32,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     busy: false,
     firstRun: true,
     previewing: false,
+    advisoriesExpanded: false,
     // Phase 4
     turns: [],                      // AI conversation, wire format
     loadChoices: {},                // per-surface load presets
@@ -89,7 +90,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     exitPlayback();
     clearCompare();
+    hideWelcome(); // a committed design is a chosen path
     state.previewing = false; // any pending slider preview is superseded by this commit
+    state.advisoriesExpanded = false; // a new change re-folds the warning stack
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -147,6 +150,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function scheduleAutosave() {
     clearTimeout(saveTimer);
+    // Honest feedback across the debounce: "saving…" until the write lands.
+    const elS = $('saveState');
+    clearTimeout(saveFlashTimer);
+    elS.textContent = 'saving…';
+    elS.classList.remove('err');
+    elS.classList.add('on', 'pending');
     saveTimer = setTimeout(doAutosave, 700);
   }
   async function doAutosave() {
@@ -170,7 +179,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   function flashSave(persistent) {
     const elS = $('saveState');
     elS.textContent = persistent ? 'saved' : 'session only';
+    elS.title = persistent
+      ? 'Autosaved to this device — find it under More › Projects'
+      : 'Storage is unavailable — this design lives for this session only. Export a share code to keep it.';
     elS.classList.toggle('err', !persistent);
+    elS.classList.remove('pending');
     elS.classList.add('on');
     clearTimeout(saveFlashTimer);
     saveFlashTimer = setTimeout(() => elS.classList.remove('on'), 1600);
@@ -200,24 +213,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
-  /* ---------------- render: advisories ---------------- */
+  /* ---------------- render: advisories ----------------
+   * Errors first, then live advisories. Past the cap the stack folds into a
+   * "+N more" row so warnings never wallpaper the model. */
+  const ADVISORY_CAP = 3;
   function renderAdvisories(report) {
     const wrap = $('advisories');
     wrap.textContent = '';
-    for (const e of report.errors) {
-      const chip = el('div', 'advisory error');
-      chip.append(el('span', '', '🛑 ' + esc(e.text)));
+    const items = [];
+    for (const e of report.errors) items.push({ error: true, text: e.text });
+    for (const a of report.advisories) {
+      if (!state.dismissed.has(a.id)) items.push({ error: false, text: a.text, id: a.id });
+    }
+    const visible = state.advisoriesExpanded ? items : items.slice(0, ADVISORY_CAP);
+    for (const it of visible) {
+      const chip = el('div', 'advisory' + (it.error ? ' error' : ''));
+      chip.append(el('span', 'adv-icon', it.error ? '🛑' : '⚠️'));
+      chip.append(el('span', '', esc(it.text)));
+      if (!it.error) {
+        const x = el('button', 'dismiss', '✕');
+        x.setAttribute('aria-label', 'Dismiss advisory');
+        x.onclick = () => { state.dismissed.add(it.id); renderAdvisories(report); renderReadiness(); };
+        chip.append(x);
+      }
       wrap.append(chip);
     }
-    for (const a of report.advisories) {
-      if (state.dismissed.has(a.id)) continue;
-      const chip = el('div', 'advisory');
-      chip.append(el('span', '', esc(a.text)));
-      const x = el('button', 'dismiss', '✕');
-      x.setAttribute('aria-label', 'Dismiss advisory');
-      x.onclick = () => { state.dismissed.add(a.id); chip.remove(); };
-      chip.append(x);
-      wrap.append(chip);
+    if (items.length > ADVISORY_CAP) {
+      const more = el('button', 'advisory-more',
+        state.advisoriesExpanded ? 'Show fewer' : `+${items.length - ADVISORY_CAP} more`);
+      more.setAttribute('aria-expanded', String(!!state.advisoriesExpanded));
+      more.onclick = () => { state.advisoriesExpanded = !state.advisoriesExpanded; renderAdvisories(report); };
+      wrap.append(more);
     }
   }
 
@@ -264,11 +290,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!e.target.closest || (!e.target.closest('.prov-btn') && !e.target.closest('.prov-pop'))) hideProv();
   });
 
+  /* Empty panels point at the two ways forward instead of dead-ending. */
+  function emptyState(root, big, text) {
+    const box = el('div', 'empty-state', `<span class="big">${big}</span>${text}`);
+    const row = el('div', 'empty-actions');
+    const describe = el('button', 'btn primary', 'Describe a piece');
+    describe.onclick = () => focusChat();
+    const starters = el('button', 'btn', 'Browse starters');
+    starters.onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    row.append(describe, starters);
+    box.append(row);
+    root.append(box);
+  }
+
   function renderCut(root) {
     root.append(el('h3', '', 'Cut list'));
     root.append(el('p', 'lede', `Lengths include joinery allowances — tap any dimension to see the formula behind it. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + Baltic birch ply.`));
     if (!state.cut.length) {
-      root.append(el('div', 'empty-state', '<span class="big">Nothing on the saw bench yet.</span>Describe a piece in the chat and the cut list writes itself.'));
+      emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
     }
     const scroll = el('div', 'table-scroll');
@@ -278,7 +317,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
       <td style="color:var(--muted);font-size:12.5px">${esc(r.note || '')}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
     scroll.querySelectorAll('.prov-btn').forEach(b => {
       b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
     });
@@ -315,7 +354,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // shopping list
     const scroll = el('div', 'table-scroll');
     const shopRows = plan.shopping.map(s => `<tr><td>${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th>Buy</th><th>Qty</th><th>Unit</th><th>Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" style="color:var(--muted)">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" style="color:var(--muted)">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
     root.append(scroll);
     const waste = [];
     if (plan.wasteSolidPct != null) waste.push(`solid waste ${plan.wasteSolidPct}%`);
@@ -392,7 +431,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(el('h3', '', 'Bill of materials'));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
     if (!state.bomData.items.length) {
-      root.append(el('div', 'empty-state', '<span class="big">Nothing to buy yet.</span>Describe a piece in the chat and the shopping list prices itself.'));
+      emptyState(root, 'Nothing to buy yet.', 'Describe a piece and the shopping list prices itself.');
       return;
     }
     const compareBtn = el('button', 'btn small', 'Compare species side by side');
@@ -405,7 +444,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td>${esc(i.label)}</td><td class="num">${i.qty}</td>
       <td style="color:var(--muted);font-size:12.5px">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th></th><th>Item</th><th>Qty</th><th>Detail</th><th>Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
     root.append(scroll);
     const tot = el('div', 'bom-total');
     tot.innerHTML = `<span>Estimated materials cost</span><strong>$${state.bomData.total.toFixed(2)}</strong>`;
@@ -427,7 +466,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(el('h3', '', 'Assembly'));
     root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow.'));
     if (!state.steps.length) {
-      root.append(el('div', 'empty-state', '<span class="big">No steps to walk yet.</span>Once a design has parts, assembly writes itself in build order.'));
+      emptyState(root, 'No steps to walk yet.', 'Once a design has parts, assembly writes itself in build order.');
       return;
     }
     const list = el('ol', 'step-list');
@@ -579,7 +618,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const scroll = el('div', 'table-scroll');
     let rows = '', head = '';
     if (state.refTab === 'wood') {
-      head = '<th>Species</th><th>Janka</th><th>MOE GPa</th><th>MOR MPa</th><th>SG</th><th>Move ct/1%MC</th><th>Cost</th><th>Character</th>';
+      head = '<th>Species</th><th class="num">Janka</th><th class="num">MOE GPa</th><th class="num">MOR MPa</th><th class="num">SG</th><th class="num">Move ct/1%MC</th><th class="num">Cost</th><th>Character</th>';
       rows = Object.values(K.WOOD_SPECIES).filter(s => hit(s.label, s.blurb, s.movement)).map(s => `<tr>
         <td><strong>${esc(s.label)}</strong></td><td class="num">${s.janka} lbf</td>
         <td class="num">${s.moe.toFixed(1)}</td><td class="num">${s.mor}</td><td class="num">${s.sg.toFixed(2)}</td>
@@ -587,7 +626,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td class="num">${'$'.repeat(s.costTier)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
     } else if (state.refTab === 'ergo') {
-      head = '<th>Measure</th><th>Range</th><th>Applies to</th><th>Note</th>';
+      head = '<th>Measure</th><th class="num">Range</th><th>Applies to</th><th>Note</th>';
       rows = K.ERGONOMICS.filter(r => hit(r.label, r.note)).map(r => `<tr>
         <td><strong>${esc(r.label)}</strong></td>
         <td class="num">${isFinite(r.max) ? `${fmt(r.min)} – ${fmt(r.max)}` : `≥ ${fmt(r.min)}`}</td>
@@ -604,13 +643,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.failure)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
     } else if (state.refTab === 'lumber') {
-      head = '<th>Nominal</th><th>Actual (T × W)</th><th>Stock lengths</th>';
+      head = '<th>Nominal</th><th class="num">Actual (T × W)</th><th class="num">Stock lengths</th>';
       rows = Object.entries(K.LUMBER.NOMINALS).filter(([n]) => hit(n)).map(([n, a]) => `<tr>
         <td><strong>${esc(n)}</strong></td><td class="num">${esc(`${fmt(a.t)} × ${fmt(a.w)}`)}</td>
         <td class="num">${esc(K.LUMBER.STOCK_LENGTHS.map(l => Units.fmtBoardLength(l)).join(' / '))}</td></tr>`).join('');
       rows += `<tr><td><strong>Sheet goods</strong></td><td class="num">${esc(Units.fmtSheet(K.LUMBER.SHEET.W, K.LUMBER.SHEET.L))} · ${esc(K.LUMBER.SHEET.THICKNESSES.map(t => fmt(t)).join(' / '))}</td><td>sold whole, half, or quarter</td></tr>`;
     } else {
-      head = '<th>Item</th><th>Pilot / spec</th><th>Use</th>';
+      head = '<th>Item</th><th class="num">Pilot / spec</th><th>Use</th>';
       const f = K.FASTENERS;
       rows = [...f.screws, ...f.dowels, ...f.hardware].filter(x => hit(x.label, x.use)).map(x => `<tr>
         <td><strong>${esc(Units.fmtTemplate(x.label))}</strong></td>
@@ -636,6 +675,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function setBusy(b) {
     state.busy = b;
     $('sendBtn').disabled = b;
+    $('sendBtn').textContent = b ? '…' : 'Send';
     $('photoBtn').disabled = b;
     $('chatPanel').setAttribute('aria-busy', String(b));
   }
@@ -648,6 +688,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     // The collapsed mobile sheet shows the tail of the conversation.
     const peekText = m.textContent.trim();
     if (peekText) $('chatPeek').textContent = (kind === 'user' ? 'You: ' : '') + peekText;
+    // A reply landing while the desktop chat is folded lights the rail dot.
+    if (kind === 'bot' && state.prefs4.ui.chatCollapsed) $('chatRailDot').hidden = false;
     return m;
   }
   function botSay(text, chips, opts) {
@@ -803,6 +845,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function hideHints() {
+    hideWelcome(); // any design action outgrows the welcome card
     if (!state.firstRun) return;
     state.firstRun = false;
     $('hintPrompts').textContent = '';
@@ -1445,6 +1488,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     btn.setAttribute('aria-pressed', String(!!map[key]));
     btn.querySelector('.box').textContent = map[key] ? '✓' : '';
     $('bmProgress').textContent = progressPct() + '% built';
+    renderReadiness(); // the Build step tracks shop progress live
     scheduleAutosave();
   }
 
@@ -1552,22 +1596,206 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* ---------------- shell: chat collapse (pointer layouts) ----------------
+   * The mobile sheet keeps its own handle; this fold only means anything at
+   * ≥881px, where the chat is a column. State persists across sessions. */
+  function setChatCollapsed(on, opts) {
+    on = !!on;
+    state.prefs4.ui.chatCollapsed = on;
+    $('chatPanel').classList.toggle('collapsed', on);
+    $('chatRail').hidden = !on;
+    $('chatCollapse').setAttribute('aria-expanded', String(!on));
+    if (!on) $('chatRailDot').hidden = true;
+    if (!opts || opts.persist !== false) Store.savePrefs(state.prefs4);
+  }
+  /* Bring the chat input into reach whatever the layout: unfold the desktop
+   * rail or raise the mobile sheet, then focus the box. */
+  function focusChat() {
+    if (matchMedia('(max-width: 880px)').matches) {
+      const panel = $('chatPanel');
+      if (!panel.classList.contains('expanded')) $('sheetHandle').click();
+    } else if (state.prefs4.ui.chatCollapsed) {
+      setChatCollapsed(false);
+    }
+    $('chatText').focus();
+  }
+
+  /* ---------------- shell: viewport/plans splitter ----------------
+   * --vp-split is the viewport's share of the stage height (%). Pointer drag,
+   * arrow keys, PageUp/Down, Home/End, Enter-to-reset — all one code path. */
+  const SPLIT_MIN = 24, SPLIT_MAX = 78, SPLIT_DEFAULT = 58;
+  function setSplit(pct, opts) {
+    pct = Math.round(Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, pct)));
+    state.prefs4.ui.split = pct;
+    $('stage').style.setProperty('--vp-split', pct);
+    // Belt and braces: the inline basis guarantees a layout pass even where
+    // a var()-inside-calc() change fails to invalidate flex layout.
+    $('viewportWrap').style.flexBasis = pct + '%';
+    const sp = $('vpSplitter');
+    sp.setAttribute('aria-valuenow', String(pct));
+    sp.setAttribute('aria-valuetext', `3D viewport ${pct}% of the stage`);
+    if (!opts || opts.persist !== false) Store.savePrefs(state.prefs4);
+  }
+  function bindSplitter() {
+    const sp = $('vpSplitter'), stage = $('stage');
+    let dragging = false;
+    sp.addEventListener('pointerdown', e => {
+      dragging = true;
+      sp.classList.add('dragging');
+      sp.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    sp.addEventListener('pointermove', e => {
+      if (!dragging) return;
+      const r = stage.getBoundingClientRect();
+      if (r.height > 0) setSplit(((e.clientY - r.top) / r.height) * 100, { persist: false });
+    });
+    const endDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      sp.classList.remove('dragging');
+      Store.savePrefs(state.prefs4);
+    };
+    sp.addEventListener('pointerup', endDrag);
+    sp.addEventListener('pointercancel', endDrag);
+    sp.addEventListener('dblclick', () => setSplit(SPLIT_DEFAULT));
+    sp.addEventListener('keydown', e => {
+      const cur = state.prefs4.ui.split;
+      let next = null;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = cur - 3;
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = cur + 3;
+      else if (e.key === 'PageUp') next = cur - 10;
+      else if (e.key === 'PageDown') next = cur + 10;
+      else if (e.key === 'Home') next = SPLIT_MIN;
+      else if (e.key === 'End') next = SPLIT_MAX;
+      else if (e.key === 'Enter') next = SPLIT_DEFAULT;
+      if (next !== null) { e.preventDefault(); setSplit(next); }
+    });
+  }
+
+  /* ---------------- shell: readiness strip ----------------
+   * Design → Validate → Plans → Build, every state DERIVED from what the
+   * pipeline already knows — nothing stored, nothing to get stale. Each step
+   * is a button that jumps to its surface. */
+  function readinessSteps() {
+    const sum = state.integrity.summary;
+    const designed = !!state.project || state.history.snapshots.length > 1;
+    const stockTrouble = state.stockPlan && state.stockPlan.errors.length > 0;
+    const pct = progressPct();
+    return [
+      {
+        label: 'Design', state: designed ? 'done' : 'todo',
+        aria: designed ? 'Design captured — open the chat to refine it' : 'Start here — describe a piece, or pick a starter',
+        go: focusChat
+      },
+      {
+        label: 'Validate',
+        state: sum.fails ? 'fail' : sum.advisories ? 'attn' : 'done',
+        aria: sum.fails ? `${sum.fails} failing structural check${sum.fails > 1 ? 's' : ''} — open the integrity report`
+          : sum.advisories ? `Checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''} — open the integrity report`
+            : 'All structural checks pass — open the integrity report',
+        go: () => selectTab('integrity')
+      },
+      {
+        label: 'Plans',
+        state: state.cut.length ? (stockTrouble ? 'attn' : 'done') : 'todo',
+        aria: state.cut.length ? `Plans ready — ${state.cut.length} part${state.cut.length > 1 ? 's' : ''} in the cut list` : 'Plans appear once the design has parts',
+        go: () => selectTab('cut')
+      },
+      {
+        label: 'Build',
+        state: pct >= 100 ? 'done' : pct > 0 ? 'active' : 'todo',
+        aria: pct >= 100 ? 'Build complete — open build mode' : pct > 0 ? `${pct}% built — back to build mode` : 'Open build mode when you head to the shop',
+        go: enterBuildMode
+      }
+    ];
+  }
+  function renderReadiness() {
+    const nav = $('readiness');
+    nav.textContent = '';
+    if (!state.integrity) return;
+    const steps = readinessSteps();
+    const complete = st => st === 'done' || st === 'attn';
+    let currentSet = false;
+    steps.forEach((s, i) => {
+      if (i) nav.append(el('span', 'ready-sep', '›'));
+      const b = el('button', 'ready-step');
+      b.type = 'button';
+      b.dataset.state = s.state;
+      b.dataset.step = s.label.toLowerCase();
+      b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
+      b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
+      b.title = s.aria;
+      if (!currentSet && !complete(s.state)) {
+        b.setAttribute('aria-current', 'step');
+        currentSet = true;
+      }
+      b.onclick = s.go;
+      nav.append(b);
+    });
+  }
+
+  /* ---------------- shell: welcome (first run, never blocking) ---------------- */
+  function showWelcome(hasProjects) {
+    $('welcomeResumeName').textContent = hasProjects ? 'Open a project' : 'Import a design';
+    $('welcomeResumeCaption').textContent = hasProjects
+      ? 'Pick up where you left off — plans and build progress included.'
+      : 'Paste a BB4: share code to pick up a design from anywhere.';
+    $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
+    $('welcomeOverlay').hidden = false;
+  }
+  function hideWelcome() {
+    $('welcomeOverlay').hidden = true;
+  }
+
+  /* ---------------- shell: URL-restorable tabs ----------------
+   * The active plan tab (and reference subtab) mirrors into location.hash via
+   * replaceState — deep-linkable and reload-safe, with no history spam. */
+  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'lumber'];
+  function syncHash() {
+    const h = '#' + state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    if (location.hash !== h) {
+      try { history.replaceState(null, '', h); } catch (e) { /* sandboxed frame: tabs still work, hash doesn't */ }
+    }
+  }
+  function applyHash() {
+    const parts = (location.hash || '').replace(/^#/, '').split('/');
+    if (!TABS.includes(parts[0])) return false;
+    state.tab = parts[0];
+    if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    return true;
+  }
+
   /* ---------------- tabs ---------------- */
   const TABS = ['cut', 'stock', 'bom', 'assembly', 'integrity', 'reference'];
+  function selectTab(t) {
+    state.tab = t;
+    renderTabs();
+    renderPanel();
+  }
   function renderTabs() {
     for (const t of TABS) {
       $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
       $('tab-' + t).tabIndex = state.tab === t ? 0 : -1;
     }
+    $('panel-main').setAttribute('aria-labelledby', 'tab-' + state.tab);
     const dot = $('integrityDot');
     const sum = state.integrity ? state.integrity.summary : null;
     dot.hidden = !sum || (!sum.fails && !sum.advisories);
     dot.classList.toggle('fail', !!(sum && sum.fails));
+    // The dot alone is invisible to a screen reader: the tab's accessible
+    // name carries the same state.
+    const integTab = $('tab-integrity');
+    if (sum && sum.fails) integTab.setAttribute('aria-label', `Integrity — ${sum.fails} failing check${sum.fails > 1 ? 's' : ''}`);
+    else if (sum && sum.advisories) integTab.setAttribute('aria-label', `Integrity — ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`);
+    else integTab.removeAttribute('aria-label');
+    syncHash();
+    renderReadiness();
   }
   function bindTabs() {
     const bar = $('tabBar');
     for (const t of TABS) {
-      $('tab-' + t).addEventListener('click', () => { state.tab = t; renderTabs(); renderPanel(); });
+      $('tab-' + t).addEventListener('click', () => selectTab(t));
     }
     bar.addEventListener('keydown', e => {
       const i = TABS.indexOf(state.tab);
@@ -1578,9 +1806,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (e.key === 'End') next = TABS[TABS.length - 1];
       if (next) {
         e.preventDefault();
-        state.tab = next; renderTabs(); renderPanel();
+        selectTab(next);
         $('tab-' + next).focus();
       }
+    });
+    window.addEventListener('hashchange', () => {
+      if (applyHash()) { renderTabs(); renderPanel(); }
     });
   }
 
@@ -1640,13 +1871,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
-    // precision, and dual display never flash from defaults.
+    // precision, dual display, and the shell layout never flash from defaults.
     try {
       state.prices = await Store.loadPrices();
       state.prefs4 = await Store.loadPrefs();
     } catch (e) { /* defaults are the product */ }
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
+    setChatCollapsed(state.prefs4.ui.chatCollapsed, { persist: false });
+    setSplit(state.prefs4.ui.split, { persist: false });
+    bindSplitter();
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -1656,20 +1890,23 @@ var BB = globalThis.BB = globalThis.BB || {};
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
     state.engine.snapNow();
+    applyHash(); // a deep-linked tab survives the reload
     renderAll();
     renderHints();
     renderGallery();
 
-    // Returning users land in the studio with their latest project; the
-    // gallery is for first runs and empty shops only.
-    let opened = false;
+    // Returning users land in the studio with their latest project. First
+    // runs get a welcome card with the three ways in — floating over a live,
+    // fully working bench: nothing blocks, everything behind it responds.
+    let opened = false, projectCount = 0;
     try {
       const idx = await Store.loadIndex();
+      projectCount = idx.length;
       if (idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
-      openScrim('galleryScrim');
-      botSay('Welcome to the shop. Pick a starter, open one of your projects, or describe a piece — you can even drop in a photo of furniture you want to build. Everything autosaves as you work.', []);
+      showWelcome(projectCount > 0);
+      botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
     }
 
     /* top bar */
@@ -1723,6 +1960,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
+    $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    /* chat fold + welcome paths */
+    $('chatCollapse').onclick = () => setChatCollapsed(true);
+    $('chatRail').onclick = () => { setChatCollapsed(false); $('chatText').focus(); };
+    $('welcomeClose').onclick = hideWelcome;
+    $('welcomeDescribe').onclick = () => { hideWelcome(); focusChat(); };
+    $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    $('welcomeResume').onclick = () => {
+      hideWelcome();
+      if ($('welcomeOverlay').dataset.mode === 'projects') openProjects();
+      else { openShare(); $('importCode').focus(); }
+    };
     $('shareBtn').onclick = openShare;
     $('shareClose').onclick = () => closeScrim('shareScrim');
     $('copyShare').onclick = copyShare;
@@ -1833,6 +2082,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;
+    /* viewport help: a small non-modal card under the toolbar */
+    const setVpHelp = open => {
+      $('vpHelp').hidden = !open;
+      $('vpHelpBtn').setAttribute('aria-expanded', String(open));
+    };
+    $('vpHelpBtn').onclick = () => setVpHelp($('vpHelp').hidden);
+    document.addEventListener('click', e => {
+      if (!$('vpHelp').hidden && !e.target.closest('.stage-controls')) setVpHelp(false);
+    });
 
     /* playback bar */
     $('pbPrev').onclick = () => scrubPlayback(state.playbackIndex - 1);
@@ -1860,6 +2118,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         // is the bottom layer: it exits last, never before an open modal.
         const prov = $('provPop');
         if (prov && !prov.hidden) { hideProv(); return; }
+        if (!$('vpHelp').hidden) { setVpHelp(false); $('vpHelpBtn').focus(); return; }
         if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
         if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
         const scrims = [...document.querySelectorAll('.scrim.open')];
@@ -1879,10 +2138,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
-      preview, commitPreview, closeInspector, openInspectorById
+      preview, commitPreview, closeInspector, openInspectorById,
+      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness
     };
 
-    setTimeout(() => { const h = $('viewportHint'); if (h) h.style.opacity = '0'; }, 6000);
+    // Viewport guidance speaks the input language it sees, and steps aside
+    // the moment the user proves they don't need it (or after 8 s).
+    const hint = $('viewportHint');
+    if (matchMedia('(pointer: coarse)').matches) {
+      hint.textContent = 'one finger to orbit · pinch to zoom · tap a part to tune it';
+    }
+    const dismissHint = () => {
+      hint.style.opacity = '0';
+      canvas.removeEventListener('pointerdown', dismissHint);
+    };
+    canvas.addEventListener('pointerdown', dismissHint);
+    setTimeout(dismissHint, 8000);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
