@@ -348,12 +348,12 @@
     "cost": 87.499
    },
    {
-    "label": "Baltic birch 1/4 in — full sheet (4 x 8 ft base)",
+    "label": "Baltic Birch Ply 1/4 in — full sheet (4 x 8 ft base)",
     "qty": 1,
     "cost": 40
    },
    {
-    "label": "Baltic birch 1/2 in — full sheet (4 x 8 ft base)",
+    "label": "Baltic Birch Ply 1/2 in — full sheet (4 x 8 ft base)",
     "qty": 1,
     "cost": 62
    }
@@ -655,13 +655,13 @@
    },
    {
     "kind": "sheet",
-    "label": "Baltic birch 1/4 in — full sheet (4 x 8 ft base)",
+    "label": "Baltic Birch Ply 1/4 in — full sheet (4 x 8 ft base)",
     "qty": 1,
     "price": 40
    },
    {
     "kind": "sheet",
-    "label": "Baltic birch 1/2 in — full sheet (4 x 8 ft base)",
+    "label": "Baltic Birch Ply 1/2 in — full sheet (4 x 8 ft base)",
     "qty": 1,
     "price": 62
    },
@@ -688,6 +688,12 @@
     "label": "#8 × 1 1/4 in wood screw (pilot 0.11 in)",
     "qty": 6,
     "price": 0.36
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
    },
    {
     "kind": "hardware",
@@ -756,7 +762,7 @@
     "price": 18
    }
   ],
-  "total": 516.38
+  "total": 524.38
  },
  "steps": [
   "s1",

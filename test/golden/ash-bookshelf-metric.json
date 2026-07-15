@@ -235,7 +235,7 @@
     "cost": 130.371
    },
    {
-    "label": "Baltic birch 6 mm — full sheet (1220 × 2440 mm base)",
+    "label": "Baltic Birch Ply 6 mm — full sheet (1220 × 2440 mm base)",
     "qty": 1,
     "cost": 40
    }
@@ -427,7 +427,7 @@
    },
    {
     "kind": "sheet",
-    "label": "Baltic birch 6 mm — full sheet (1220 × 2440 mm base)",
+    "label": "Baltic Birch Ply 6 mm — full sheet (1220 × 2440 mm base)",
     "qty": 1,
     "price": 40
    },
@@ -456,6 +456,12 @@
     "price": 3.2
    },
    {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
     "kind": "hardware",
     "label": "5 mm shelf pins",
     "qty": 16,
@@ -474,7 +480,7 @@
     "price": 18
    }
   ],
-  "total": 286.68
+  "total": 294.68
  },
  "steps": [
   "s1",

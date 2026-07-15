@@ -501,5 +501,152 @@ section('F-SYS-3 drawer thresholds sourced from ERGONOMICS');
   ok(/ergoRow\(/.test(specSrc), 'spec.js reads the ergonomic rows instead of re-typing 80/750/1100');
 }
 
+/* ================= 2026 knowledge expansion =================
+ * The expansion's own audit invariants: a joint or species that exists in
+ * the tables but not in the derived engines silently mis-rates (racking 0,
+ * butt-screw capacity, screws in a glue-up) — so coverage IS the invariant.
+ */
+section('KB-1 every joint is engine-covered: rating, allowance, time, setout');
+{
+  for (const key of Object.keys(K.JOINERY)) {
+    ok(!!Structural.JOINT_RATING[key], `${key} has a structural rating (racking pts + capacity)`);
+    ok(Plans.JOINT_ALLOWANCE[key] !== undefined, `${key} has an explicit cut-length allowance (0 must be deliberate)`);
+  }
+  const plansSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'plans.js'), 'utf8');
+  ok(/edge_glue:\s*15/.test(plansSrc.slice(plansSrc.indexOf('OP_MINUTES'))), 'shop-time table covers the new joints');
+
+  // Setout truth on demo members: glue-only joints emit zero purchasable
+  // fasteners; hardware joints emit exactly what the BOM will count.
+  const demo = {
+    frame: [{ id: 'a', name: 'Apron', material: 'red_oak', size: { w: 600, h: 89, d: 19 }, pos: { x: 0, y: 300, z: 0 } },
+            { id: 'b', name: 'Leg', material: 'red_oak', size: { w: 60, h: 700, d: 60 }, pos: { x: 300, y: 350, z: 0 } }],
+    case: [{ id: 'a', name: 'Shelf', material: 'red_oak', size: { w: 800, h: 19, d: 280 }, pos: { x: 0, y: 400, z: 0 } },
+           { id: 'b', name: 'Side', material: 'baltic_birch', size: { w: 18, h: 900, d: 280 }, pos: { x: 400, y: 450, z: 0 } }],
+    box: [{ id: 'a', name: 'Drawer side', material: 'baltic_birch', size: { w: 400, h: 120, d: 12 }, pos: { x: 0, y: 200, z: 0 } },
+          { id: 'b', name: 'Drawer front', material: 'red_oak', size: { w: 450, h: 120, d: 19 }, pos: { x: 200, y: 200, z: 0 } }],
+    panel: [{ id: 'a', name: 'Board A', material: 'red_oak', size: { w: 600, h: 19, d: 140 }, pos: { x: 0, y: 20, z: 0 } },
+            { id: 'b', name: 'Board B', material: 'red_oak', size: { w: 600, h: 19, d: 140 }, pos: { x: 0, y: 20, z: 140 } }]
+  };
+  const laySpec = Spec.correctSpec({ meta: { template: 'table' } });
+  const layFor = key => {
+    const kind = K.JOINERY[key].kinds[0];
+    const parts = demo[kind];
+    const model = { parts, joints: [{ type: key, a: 'a', b: 'b' }] };
+    return { lay: Fasteners.layoutForJoint(laySpec, model, model.joints[0]), model };
+  };
+  const NEW_JOINTS = ['edge_glue', 'half_lap', 'cross_lap', 'bridle', 'loose_tenon', 'box_joint',
+    'through_dovetail', 'sliding_dovetail', 'miter_spline', 'staked_tenon', 'biscuits', 'french_cleat', 'kd_bolt'];
+  for (const key of NEW_JOINTS) {
+    const { lay, model } = layFor(key);
+    ok(lay && lay.text && lay.text.length > 40, `${key} has a real setout line, not the default screw case`);
+    ok(!/#8 × 32 mm wood screw.*from each end, pilot/.test(lay.text), `${key} did not fall into the default screw case`);
+    const bomCount = Fasteners.countFor(laySpec, model).reduce((n, c) => n + c.qty, 0);
+    eq(bomCount, lay.fasteners.length, `${key} BOM count matches its drilling instructions`);
+  }
+  ok(layFor('edge_glue').lay.fasteners.length === 0 && /clamp/i.test(layFor('edge_glue').lay.text), 'edge glue-up: zero fasteners, a clamp schedule instead');
+  const bj = layFor('box_joint').lay;
+  ok(bj.dovetail && bj.dovetail.count % 2 === 1, `box joint forces an odd finger count (${bj.dovetail && bj.dovetail.count})`);
+  ok(/across the seat grain/i.test(layFor('staked_tenon').lay.text), 'staked tenon setout carries the wedge-across-the-grain rule');
+  ok(layFor('kd_bolt').lay.fasteners.length === 2, 'knockdown joint drills two bolts per rail end');
+  ok(/stud/i.test(layFor('french_cleat').lay.text), 'french cleat setout demands studs, never drywall alone');
+  ok(layFor('biscuits').lay.fasteners.every(f => f.edgeMM >= 50), 'biscuit slots respect the 50 mm edge distance');
+}
+
+section('KB-2 sheet species are honest: MDF fails where MDF fails');
+{
+  // The same 900 × 300 shelf on two panel legs, loaded with books, in three
+  // materials. MDF (3 GPa / 25 MPa effective) must fail sag under books +
+  // creep — the ash-bookshelf doctrine extended to sheet goods.
+  const shelfPiece = sheetSpecies => pipeline({
+    meta: { name: 'Shelf Duty', template: 'custom', level: 'beginner', units: 'mm' },
+    wood: { species: 'red_oak', sheetSpecies },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'shelf_slab', primitive: 'slab', dim: { l: 900, w: 300, t: 18 }, pos: { x: 0, y: 409, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: false, surface: 'shelf' },
+        { id: 'p2', role: 'leg_panel', primitive: 'panel', dim: { l: 300, w: 400, t: 18 }, pos: { x: -430, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+        { id: 'p3', role: 'leg_panel', primitive: 'panel', dim: { l: 300, w: 400, t: 18 }, pos: { x: 430, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' }
+      ],
+      connections: [{ a: 'p2', b: 'p1', joint: 'dado' }, { a: 'p3', b: 'p1', joint: 'dado' }]
+    }
+  });
+  const sagOf = r => {
+    const integ = Structural.computeIntegrity(r.spec, r.model, { loadChoices: { p1: 'books' } });
+    const c = integ.checks.find(x => x.id === 'sag:p1');
+    return { sag: c && c.data ? c.data.sagMM : null, status: c && c.status };
+  };
+  const mdf = sagOf(shelfPiece('mdf'));
+  const baltic = sagOf(shelfPiece('baltic_birch'));
+  ok(mdf.sag != null && baltic.sag != null, 'sag checks computed for sheet shelves');
+  near(mdf.sag / baltic.sag, 10 / 3, 0.05, 'sag scales exactly inversely with effective MOE (baltic 10 GPa vs MDF 3 GPa)');
+  eq(mdf.status, 'fail', 'an MDF shelf under books + creep honestly FAILS');
+  // Movement: MDF is exempt in-plane, with the thickness-swell caveat named.
+  const mv = Structural.computeIntegrity(shelfPiece('mdf').spec, shelfPiece('mdf').model, {}).checks.find(c => c.id === 'move:p1');
+  ok(mv && mv.status === 'pass' && /isotropic|no grain/i.test(mv.explain) && /seal|water|swell/i.test(mv.explain), 'MDF movement exemption explains itself honestly');
+  // And the primary-species rule is untouched: sheet stock can never be the
+  // solid species; an invalid sheet choice snaps back to Baltic.
+  eq(Spec.correctSpec({ meta: { template: 'table' }, wood: { species: 'mdf' } }).wood.species, 'red_oak', 'MDF cannot be the solid species');
+  eq(Spec.correctSpec({ meta: { template: 'table' }, wood: { species: 'red_oak', sheetSpecies: 'walnut' } }).wood.sheetSpecies, 'baltic_birch', 'a solid species cannot be the sheet stock');
+}
+
+section('KB-3 the plan names the right glue');
+{
+  const bomOf = raw => {
+    const r = pipeline(raw);
+    const cut = Plans.cutList(r.spec, r.model);
+    const stock = Packing.planStock(r.spec, r.model, cut, {});
+    return Plans.bom(r.spec, r.model, { stock });
+  };
+  const interior = bomOf({ meta: { template: 'table' }, wood: { species: 'red_oak' }, finish: 'wipe_poly' });
+  const food = bomOf({ meta: { template: 'table' }, wood: { species: 'hard_maple' }, finish: 'mineral_oil' });
+  const oily = bomOf({ meta: { template: 'table' }, wood: { species: 'teak' }, finish: 'spar_urethane' });
+  const glueLines = b => b.items.filter(i => i.kind === 'glue');
+  eq(glueLines(interior).length, 1, 'exactly one glue line per BOM');
+  ok(glueLines(interior)[0].label.includes('Interior PVA'), 'interior build gets interior PVA');
+  ok(glueLines(food)[0].label.includes('Type I') && /food/i.test(glueLines(food)[0].detail), 'food-contact finish forces Type I with the reason stated');
+  ok(glueLines(oily)[0].label.includes('epoxy') || /epoxy/i.test(glueLines(oily)[0].label), 'oily teak gets epoxy');
+  ok(/solvent/i.test(K.recommendGlue({ wood: { species: 'teak' }, finish: 'mineral_oil' }).why), 'oily + food-contact carries the solvent-wipe instruction');
+}
+
+section('KB-4 the expanded lumber catalog packs and prices');
+{
+  // A 38 × 235 stretcher must pack as a direct 2x10 rip, not a glue-up.
+  eq(Packing.sectionFor(38, 230).kind, 'direct', '38 × 230 packs direct');
+  eq(Packing.sectionFor(38, 230).nominal, '2x10', '… on a 2x10');
+  // But a direct fit must never win by planing most of the board away: a
+  // 20 × 276 apron is a two-strip glue-up, not a 2x12 planed from 38 to 20.
+  const apron276 = Packing.sectionFor(20, 276.4);
+  eq(apron276.kind, 'glueup', '20 × 276 stays a glue-up despite the 2x12 existing');
+  eq(apron276.nominal, '5/4x4', '… composed exactly as before the expansion');
+  // Nor may a glue-up win on raw waste alone: three 1x2 strips never beat
+  // one clean 1x6 rip for a 19 × 90 plinth — glue lines cost labor.
+  eq(Packing.sectionFor(19, 90).kind, 'direct', '19 × 90 plinth stays a single rip');
+  eq(Packing.sectionFor(19, 90).nominal, '1x6', '… from a 1x6');
+  // A 32 × 381 bench seat glues from three 2x6 strips, not twelve 2x2s.
+  const seat = Packing.sectionFor(32, 381);
+  eq(seat.nominal, '2x6', 'bench seat glue-up picks sensible wide strips');
+  ok(seat.pieces === 3, `… three of them (${seat.pieces})`);
+  // And thin wide panels keep their pre-expansion sections exactly.
+  eq(Packing.sectionFor(19, 126).nominal, '1x6', '19 × 126 keeps its direct 1x6');
+  eq(Packing.sectionFor(45, 45).nominal, '8/4x3', '45 × 45 legs keep their direct 8/4x3');
+  eq(Packing.sectionFor(18, 457.2).nominal, '1x10', '18 × 457 case side keeps its 1x10 glue-up');
+  // A 70 mm post rips from one 4×4 instead of face-laminating two 8/4s.
+  eq(Packing.sectionFor(70, 70).kind, 'direct', '70 × 70 post packs direct');
+  eq(Packing.sectionFor(70, 70).nominal, '4x4', '… on a 4x4');
+  // An 89 mm custom post snaps to buyable 4×4 stock exactly.
+  const post = Spec.correctSpec({
+    meta: { template: 'custom' },
+    custom: { parts: [
+      { id: 'p1', role: 'seat', primitive: 'slab', dim: { l: 900, w: 300, t: 38 }, pos: { x: 0, y: 469, z: 0 }, grain: 'length', stock: 'solid', surface: 'seating' },
+      { id: 'p2', role: 'post', primitive: 'post', dim: { l: 450, w: 89, t: 88 }, pos: { x: -350, y: 225, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true },
+      { id: 'p3', role: 'post', primitive: 'post', dim: { l: 450, w: 89, t: 88 }, pos: { x: 350, y: 225, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true }
+    ], connections: [{ a: 'p2', b: 'p1', joint: 'staked_tenon' }, { a: 'p3', b: 'p1', joint: 'staked_tenon' }] }
+  });
+  eq(post.custom.parts[1].dim.t, 89, 'custom 88 mm post snaps to the 89 mm 4×4, not 90');
+  // 16 ft stock stays deliberately absent: pack1D opens the longest length
+  // first, so adding it would silently shift every plan onto 16-footers.
+  ok(!K.LUMBER.STOCK_LENGTHS.includes(4877), 'no 16 ft stock (deliberate — see knowledge.js)');
+  eq(Math.max(...K.LUMBER.STOCK_LENGTHS), 3658, '12 ft remains the longest board');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

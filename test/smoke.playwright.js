@@ -311,7 +311,8 @@ const clickMoreCtl = async sel => {
   await page.fill('.ref-search', 'dovetail');
   await page.click('.ref-tabs .ref-tab:nth-child(3)');
   const jointRows = await page.$$eval('#panel-main table tbody tr', r => r.length);
-  ok(jointRows === 1, `reference search filters (${jointRows} row for “dovetail”)`);
+  // Half-blind, through, and sliding dovetails (2026 joinery expansion).
+  ok(jointRows === 3, `reference search filters (${jointRows} rows for “dovetail”)`);
   await page.screenshot({ path: SHOTS + '/11-reference.png' });
 
   // Units control: imperial fractions by default, instant metric on toggle,

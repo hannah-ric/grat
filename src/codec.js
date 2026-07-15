@@ -17,9 +17,17 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- enum tables (order is the wire contract — append only) ---------------- */
   const TPL = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom'];
-  const SPC = ['red_oak', 'white_oak', 'hard_maple', 'walnut', 'cherry', 'ash', 'poplar', 'pine', 'baltic_birch'];
-  const JNT = ['butt_screws', 'pocket_screws', 'dowels', 'dado', 'rabbet', 'locking_rabbet', 'mortise_tenon', 'half_blind_dovetail'];
-  const FIN = ['wipe_poly', 'danish_oil', 'water_poly', 'hardwax_oil'];
+  const SPC = ['red_oak', 'white_oak', 'hard_maple', 'walnut', 'cherry', 'ash', 'poplar', 'pine', 'baltic_birch',
+    // 2026 knowledge expansion — appended in this exact order; old share codes decode unchanged.
+    'douglas_fir', 'syp', 'spf', 'western_red_cedar', 'soft_maple', 'hickory', 'beech', 'yellow_birch',
+    'red_alder', 'sapele', 'teak', 'mdf', 'hardwood_ply'];
+  const JNT = ['butt_screws', 'pocket_screws', 'dowels', 'dado', 'rabbet', 'locking_rabbet', 'mortise_tenon', 'half_blind_dovetail',
+    // 2026 knowledge expansion — append only.
+    'edge_glue', 'half_lap', 'cross_lap', 'bridle', 'loose_tenon', 'box_joint', 'through_dovetail',
+    'sliding_dovetail', 'miter_spline', 'staked_tenon', 'biscuits', 'french_cleat', 'kd_bolt'];
+  const FIN = ['wipe_poly', 'danish_oil', 'water_poly', 'hardwax_oil',
+    // 2026 knowledge expansion — append only.
+    'mineral_oil', 'board_butter', 'tung_pure', 'shellac', 'spar_urethane', 'paint_system'];
   const LVL = ['beginner', 'intermediate', 'advanced'];
   const UNITS = ['mm', 'in'];
   const FRONT = ['inset', 'overlay'];
@@ -66,6 +74,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       j: [ix(JNT, spec.joinery.frame, 1), ix(JNT, spec.joinery.case, 0), ix(JNT, spec.joinery.box, 1)],
       f: ix(FIN, spec.finish, 0)
     };
+    // Sheet stock rides the wire only when it departs from the Baltic default,
+    // so every pre-expansion design encodes byte-identically.
+    if (spec.wood.sheetSpecies && spec.wood.sheetSpecies !== 'baltic_birch') {
+      w.ms = ix(SPC, spec.wood.sheetSpecies, 8);
+    }
     for (const [k, path] of S_KEYS) {
       const v = spec.structure[path];
       w.s[k] = typeof v === 'boolean' ? (v ? 1 : 0) : v;
@@ -122,7 +135,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       overall: Array.isArray(w.o)
         ? { width: w.o[0], depth: w.o[1], height: w.o[2] }
         : { width: 1000, depth: 500, height: 750 },
-      wood: { species: at(SPC, w.m, 'red_oak'), sheetSpecies: 'baltic_birch' },
+      wood: { species: at(SPC, w.m, 'red_oak'), sheetSpecies: at(SPC, w.ms, 'baltic_birch') },
       structure: decodeStructure(w.s),
       joinery: Array.isArray(w.j)
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
@@ -164,6 +177,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (w.o.h !== undefined) patch.overall.height = w.o.h;
     }
     if (w.m !== undefined) patch.wood = { species: at(SPC, w.m, undefined) };
+    if (w.ms !== undefined) { patch.wood = patch.wood || {}; patch.wood.sheetSpecies = at(SPC, w.ms, undefined); }
     if (w.s !== undefined) patch.structure = decodeStructure(w.s);
     if (Array.isArray(w.j)) patch.joinery = { frame: at(JNT, w.j[0], undefined), case: at(JNT, w.j[1], undefined), box: at(JNT, w.j[2], undefined) };
     else if (w.j && typeof w.j === 'object') {
@@ -239,7 +253,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   const SCHEMA_DOC = [
     'WIRE FORMAT — every reply is minified JSON in this compact format (mm integers; enums are 0-based indexes into these lists, documented once here):',
     `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
-    'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
+    'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
+    '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
     'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER in mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Primitive orientations before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part must appear in at least one connection; connected parts must physically touch; unconnected parts must not intersect. Set loadBearing=1 for every part in a load path and SURF for anything loaded or sat on. 2–40 parts.',
     'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (one short sentence), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers).'

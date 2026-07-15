@@ -16,14 +16,26 @@ var BB = globalThis.BB = globalThis.BB || {};
   const JOINT_ALLOWANCE = {
     butt_screws: 0, pocket_screws: 0, dowels: 0,
     dado: 6, rabbet: 6, mortise_tenon: 30,
-    locking_rabbet: 6, half_blind_dovetail: 12
+    locking_rabbet: 6, half_blind_dovetail: 12,
+    /* 2026 expansion — every joint decides its allowance explicitly.
+     * Zeros are real: laps and bridles overlap inside existing length, loose
+     * tenons are separate stock, cleats/bolts/biscuits add no length.
+     * Through joints (box, through dovetail, splined miter, staked tenon)
+     * run the FULL mate thickness — the value below is the cap. */
+    edge_glue: 0, half_lap: 0, cross_lap: 0, bridle: 0, loose_tenon: 0,
+    biscuits: 0, french_cleat: 0, kd_bolt: 0,
+    box_joint: 32, through_dovetail: 32, miter_spline: 32, staked_tenon: 65,
+    sliding_dovetail: 6
   };
+  const THROUGH_JOINTS = ['box_joint', 'through_dovetail', 'miter_spline', 'staked_tenon'];
   function jointAllowance(type, mateT) {
     const cap = JOINT_ALLOWANCE[type] || 0;
     if (!cap) return 0;
     if (mateT === undefined || !isFinite(mateT)) return cap;
     if (type === 'mortise_tenon') return Math.max(0, Math.min(cap, Math.round(mateT - 6)));
     if (type === 'half_blind_dovetail') return Math.max(0, Math.min(cap, Math.round(mateT - 4)));
+    // through joints: the inserted member crosses the whole mate
+    if (THROUGH_JOINTS.includes(type)) return Math.max(0, Math.min(cap, Math.round(mateT)));
     // housed joints: 1/3-depth rule, never past the table cap
     return Math.max(0, Math.min(cap, Math.floor(mateT / 3)));
   }
@@ -68,8 +80,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const angles = BB.Geo.cutAngles(p.rot);
       if (angles) note = (note ? note + ' · ' : '') + BB.Geo.angleText(angles);
       if (p.prim === 'cylinder') note = (note ? note + ' · ' : '') + 'cylinder, Ø = width';
-      const mat = p.material === 'baltic_birch' ? 'baltic_birch' : spec.wood.species;
-      if (mat !== 'baltic_birch' && (LOAD_BEARING_ROLES.includes(p.role) || p.loadBearing)) {
+      const mat = K.WOOD_SPECIES[p.material] ? p.material : spec.wood.species;
+      const isSheet = !!(K.WOOD_SPECIES[mat] && K.WOOD_SPECIES[mat].sheet);
+      if (!isSheet && (LOAD_BEARING_ROLES.includes(p.role) || p.loadBearing)) {
         note = (note ? note + ' · ' : '') + 'select straight-grained stock, free of knots';
       }
       // Identical parts from different drawers cut as one line item.
@@ -78,7 +91,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!rows.has(key)) {
         rows.set(key, {
           name: groupName, qty: 0, L, W, T, material: mat, note, role: p.role,
-          grain: p.grain || 'length', stock: p.material === 'baltic_birch' ? 'sheet' : 'solid',
+          grain: p.grain || 'length', stock: isSheet ? 'sheet' : 'solid',
           angles, allowance, allowanceJoint: e ? e.type : null, allowanceEnds: e ? e.n : 0,
           partId: p.id, defKey: p.defKey
         });
@@ -132,7 +145,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const p of model.parts) {
         if (p.role === 'pull') continue;
         const dims = [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
-        if (p.material === 'baltic_birch') {
+        if (K.WOOD_SPECIES[p.material] && K.WOOD_SPECIES[p.material].sheet) {
           const t = K.SHEET_THICKNESS.reduce((x, y) => Math.abs(y - dims[2]) < Math.abs(x - dims[2]) ? y : x);
           sheetArea.set(t, sheetArea.get(t) + dims[0] * dims[1]);
         } else solidMm3 += p.size.w * p.size.h * p.size.d;
@@ -145,13 +158,13 @@ var BB = globalThis.BB = globalThis.BB || {};
           price: Math.round(bf * sp.pricePerBdFt)
         });
       }
-      const sheetPrices = K.defaultPrices().sheet;
+      const sheetSp = K.WOOD_SPECIES[spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch;
       for (const t of K.SHEET_THICKNESS) {
         if (sheetArea.get(t) > 0) {
           const frac = Math.ceil(sheetArea.get(t) / (SW * SL) * 1.25 * 4) / 4; // quarters, 25% waste
           items.push({
-            kind: 'sheet', label: `Baltic birch ply ${U().fmtLength(t)}`, qty: frac,
-            detail: `${frac} of a ${U().fmtSheet(SW, SL)} sheet`, price: Math.round(frac * (sheetPrices[t] || 60))
+            kind: 'sheet', label: `${sheetSp.label} ${U().fmtLength(t)}`, qty: frac,
+            detail: `${frac} of a ${U().fmtSheet(SW, SL)} sheet`, price: Math.round(frac * K.sheetPriceFor(null, sheetSp.key, t))
           });
         }
       }
@@ -161,14 +174,33 @@ var BB = globalThis.BB = globalThis.BB || {};
     // shopping list always matches the drilling instructions (audit F-S3-1).
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
     const engineCounts = BB.Fasteners ? BB.Fasteners.countFor(spec, model) : [];
-    const PRICE_EACH = { screw: 0.06, pocket: 0.08, dowel: 0.1, figure8: 0.8 };
+    const PRICE_EACH = {
+      screw: 0.06, pocket: 0.08, dowel: 0.1, figure8: 0.8,
+      biscuit: 0.15, loose_tenon: 0.5, kd_bolt: 1.5, spline: 0.4
+    };
     for (const c of engineCounts) {
       const label = c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${fine(c.pilotMM)})` : '');
       const detail = c.kind === 'figure8' ? 'top attachment — allows seasonal movement'
         : c.kind === 'pocket' ? 'per the pocket-hole layout in the steps'
         : c.kind === 'dowel' ? `drill ${fine(c.pilotMM)}, positions in the steps`
+        : c.kind === 'biscuit' ? 'slot positions in the assembly steps'
+        : c.kind === 'loose_tenon' ? 'mortise setout in the assembly steps'
+        : c.kind === 'kd_bolt' ? 'bolt and barrel bores in the assembly steps'
         : 'positions and pilots in the assembly steps';
       items.push({ kind: 'fastener', label, qty: c.qty, detail, price: Math.ceil(c.qty * (PRICE_EACH[c.kind] || 0.06) * 100) / 100 });
+    }
+
+    // Glue: code names the bottle (2026 expansion) — food contact, outdoor
+    // duty, and oily species change the answer, so "glue" alone is not a plan.
+    if (model.parts.length > 1) {
+      const rec = K.recommendGlue(spec);
+      if (rec && rec.glue) {
+        items.push({
+          kind: 'glue', label: rec.glue.label, qty: 1,
+          detail: `${rec.why} · open ${rec.glue.openMin} min · clamp ${rec.glue.clampMin} min · full strength ${rec.glue.cureHrs} h`,
+          price: rec.glue.price
+        });
+      }
     }
 
     // Drawer hardware from the fastener catalog. (M4 is a metric trade name
@@ -279,8 +311,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function safetyStep(spec, model, integrity, stockPlan, out) {
     const notes = ['Eyes and ears on for every cut; a dust mask (or extraction) for machine work and sanding.'];
     const cutRows = BB.Plans && model ? null : null;
-    const hasSheet = model.parts.some(p => p.material === 'baltic_birch');
+    const isSheetMat = m => !!(K.WOOD_SPECIES[m] && K.WOOD_SPECIES[m].sheet);
+    const hasSheet = model.parts.some(p => isSheetMat(p.material));
     if (hasSheet) notes.push('Full sheets are floppy and heavy — break them down on foam on the floor with a track/circular saw before any table-saw work.');
+    if (model.parts.some(p => p.material === 'mdf')) notes.push('MDF dust is fine and binder-laden — this build wants real dust extraction, not just a mask.');
     const narrowRip = model.parts.some(p => {
       const dims = [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
       return dims[1] < 150 && dims[0] > 300 && p.role !== 'pull';
@@ -409,7 +443,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(cap(tool));
     }
     if (model.parts.some(p => BB.Geo.cutAngles(p.rot))) tools.add('Miter saw (angled cuts)');
-    if (model.parts.some(p => p.material === 'baltic_birch')) tools.add('Circular saw + straightedge (sheet breakdown)');
+    if (model.parts.some(p => K.WOOD_SPECIES[p.material] && K.WOOD_SPECIES[p.material].sheet)) tools.add('Circular saw + straightedge (sheet breakdown)');
     if (stockPlan && ((stockPlan.glueups || []).length || (stockPlan.laminations || []).length)) {
       tools.add('Glue + cauls (panel glue-up)');
       if ((stockPlan.laminations || []).length) tools.add('Hand plane or thickness planer (laminations)');
@@ -429,7 +463,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     glueUp: 30, lamination: 25, finishCoat: 20,
     joint: {
       butt_screws: 6, pocket_screws: 8, dowels: 12, dado: 15, rabbet: 12,
-      locking_rabbet: 15, mortise_tenon: 40, half_blind_dovetail: 60
+      locking_rabbet: 15, mortise_tenon: 40, half_blind_dovetail: 60,
+      /* 2026 expansion — minutes per physical joint, same scale */
+      edge_glue: 15, half_lap: 20, cross_lap: 20, bridle: 35, loose_tenon: 18,
+      box_joint: 25, through_dovetail: 60, sliding_dovetail: 30, miter_spline: 18,
+      staked_tenon: 25, biscuits: 6, french_cleat: 12, kd_bolt: 12
     }
   };
   const LEVEL_FACTOR = { beginner: 1.5, intermediate: 1.2, advanced: 1 };

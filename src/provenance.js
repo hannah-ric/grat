@@ -120,7 +120,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     let kg = 0;
     for (const p of model.parts) {
       if (p.role === 'pull') continue;
-      const sg = p.material === 'baltic_birch' ? K.WOOD_SPECIES.baltic_birch.sg : (K.WOOD_SPECIES[spec.wood.species] || K.WOOD_SPECIES.pine).sg;
+      const sg = (K.WOOD_SPECIES[p.material] || K.WOOD_SPECIES[spec.wood.species] || K.WOOD_SPECIES.pine).sg;
       const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
       kg += p.size.w * p.size.h * p.size.d * 1e-9 * sg * 1000 * volFactor;
     }

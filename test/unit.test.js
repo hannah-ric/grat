@@ -234,6 +234,18 @@ section('local intent parser');
   const wal = AI.localModel('make it walnut', spec);
   eq(wal.patch.wood.species, 'walnut', 'species change parsed');
 
+  // 2026 species: multi-word labels beat last-word collisions, aliases work,
+  // and a named sheet good switches ONLY the sheet stock.
+  eq(AI.localModel('build it from southern yellow pine', spec).patch.wood.species, 'syp', '"southern yellow pine" is not just "pine"');
+  eq(AI.localModel('make it pine', spec).patch.wood.species, 'pine', 'plain "pine" still means Eastern White Pine');
+  eq(AI.localModel('douglas fir instead', spec).patch.wood.species, 'douglas_fir', 'hyphen-tolerant Douglas-Fir alias');
+  eq(AI.localModel('make it hickory', spec).patch.wood.species, 'hickory', 'new single-word species parsed');
+  eq(AI.localModel('soft maple please', spec).patch.wood.species, 'soft_maple', '"soft maple" beats the hard-maple last word');
+  eq(AI.localModel('make it maple', spec).patch.wood.species, 'hard_maple', 'plain "maple" keeps meaning hard maple');
+  const mdfPatch = AI.localModel('use mdf for the boxes', spec).patch;
+  eq(mdfPatch.wood.sheetSpecies, 'mdf', 'sheet-good mention sets the sheet species');
+  ok(!mdfPatch.wood.species, 'sheet-good mention leaves the solid species alone');
+
   const ns = Spec.correctSpec({ meta: { template: 'nightstand' } });
   const dr = AI.localModel('add another drawer', ns);
   eq(dr.patch.drawers.count, 2, 'add a drawer increments count');
@@ -422,24 +434,47 @@ section('starter gallery');
 /* ---------------- knowledge ---------------- */
 section('knowledge bases');
 {
-  ok(Object.keys(K.WOOD_SPECIES).length >= 9, 'nine+ species');
+  ok(Object.keys(K.WOOD_SPECIES).length >= 22, 'twenty-two+ species (2026 expansion)');
   for (const s of Object.values(K.WOOD_SPECIES)) {
     ok(s.janka > 0 && s.blurb && s.movement && s.costTier >= 1, `${s.key} row complete`);
+    ok(s.moe > 0 && s.mor > 0 && s.sg > 0 && s.ct > 0 && s.cr > 0, `${s.key} carries full Wood Handbook mechanics`);
   }
   ok(K.ERGONOMICS.some(r => r.key === 'drawer_max_width'), 'drawer ergonomics rows present');
+  ok(K.ERGONOMICS.some(r => r.key === 'workbench_height') && K.ERGONOMICS.some(r => r.key === 'coffee_table_height'), '2026 ergonomics anchors present');
+  ok(Object.keys(K.JOINERY).length >= 21, 'twenty-one+ joints (2026 expansion)');
   for (const j of Object.values(K.JOINERY)) {
     ok(j.strength >= 1 && j.strength <= 5 && j.tools.length && j.failure && j.bestFor, `${j.key} row complete`);
+    ok(j.kinds.every(k => ['frame', 'case', 'box', 'panel'].includes(k)), `${j.key} kinds are known`);
   }
+  ok(K.JOINERY.edge_glue.kinds.includes('panel') && K.JOINT_DEFAULTS.beginner.panel === 'edge_glue', 'panel kind exists with edge_glue as its default');
   const digest = K.knowledgeDigest();
   ok(digest.includes('dining_height 730–760mm') && digest.includes('mortise_tenon'), 'digest carries norms');
+  ok(digest.includes('hickory(janka 1880') && digest.includes('staked_tenon'), 'digest carries the 2026 additions');
   const sys = AI.systemPrompt(Spec.correctSpec({ meta: { template: 'table' } }));
   ok(sys.includes(digest) && sys.includes('"t":0'), 'system prompt embeds knowledge digest + current spec in wire format');
   ok(sys.includes('ONLY the changed wire keys'), 'system prompt demands wire diff-based refinement');
   ok(sys.includes(Codec.SCHEMA_DOC), 'system prompt documents the compact schema once, statically');
-  eq(K.jointsForLevel('beginner').sort().join(','), 'butt_screws,pocket_screws', 'beginner matrix');
+  eq(K.jointsForLevel('beginner').sort().join(','), 'biscuits,butt_screws,edge_glue,french_cleat,kd_bolt,pocket_screws', 'beginner matrix');
   ok(K.jointsForLevel('advanced').includes('half_blind_dovetail'), 'advanced matrix');
+  ok(K.jointsForLevel('advanced').includes('through_dovetail') && !K.jointsForLevel('intermediate').includes('through_dovetail'), 'through dovetail gated to advanced');
+  ok(K.jointsForLevel('intermediate').includes('staked_tenon'), 'staked tenon reachable at intermediate');
   ok(K.FASTENERS.screws.every(s => s.pilot !== undefined), 'screws carry pilot diameters');
-  ok(K.FINISHES.every(f => f.coats && f.recoatHrs !== undefined && f.cureDays), 'finishes carry coats + dry times');
+  ok(K.FASTENERS.screws.some(s => s.key === 'pocket_63'), '2× stock pocket screw present (32 mm cannot join 38 mm stock)');
+  ok(K.FINISHES.every(f => f.coats && f.recoatHrs !== undefined && f.cureDays !== undefined), 'finishes carry coats + dry times (cureDays 0 = never film-cures)');
+  ok(K.FINISHES.some(f => f.foodContact) && K.FINISHES.some(f => f.exterior), 'food-contact and exterior finish categories open');
+  const mo = K.FINISHES.find(f => f.key === 'mineral_oil'), tp = K.FINISHES.find(f => f.key === 'tung_pure');
+  ok(!mo.flammableRags && tp.flammableRags === true, 'rag-fire physics: non-drying mineral oil is safe, polymerizing tung is flagged');
+  ok(K.GLUES.length >= 5 && K.GLUES.every(g => g.openMin > 0 && g.clampMin > 0 && g.cureHrs > 0 && g.water), 'GLUES table complete');
+  // Price coupling: every nominal in the SAME commit as a price row — a miss prices as NaN.
+  const prices = K.defaultPrices();
+  for (const sp of Object.keys(prices.dimensional)) {
+    for (const nom of Object.keys(K.LUMBER.NOMINALS)) {
+      ok(isFinite(prices.dimensional[sp][nom]) && prices.dimensional[sp][nom] > 0, `price grid ${sp} × ${nom}`);
+    }
+  }
+  for (const sk of K.sheetSpeciesKeys()) {
+    for (const t of K.LUMBER.SHEET.THICKNESSES) ok(K.sheetPriceFor(prices, sk, t) > 0, `sheet price ${sk} × ${t}`);
+  }
 }
 
 /* ---------------- geometric buildability audit ----------------

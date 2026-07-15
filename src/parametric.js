@@ -73,8 +73,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   function buildBank(spec, zone, parts, joints, prefix) {
     const d = spec.drawers;
     const solidT = 15, sheetT = 12;
-    const boxT = spec.wood.sheetSpecies ? sheetT : solidT; // Baltic birch boxes by default
-    const boxMat = 'baltic_birch';
+    const boxT = spec.wood.sheetSpecies ? sheetT : solidT; // sheet-stock boxes by default
+    const boxMat = spec.wood.sheetSpecies || 'baltic_birch';
     const openings = [], drawers = [];
     const { openH } = bankHeights(zone.available, d.count);
 
@@ -150,7 +150,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // 6 mm bottom in a 6 mm groove, 10 mm up from the bottom edge.
       const botW = boxW - 2 * boxT + 10;
       const botD = slideIn ? boxD - boxT - (boxT - 6) : boxD - 2 * boxT + 10;
-      dp.push(part(`${prefix}dr${i + 1}_bottom`, `drbox_bot_${Math.round(botW)}x${Math.round(botD)}`, 'drawer_bottom', `Drawer ${i + 1} bottom`, botW, 6, botD, px, boxBottomY + 13, cz, { material: 'baltic_birch', group: g }));
+      dp.push(part(`${prefix}dr${i + 1}_bottom`, `drbox_bot_${Math.round(botW)}x${Math.round(botD)}`, 'drawer_bottom', `Drawer ${i + 1} bottom`, botW, 6, botD, px, boxBottomY + 13, cz, { material: boxMat, group: g }));
 
       // Applied front: inset = opening − 2 mm gap all around; overlay = +10 mm
       // per side where the surround allows.
@@ -270,7 +270,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (st.backPanel) {
       parts.push(part('back_1', 'back', 'back', 'Back panel', o.width - 12, o.height - 12, 6, 0, o.height / 2, -o.depth / 2 + 3,
-        { material: 'baltic_birch', explode: { x: 0, y: 0, z: -1 } }));
+        { material: spec.wood.sheetSpecies || 'baltic_birch', explode: { x: 0, y: 0, z: -1 } }));
       // The back sits in rabbets on all four case edges; its panel size
       // already includes the rabbet capture, so no cut-length allowance.
       joints.push({ type: 'rabbet', a: 'back_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: o.height / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
@@ -380,7 +380,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (st.backPanel) {
       parts.push(part('back_1', 'back', 'back', 'Back panel', o.width - 12, bodyH - 12, 6, 0, base + bodyH / 2, -o.depth / 2 + 3,
-        { material: 'baltic_birch', explode: { x: 0, y: 0, z: -1 } }));
+        { material: spec.wood.sheetSpecies || 'baltic_birch', explode: { x: 0, y: 0, z: -1 } }));
       // The back sits in rabbets: sides and bottom. Its panel size already
       // includes the rabbet capture, so no cut-length allowance applies.
       joints.push({ type: 'rabbet', a: 'back_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT / 2), y: base + bodyH / 2, z: -o.depth / 2 + 3 }, noCutAllowance: true });
@@ -431,7 +431,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         part(p.id, `custom_${p.primitive}_${p.dim.l}x${p.dim.w}x${p.dim.t}`, p.role,
           p.role.replace(/_/g, ' ').replace(/^./, ch => ch.toUpperCase()),
           size.w, size.h, size.d, p.pos.x, p.pos.y, p.pos.z,
-          { material: p.stock === 'sheet' ? 'baltic_birch' : sp, explode }),
+          { material: p.stock === 'sheet' ? (spec.wood.sheetSpecies || 'baltic_birch') : sp, explode }),
         {
           prim: p.primitive, rot: p.rot ? { ...p.rot } : null,
           cutDim: { L: p.dim.l, W: p.dim.w, T: p.dim.t },

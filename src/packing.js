@@ -25,6 +25,16 @@ var BB = globalThis.BB = globalThis.BB || {};
    *              each glued edge), then cut to final width.
    *   laminate — thicker than any board: face-laminate N layers, plane to T.
    */
+  /* A glue line costs a jointed edge pair, glue, and a clamp cycle — charged
+   * as roughly one 1x2 strip of cross-section per line when a glue-up
+   * challenges a DIRECT fit. With the wide 2× nominals in the catalog this
+   * is what keeps sectionFor honest in both directions: it will not buy
+   * 38 mm stock and plane 18 mm off the whole face when two strips of the
+   * right thickness exist, and it will not swap a clean single rip for a
+   * strip storm to shave a few percent of waste. Selection AMONG glue-up
+   * candidates stays raw min-waste, exactly as before the expansion. */
+  const GLUE_LINE_PENALTY_MM2 = 400;
+
   function sectionFor(T, W) {
     const noms = Object.entries(L().NOMINALS);
     let best = null;
@@ -34,17 +44,19 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!best || waste < best.waste) best = { kind: 'direct', nominal: name, actual: a, waste, pieces: 1 };
       }
     }
-    if (best) return best;
-    // glue-up: thickness fits some nominal, width doesn't
+    // glue-up: rip strips and edge-glue (3 mm jointed off each glued edge)
     let glue = null;
     for (const [name, a] of noms) {
       if (a.t >= T - 0.5) {
-        const stripW = a.w - 6; // 3 mm jointed off each glued edge
+        const stripW = a.w - 6;
         const n = Math.ceil(W / stripW);
         const waste = n * a.t * a.w - T * W;
         if (!glue || waste < glue.waste) glue = { kind: 'glueup', nominal: name, actual: a, waste, pieces: n };
       }
     }
+    // Direct wins unless the glue-up stays cheaper AFTER paying for its own
+    // glue lines; ties go to direct (one board beats any glue line).
+    if (best && (!glue || best.waste <= glue.waste + (glue.pieces - 1) * GLUE_LINE_PENALTY_MM2)) return best;
     if (glue) return glue;
     // laminate: nothing is thick enough — stack layers and plane to T
     let lam = null;
@@ -191,7 +203,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     let solidVol = 0, sheetAreaByT = new Map();
     for (const row of cut) {
       for (let i = 0; i < row.qty; i++) {
-        if (row.stock === 'sheet' || row.material === 'baltic_birch') {
+        if (row.stock === 'sheet' || (K.WOOD_SPECIES[row.material] && K.WOOD_SPECIES[row.material].sheet)) {
           const t = K.SHEET_THICKNESS.reduce((x, y) => Math.abs(y - row.T) < Math.abs(x - row.T) ? y : x);
           // grain runs along the cut length; length-grain parts lock to the sheet's long axis
           sheetParts.push({ name: row.name, w: row.L, h: row.W, t, grainLocked: row.grain !== 'width' });
@@ -263,10 +275,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       sheetBoughtArea += s.fraction * L().SHEET.W * L().SHEET.L;
       for (const p of s.placements) sheetUsedArea += p.w * p.h;
     }
+    const sheetSp = K.WOOD_SPECIES[spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch;
     for (const [key, count] of [...sheetGroups.entries()].sort((a, b) => b[0].localeCompare(a[0]))) {
       const [t, frac] = key.split('|').map(Number);
-      const price = ((prices.sheet && prices.sheet[t]) !== undefined ? prices.sheet[t] : 60) * frac;
-      const label = `Baltic birch ${U().fmtLength(t)} — ${frac === 1 ? 'full' : frac === 0.5 ? 'half' : 'quarter'} sheet (${U().fmtSheet(L().SHEET.W, L().SHEET.L)} base)`;
+      // Sheet prices are keyed species × thickness; K.sheetPriceFor tolerates
+      // the legacy flat {thickness: price} shape (implicitly Baltic).
+      const price = K.sheetPriceFor(prices, sheetSp.key, t) * frac;
+      const label = `${sheetSp.label} ${U().fmtLength(t)} — ${frac === 1 ? 'full' : frac === 0.5 ? 'half' : 'quarter'} sheet (${U().fmtSheet(L().SHEET.W, L().SHEET.L)} base)`;
       sheetCost += count * price;
       shopping.push({ kind: 'sheet', label, qty: count, unit: `$${price.toFixed(2)}`, cost: count * price });
     }

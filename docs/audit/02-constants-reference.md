@@ -122,3 +122,31 @@ a value, the new home is noted in the register.
 | Vision ergonomic ranges (hand-copied) | ai.js:432 | see F-SYS-4 |
 | estimateTokens | chars/3.6 | codec.js:236 |
 | Proxy caps | 1024 tokens, 32 messages, 5 MB | api/chat.js:19-21 |
+
+## 2026 knowledge expansion addendum (species 9 → 22, joints 8 → 21, finishes 4 → 10, + GLUES)
+
+Every physical constant added by the expansion keeps the one-source rule: the row in
+`src/knowledge.js` is the single home, and the generated digests / self-tests cover it.
+
+| Addition | Values | Ground truth |
+|---|---|---|
+| Douglas-Fir (coast) | MOE 13.4 / MOR 85 / SG 0.48 / Janka 620 / ct 0.00267 / cr 0.00165 | Wood Handbook 5-3a + 13-5 (Coast type) ✓ |
+| Southern Yellow Pine (loblolly) | 12.3 / 88 / 0.51 / 690 / 0.00259 / 0.00165 | WH 5-3a + 13-5, loblolly basis ✓ |
+| SPF (Engelmann floor of grade group) | 8.9 / 64 / 0.35 / 390 / 0.00248 / 0.00130 | WH 5-3a + 13-5; pinned to group's weakest member (honesty rule) |
+| Western Red Cedar | 7.7 / 52 / 0.32 / 350 / 0.00234 / 0.00111 | WH 5-3a + 13-5 ✓ |
+| Soft Maple (red) | 11.3 / 92 / 0.54 / 950 / 0.00289 / 0.00137 | WH 5-3a + 13-5 ✓ |
+| Hickory (shagbark, true-hickory group) | 14.9 / 139 / 0.72 / 1880 / 0.00411 / 0.00259 | WH 5-3a + 13-5 ✓ |
+| American Beech (highest ct in catalog) | 11.9 / 103 / 0.64 / 1300 / 0.00431 / 0.00190 | WH 5-3a + 13-5 ✓ |
+| Yellow Birch | 13.9 / 114 / 0.62 / 1260 / 0.00338 / 0.00256 | WH 5-3a + 13-5 ✓ |
+| Red Alder | 9.5 / 68 / 0.41 / 590 / 0.00256 / 0.00151 | WH 5-3a + 13-5 ✓ |
+| Sapele | 12.4 / 111 / 0.67 / 1360 / ct 0.00253* / cr 0.00183* | Wood Database mechanicals; *derived from total shrinkage scaled by khaya's 13-5 slope — disclosed in-file |
+| Teak (`oily: true`) | 12.3 / 97 / 0.66 / 1070 / 0.00186 / 0.00101 | WH imported table + 13-5 official rows |
+| MDF (effective panel values) | 3.0 / 25 / 0.75 / — / ~0 / ~0 | conservative MDF class values; honest-fail under books + creep by design |
+| Hardwood plywood (effective) | 8.0 / 40 / 0.55 / — / ~0 / ~0 | rated below Baltic (thinner faces, core voids), documented in-file |
+| Joint strengths (13 new joints) | JOINERY.strength + Structural.JOINT_RATING | FWW #203 lab test + woodgears.ca, aged for seasonal behavior |
+| GLUES (5 rows) | open/clamp/cure, water rating, foodContact | ANSI/HPVA types; FDA 21 CFR 175.105 for Type I PVA (indirect food contact, cured) |
+| Food-contact finishes | mineral_oil / board_butter / tung_pure | non-drying mineral oil rags are NOT self-heating; tung rags are (flag preserved) |
+| New nominals | 2x3/2x6/2x8/2x10/2x12 (38 mm), 4x4 (89×89) | landed with price rows in the same commit (NaN guard tested) |
+| POST_THICKNESS += 89 | custom posts snap to buyable 4×4 | |
+| GLUE_LINE_PENALTY_MM2 | 400 (packing.js) | labor charge per glue line when a glue-up challenges a direct fit |
+| 16 ft stock (4877) | **deliberately absent** | pack1D opens longest-first; would shift every plan onto boards most people cannot transport |

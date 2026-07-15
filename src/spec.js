@@ -381,10 +381,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (!K.WOOD_SPECIES[s.wood.species] || K.WOOD_SPECIES[s.wood.species].sheet) s.wood.species = 'red_oak';
-    s.wood.sheetSpecies = 'baltic_birch';
+    // Sheet stock is its own choice (2026 expansion): any `sheet: true`
+    // species is valid; anything else — including a solid species — snaps
+    // back to the Baltic default.
+    const sheetSp = K.WOOD_SPECIES[s.wood.sheetSpecies];
+    if (!sheetSp || !sheetSp.sheet) s.wood.sheetSpecies = 'baltic_birch';
 
     st.topThickness = snap(clamp(num(st.topThickness, 25), 12, 45), K.SOLID_THICKNESS);
-    st.legThickness = snap(clamp(num(st.legThickness, 70), 32, 100), [32, 38, 45, 60, 70, 80, 90, 100]);
+    // 89 = actual 4×4 (2026 expansion) — legs snap to buyable post stock.
+    st.legThickness = snap(clamp(num(st.legThickness, 70), 32, 100), [32, 38, 45, 60, 70, 80, 89, 90, 100]);
     st.apronThickness = snap(clamp(num(st.apronThickness, 20), 15, 25), [15, 19, 20, 25]);
     st.apronHeight = clamp(num(st.apronHeight, 90), 60, 160);
     st.apronInset = clamp(num(st.apronInset, 12), 0, 30);

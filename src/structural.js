@@ -35,6 +35,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   const speciesOf = key => K.WOOD_SPECIES[key] || K.WOOD_SPECIES.pine;
   const densityOf = key => speciesOf(key).sg * 1000; // kg/m³ at ~12% MC
   const sgFactor = key => speciesOf(key).sg / 0.5;
+  /* Per-part material honesty (2026 expansion): a part whose `material` is a
+   * real species row (any sheet stock, or a solid that differs from the
+   * primary) is judged with ITS OWN species data; anything else — 'hardware',
+   * the bare 'solid' default on rails — falls back to the design's primary
+   * species, exactly as before. */
+  const materialSpeciesKey = (p, spec) =>
+    K.WOOD_SPECIES[p.material] ? p.material : spec.wood.species;
+  const partDensity = (p, spec) =>
+    p.material === 'hardware' ? 3000 : densityOf(materialSpeciesKey(p, spec));
   const nextSolidUp = t => K.SOLID_THICKNESS.find(x => x > t) || null;
   // All display text routes through BB.Units — the check math stays SI.
   const U = () => BB.Units;
@@ -83,7 +92,26 @@ var BB = globalThis.BB = globalThis.BB || {};
     locking_rabbet:{ rackPts: 4.0, capN: 1100 },
     dado:          { rackPts: 4.0, capN: 1200 },
     half_blind_dovetail: { rackPts: 5.5, capN: 1800 },
-    mortise_tenon: { rackPts: 6.0, capN: 2000 }
+    mortise_tenon: { rackPts: 6.0, capN: 2000 },
+    /* 2026 expansion — calibrated to the FWW #203 lab ordering (half lap >
+     * bridle > splined miter > M&T > floating tenon … pocket > biscuit) and
+     * then aged: the fresh-strong splined miter derates for seasonal stress,
+     * biscuits stay the honest alignment aid, steel KD bolts sit under a
+     * glued M&T because they loosen. Laps/bridles land just above M&T (as
+     * tested) with the same rack contribution class as dovetails. */
+    edge_glue:        { rackPts: 5.0, capN: 2200 },
+    half_lap:         { rackPts: 5.5, capN: 2100 },
+    cross_lap:        { rackPts: 5.5, capN: 2100 },
+    bridle:           { rackPts: 5.5, capN: 2100 },
+    loose_tenon:      { rackPts: 5.5, capN: 1900 },
+    box_joint:        { rackPts: 5.5, capN: 2000 },
+    through_dovetail: { rackPts: 6.0, capN: 2100 },
+    sliding_dovetail: { rackPts: 5.0, capN: 1600 },
+    miter_spline:     { rackPts: 4.0, capN: 1300 },
+    staked_tenon:     { rackPts: 5.5, capN: 1800 },
+    biscuits:         { rackPts: 2.5, capN: 600 },
+    french_cleat:     { rackPts: 3.0, capN: 1500 },
+    kd_bolt:          { rackPts: 4.5, capN: 1800 }
   };
 
   /* ---------------- beam formulas (exact, SI: N, mm, MPa) ---------------- */
@@ -296,7 +324,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const hull = Geo.convexHull2D(footPts);
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
-        const dens = p.material === 'baltic_birch' ? densityOf('baltic_birch') : densityOf(spec.wood.species);
+        const dens = partDensity(p, spec);
         const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
         const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
         mass += m; mx += m * p.pos.x; my += m * p.pos.y; mz += m * p.pos.z;
@@ -385,30 +413,40 @@ var BB = globalThis.BB = globalThis.BB || {};
      * span; the TOP is a plate strip spanning between the aprons. Everything
      * else stays a plain single-span (or cantilever) beam. */
     let worstSagRatio = 0, worstSag = null;
-    const allow = sp.mor / SAFETY_FACTOR;
     const sagStatus = r => r <= 1 ? 'pass' : r <= 1.5 ? 'advisory' : 'fail';
-    const strengthCheck = (id, label, M, h, I, preset, fixes) => {
+    /* Strength checks judge each member with ITS OWN species (msp): template
+     * parts share the primary species, so nothing changes for them, but an
+     * MDF or plywood surface is now judged with MDF/ply numbers — the
+     * honest-fail doctrine (see the frozen ash-bookshelf case). */
+    const strengthCheck = (id, label, M, h, I, preset, fixes, msp) => {
+      msp = msp || sp;
+      const allow = msp.mor / SAFETY_FACTOR;
       const stress = I > 0 ? (M * (h / 2)) / I : Infinity;
       const margin = stress > 0 ? allow / stress : Infinity;
       checks.push({
         id, title: `Strength — ${label}`,
         status: margin >= 1.25 ? 'pass' : margin >= 1 ? 'advisory' : 'fail',
         value: `bending stress ${stress.toFixed(1)} MPa · margin ${margin === Infinity ? '∞' : margin.toFixed(1) + '×'}`,
-        threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} MPa ÷ safety factor ${SAFETY_FACTOR})`,
-        explain: margin >= 1 ? `Comfortably below the breaking stress of ${sp.label} with the standard ×${SAFETY_FACTOR} wood safety factor.`
+        threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${msp.mor} MPa ÷ safety factor ${SAFETY_FACTOR})`,
+        explain: margin >= 1 ? `Comfortably below the breaking stress of ${msp.label} with the standard ×${SAFETY_FACTOR} wood safety factor.`
           : `The “${preset.label}” load brings this part too close to breaking stress.`,
         fixes: margin < 1.25 ? fixes : []
       });
     };
     for (const s of surfaces) {
       const preset = LOAD_PRESETS[s.presetKey];
+      // The surface's own material: primary species for template parts,
+      // the sheet species for sheet-stock slabs and panels.
+      const ssp = speciesOf(materialSpeciesKey(s.part, spec));
+      const Es = ssp.moe * 1000; // GPa -> MPa
       const fixes = [];
       const up = nextSolidUp(s.h);
+      const sIsSheet = !!(K.WOOD_SPECIES[s.part.material] && K.WOOD_SPECIES[s.part.material].sheet);
       if (!custom && up) {
         if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${fmtLen(up)}`, patch: { structure: { topThickness: up } } });
-        else if (s.part.material !== 'baltic_birch' && !s.apron) fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
+        else if (!sIsSheet && !s.apron) fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
       }
-      if (custom && up && s.part.material !== 'baltic_birch') {
+      if (custom && up && !sIsSheet) {
         const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: up } } : p);
         fixes.push({ id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(up)}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
       }
@@ -442,7 +480,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           data: { sagMM: sag, limitMM: limit, spanMM: s.apron.span },
           prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(s.apron.span)} mm, half the spread load per apron` }
         });
-        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset, apFixes);
+        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset, apFixes, sp);
 
         /* (b) Top as a plate strip between the aprons. Point loads act at the
          * strip midspan; spread loads contribute their tributary share. */
@@ -457,7 +495,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           }
         }
         const Is = I_rect(s.strip.bEff, s.h);
-        const { sag: sagS, M: MS } = evalBeam(stripCases, s.strip.span, E, Is);
+        const { sag: sagS, M: MS } = evalBeam(stripCases, s.strip.span, Es, Is);
         const limS = s.strip.span / SAG_LIMIT_RATIO;
         const rS = sagS / limS;
         if (rS > worstSagRatio) { worstSagRatio = rS; worstSag = { id: s.id, sag: sagS, limit: limS, span: s.strip.span }; }
@@ -466,16 +504,16 @@ var BB = globalThis.BB = globalThis.BB || {};
           status: sagStatus(rS),
           value: `predicted sag ${fmtFine(sagS)} across the ${fmtLen(s.strip.span)} between aprons`,
           threshold: `≤ ${fmtFine(limS)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
-          explain: `${sp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}), checked as a ${fmtLen(s.strip.bEff)}-wide strip spanning between the aprons.`,
+          explain: `${ssp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}), checked as a ${fmtLen(s.strip.bEff)}-wide strip spanning between the aprons.`,
           fixes: rS > 1 ? fixes : [],
           data: { sagMM: sagS, limitMM: limS, spanMM: s.strip.span },
           prov: { rule: `plate strip: span ${Math.round(s.strip.span)} mm between apron faces, effective width min(top, span/2 + 100) = ${Math.round(s.strip.bEff)} mm, I = ${Math.round(Is).toLocaleString()} mm⁴` }
         });
-        strengthCheck('str:' + s.id, s.label, MS, s.h, Is, preset, fixes);
+        strengthCheck('str:' + s.id, s.label, MS, s.h, Is, preset, fixes, ssp);
       } else {
         const I = I_rect(s.b, s.h);
         const cases = loadCasesFor(s.presetKey, s.span, s.model);
-        const { sag, M, crept } = evalBeam(cases, s.span, E, I);
+        const { sag, M, crept } = evalBeam(cases, s.span, Es, I);
         const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
@@ -484,18 +522,18 @@ var BB = globalThis.BB = globalThis.BB || {};
           status: sagStatus(ratio),
           value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}`,
           threshold: `≤ ${fmtFine(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
-          explain: `${sp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}). Stiffness comes from MOE (${sp.moe} GPa) and thickness cubed.${crept ? ` Sustained load: includes ×${CREEP_FACTOR} creep (Wood Handbook ch. 4).` : ''}`,
+          explain: `${ssp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}). Stiffness comes from MOE (${ssp.moe} GPa) and thickness cubed.${crept ? ` Sustained load: includes ×${CREEP_FACTOR} creep (Wood Handbook ch. 4).` : ''}`,
           fixes: ratio > 1 ? fixes : [],
           data: { sagMM: sag, limitMM: limit, spanMM: s.span },
-          prov: { rule: `sag = Σ load cases (5wL⁴/384EI and friends${crept ? `, sustained cases ×${CREEP_FACTOR} creep` : ''}) with E = ${sp.moe} GPa, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, L = ${Math.round(s.span)} mm` }
+          prov: { rule: `sag = Σ load cases (5wL⁴/384EI and friends${crept ? `, sustained cases ×${CREEP_FACTOR} creep` : ''}) with E = ${ssp.moe} GPa, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, L = ${Math.round(s.span)} mm` }
         });
-        strengthCheck('str:' + s.id, s.label, M, s.h, I, preset, fixes);
+        strengthCheck('str:' + s.id, s.label, M, s.h, I, preset, fixes, ssp);
       }
 
       if (s.over > 0 && s.kind === 'top') {
         const P = LOAD_PRESETS.worktop.kgEdge * GRAV;
         const IO = I_rect(s.b, s.h); // the top itself cantilevers past the frame
-        const sagO = DEFL.pointCant(P, s.over, E, IO);
+        const sagO = DEFL.pointCant(P, s.over, Es, IO);
         const limO = s.over / CANT_LIMIT_RATIO;
         const rO = sagO / limO;
         checks.push({
@@ -509,11 +547,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         });
       }
 
-      if (s.kind === 'top' && sp.janka < 1000) {
+      if (s.kind === 'top' && ssp.janka < 1000) {
         checks.push({
           id: 'duty:' + s.id, title: `Surface durability — ${s.label}`, status: 'advisory',
-          value: `${sp.label} Janka ${sp.janka} lbf`, threshold: '≥ 1000 lbf for a hard-wearing worktop',
-          explain: `${sp.label} will dent under daily desk use. Fine for a rustic look — consider maple or oak for a hard-wearing surface.`,
+          value: `${ssp.label} Janka ${ssp.janka} lbf`, threshold: '≥ 1000 lbf for a hard-wearing worktop',
+          explain: `${ssp.label} will dent under daily desk use. Fine for a rustic look — consider maple or oak for a hard-wearing surface.`,
           fixes: [
             { id: 'duty-maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } },
             { id: 'duty-oak', label: 'Switch to red oak', patch: { wood: { species: 'red_oak' } } }
@@ -528,7 +566,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
         if (p.role === 'pull') continue;
-        const dens = p.material === 'baltic_birch' ? densityOf('baltic_birch') : p.material === 'hardware' ? 3000 : densityOf(spec.wood.species);
+        const dens = partDensity(p, spec);
         const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
         const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
         mass += m; mx += m * p.pos.x; my += m * p.pos.y; mz += m * p.pos.z;
@@ -584,7 +622,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (isFinite(zF)) {
         let stab = 0, over = 0;
         for (const p of parts) {
-          const dens = p.material === 'baltic_birch' ? densityOf('baltic_birch') : p.material === 'hardware' ? 3000 : densityOf(spec.wood.species);
+          const dens = partDensity(p, spec);
           const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
           const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
           const dr = drawerOf.get(p.id);
@@ -806,18 +844,22 @@ var BB = globalThis.BB = globalThis.BB || {};
         const key = p.role + ':' + Math.round(crossW);
         if (seen.has(key)) continue;
         seen.add(key);
-        if (p.material === 'baltic_birch') {
+        const pKey = materialSpeciesKey(p, spec);
+        const psp = speciesOf(pKey);
+        if (psp.sheet) {
           checks.push({
             id: 'move:' + p.id, title: `Movement — ${p.name}`, status: 'pass',
-            value: `plywood: ~${fmtFine(0)} seasonal movement`,
+            value: `${psp.key === 'mdf' ? 'engineered panel' : 'plywood'}: ~${fmtFine(0)} seasonal movement`,
             threshold: `≤ ${fmtFine(MOVEMENT_LIMIT)} across the grain`,
-            explain: 'Plywood is exempt: cross-laminated plies restrain each other, so seasonal moisture swings produce no meaningful dimensional change.',
+            explain: psp.key === 'mdf'
+              ? 'MDF is exempt in-plane: the isotropic fiber mat has no grain to move across. (Thickness swell near standing water is its real enemy — seal the edges.)'
+              : 'Plywood is exempt: cross-laminated plies restrain each other, so seasonal moisture swings produce no meaningful dimensional change.',
             fixes: [],
             data: { movementMM: 0, crossWidthMM: crossW }
           });
           continue;
         }
-        const mv = K.movementMM(crossW, spec.wood.species, 'tangential', dMC);
+        const mv = K.movementMM(crossW, pKey, 'tangential', dMC);
         /* Attachment context (audit F-S2-3): the advisory must agree with how
          * THIS plan actually holds the panel.
          *  floated   — table-like tops/seats: the plan itself specifies
@@ -835,9 +877,9 @@ var BB = globalThis.BB = globalThis.BB || {};
           else if (p.role === 'shelf' && TABLE_LIKE.includes(t)) ctx = 'captured'; // notched around the legs
           else if (['top', 'bottom', 'shelf', 'seat'].includes(p.role)) ctx = 'compatible';
         }
-        const formula = `${fmtLen(crossW)} × ${sp.ct} (tangential coefficient) × ${dMC}% ΔMC = ${fmtFine(mv)}.`;
-        const cupNote = (sp.movement === 'high' && (p.role === 'top' || p.role === 'seat') && crossW >= K.WIDE_TOP_MM)
-          ? ' Flat-sawn ' + sp.label.toLowerCase() + ' this wide also wants to cup — alternate growth rings or use quartersawn stock.' : '';
+        const formula = `${fmtLen(crossW)} × ${psp.ct} (tangential coefficient) × ${dMC}% ΔMC = ${fmtFine(mv)}.`;
+        const cupNote = (psp.movement === 'high' && (p.role === 'top' || p.role === 'seat') && crossW >= K.WIDE_TOP_MM)
+          ? ' Flat-sawn ' + psp.label.toLowerCase() + ' this wide also wants to cup — alternate growth rings or use quartersawn stock.' : '';
         let status, explain;
         if (ctx === 'floated') {
           status = cupNote ? 'advisory' : 'pass';
@@ -863,7 +905,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           explain,
           fixes: [],
           data: { movementMM: mv, crossWidthMM: crossW, context: ctx },
-          prov: { rule: `movement = width × coefficient × ΔMC = ${Math.round(crossW)} × ${sp.ct} × ${dMC}` }
+          prov: { rule: `movement = width × coefficient × ΔMC = ${Math.round(crossW)} × ${psp.ct} × ${dMC}` }
         });
       }
     }

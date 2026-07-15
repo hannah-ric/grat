@@ -256,6 +256,63 @@ var BB = globalThis.BB = globalThis.BB || {};
       test('digest', 'wood digest line carries every species from the table', wOk, wOk ? 'all present' : 'missing species', 'all present');
     }
 
+    /* ============ 2026 knowledge expansion: full engine coverage ============
+     * A joint or species that exists in the table but not in the derived
+     * engines would silently mis-rate (racking 0, screws in a glue-up), so
+     * coverage itself is the invariant. */
+    {
+      const KINDS = ['frame', 'case', 'box', 'panel'];
+      let gap = null;
+      for (const j of Object.values(K.JOINERY)) {
+        if (!BB.Structural.JOINT_RATING[j.key]) { gap = j.key + ' missing JOINT_RATING'; break; }
+        if (BB.Plans.JOINT_ALLOWANCE[j.key] === undefined) { gap = j.key + ' missing JOINT_ALLOWANCE'; break; }
+        if (!j.kinds.every(k => KINDS.includes(k))) { gap = j.key + ' has an unknown kind'; break; }
+      }
+      test('expansion', 'every joint carries a structural rating, an explicit cut allowance, and known kinds', !gap, gap || 'full coverage', 'full coverage');
+      const dflts = Object.entries(K.JOINT_DEFAULTS).every(([lvl, slots]) =>
+        Object.entries(slots).every(([kind, key]) => K.jointAllowed(key, lvl, kind)));
+      test('expansion', 'every JOINT_DEFAULTS pick passes its own level and kind gate', dflts, String(dflts), 'true');
+
+      let spGap = null;
+      for (const s of Object.values(K.WOOD_SPECIES)) {
+        if (!(s.moe > 0 && s.mor > 0 && s.sg > 0 && s.ct > 0 && s.cr > 0)) { spGap = s.key + ' missing mechanics'; break; }
+        if (!['low', 'medium', 'high'].includes(s.movement)) { spGap = s.key + ' bad movement label'; break; }
+      }
+      test('expansion', 'every species row carries complete Wood Handbook mechanics', !spGap, spGap || 'all complete', 'all complete');
+
+      // Movement spot checks at the new extremes (hand arithmetic):
+      // beech 500 × 0.00431 × 4 = 8.62 mm; teak 500 × 0.00186 × 4 = 3.72 mm.
+      const mvBeech = K.movementMM(500, 'beech', 'tangential', 4);
+      const mvTeak = K.movementMM(500, 'teak', 'tangential', 4);
+      test('expansion', 'movement math at the catalog extremes matches hand arithmetic',
+        Math.abs(mvBeech - 8.62) < 0.001 && Math.abs(mvTeak - 3.72) < 0.001,
+        `beech ${mvBeech.toFixed(3)}, teak ${mvTeak.toFixed(3)}`, 'beech 8.620, teak 3.720');
+
+      // Glue recommendation is deterministic and context-honest.
+      const g1 = K.recommendGlue({ wood: { species: 'hard_maple' }, finish: 'mineral_oil' });
+      const g2 = K.recommendGlue({ wood: { species: 'teak' }, finish: 'spar_urethane' });
+      const g3 = K.recommendGlue({ wood: { species: 'red_oak' }, finish: 'wipe_poly' });
+      test('expansion', 'glue choice: food contact → Type I, oily species → epoxy, interior → PVA',
+        g1.glue.key === 'pva_waterproof' && g2.glue.key === 'epoxy_slow' && g3.glue.key === 'pva_interior',
+        [g1.glue.key, g2.glue.key, g3.glue.key].join(' / '), 'pva_waterproof / epoxy_slow / pva_interior');
+      test('expansion', 'food-contact finishes and glues exist for the butcher-block path',
+        K.FINISHES.some(f => f.foodContact) && K.GLUES.some(g => g.foodContact), 'present', 'present');
+
+      // Appended wire enums round-trip: a design using only 2026 keys.
+      const roundSpec = Spec.correctSpec({
+        meta: { name: 'RT', template: 'table', level: 'intermediate', units: 'mm' },
+        wood: { species: 'hickory', sheetSpecies: 'hardwood_ply' },
+        joinery: { frame: 'half_lap' }, finish: 'tung_pure'
+      });
+      const back = BB.Codec.decode(BB.Codec.encode(roundSpec));
+      test('expansion', 'appended enum values survive encode → decode',
+        back.wood.species === 'hickory' && back.wood.sheetSpecies === 'hardwood_ply' &&
+        back.joinery.frame === 'half_lap' && back.finish === 'tung_pure',
+        `${back.wood.species}/${back.wood.sheetSpecies}/${back.joinery.frame}/${back.finish}`, 'hickory/hardwood_ply/half_lap/tung_pure');
+      test('expansion', 'pre-expansion designs still omit the sheet-stock wire key',
+        !('ms' in BB.Codec.encode(Spec.correctSpec(Spec.defaultSpec('table')))), 'ms omitted', 'ms omitted');
+    }
+
     /* ============ structural: movement / tipping / racking (fixed values) ============ */
     {
       const mv = K.movementMM(900, 'red_oak', 'tangential', 4);
@@ -510,7 +567,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       await Store.del('selftest:probe');
       test('storage', 'store round-trips (falls back to memory when storage is absent)', back && back.ok === 1, JSON.stringify(back), '{"ok":1}');
       const prices = await Store.loadPrices();
-      test('storage', 'price table loads with defaults merged', prices.dimensional && prices.dimensional.red_oak && prices.sheet[18] > 0, `red_oak 1x4 = $${prices.dimensional.red_oak && prices.dimensional.red_oak['1x4']}/m`, 'defaults present');
+      test('storage', 'price table loads with defaults merged', prices.dimensional && prices.dimensional.red_oak && prices.sheet.baltic_birch && prices.sheet.baltic_birch[18] > 0, `red_oak 1x4 = $${prices.dimensional.red_oak && prices.dimensional.red_oak['1x4']}/m`, 'defaults present');
+
+      // Legacy flat sheet prices ({18:99} meaning Baltic) migrate into the
+      // per-species shape without losing the user's edit (2026 expansion).
+      const savedPr = await Store.get('prices:v1');
+      try {
+        await Store.set('prices:v1', { dimensional: {}, sheet: { 6: 41, 12: 63, 18: 99 }, bdft: {} });
+        const mig = await Store.loadPrices();
+        test('storage', 'legacy flat sheet prices migrate to baltic_birch, new species fill from defaults',
+          mig.sheet.baltic_birch[18] === 99 && mig.sheet.mdf && mig.sheet.mdf[18] > 0,
+          `baltic 18 = $${mig.sheet.baltic_birch[18]}, mdf 18 = $${mig.sheet.mdf && mig.sheet.mdf[18]}`, 'baltic 18 = $99, mdf 18 > 0');
+      } finally {
+        if (savedPr) await Store.set('prices:v1', savedPr); else await Store.del('prices:v1');
+      }
 
       // Prefs schema v1 → v2: imperial is for FRESH installs only; a returning
       // v1 user keeps metric. Real keys are saved and restored around the test.
@@ -765,9 +835,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const side = { id: 'c', name: 'Side', material: 'baltic_birch', size: { w: 18, h: 900, d: 280 } };
       const dSide = { id: 'ds', name: 'Drawer side', material: 'baltic_birch', size: { w: 400, h: 120, d: 12 } };
       const dFront = { id: 'df', name: 'Drawer front', material: 'red_oak', size: { w: 450, h: 120, d: 19 } };
+      const boardA = { id: 'ba', name: 'Board A', material: 'red_oak', size: { w: 600, h: 19, d: 140 } };
+      const boardB = { id: 'bb', name: 'Board B', material: 'red_oak', size: { w: 600, h: 19, d: 140 } };
       const membersFor = t => {
         const kind = K.JOINERY[t].kinds[0];
-        return kind === 'frame' ? [apron, leg] : kind === 'case' ? [shelf, side] : [dSide, dFront];
+        return kind === 'frame' ? [apron, leg] : kind === 'case' ? [shelf, side]
+          : kind === 'panel' ? [boardA, boardB] : [dSide, dFront];
       };
 
       // Every joint type builds: pieces with positive volume, both members
@@ -787,7 +860,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           break;
         }
       }
-      test('joints3d', 'all 8 joint builders return sound geometry (volumes, members, axis, rules)', !bad, bad || 'all sound', 'all sound');
+      test('joints3d', `all ${Object.keys(K.JOINERY).length} joint builders return sound geometry (volumes, members, axis, rules)`, !bad, bad || 'all sound', 'all sound');
 
       // Mortise & tenon: tenon = ⅓ stock, fits the pocket exactly, 30 mm deep.
       const mt = BB.Joinery3D.buildJoint('mortise_tenon', apron, leg, v => v + 'mm');
