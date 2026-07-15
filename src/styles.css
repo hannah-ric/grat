@@ -56,6 +56,10 @@
 
   --radius: 10px; --radius-lg: 16px;
 
+  /* blueprint mode: drafting field behind the transparent canvas */
+  --blueprint-field: #eef3f7;
+  --blueprint-grid: rgba(27, 93, 130, 0.08);
+
   /* collapsed mobile chat sheet: handle + last-message peek + input,
      padded for the device safe area */
   --sheet-peek: calc(150px + env(safe-area-inset-bottom, 0px));
@@ -81,6 +85,8 @@
     --brick-soft: #40201a;
     --brick-ink: #f0a396;
     --green: #8fbc7f;
+    --blueprint-field: #0e2a3d;
+    --blueprint-grid: rgba(168, 204, 228, 0.09);
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
     --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
   }
@@ -91,6 +97,7 @@
   --accent-soft: #e3edf3; --amber: #8f6316; --amber-soft: #f4e8cf; --amber-ink: #684a0e;
   --brick: #a33d2a; --brick-soft: #f6e2dc; --brick-ink: #8c2f1e;
   --green: #4a7c3f;
+  --blueprint-field: #eef3f7; --blueprint-grid: rgba(27, 93, 130, 0.08);
   --shadow: 0 1px 2px rgba(43, 36, 25, .07), 0 8px 24px -12px rgba(43, 36, 25, .25);
   --shadow-lg: 0 2px 4px rgba(43, 36, 25, .08), 0 24px 48px -16px rgba(43, 36, 25, .35);
 }
@@ -100,6 +107,7 @@
   --accent-soft: #1e3648; --amber: #d9a94e; --amber-soft: #3a2f17; --amber-ink: #eac37a;
   --brick: #e0796a; --brick-soft: #40201a; --brick-ink: #f0a396;
   --green: #8fbc7f;
+  --blueprint-field: #0e2a3d; --blueprint-grid: rgba(168, 204, 228, 0.09);
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
   --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
 }
@@ -333,9 +341,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
    The viewport/plans split is a draggable, keyboard-operable separator:
    --vp-split is the viewport's share of the stage height in percent. */
 .stage { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; --vp-split: 58; }
-.viewport-wrap { position: relative; flex: 0 1 calc(var(--vp-split) * 1%); min-height: 180px; }
+.viewport-wrap { position: relative; flex: 0 1 calc(var(--vp-split) * 1%); min-height: 180px; transition: background var(--t-med) var(--ease); }
 .viewport-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; border-radius: 0; }
 .viewport-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+/* Blueprint mode: the transparent canvas sits on a drafting field with a
+ * faint grid — ink-on-paper in light, true cyanotype in dark. */
+body.drafting .viewport-wrap {
+  background:
+    linear-gradient(var(--blueprint-grid) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, var(--blueprint-grid) 1px, transparent 1px) 0 0 / 48px 48px,
+    var(--blueprint-field);
+}
+.view-seg button { min-width: 34px; }
 
 .splitter {
   flex: none; height: 9px; margin: -2px 0; cursor: row-resize; z-index: 12;
@@ -369,6 +386,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .control-card label { font-size: 12px; color: var(--ink-2); font-weight: 550; }
 .viewport-toolbar { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - var(--s4)); }
+.viewport-toolbar .vt-short { display: none; }
 .vt-sep { width: 1px; align-self: stretch; background: var(--line-2); margin: 2px 0; }
 .control-card input[type="range"] { width: 110px; accent-color: var(--accent); }
 .toggle {
@@ -523,6 +541,17 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .empty-state .empty-actions { display: flex; gap: var(--s2); justify-content: center; margin-top: var(--s3); flex-wrap: wrap; }
 
 /* assembly */
+/* Shop-truth header on the Assembly tab: time estimate + tool wall. */
+.shop-facts {
+  display: flex; flex-direction: column; gap: var(--s2); margin-bottom: var(--s3);
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); padding: var(--s2) var(--s3);
+}
+.shop-time { font-size: 13.5px; color: var(--ink-2); cursor: help; }
+.shop-time strong { font-family: var(--display); color: var(--ink); }
+.tool-wall summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
+.tool-wall ul { margin: var(--s2) 0 0; padding-left: 20px; font-size: 13px; color: var(--ink-2); line-height: 1.7; columns: 2; }
+@media (max-width: 880px) { .tool-wall ul { columns: 1; } }
+
 .step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); counter-reset: step; }
 .step-item {
   display: flex; gap: var(--s3); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius-lg);
@@ -691,10 +720,34 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .gallery-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--line-2); }
 .gallery-card .g-emoji { font-size: 26px; }
+/* Real rendered thumbnails replace the emoji once the idle pass paints them;
+ * the fade keeps the swap quiet. Cards read as miniature drafting sheets. */
+.gallery-card .g-thumb {
+  display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--panel-2);
+  object-fit: cover; opacity: 0; transition: opacity var(--t-slow) var(--ease);
+}
+.gallery-card .g-thumb.on { opacity: 1; }
 .gallery-card .g-name { font-family: var(--display); font-weight: 650; font-size: 15px; }
 .gallery-card .g-caption { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
 .gallery-card .g-meta { font: 500 11px var(--mono); color: var(--accent); margin-top: auto; padding-top: var(--s2); }
 .modal-foot { margin-top: var(--s4); display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+
+/* Joint Inspector modal */
+.joint-modal { width: min(760px, calc(100vw - 32px)); }
+.joint-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
+.joint-head h2 { margin: 0; font-size: 18px; }
+.joint-canvas-wrap {
+  position: relative; height: min(46vh, 360px); overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
+}
+.joint-canvas-wrap canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.joint-controls { display: flex; align-items: center; gap: var(--s2); margin: var(--s2) 0; font-size: 12.5px; color: var(--muted); }
+.joint-controls input[type="range"] { flex: 1; min-width: 120px; }
+.joint-notes .joint-rule { margin: var(--s1) 0; font-size: 13px; color: var(--ink-2); }
+.joint-notes .joint-know { margin: var(--s2) 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.joint-inspect { margin-top: var(--s2); }
+.joint-demo { white-space: nowrap; }
 
 .help-steps { margin: var(--s2) 0 var(--s3); padding-left: 22px; font-size: 14px; line-height: 1.7; }
 .help-block { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s3); margin-bottom: var(--s3); background: var(--paper); }
@@ -770,8 +823,17 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   }
   .stage-controls { flex-direction: column; }
   .control-card { padding: 6px 10px; }
-  .control-card input[type="range"] { width: 80px; }
+  .control-card input[type="range"] { width: 64px; }
   .viewport-toolbar label { display: none; }
+  /* Phase 5 controls join the one-row toolbar contract: separators drop,
+     labels shorten, help defers to gestures — nothing wraps. */
+  .viewport-toolbar { gap: 6px; flex-wrap: nowrap; }
+  .viewport-toolbar .vt-sep, .viewport-toolbar #vpHelpBtn { display: none; }
+  .viewport-toolbar .vt-long { display: none; }
+  .viewport-toolbar .vt-short { display: inline; }
+  .viewport-toolbar .toggle { font-size: 11px; }
+  .viewport-toolbar #frameBtn span { display: none; }
+  .view-seg button { min-width: 26px; padding: 5px 7px; font-size: 11px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,
@@ -1044,6 +1106,9 @@ body.bm-playback .playback-bar { display: none !important; }
   .print-board { margin: 10px 0; break-inside: avoid; }
   .print-board p { margin: 0 0 4px; font: 600 11px ui-monospace, monospace; }
   .print-board svg { width: 100%; height: auto; }
+  .print-drawings { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .print-elevation { break-inside: avoid; }
+  .print-elevation svg { width: 100%; height: auto; }
 }
 
 @media (max-width: 400px) {

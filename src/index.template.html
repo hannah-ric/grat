@@ -64,6 +64,13 @@
               <button id="themeDark" aria-pressed="false">Dark</button>
             </div>
           </div>
+          <div class="menu-row">
+            <span class="menu-row-label">Render</span>
+            <div class="seg render-seg" role="group" aria-label="Render quality">
+              <button id="renderRich" aria-pressed="true" title="Wood grain and shadows">Wood</button>
+              <button id="renderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="menu-wrap">
@@ -71,7 +78,10 @@
         <div id="exportMenu" class="menu" role="menu" inert>
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
           <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
@@ -162,7 +172,16 @@
             <label for="explodeRange">Explode</label>
             <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
             <span class="vt-sep" aria-hidden="true"></span>
-            <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
+            <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
+            <span class="vt-sep" aria-hidden="true"></span>
+            <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>
+            <span class="vt-sep" aria-hidden="true"></span>
+            <div class="seg view-seg" role="group" aria-label="Camera view">
+              <button id="viewFront" title="Front elevation (orthographic)">F</button>
+              <button id="viewSide" title="Side elevation (orthographic)">S</button>
+              <button id="viewTop" title="Plan view (orthographic)">T</button>
+              <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+            </div>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
             <span class="vt-sep" aria-hidden="true"></span>
@@ -251,6 +270,10 @@
       <div class="help-block">
         <h3>Build script (.rb) — the parametric way</h3>
         <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter. (Or drop the file into your Plugins folder.) Serious users want this one — components stay editable.</p>
+      </div>
+      <div class="help-block">
+        <h3>3D model / AR (.glb)</h3>
+        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer (or the three.js editor) reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter to get an AR Quick Look file. Geometry is exact millimetres, rotations included.</p>
       </div>
       <div class="help-block">
         <h3>Integrations: SketchUp connector in Claude</h3>
@@ -363,6 +386,26 @@
     <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
   </div>
 
+  <div class="scrim" inert id="jointScrim" role="dialog" aria-modal="true" aria-label="Joint inspector">
+    <div class="modal joint-modal">
+      <div class="joint-head">
+        <h2 id="jointTitle">Joint inspector</h2>
+        <button class="btn icon ghost" id="jointClose" aria-label="Close joint inspector">✕</button>
+      </div>
+      <div class="joint-canvas-wrap">
+        <canvas id="jointCanvas" tabindex="0" aria-label="3D joint close-up. Drag to orbit, scroll to zoom."></canvas>
+      </div>
+      <div class="joint-controls">
+        <label for="jointExplode">Apart</label>
+        <input type="range" id="jointExplode" min="0" max="100" value="0" aria-label="Pull the joint apart">
+        <label aria-hidden="true">together</label>
+        <span class="vt-sep" aria-hidden="true"></span>
+        <button class="toggle" id="jointCutaway" aria-pressed="false"><span class="track"></span>Cutaway</button>
+      </div>
+      <div class="joint-notes" id="jointNotes"></div>
+    </div>
+  </div>
+
   <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance">
 </div>
 
@@ -370,6 +413,8 @@
 
 <script>{{THREE}}</script>
 <script>{{JS_KNOWLEDGE}}</script>
+<script>{{JS_ICONS}}</script>
+<script>{{JS_MATERIALS}}</script>
 <script>{{JS_GEOMETRY}}</script>
 <script>{{JS_UNITS}}</script>
 <script>{{JS_SPEC}}</script>
@@ -378,6 +423,8 @@
 <script>{{JS_FASTENERS}}</script>
 <script>{{JS_PACKING}}</script>
 <script>{{JS_PLANS}}</script>
+<script>{{JS_DRAFTING}}</script>
+<script>{{JS_GLTF}}</script>
 <script>{{JS_EXPORTS}}</script>
 <script>{{JS_HISTORY}}</script>
 <script>{{JS_CODEC}}</script>
@@ -386,6 +433,8 @@
 <script>{{JS_PROVENANCE}}</script>
 <script>{{JS_GALLERY}}</script>
 <script>{{JS_SELFTEST}}</script>
+<script>{{JS_JOINERY3D}}</script>
+<script>{{JS_JOINTVIEW}}</script>
 <script>{{JS_ENGINE}}</script>
 <script>{{JS_UI}}</script>
 </body>

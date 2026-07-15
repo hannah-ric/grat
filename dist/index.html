@@ -63,6 +63,10 @@
 
   --radius: 10px; --radius-lg: 16px;
 
+  /* blueprint mode: drafting field behind the transparent canvas */
+  --blueprint-field: #eef3f7;
+  --blueprint-grid: rgba(27, 93, 130, 0.08);
+
   /* collapsed mobile chat sheet: handle + last-message peek + input,
      padded for the device safe area */
   --sheet-peek: calc(150px + env(safe-area-inset-bottom, 0px));
@@ -88,6 +92,8 @@
     --brick-soft: #40201a;
     --brick-ink: #f0a396;
     --green: #8fbc7f;
+    --blueprint-field: #0e2a3d;
+    --blueprint-grid: rgba(168, 204, 228, 0.09);
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
     --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
   }
@@ -98,6 +104,7 @@
   --accent-soft: #e3edf3; --amber: #8f6316; --amber-soft: #f4e8cf; --amber-ink: #684a0e;
   --brick: #a33d2a; --brick-soft: #f6e2dc; --brick-ink: #8c2f1e;
   --green: #4a7c3f;
+  --blueprint-field: #eef3f7; --blueprint-grid: rgba(27, 93, 130, 0.08);
   --shadow: 0 1px 2px rgba(43, 36, 25, .07), 0 8px 24px -12px rgba(43, 36, 25, .25);
   --shadow-lg: 0 2px 4px rgba(43, 36, 25, .08), 0 24px 48px -16px rgba(43, 36, 25, .35);
 }
@@ -107,6 +114,7 @@
   --accent-soft: #1e3648; --amber: #d9a94e; --amber-soft: #3a2f17; --amber-ink: #eac37a;
   --brick: #e0796a; --brick-soft: #40201a; --brick-ink: #f0a396;
   --green: #8fbc7f;
+  --blueprint-field: #0e2a3d; --blueprint-grid: rgba(168, 204, 228, 0.09);
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
   --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
 }
@@ -340,9 +348,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
    The viewport/plans split is a draggable, keyboard-operable separator:
    --vp-split is the viewport's share of the stage height in percent. */
 .stage { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; --vp-split: 58; }
-.viewport-wrap { position: relative; flex: 0 1 calc(var(--vp-split) * 1%); min-height: 180px; }
+.viewport-wrap { position: relative; flex: 0 1 calc(var(--vp-split) * 1%); min-height: 180px; transition: background var(--t-med) var(--ease); }
 .viewport-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; border-radius: 0; }
 .viewport-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+/* Blueprint mode: the transparent canvas sits on a drafting field with a
+ * faint grid — ink-on-paper in light, true cyanotype in dark. */
+body.drafting .viewport-wrap {
+  background:
+    linear-gradient(var(--blueprint-grid) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, var(--blueprint-grid) 1px, transparent 1px) 0 0 / 48px 48px,
+    var(--blueprint-field);
+}
+.view-seg button { min-width: 34px; }
 
 .splitter {
   flex: none; height: 9px; margin: -2px 0; cursor: row-resize; z-index: 12;
@@ -376,6 +393,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .control-card label { font-size: 12px; color: var(--ink-2); font-weight: 550; }
 .viewport-toolbar { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - var(--s4)); }
+.viewport-toolbar .vt-short { display: none; }
 .vt-sep { width: 1px; align-self: stretch; background: var(--line-2); margin: 2px 0; }
 .control-card input[type="range"] { width: 110px; accent-color: var(--accent); }
 .toggle {
@@ -530,6 +548,17 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .empty-state .empty-actions { display: flex; gap: var(--s2); justify-content: center; margin-top: var(--s3); flex-wrap: wrap; }
 
 /* assembly */
+/* Shop-truth header on the Assembly tab: time estimate + tool wall. */
+.shop-facts {
+  display: flex; flex-direction: column; gap: var(--s2); margin-bottom: var(--s3);
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); padding: var(--s2) var(--s3);
+}
+.shop-time { font-size: 13.5px; color: var(--ink-2); cursor: help; }
+.shop-time strong { font-family: var(--display); color: var(--ink); }
+.tool-wall summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 600; }
+.tool-wall ul { margin: var(--s2) 0 0; padding-left: 20px; font-size: 13px; color: var(--ink-2); line-height: 1.7; columns: 2; }
+@media (max-width: 880px) { .tool-wall ul { columns: 1; } }
+
 .step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); counter-reset: step; }
 .step-item {
   display: flex; gap: var(--s3); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius-lg);
@@ -698,10 +727,34 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .gallery-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--line-2); }
 .gallery-card .g-emoji { font-size: 26px; }
+/* Real rendered thumbnails replace the emoji once the idle pass paints them;
+ * the fade keeps the swap quiet. Cards read as miniature drafting sheets. */
+.gallery-card .g-thumb {
+  display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--panel-2);
+  object-fit: cover; opacity: 0; transition: opacity var(--t-slow) var(--ease);
+}
+.gallery-card .g-thumb.on { opacity: 1; }
 .gallery-card .g-name { font-family: var(--display); font-weight: 650; font-size: 15px; }
 .gallery-card .g-caption { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
 .gallery-card .g-meta { font: 500 11px var(--mono); color: var(--accent); margin-top: auto; padding-top: var(--s2); }
 .modal-foot { margin-top: var(--s4); display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+
+/* Joint Inspector modal */
+.joint-modal { width: min(760px, calc(100vw - 32px)); }
+.joint-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
+.joint-head h2 { margin: 0; font-size: 18px; }
+.joint-canvas-wrap {
+  position: relative; height: min(46vh, 360px); overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
+}
+.joint-canvas-wrap canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.joint-controls { display: flex; align-items: center; gap: var(--s2); margin: var(--s2) 0; font-size: 12.5px; color: var(--muted); }
+.joint-controls input[type="range"] { flex: 1; min-width: 120px; }
+.joint-notes .joint-rule { margin: var(--s1) 0; font-size: 13px; color: var(--ink-2); }
+.joint-notes .joint-know { margin: var(--s2) 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.joint-inspect { margin-top: var(--s2); }
+.joint-demo { white-space: nowrap; }
 
 .help-steps { margin: var(--s2) 0 var(--s3); padding-left: 22px; font-size: 14px; line-height: 1.7; }
 .help-block { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s3); margin-bottom: var(--s3); background: var(--paper); }
@@ -777,8 +830,17 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   }
   .stage-controls { flex-direction: column; }
   .control-card { padding: 6px 10px; }
-  .control-card input[type="range"] { width: 80px; }
+  .control-card input[type="range"] { width: 64px; }
   .viewport-toolbar label { display: none; }
+  /* Phase 5 controls join the one-row toolbar contract: separators drop,
+     labels shorten, help defers to gestures — nothing wraps. */
+  .viewport-toolbar { gap: 6px; flex-wrap: nowrap; }
+  .viewport-toolbar .vt-sep, .viewport-toolbar #vpHelpBtn { display: none; }
+  .viewport-toolbar .vt-long { display: none; }
+  .viewport-toolbar .vt-short { display: inline; }
+  .viewport-toolbar .toggle { font-size: 11px; }
+  .viewport-toolbar #frameBtn span { display: none; }
+  .view-seg button { min-width: 26px; padding: 5px 7px; font-size: 11px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,
@@ -1051,6 +1113,9 @@ body.bm-playback .playback-bar { display: none !important; }
   .print-board { margin: 10px 0; break-inside: avoid; }
   .print-board p { margin: 0 0 4px; font: 600 11px ui-monospace, monospace; }
   .print-board svg { width: 100%; height: auto; }
+  .print-drawings { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .print-elevation { break-inside: avoid; }
+  .print-elevation svg { width: 100%; height: auto; }
 }
 
 @media (max-width: 400px) {
@@ -1115,6 +1180,13 @@ body.bm-playback .playback-bar { display: none !important; }
               <button id="themeDark" aria-pressed="false">Dark</button>
             </div>
           </div>
+          <div class="menu-row">
+            <span class="menu-row-label">Render</span>
+            <div class="seg render-seg" role="group" aria-label="Render quality">
+              <button id="renderRich" aria-pressed="true" title="Wood grain and shadows">Wood</button>
+              <button id="renderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="menu-wrap">
@@ -1122,7 +1194,10 @@ body.bm-playback .playback-bar { display: none !important; }
         <div id="exportMenu" class="menu" role="menu" inert>
           <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
           <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
           <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
@@ -1213,7 +1288,16 @@ body.bm-playback .playback-bar { display: none !important; }
             <label for="explodeRange">Explode</label>
             <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
             <span class="vt-sep" aria-hidden="true"></span>
-            <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
+            <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
+            <span class="vt-sep" aria-hidden="true"></span>
+            <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>
+            <span class="vt-sep" aria-hidden="true"></span>
+            <div class="seg view-seg" role="group" aria-label="Camera view">
+              <button id="viewFront" title="Front elevation (orthographic)">F</button>
+              <button id="viewSide" title="Side elevation (orthographic)">S</button>
+              <button id="viewTop" title="Plan view (orthographic)">T</button>
+              <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+            </div>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
             <span class="vt-sep" aria-hidden="true"></span>
@@ -1302,6 +1386,10 @@ body.bm-playback .playback-bar { display: none !important; }
       <div class="help-block">
         <h3>Build script (.rb) — the parametric way</h3>
         <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter. (Or drop the file into your Plugins folder.) Serious users want this one — components stay editable.</p>
+      </div>
+      <div class="help-block">
+        <h3>3D model / AR (.glb)</h3>
+        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer (or the three.js editor) reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter to get an AR Quick Look file. Geometry is exact millimetres, rotations included.</p>
       </div>
       <div class="help-block">
         <h3>Integrations: SketchUp connector in Claude</h3>
@@ -1414,6 +1502,26 @@ body.bm-playback .playback-bar { display: none !important; }
     <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
   </div>
 
+  <div class="scrim" inert id="jointScrim" role="dialog" aria-modal="true" aria-label="Joint inspector">
+    <div class="modal joint-modal">
+      <div class="joint-head">
+        <h2 id="jointTitle">Joint inspector</h2>
+        <button class="btn icon ghost" id="jointClose" aria-label="Close joint inspector">✕</button>
+      </div>
+      <div class="joint-canvas-wrap">
+        <canvas id="jointCanvas" tabindex="0" aria-label="3D joint close-up. Drag to orbit, scroll to zoom."></canvas>
+      </div>
+      <div class="joint-controls">
+        <label for="jointExplode">Apart</label>
+        <input type="range" id="jointExplode" min="0" max="100" value="0" aria-label="Pull the joint apart">
+        <label aria-hidden="true">together</label>
+        <span class="vt-sep" aria-hidden="true"></span>
+        <button class="toggle" id="jointCutaway" aria-pressed="false"><span class="track"></span>Cutaway</button>
+      </div>
+      <div class="joint-notes" id="jointNotes"></div>
+    </div>
+  </div>
+
   <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance">
 </div>
 
@@ -1442,6 +1550,9 @@ var BB = globalThis.BB = globalThis.BB || {};
    * movement: tangential movement rating for solid stock.
    * costTier: 1 ($) .. 4 ($$$$), drives BOM pricing.
    * tone/rough: drive the 3D material so species read differently.
+   * grainScale/ringContrast/hueJitter/pores: procedural grain-texture recipe
+   *   (BB.Materials) — ring spacing in texture px, ring darkness 0..1, board
+   *   color variation 0..1, open-pore streak density 0..1.
    *
    * Structural doctrine (USDA FPL Wood Handbook, values at 12% MC):
    *   moe GPa  -> stiffness ONLY: sag / deflection predictions.
@@ -1457,6 +1568,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'high', outdoor: false, costTier: 2, pricePerBdFt: 5.5,
       moe: 12.5, mor: 99, sg: 0.63, ct: 0.00369, cr: 0.00158,
       tone: 0xc89a6b, rough: 0.72,
+      grainScale: 13, ringContrast: 0.5, hueJitter: 0.22, pores: 0.8,
       blurb: 'Open-grained workhorse; strong, honest, and everywhere. Loves stain, hates standing water.'
     },
     white_oak: {
@@ -1464,6 +1576,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: true, costTier: 3, pricePerBdFt: 8.5,
       moe: 12.3, mor: 105, sg: 0.68, ct: 0.00365, cr: 0.00180,
       tone: 0xb99d72, rough: 0.68,
+      grainScale: 15, ringContrast: 0.42, hueJitter: 0.18, pores: 0.6,
       blurb: 'Closed-pored and rot-resistant — the outdoor-worthy oak. Quartersawn ray fleck is the classic Arts & Crafts look.'
     },
     hard_maple: {
@@ -1471,6 +1584,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 2, pricePerBdFt: 6.5,
       moe: 12.6, mor: 109, sg: 0.63, ct: 0.00353, cr: 0.00165,
       tone: 0xe4cfa4, rough: 0.55,
+      grainScale: 22, ringContrast: 0.16, hueJitter: 0.1, pores: 0.15,
       blurb: 'Pale, dense, and crisp under a sharp edge. Blotches under stain — finish it clear.'
     },
     walnut: {
@@ -1478,6 +1592,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 4, pricePerBdFt: 12,
       moe: 11.6, mor: 101, sg: 0.55, ct: 0.00274, cr: 0.00190,
       tone: 0x5e4230, rough: 0.6,
+      grainScale: 17, ringContrast: 0.5, hueJitter: 0.32, pores: 0.4,
       blurb: 'Chocolate heartwood that machines like a dream. The species you save for the show piece.'
     },
     cherry: {
@@ -1485,6 +1600,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 3, pricePerBdFt: 9,
       moe: 10.3, mor: 85, sg: 0.50, ct: 0.00248, cr: 0.00126,
       tone: 0xa66a48, rough: 0.58,
+      grainScale: 20, ringContrast: 0.28, hueJitter: 0.2, pores: 0.3,
       blurb: 'Starts salmon-pink, deepens to auburn with light and age. Scorches if your blade dawdles.'
     },
     ash: {
@@ -1492,6 +1608,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 2, pricePerBdFt: 5,
       moe: 12.0, mor: 103, sg: 0.60, ct: 0.00274, cr: 0.00169,
       tone: 0xd6bd92, rough: 0.7,
+      grainScale: 12, ringContrast: 0.48, hueJitter: 0.16, pores: 0.7,
       blurb: 'Oak’s springier cousin — baseball-bat tough, bends beautifully, takes finish evenly.'
     },
     poplar: {
@@ -1499,6 +1616,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'medium', outdoor: false, costTier: 1, pricePerBdFt: 3.5,
       moe: 10.9, mor: 70, sg: 0.42, ct: 0.00289, cr: 0.00158,
       tone: 0xd9cfa8, rough: 0.62,
+      grainScale: 24, ringContrast: 0.22, hueJitter: 0.3, pores: 0.2,
       blurb: 'Soft, stable, cheap, and green-streaked. The right answer for paint-grade and practice.'
     },
     pine: {
@@ -1506,6 +1624,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'low', outdoor: false, costTier: 1, pricePerBdFt: 2.5,
       moe: 8.5, mor: 59, sg: 0.35, ct: 0.00212, cr: 0.00071,
       tone: 0xe8cf9e, rough: 0.8,
+      grainScale: 26, ringContrast: 0.55, hueJitter: 0.28, pores: 0.25,
       blurb: 'Light, forgiving, and knotty — dents if you look at it hard, but nothing is friendlier to learn on.'
     },
     baltic_birch: {
@@ -1516,6 +1635,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       movement: 'low', outdoor: false, costTier: 2, pricePerBdFt: 6, sheet: true,
       moe: 10.0, mor: 55, sg: 0.68, ct: 0.0002, cr: 0.0002,
       tone: 0xe9d8ae, rough: 0.5,
+      grainScale: 8, ringContrast: 0.08, hueJitter: 0.06, pores: 0.1,
       blurb: 'Void-free plywood with clean striped edges. Dead flat, dead stable — the drawer-box default.'
     }
   };
@@ -1809,6 +1929,241 @@ var BB = globalThis.BB = globalThis.BB || {};
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM
+  };
+})();
+</script>
+<script>/* Blueprint Buddy — icon set (Phase 5).
+ * One drafting-instrument style: 20×20 grid, 1.7px stroke, round caps,
+ * stroke = currentColor so icons inherit button/text color and theme freely.
+ * Replaces the platform-dependent Unicode glyphs (↶ ↷ ▾ ✕ ⤢ ‹ › ↺ ▶ ⇄) that
+ * rendered with inconsistent metrics across OSes.
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const PATHS = {
+    undo: 'M7.5 4.5 4 8 7.5 11.5 M4 8 h8.2 a4.4 4.4 0 0 1 0 8.8 H9',
+    redo: 'M12.5 4.5 16 8 12.5 11.5 M16 8 H7.8 a4.4 4.4 0 0 0 0 8.8 H11',
+    caret: 'M6 8.2 l4 4 4 -4',
+    dual: 'M4 6.8 h10.5 m0 0 -3 -3 m3 3 -3 3 M16 13.2 H5.5 m0 0 3 -3 m-3 3 3 3',
+    close: 'M5.5 5.5 14.5 14.5 M14.5 5.5 5.5 14.5',
+    fit: 'M7.5 3.5 H4.5 a1 1 0 0 0 -1 1 v3 M12.5 3.5 h3 a1 1 0 0 1 1 1 v3 M3.5 12.5 v3 a1 1 0 0 0 1 1 h3 M16.5 12.5 v3 a1 1 0 0 1 -1 1 h-3',
+    prev: 'M12 4.5 6.5 10 12 15.5',
+    next: 'M8 4.5 13.5 10 8 15.5',
+    replay: 'M15.8 12 a6.2 6.2 0 1 1 -1 -6.5 M15.5 2.8 v3.4 h-3.4',
+    ruler: 'M3 13.5 13.5 3 17 6.5 6.5 17 Z M6.8 10.2 l1.6 1.6 M9.3 7.7 l1.6 1.6 M11.8 5.2 l1.6 1.6',
+    board: 'M3 6.5 h14 v7 H3 Z M6.5 6.5 c0 2.3 0 4.7 0 7 M13 6.5 c0 2.3 0 4.7 0 7',
+    camera: 'M3.5 6.5 h3 l1.5 -2 h4 l1.5 2 h3 v9 h-13 Z M10 13.8 a2.8 2.8 0 1 0 0 -5.6 a2.8 2.8 0 0 0 0 5.6'
+  };
+  const FILLED = {
+    play: 'M7 4.5 15.2 10 7 15.5 Z'
+  };
+
+  function svg(name, size) {
+    size = size || 17;
+    const filled = FILLED[name];
+    const d = filled || PATHS[name];
+    if (!d) return '';
+    const paint = filled
+      ? 'fill="currentColor" stroke="none"'
+      : 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+    return `<svg width="${size}" height="${size}" viewBox="0 0 20 20" ${paint} aria-hidden="true"><path d="${d}"/></svg>`;
+  }
+
+  BB.Icons = { svg, PATHS, FILLED };
+})();
+</script>
+<script>/* Blueprint Buddy — procedural materials (Phase 5).
+ * Wood-grain albedo textures, the studio environment, and the contact blob
+ * are all painted on canvas at runtime — no fetched assets, so the
+ * single-file build stays self-contained. Grain is deterministic per species
+ * (seeded PRNG), so thumbnails and re-opens always look the same.
+ *
+ * Texture cache contract: ONE CanvasTexture per species for the whole app
+ * lifetime, shared across engine instances (textures upload per GL context,
+ * and the source canvas outlives any one renderer). Engines must NOT call
+ * disposeAll() in their own dispose(); it exists for tests and teardown.
+ *
+ * THREE is passed into texture builders (not read from globals) so headless
+ * tests can exercise the cache with a stub.
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const TEX_W = 256, TEX_H = 512; // V (height) runs along the grain
+
+  /* FNV-1a hash of the key seeds a mulberry32 stream — deterministic and
+   * cheap, good enough for grain jitter (not cryptographic). */
+  function seededRand(key) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+    let a = h >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* Grain recipe per species: painting parameters live in knowledge.js next
+   * to the structural data (grainScale px, ringContrast 0..1, hueJitter 0..1,
+   * pores 0..1). This helper merges them with the base tone and flags. */
+  function grainParams(speciesKey) {
+    const sp = BB.K.WOOD_SPECIES[speciesKey];
+    if (!sp) return null;
+    return {
+      key: speciesKey, tone: sp.tone, sheet: !!sp.sheet,
+      grainScale: sp.grainScale || 18,
+      ringContrast: sp.ringContrast !== undefined ? sp.ringContrast : 0.4,
+      hueJitter: sp.hueJitter !== undefined ? sp.hueJitter : 0.2,
+      pores: sp.pores !== undefined ? sp.pores : 0.3
+    };
+  }
+
+  const hex = t => ({ r: (t >> 16) & 255, g: (t >> 8) & 255, b: t & 255 });
+  const rgba = (c, a) => `rgba(${c.r | 0},${c.g | 0},${c.b | 0},${a})`;
+  const shade = (c, f) => ({ r: Math.min(255, c.r * f), g: Math.min(255, c.g * f), b: Math.min(255, c.b * f) });
+
+  /* Paint one wrap-safe wood face onto a 2D context. Grain lines are sine
+   * wobbles with an INTEGER number of vertical periods, so the texture tiles
+   * seamlessly along the grain; every stroke is drawn three times (x-W, x,
+   * x+W) so it also tiles across it. Poplar's hue patches drift green — its
+   * signature streaks — via the hueJitter green bias below.
+   */
+  function paintWood(ctx, W, H, p, rand) {
+    const base = hex(p.tone);
+    ctx.fillStyle = rgba(base, 1);
+    ctx.fillRect(0, 0, W, H);
+
+    // Low-frequency color patches: boards are not one color.
+    const patches = p.sheet ? 4 : 8;
+    for (let i = 0; i < patches; i++) {
+      const cx = rand() * W, pw = W * (0.18 + rand() * 0.3);
+      const f = 1 + (rand() - 0.5) * 0.5 * p.hueJitter * 2;
+      const c = shade(base, f);
+      if (p.key === 'poplar' && rand() < 0.4) { c.g = Math.min(255, c.g * 1.12); c.r *= 0.92; } // green streaks
+      const g = ctx.createLinearGradient(cx - pw, 0, cx + pw, 0);
+      g.addColorStop(0, rgba(c, 0));
+      g.addColorStop(0.5, rgba(c, 0.28));
+      g.addColorStop(1, rgba(c, 0));
+      ctx.fillStyle = g;
+      for (const ox of [-W, 0, W]) { ctx.save(); ctx.translate(ox, 0); ctx.fillRect(cx - pw, 0, pw * 2, H); ctx.restore(); }
+    }
+
+    // Growth-ring lines along the grain.
+    const dark = shade(base, 0.55), light = shade(base, 1.18);
+    const spacing = Math.max(4, p.grainScale);
+    for (let x0 = 0; x0 < W; x0 += spacing * (0.6 + rand() * 0.8)) {
+      const amp = p.sheet ? 0.6 : (1.5 + rand() * 4.5);           // wobble, px
+      const n = 1 + Math.floor(rand() * 3);                       // integer periods → vertical wrap
+      const phase = rand() * Math.PI * 2;
+      const late = rand() < 0.35;                                 // occasional latewood band
+      const alpha = p.ringContrast * (late ? 0.34 : 0.16) * (0.7 + rand() * 0.6);
+      ctx.strokeStyle = rgba(rand() < 0.12 ? light : dark, alpha);
+      ctx.lineWidth = late ? 1.6 + rand() * 1.4 : 0.7 + rand() * 0.8;
+      for (const ox of [-W, 0, W]) {
+        ctx.beginPath();
+        for (let y = 0; y <= H; y += 8) {
+          const x = x0 + ox + amp * Math.sin((y / H) * Math.PI * 2 * n + phase);
+          if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+    }
+
+    // Pores / fine short streaks (open-grained species read coarser).
+    const strokes = Math.round(p.pores * 260);
+    ctx.lineWidth = 0.6;
+    for (let i = 0; i < strokes; i++) {
+      const x = rand() * W, y = rand() * H, len = 8 + rand() * 30;
+      ctx.strokeStyle = rgba(dark, 0.05 + rand() * 0.07);
+      for (const [ox, oy] of [[0, 0], [0, -H], [0, H], [-W, 0], [W, 0]]) {
+        ctx.beginPath();
+        ctx.moveTo(x + ox, y + oy);
+        ctx.lineTo(x + ox + (rand() - 0.5) * 2, y + oy + len);
+        ctx.stroke();
+      }
+    }
+  }
+
+  /* ---------------- texture cache ---------------- */
+  const texCache = new Map(); // speciesKey -> CanvasTexture
+
+  function woodTexture(THREE, speciesKey) {
+    if (texCache.has(speciesKey)) return texCache.get(speciesKey);
+    const p = grainParams(speciesKey);
+    if (!p) return null;
+    const c = document.createElement('canvas');
+    c.width = TEX_W; c.height = TEX_H;
+    paintWood(c.getContext('2d'), TEX_W, TEX_H, p, seededRand(speciesKey));
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 4;
+    texCache.set(speciesKey, tex);
+    return tex;
+  }
+
+  function disposeAll() {
+    for (const t of texCache.values()) t.dispose();
+    texCache.clear();
+  }
+
+  /* ---------------- studio environment ----------------
+   * A small equirect gradient the PBR materials reflect: warm skylight above,
+   * paper-toned bounce below, one bright window blob for speculars. Palettes
+   * track the app themes so reflections never fight the page behind the
+   * transparent canvas.
+   */
+  const ENV_PALETTES = {
+    light: { top: '#fff8ec', mid: '#d9d0be', bottom: '#b4a98f', window: 'rgba(255,255,255,0.95)' },
+    dark: { top: '#4a4238', mid: '#2a241d', bottom: '#171310', window: 'rgba(255,240,214,0.85)' }
+  };
+
+  function envCanvas(theme) {
+    const pal = ENV_PALETTES[theme] || ENV_PALETTES.light;
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 32;
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, 32);
+    g.addColorStop(0, pal.top);
+    g.addColorStop(0.55, pal.mid);
+    g.addColorStop(1, pal.bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 32);
+    const w = ctx.createRadialGradient(16, 9, 1, 16, 9, 11);
+    w.addColorStop(0, pal.window);
+    w.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = w;
+    ctx.fillRect(0, 0, 64, 32);
+    return c;
+  }
+
+  /* Soft radial contact blob — the grounding fallback when real shadows are
+   * off (flat quality tier). */
+  function blobCanvas() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(64, 64, 6, 64, 64, 62);
+    g.addColorStop(0, 'rgba(0,0,0,0.26)');
+    g.addColorStop(0.55, 'rgba(0,0,0,0.10)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    return c;
+  }
+
+  BB.Materials = {
+    seededRand, grainParams, paintWood, woodTexture, disposeAll,
+    envCanvas, blobCanvas, ENV_PALETTES, TEX_W, TEX_H,
+    _cacheSize: () => texCache.size
   };
 })();
 </script>
@@ -5308,6 +5663,80 @@ var BB = globalThis.BB = globalThis.BB || {};
    * Single source of truth for build-progress keys: the same enumeration
    * names the checkboxes in build mode, prunes stale progress after a
    * re-pack, and counts completion — so the three can never disagree. */
+  /* ---------------- tools & time (Phase 5 shop-truth) ----------------
+   * The consolidated tool wall: a base kit every build needs, plus what the
+   * joints actually in this model demand (from the knowledge base), plus
+   * operation-driven extras read off the real plan — never declared by hand.
+   */
+  const BASE_TOOLS = [
+    'Tape measure', 'Combination square', 'Table saw or circular saw with a guide',
+    'Drill/driver', 'Bar or pipe clamps', 'Sandpaper (120 / 180 / 220 grit)'
+  ];
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  function toolList(spec, model, stockPlan) {
+    const tools = new Set(BASE_TOOLS);
+    for (const t of new Set(model.joints.map(j => j.type))) {
+      for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(cap(tool));
+    }
+    if (model.parts.some(p => BB.Geo.cutAngles(p.rot))) tools.add('Miter saw (angled cuts)');
+    if (model.parts.some(p => p.material === 'baltic_birch')) tools.add('Circular saw + straightedge (sheet breakdown)');
+    if (stockPlan && ((stockPlan.glueups || []).length || (stockPlan.laminations || []).length)) {
+      tools.add('Glue + cauls (panel glue-up)');
+      if ((stockPlan.laminations || []).length) tools.add('Hand plane or thickness planer (laminations)');
+    }
+    if (model.drawers && model.drawers.length) tools.add('Shims + spacers (drawer fitting)');
+    const fin = K.FINISHES.find(f => f.key === spec.finish);
+    if (fin) tools.add(`Rags / applicator (${fin.label.toLowerCase()})`);
+    return [...tools];
+  }
+
+  /* Shop-time estimate: per-operation minutes × counts from the real plan,
+   * scaled by skill level (beginners measure twice — and should). Active
+   * bench time only; finish recoat/cure wall time is reported separately.
+   * Every number here is a count × constant — no geometry, no AI. */
+  const OP_MINUTES = {
+    solidCut: 5, sheetCut: 8, sand: 4, assemblyStep: 10,
+    glueUp: 30, lamination: 25, finishCoat: 20,
+    joint: {
+      butt_screws: 6, pocket_screws: 8, dowels: 12, dado: 15, rabbet: 12,
+      locking_rabbet: 15, mortise_tenon: 40, half_blind_dovetail: 60
+    }
+  };
+  const LEVEL_FACTOR = { beginner: 1.5, intermediate: 1.2, advanced: 1 };
+  function timeEstimate(spec, model, cut, steps, stockPlan) {
+    const breakdown = [];
+    const add = (label, min) => { if (min > 0) breakdown.push({ label, min: Math.round(min) }); };
+    const solidSticks = cut.filter(r => r.stock !== 'sheet').reduce((n, r) => n + r.qty, 0);
+    const sheetPieces = cut.filter(r => r.stock === 'sheet').reduce((n, r) => n + r.qty, 0);
+    add(`${solidSticks} board cuts`, solidSticks * OP_MINUTES.solidCut);
+    add(`${sheetPieces} sheet cuts`, sheetPieces * OP_MINUTES.sheetCut);
+    const byJoint = new Map();
+    for (const j of model.joints) byJoint.set(j.type, (byJoint.get(j.type) || 0) + 1);
+    for (const [type, n] of byJoint) {
+      const label = K.JOINERY[type] ? K.JOINERY[type].label.toLowerCase() : type;
+      add(`${n} × ${label}`, n * (OP_MINUTES.joint[type] || 10));
+    }
+    const glueups = stockPlan ? (stockPlan.glueups || []).length : 0;
+    const laminations = stockPlan ? (stockPlan.laminations || []).length : 0;
+    add(`${glueups} panel glue-up${glueups === 1 ? '' : 's'}`, glueups * OP_MINUTES.glueUp);
+    add(`${laminations} lamination${laminations === 1 ? '' : 's'}`, laminations * OP_MINUTES.lamination);
+    add('Sanding', model.parts.length * OP_MINUTES.sand);
+    add(`${steps.length} assembly steps`, steps.length * OP_MINUTES.assemblyStep);
+    const fin = K.FINISHES.find(f => f.key === spec.finish);
+    const coats = fin ? fin.coats : 0;
+    add(`${coats} finish coats`, coats * OP_MINUTES.finishCoat);
+    const factor = LEVEL_FACTOR[spec.meta.level] || 1.2;
+    const activeMin = Math.round(breakdown.reduce((n, b) => n + b.min, 0) * factor);
+    const hoursLow = Math.max(1, Math.round(activeMin / 60));
+    const hoursHigh = Math.max(hoursLow + 1, Math.round(activeMin * 1.35 / 60));
+    return {
+      activeMin, hoursLow, hoursHigh,
+      sessions: Math.max(1, Math.ceil(hoursHigh / 4)), // ~4 h shop sessions
+      factor, breakdown,
+      finishWait: fin ? { coats, recoatHrs: fin.recoatHrs, cureDays: fin.cureDays, label: fin.label } : null
+    };
+  }
+
   function cutKey(kind, gi, ci, name, len) { return `${kind}:${gi}:${ci}:${name}:${len}`; }
 
   function checklistKeys(stockPlan, cut, steps) {
@@ -5339,7 +5768,414 @@ var BB = globalThis.BB = globalThis.BB || {};
     return progress;
   }
 
-  BB.Plans = { cutList, bom, assembly, JOINT_ALLOWANCE, jointAllowance, LOAD_BEARING_ROLES, cutKey, checklistKeys, pruneProgress };
+  BB.Plans = { cutList, bom, assembly, toolList, timeEstimate, JOINT_ALLOWANCE, jointAllowance, LOAD_BEARING_ROLES, BASE_TOOLS, cutKey, checklistKeys, pruneProgress };
+})();
+</script>
+<script>/* Blueprint Buddy — 2D drafting: dimensioned elevation SVGs (Phase 5).
+ * Pure functions of the built model. Orthographic projection of every part's
+ * oriented box onto a view plane: axis-aligned parts render as <rect>,
+ * rotated custom parts as convex-hull <polygon> (BB.Geo does the OBB math).
+ * Painter's order by view depth gives a stylized elevation — deliberately
+ * NOT hidden-line removal, and the UI says so.
+ *
+ * Dimension text crosses the display boundary through the caller-supplied
+ * fmt (BB.Units.fmtLength); geometry itself stays raw millimetres in the
+ * SVG coordinate space. Colors are CSS variables so drawings theme on
+ * screen; print/export swaps them for fixed ink (Exports.printSVG).
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  /* View definitions: u/v pick world axes (with sign) for the sheet plane
+   * (v grows downward in SVG), depth orders the painter (ascending = far
+   * first). h/vDim name the overall dimensions each view carries. */
+  const VIEWS = {
+    front: { u: p => p[0], v: p => -p[1], depth: p => p[2], hAxis: 'w', vAxis: 'h', title: 'FRONT' },
+    side: { u: p => p[2], v: p => -p[1], depth: p => p[0], hAxis: 'd', vAxis: 'h', title: 'SIDE' },
+    top: { u: p => p[0], v: p => p[2], depth: p => p[1], hAxis: 'w', vAxis: 'd', title: 'PLAN' }
+  };
+  const nf = v => (Math.round(v * 100) / 100).toString();
+
+  function corners(part) {
+    if (part.rot && (part.rot.x || part.rot.y || part.rot.z)) {
+      return BB.Geo.obbCorners(BB.Geo.partOBB(part));
+    }
+    const { w, h, d } = part.size, p = part.pos;
+    const out = [];
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      out.push([p.x + sx * w / 2, p.y + sy * h / 2, p.z + sz * d / 2]);
+    }
+    return out;
+  }
+
+  /* One projected part → { shape (svg element string body), depth, uv bounds } */
+  function project(part, V) {
+    const cs = corners(part);
+    const pts = cs.map(c => [V.u(c), V.v(c)]);
+    const depth = cs.reduce((n, c) => n + V.depth(c), 0) / cs.length;
+    const rotated = !!(part.rot && (part.rot.x || part.rot.y || part.rot.z));
+    let shape;
+    if (rotated) {
+      const hull = BB.Geo.convexHull2D(pts);
+      shape = `<polygon points="${hull.map(p => nf(p[0]) + ',' + nf(p[1])).join(' ')}"/>`;
+    } else {
+      const us = pts.map(p => p[0]), vs = pts.map(p => p[1]);
+      const u0 = Math.min(...us), v0 = Math.min(...vs);
+      shape = `<rect x="${nf(u0)}" y="${nf(v0)}" width="${nf(Math.max(...us) - u0)}" height="${nf(Math.max(...vs) - v0)}"/>`;
+    }
+    return { shape, depth, us: pts.map(p => p[0]), vs: pts.map(p => p[1]) };
+  }
+
+  /* Architectural dimension: extension lines + slash ticks + centered label.
+   * Horizontal along the bottom (dir 'h') or vertical along the left ('v'). */
+  function dimension(a, b, off, dir, text) {
+    const T = 7; // tick half-length
+    if (dir === 'h') {
+      const y = off;
+      return `<g class="dim">
+        <line x1="${nf(a.u)}" y1="${nf(a.v)}" x2="${nf(a.u)}" y2="${nf(y + 6)}"/>
+        <line x1="${nf(b.u)}" y1="${nf(b.v)}" x2="${nf(b.u)}" y2="${nf(y + 6)}"/>
+        <line x1="${nf(a.u)}" y1="${nf(y)}" x2="${nf(b.u)}" y2="${nf(y)}"/>
+        <line x1="${nf(a.u - T)}" y1="${nf(y + T)}" x2="${nf(a.u + T)}" y2="${nf(y - T)}"/>
+        <line x1="${nf(b.u - T)}" y1="${nf(y + T)}" x2="${nf(b.u + T)}" y2="${nf(y - T)}"/>
+        <text x="${nf((a.u + b.u) / 2)}" y="${nf(y - 8)}" text-anchor="middle">${text}</text>
+      </g>`;
+    }
+    const x = off;
+    return `<g class="dim">
+      <line x1="${nf(a.u)}" y1="${nf(a.v)}" x2="${nf(x - 6)}" y2="${nf(a.v)}"/>
+      <line x1="${nf(b.u)}" y1="${nf(b.v)}" x2="${nf(x - 6)}" y2="${nf(b.v)}"/>
+      <line x1="${nf(x)}" y1="${nf(a.v)}" x2="${nf(x)}" y2="${nf(b.v)}"/>
+      <line x1="${nf(x - T)}" y1="${nf(a.v + T)}" x2="${nf(x + T)}" y2="${nf(a.v - T)}"/>
+      <line x1="${nf(x - T)}" y1="${nf(b.v + T)}" x2="${nf(x + T)}" y2="${nf(b.v - T)}"/>
+      <text x="${nf(x - 8)}" y="${nf((a.v + b.v) / 2)}" text-anchor="middle" transform="rotate(-90 ${nf(x - 8)} ${nf((a.v + b.v) / 2)})">${text}</text>
+    </g>`;
+  }
+
+  /* Full dimensioned elevation. Returns a standalone themable <svg>. */
+  function elevationSVG(spec, model, view, fmt) {
+    const V = VIEWS[view] || VIEWS.front;
+    const projected = model.parts
+      .filter(p => p.role !== 'pull')
+      .map(p => project(p, V))
+      .sort((a, b) => a.depth - b.depth);
+    if (!projected.length) return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
+
+    let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+    for (const pr of projected) {
+      uMin = Math.min(uMin, ...pr.us); uMax = Math.max(uMax, ...pr.us);
+      vMin = Math.min(vMin, ...pr.vs); vMax = Math.max(vMax, ...pr.vs);
+    }
+
+    const bodies = projected.map(pr => pr.shape).join('\n    ');
+
+    // Overall dimensions: horizontal below, vertical left.
+    const span = Math.max(uMax - uMin, vMax - vMin);
+    const off = span * 0.1 + 40;
+    const dims = [
+      dimension({ u: uMin, v: vMax }, { u: uMax, v: vMax }, vMax + off, 'h',
+        fmt(model.bounds[V.hAxis])),
+      dimension({ u: uMin, v: vMin }, { u: uMin, v: vMax }, uMin - off, 'v',
+        fmt(model.bounds[V.vAxis]))
+    ];
+
+    // Front view: drawer openings as dashed callouts with height labels.
+    let openings = '';
+    if (view === 'front' && model.openings && model.openings.length) {
+      openings = model.openings.map(op => {
+        const u0 = (op.x || 0) - op.w / 2, v0 = -op.yTop;
+        return `<g class="opening"><rect x="${nf(u0)}" y="${nf(v0)}" width="${nf(op.w)}" height="${nf(op.h)}"/>` +
+          `<text x="${nf(u0 + op.w / 2)}" y="${nf(v0 + op.h / 2 + 5)}" text-anchor="middle">${fmt(op.h)}</text></g>`;
+      }).join('\n    ');
+    }
+
+    const pad = off + 60;
+    const x0 = uMin - pad, y0 = vMin - pad * 0.55;
+    const w = (uMax - uMin) + pad * 1.5, h = (vMax - vMin) + pad * 1.8;
+    const fs = Math.max(14, span * 0.035);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${nf(x0)} ${nf(y0)} ${nf(w)} ${nf(h)}" class="bb-elevation" role="img" aria-label="${V.title} elevation">
+  <style>
+    .bb-elevation { font-family: var(--mono); }
+    .body rect, .body polygon { fill: var(--panel); stroke: var(--ink); stroke-width: ${nf(span * 0.004 + 1)}; stroke-linejoin: round; }
+    .dim line { stroke: var(--accent); stroke-width: ${nf(span * 0.002 + 0.7)}; }
+    .dim text { fill: var(--accent); font-size: ${nf(fs)}px; }
+    .opening rect { fill: none; stroke: var(--accent); stroke-width: ${nf(span * 0.002 + 0.7)}; stroke-dasharray: ${nf(span * 0.012)} ${nf(span * 0.008)}; }
+    .opening text { fill: var(--muted); font-size: ${nf(fs * 0.8)}px; }
+    .vtitle { fill: var(--ink-2); font-size: ${nf(fs)}px; letter-spacing: 0.12em; }
+  </style>
+  <g class="body">
+    ${bodies}
+  </g>
+    ${openings}
+    ${dims.join('\n    ')}
+  <text class="vtitle" x="${nf((uMin + uMax) / 2)}" y="${nf(vMax + off + 34)}" text-anchor="middle">${V.title} ELEVATION</text>
+</svg>`;
+  }
+
+  /* One-page drawing sheet: three elevations + a title block. */
+  function sheetSVG(spec, model, fmt) {
+    const views = ['front', 'side', 'top'];
+    const inner = views.map((v, i) =>
+      `<svg x="${(i % 2) * 50}%" y="${i < 2 ? 0 : 46}%" width="50%" height="46%" preserveAspectRatio="xMidYMid meet">${elevationSVG(spec, model, v, fmt)}</svg>`
+    ).join('\n  ');
+    const sp = BB.K.WOOD_SPECIES[spec.wood.species];
+    const dims = `${fmt(spec.overall.width)} W × ${fmt(spec.overall.depth)} D × ${fmt(spec.overall.height)} H`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1000" class="bb-sheet" role="img" aria-label="Drawing sheet">
+  <style>
+    .bb-sheet { font-family: var(--mono); }
+    .frame { fill: none; stroke: var(--ink); stroke-width: 2; }
+    .tb line { stroke: var(--ink); stroke-width: 1.2; }
+    .tb text { fill: var(--ink); font-size: 15px; }
+    .tb .big { font-size: 22px; font-weight: 600; }
+    .tb .sub { fill: var(--muted); font-size: 12px; }
+  </style>
+  <rect class="frame" x="8" y="8" width="1384" height="984"/>
+  ${inner}
+  <g class="tb">
+    <line x1="708" y1="930" x2="1392" y2="930"/>
+    <line x1="708" y1="930" x2="708" y2="992"/>
+    <text class="big" x="724" y="958">${escText(spec.meta.name)}</text>
+    <text x="724" y="980">${escText(dims)} · ${escText(sp ? sp.label : spec.wood.species)}</text>
+    <text class="sub" x="1180" y="958">BLUEPRINT BUDDY</text>
+    <text class="sub" x="1180" y="980">NOT HIDDEN-LINE · ${escText(String(spec.meta.level).toUpperCase())} BUILD</text>
+  </g>
+</svg>`;
+  }
+  const escText = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  BB.Drafting = { elevationSVG, sheetSVG, VIEWS };
+})();
+</script>
+<script>/* Blueprint Buddy — glTF 2.0 binary (.glb) exporter (Phase 5).
+ * Hand-written like the COLLADA exporter: zero dependencies, one binary
+ * buffer, box geometry deduplicated by exact size, real 16-gon prisms for
+ * cylinder primitives, one PBR material per role in use (same palette as the
+ * other exporters, converted sRGB → linear as the spec requires).
+ *
+ * INTENTIONALLY unit-exempt like DAE/Ruby: glTF is metres, so raw scene
+ * millimetres × 0.001 — display units never touch exports. glTF is Y-up like
+ * the scene, so positions pass straight through, and part rotation rides
+ * along as a quaternion (Shepperd's method over BB.Geo.rotMat) — the
+ * rotation support the older exporters lacked.
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const MM = 0.001; // scene mm -> glTF metres
+
+  /* sRGB channel (0..255) -> linear 0..1 (exact piecewise EOTF). */
+  function srgbToLinear(c) {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  }
+
+  /* Rotation matrix (BB.Geo.rotMat row-major 3×3) -> unit quaternion
+   * [x, y, z, w], Shepperd's method: pick the dominant diagonal branch for
+   * numerical stability. */
+  function mat3ToQuat(M) {
+    const m00 = M[0][0], m01 = M[0][1], m02 = M[0][2];
+    const m10 = M[1][0], m11 = M[1][1], m12 = M[1][2];
+    const m20 = M[2][0], m21 = M[2][1], m22 = M[2][2];
+    const tr = m00 + m11 + m22;
+    let x, y, z, w;
+    if (tr > 0) {
+      const s = Math.sqrt(tr + 1) * 2;
+      w = s / 4; x = (m21 - m12) / s; y = (m02 - m20) / s; z = (m10 - m01) / s;
+    } else if (m00 > m11 && m00 > m22) {
+      const s = Math.sqrt(1 + m00 - m11 - m22) * 2;
+      w = (m21 - m12) / s; x = s / 4; y = (m01 + m10) / s; z = (m02 + m20) / s;
+    } else if (m11 > m22) {
+      const s = Math.sqrt(1 + m11 - m00 - m22) * 2;
+      w = (m02 - m20) / s; x = (m01 + m10) / s; y = s / 4; z = (m12 + m21) / s;
+    } else {
+      const s = Math.sqrt(1 + m22 - m00 - m11) * 2;
+      w = (m10 - m01) / s; x = (m02 + m20) / s; y = (m12 + m21) / s; z = s / 4;
+    }
+    const len = Math.hypot(x, y, z, w) || 1;
+    return [x / len, y / len, z / len, w / len];
+  }
+
+  /* Box mesh data in local metres: 24 verts (per-face normals), 36 indices.
+   * Local axes match the scene: x = w, y = h, z = d, centered at origin. */
+  function boxData(w, h, d) {
+    const hx = w * MM / 2, hy = h * MM / 2, hz = d * MM / 2;
+    const faces = [
+      { n: [1, 0, 0], c: [[hx, -hy, -hz], [hx, hy, -hz], [hx, hy, hz], [hx, -hy, hz]] },
+      { n: [-1, 0, 0], c: [[-hx, -hy, hz], [-hx, hy, hz], [-hx, hy, -hz], [-hx, -hy, -hz]] },
+      { n: [0, 1, 0], c: [[-hx, hy, -hz], [-hx, hy, hz], [hx, hy, hz], [hx, hy, -hz]] },
+      { n: [0, -1, 0], c: [[-hx, -hy, hz], [-hx, -hy, -hz], [hx, -hy, -hz], [hx, -hy, hz]] },
+      { n: [0, 0, 1], c: [[-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]] },
+      { n: [0, 0, -1], c: [[hx, -hy, -hz], [-hx, -hy, -hz], [-hx, hy, -hz], [hx, hy, -hz]] }
+    ];
+    const pos = [], nrm = [], idx = [];
+    faces.forEach((f, fi) => {
+      for (const c of f.c) { pos.push(...c); nrm.push(...f.n); }
+      const b = fi * 4;
+      idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    });
+    return { pos, nrm, idx };
+  }
+
+  /* Cylinder (novel-grammar primitive): radius w/2, height h, axis local Y.
+   * 16-gon prism: smooth radial sides + flat caps. */
+  function cylData(w, h) {
+    const r = w * MM / 2, hy = h * MM / 2, SEG = 16;
+    const pos = [], nrm = [], idx = [];
+    for (let i = 0; i < SEG; i++) { // side rings (radial normals)
+      const a = i / SEG * Math.PI * 2, x = Math.cos(a), z = Math.sin(a);
+      pos.push(x * r, -hy, z * r); nrm.push(x, 0, z);
+      pos.push(x * r, hy, z * r); nrm.push(x, 0, z);
+    }
+    for (let i = 0; i < SEG; i++) {
+      const a = i * 2, b = ((i + 1) % SEG) * 2;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+    for (const [sign, ny] of [[-1, -1], [1, 1]]) { // caps (axial normals)
+      const center = pos.length / 3;
+      pos.push(0, sign * hy, 0); nrm.push(0, ny, 0);
+      const ring = pos.length / 3;
+      for (let i = 0; i < SEG; i++) {
+        const a = i / SEG * Math.PI * 2;
+        pos.push(Math.cos(a) * r, sign * hy, Math.sin(a) * r); nrm.push(0, ny, 0);
+      }
+      for (let i = 0; i < SEG; i++) {
+        const a = ring + i, b = ring + (i + 1) % SEG;
+        if (sign > 0) idx.push(center, a, b); else idx.push(center, b, a);
+      }
+    }
+    return { pos, nrm, idx };
+  }
+
+  function toGLB(spec, model) {
+    const roleColor = BB.Exports.ROLE_COLORS;
+    const speciesRough = (BB.K.WOOD_SPECIES[spec.wood.species] || {}).rough || 0.7;
+
+    // Materials: one per role in use (parity with the DAE/Ruby exporters).
+    const roles = [...new Set(model.parts.map(p => p.role))];
+    const matIndex = new Map(roles.map((r, i) => [r, i]));
+    const materials = roles.map(r => {
+      const c = roleColor[r] || [180, 140, 95];
+      const metal = r === 'pull';
+      return {
+        name: r,
+        pbrMetallicRoughness: {
+          baseColorFactor: [srgbToLinear(c[0]), srgbToLinear(c[1]), srgbToLinear(c[2]), 1],
+          metallicFactor: metal ? 0.6 : 0,
+          roughnessFactor: metal ? 0.35 : speciesRough
+        }
+      };
+    });
+
+    // Geometry deduplicated by (kind, exact size); one glTF mesh per (geom, role).
+    const geoms = new Map();  // geoKey -> {data}
+    const meshes = [];        // glTF meshes
+    const meshIndex = new Map(); // geoKey|role -> mesh index
+    const nodes = [];
+    for (const p of model.parts) {
+      const isCyl = p.prim === 'cylinder';
+      const geoKey = (isCyl ? 'cyl:' : 'box:') + `${p.size.w}x${p.size.h}x${p.size.d}`;
+      if (!geoms.has(geoKey)) geoms.set(geoKey, isCyl ? cylData(p.size.w, p.size.h) : boxData(p.size.w, p.size.h, p.size.d));
+      const mKey = geoKey + '|' + p.role;
+      if (!meshIndex.has(mKey)) {
+        meshIndex.set(mKey, meshes.length);
+        meshes.push({ name: mKey, geoKey, material: matIndex.get(p.role) });
+      }
+      const node = {
+        name: p.id,
+        mesh: meshIndex.get(mKey),
+        translation: [p.pos.x * MM, p.pos.y * MM, p.pos.z * MM]
+      };
+      if (p.rot && (p.rot.x || p.rot.y || p.rot.z)) {
+        const q = mat3ToQuat(BB.Geo.rotMat(p.rot.x || 0, p.rot.y || 0, p.rot.z || 0));
+        if (Math.abs(q[3] - 1) > 1e-9) node.rotation = q;
+      }
+      nodes.push(node);
+    }
+
+    // Binary buffer: per unique geometry — POSITION f32, NORMAL f32, indices u16.
+    const bufferViews = [], accessors = [], chunks = [];
+    let offset = 0;
+    const geoAccessors = new Map(); // geoKey -> {posAcc, nrmAcc, idxAcc}
+    const align4 = nBytes => (4 - (nBytes % 4)) % 4;
+    for (const [key, g] of geoms) {
+      const pos = new Float32Array(g.pos), nrm = new Float32Array(g.nrm), idx = new Uint16Array(g.idx);
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < pos.length; i += 3) for (let a = 0; a < 3; a++) {
+        if (pos[i + a] < min[a]) min[a] = pos[i + a];
+        if (pos[i + a] > max[a]) max[a] = pos[i + a];
+      }
+      const entry = {};
+      for (const [arr, type, compType, count, extra] of [
+        [pos, 'VEC3', 5126, pos.length / 3, { min, max }],
+        [nrm, 'VEC3', 5126, nrm.length / 3, null],
+        [idx, 'SCALAR', 5123, idx.length, null]
+      ]) {
+        const bytes = new Uint8Array(arr.buffer);
+        bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: bytes.length });
+        accessors.push(Object.assign({
+          bufferView: bufferViews.length - 1, componentType: compType, count, type
+        }, extra || {}));
+        chunks.push(bytes);
+        offset += bytes.length;
+        const pad = align4(offset);
+        if (pad) { chunks.push(new Uint8Array(pad)); offset += pad; }
+      }
+      geoAccessors.set(key, {
+        pos: accessors.length - 3, nrm: accessors.length - 2, idx: accessors.length - 1
+      });
+    }
+
+    const gltfMeshes = meshes.map(m => ({
+      name: m.name,
+      primitives: [{
+        attributes: { POSITION: geoAccessors.get(m.geoKey).pos, NORMAL: geoAccessors.get(m.geoKey).nrm },
+        indices: geoAccessors.get(m.geoKey).idx,
+        material: m.material
+      }]
+    }));
+
+    const json = {
+      asset: { version: '2.0', generator: 'Blueprint Buddy' },
+      scene: 0,
+      scenes: [{ name: spec.meta.name, nodes: nodes.map((_, i) => i) }],
+      nodes, meshes: gltfMeshes, materials,
+      accessors, bufferViews,
+      buffers: [{ byteLength: offset }]
+    };
+
+    // ---- GLB container: header + JSON chunk (space-padded) + BIN chunk ----
+    const enc = new TextEncoder();
+    let jsonBytes = enc.encode(JSON.stringify(json));
+    const jsonPad = align4(jsonBytes.length);
+    if (jsonPad) {
+      const padded = new Uint8Array(jsonBytes.length + jsonPad);
+      padded.set(jsonBytes); padded.fill(0x20, jsonBytes.length);
+      jsonBytes = padded;
+    }
+    const binLen = offset;
+    const total = 12 + 8 + jsonBytes.length + 8 + binLen;
+    const out = new ArrayBuffer(total);
+    const dv = new DataView(out);
+    const u8 = new Uint8Array(out);
+    dv.setUint32(0, 0x46546C67, true);           // magic 'glTF'
+    dv.setUint32(4, 2, true);                    // version
+    dv.setUint32(8, total, true);
+    dv.setUint32(12, jsonBytes.length, true);
+    dv.setUint32(16, 0x4E4F534A, true);          // 'JSON'
+    u8.set(jsonBytes, 20);
+    let p = 20 + jsonBytes.length;
+    dv.setUint32(p, binLen, true);
+    dv.setUint32(p + 4, 0x004E4942, true);       // 'BIN\0'
+    p += 8;
+    for (const c of chunks) { u8.set(c, p); p += c.length; }
+    return out;
+  }
+
+  BB.GLTF = { toGLB, mat3ToQuat, srgbToLinear, boxData, cylData };
 })();
 </script>
 <script>/* Blueprint Buddy — exports: COLLADA (.dae), SketchUp Ruby (.rb), print sheet.
@@ -5605,6 +6441,27 @@ BlueprintBuddyImport.build
 `;
   }
 
+  /* ---------------- CSV cut list ----------------
+   * A display surface like the print sheet: dimensions in the current
+   * display units AND raw millimetres, so the same file works at the bench
+   * and in other software. RFC-4180 quoting; CRLF for spreadsheet apps. */
+  function toCSV(spec, cut) {
+    const U = BB.Units;
+    const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+    const rows = [[
+      'Part', 'Qty', 'Length', 'Width', 'Thickness',
+      'Length (mm)', 'Width (mm)', 'Thickness (mm)', 'Material', 'Stock', 'Grain', 'Notes'
+    ].map(q).join(',')];
+    for (const r of cut) {
+      const mat = BB.K.WOOD_SPECIES[r.material] ? BB.K.WOOD_SPECIES[r.material].label : r.material;
+      rows.push([
+        q(r.name), r.qty, q(U.fmtLength(r.L)), q(U.fmtLength(r.W)), q(U.fmtLength(r.T)),
+        r.L, r.W, r.T, q(mat), q(r.stock), q(r.grain), q(r.note || '')
+      ].join(','));
+    }
+    return rows.join('\r\n') + '\r\n';
+  }
+
   /* ---------------- print sheet ---------------- */
   /* The stock diagrams use CSS variables for the screen; print swaps them for
    * fixed ink-on-paper colors so the sheet works regardless of theme. */
@@ -5671,6 +6528,21 @@ BlueprintBuddyImport.build
     <h2>Cut list</h2>
     <table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th><th>Notes</th></tr></thead><tbody>${cutRows}</tbody></table>
     <p>Load-bearing parts: select straight-grained stock free of knots — the structural numbers assume clear wood.</p>
+  </section>
+  <section class="print-section page-break">
+    <h2>Drawings — stylized elevations (not hidden-line)</h2>
+    <div class="print-drawings">
+      ${['front', 'side', 'top'].map(v => `<div class="print-elevation">${printSVG(BB.Drafting.elevationSVG(spec, model, v, dim))}</div>`).join('\n      ')}
+    </div>
+  </section>
+  <section class="print-section">
+    <h2>Tools &amp; shop time</h2>
+    <p>${BB.Plans.toolList(spec, model, stock).map(esc).join(' · ')}</p>
+    ${(() => {
+      const t = BB.Plans.timeEstimate(spec, model, cut, steps, stock);
+      const wait = t.finishWait ? ` Plus finish wall time: ${t.finishWait.coats} coats of ${esc(t.finishWait.label.toLowerCase())}, recoat every ${t.finishWait.recoatHrs} h, cure ${t.finishWait.cureDays} days.` : '';
+      return `<p class="print-total">≈ ${t.hoursLow}–${t.hoursHigh} hours of bench time (${t.sessions} session${t.sessions === 1 ? '' : 's'} of ~4 h) at the ${esc(spec.meta.level)} pace.${wait}</p>`;
+    })()}
   </section>${joineryHTML}${stockHTML}
   <section class="print-section page-break">
     <h2>Bill of materials</h2>
@@ -5694,7 +6566,7 @@ BlueprintBuddyImport.build
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
   }
 
-  BB.Exports = { toDAE, toRuby, printHTML, download, slug, ROLE_COLORS };
+  BB.Exports = { toDAE, toRuby, toCSV, printHTML, printSVG, download, slug, ROLE_COLORS };
 })();
 </script>
 <script>/* Blueprint Buddy — revision history.
@@ -6670,13 +7542,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PRICES_KEY = 'prices:v1';
   const PREFS_KEY = 'prefs:v2';
   const LEGACY_PREFS_KEY = 'prefs:v1';
-  // Fresh installs: fractional inches at 1/16, dual display off, OS theme.
+  // Fresh installs: fractional inches at 1/16, dual display off, OS theme,
+  // textured render (wood grain + shadows).
   // ui: shell layout — chat panel collapsed (desktop) and the viewport/plans
   // split as a percentage of the stage height.
   const DEFAULT_PREFS = {
     climate: 'temperate', stockMode: {}, theme: 'auto',
     units: { system: 'imperial', precision: 16, dual: false },
-    ui: { chatCollapsed: false, split: 58 }
+    render: { textured: true },
+    ui: { chatCollapsed: false, split: 58 },
+    seenHero: false // the one-shot assemble moment on first starter pick
   };
 
   async function loadPrices() {
@@ -6696,6 +7571,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function withPrefDefaults(stored) {
     const out = Object.assign({}, DEFAULT_PREFS, stored);
     out.units = Object.assign({}, DEFAULT_PREFS.units, stored && stored.units ? stored.units : {});
+    out.render = Object.assign({}, DEFAULT_PREFS.render, stored && stored.render ? stored.render : {});
     out.ui = Object.assign({}, DEFAULT_PREFS.ui, stored && stored.ui ? stored.ui : {});
     return out;
   }
@@ -6728,7 +7604,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       const c = document.createElement('canvas');
       c.width = w; c.height = h;
       const ctx = c.getContext('2d');
-      ctx.fillStyle = '#efeade';
+      // Fill with the live --paper token so dark-theme thumbs match their cards.
+      let paper = '#efeade';
+      try {
+        const v = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim();
+        if (v) paper = v;
+      } catch (e) { /* default paper */ }
+      ctx.fillStyle = paper;
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(sourceCanvas, 0, 0, w, h);
       for (const q of [0.7, 0.5, 0.3]) {
@@ -7540,6 +8422,293 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (savedV1) await Store.set('prefs:v1', savedV1); else await Store.del('prefs:v1');
         if (savedV2) await Store.set('prefs:v2', savedV2); else await Store.del('prefs:v2');
       }
+
+      // Render prefs deep-fill: stored prefs that predate the render block
+      // gain the textured default without touching the user's other choices.
+      const savedV2b = await Store.get('prefs:v2');
+      try {
+        await Store.set('prefs:v2', { climate: 'arid', theme: 'dark', units: { system: 'metric', precision: 16, dual: false } });
+        const filled = await Store.loadPrefs();
+        test('storage', 'prefs without render block gain textured default, keep the rest',
+          filled.render && filled.render.textured === true && filled.climate === 'arid' && filled.units.system === 'metric',
+          `render ${JSON.stringify(filled.render)}, climate ${filled.climate}, ${filled.units.system}`, 'render {"textured":true}, climate arid, metric');
+      } finally {
+        if (savedV2b) await Store.set('prefs:v2', savedV2b); else await Store.del('prefs:v2');
+      }
+    }
+
+    /* ============ procedural materials ============ */
+    {
+      const M = BB.Materials;
+      // Every species carries a full grain recipe.
+      let missing = null;
+      for (const key of Object.keys(K.WOOD_SPECIES)) {
+        const p = M.grainParams(key);
+        if (!p || !(p.grainScale > 0) || p.ringContrast === undefined || p.hueJitter === undefined || p.pores === undefined) { missing = key; break; }
+      }
+      test('materials', 'every species has a complete grain recipe', !missing, missing || 'all present', 'all present');
+      test('materials', 'unknown species yields no params (no phantom textures)', M.grainParams('unobtainium') === null, String(M.grainParams('unobtainium')), 'null');
+
+      // Deterministic grain: same key → same stream; different keys diverge.
+      const a1 = M.seededRand('walnut'), a2 = M.seededRand('walnut'), b = M.seededRand('cherry');
+      const seqA1 = [a1(), a1(), a1()], seqA2 = [a2(), a2(), a2()], seqB = [b(), b(), b()];
+      test('materials', 'seeded PRNG is deterministic per species', JSON.stringify(seqA1) === JSON.stringify(seqA2), seqA1.map(v => v.toFixed(4)).join(','), seqA2.map(v => v.toFixed(4)).join(','));
+      test('materials', 'different species get different grain streams', JSON.stringify(seqA1) !== JSON.stringify(seqB), 'streams differ', 'streams differ');
+      const inRange = seqA1.every(v => v >= 0 && v < 1);
+      test('materials', 'PRNG output stays in [0,1)', inRange, seqA1.map(v => v.toFixed(4)).join(','), 'all in [0,1)');
+
+      // Theme palettes exist and actually differ.
+      test('materials', 'environment palettes: light and dark defined and distinct',
+        M.ENV_PALETTES.light && M.ENV_PALETTES.dark && M.ENV_PALETTES.light.top !== M.ENV_PALETTES.dark.top,
+        `${M.ENV_PALETTES.light.top} vs ${M.ENV_PALETTES.dark.top}`, 'distinct palettes');
+
+      // Texture cache: one entry per species regardless of how many
+      // role/bucket materials request it (browser only — needs a canvas).
+      if (typeof document !== 'undefined' && globalThis.THREE) {
+        const before = M._cacheSize();
+        M.woodTexture(globalThis.THREE, 'walnut');
+        M.woodTexture(globalThis.THREE, 'walnut');
+        const t1 = M.woodTexture(globalThis.THREE, 'walnut');
+        const t2 = M.woodTexture(globalThis.THREE, 'walnut');
+        test('materials', 'texture cache returns one shared texture per species', t1 === t2 && M._cacheSize() <= before + 1, `cache ${before} → ${M._cacheSize()}, identical ${t1 === t2}`, 'one new entry, identical');
+      }
+    }
+
+    /* ============ shop truth: tools, time, CSV ============ */
+    {
+      // Advanced mortise-and-tenon table: the tool wall must demand the
+      // joint's real tools on top of the base kit.
+      const mt = pipeline({ meta: { name: 'MT Table', template: 'table', level: 'advanced' }, joinery: { frame: 'mortise_tenon' } });
+      const mtTools = Plans.toolList(mt.spec, mt.model, null);
+      test('shop', 'tool wall = base kit + joint tools (mortise & tenon adds chisels)',
+        Plans.BASE_TOOLS.every(t => mtTools.includes(t)) && mtTools.some(t => /chisel/i.test(t)),
+        mtTools.filter(t => /chisel|mortis/i.test(t)).join(', ') || 'no joint tools', 'chisels present');
+
+      // Drawered nightstand: sheet goods + drawer fitting appear.
+      const ns = pipeline({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate' }, drawers: { count: 2 } });
+      const nsTools = Plans.toolList(ns.spec, ns.model, null);
+      test('shop', 'drawer build adds sheet breakdown + drawer fitting tools',
+        nsTools.some(t => /sheet/i.test(t)) && nsTools.some(t => /drawer/i.test(t)),
+        nsTools.filter(t => /sheet|drawer/i.test(t)).join(', '), 'sheet + drawer tools');
+
+      // Time estimate: level factor orders the estimates; breakdown is honest.
+      const cutMT = Plans.cutList(mt.spec, mt.model);
+      const stepsMT = Plans.assembly(mt.spec, mt.model, null);
+      const tAdv = Plans.timeEstimate(mt.spec, mt.model, cutMT, stepsMT, null);
+      const beg = pipeline({ meta: { name: 'B Table', template: 'table', level: 'beginner' } });
+      const tBeg = Plans.timeEstimate(beg.spec, beg.model, Plans.cutList(beg.spec, beg.model), Plans.assembly(beg.spec, beg.model, null), null);
+      const sum = tAdv.breakdown.reduce((n, b) => n + b.min, 0);
+      test('shop', 'time estimate: breakdown × level factor = active minutes',
+        Math.abs(tAdv.activeMin - Math.round(sum * tAdv.factor)) <= 1, `${tAdv.activeMin} vs ${Math.round(sum * tAdv.factor)}`, 'equal ±1');
+      test('shop', 'beginner pace multiplier exceeds advanced', tBeg.factor > tAdv.factor, `${tBeg.factor} vs ${tAdv.factor}`, '1.5 vs 1');
+      test('shop', 'estimate is bounded and session count follows hours',
+        tAdv.hoursLow >= 1 && tAdv.hoursHigh > tAdv.hoursLow && tAdv.sessions === Math.ceil(tAdv.hoursHigh / 4),
+        `${tAdv.hoursLow}–${tAdv.hoursHigh} h, ${tAdv.sessions} sessions`, 'low < high, sessions = ceil(high/4)');
+
+      // CSV: one line per row + header, display units AND raw mm, RFC quoting.
+      // Display prefs are pinned imperial for the assertion and restored.
+      const savedUnits = BB.Units.get();
+      let csvLines, nsCut;
+      try {
+        BB.Units.set({ system: 'imperial', precision: 16, dual: false });
+        nsCut = Plans.cutList(ns.spec, ns.model);
+        csvLines = BB.Exports.toCSV(ns.spec, nsCut).trim().split('\r\n');
+      } finally { BB.Units.set(savedUnits); }
+      test('shop', 'CSV has header + one line per cut row', csvLines.length === nsCut.length + 1, csvLines.length, nsCut.length + 1);
+      test('shop', 'CSV carries display units and raw mm side by side',
+        csvLines[0].includes('"Length (mm)"') && / in"/.test(csvLines[1]) && /,\d+(\.\d+)?,/.test(csvLines[1]),
+        csvLines[1].slice(0, 80) + '…', 'formatted + numeric mm columns');
+
+      // Icons: strings, themable, unknown-safe.
+      test('shop', 'icon set emits currentColor SVGs and empty string for unknown names',
+        BB.Icons.svg('undo').includes('currentColor') && BB.Icons.svg('nope') === '',
+        `undo ${BB.Icons.svg('undo').length} chars, unknown "${BB.Icons.svg('nope')}"`, 'svg + empty');
+    }
+
+    /* ============ glTF export + rotation in every exporter ============ */
+    {
+      // Minimal hand-built model: a plain box, a 45°-rotated box, and a
+      // cylinder — exercises dedup, the quaternion path, and prism geometry.
+      const spec2 = Spec.correctSpec(Spec.defaultSpec('table'));
+      const model2 = {
+        parts: [
+          { id: 'leg_a', name: 'Leg', role: 'leg', defKey: 'leg', material: spec2.wood.species, size: { w: 60, h: 700, d: 60 }, pos: { x: -200, y: 350, z: 0 } },
+          { id: 'leg_b', name: 'Leg', role: 'leg', defKey: 'leg', material: spec2.wood.species, size: { w: 60, h: 700, d: 60 }, pos: { x: 200, y: 350, z: 0 } },
+          { id: 'brace', name: 'Brace', role: 'rail', defKey: 'brace', material: spec2.wood.species, size: { w: 500, h: 60, d: 30 }, pos: { x: 0, y: 600, z: 100 }, rot: { x: 0, y: 45, z: 0 } },
+          { id: 'peg', name: 'Peg', role: 'pull', defKey: 'peg', material: 'hardware', prim: 'cylinder', size: { w: 20, h: 80, d: 20 }, pos: { x: 0, y: 640, z: 0 } }
+        ]
+      };
+
+      const glb = BB.GLTF.toGLB(spec2, model2);
+      const dv = new DataView(glb);
+      test('gltf', 'GLB header: magic, version 2, declared length = actual bytes',
+        dv.getUint32(0, true) === 0x46546C67 && dv.getUint32(4, true) === 2 && dv.getUint32(8, true) === glb.byteLength,
+        `magic ${dv.getUint32(0, true).toString(16)}, v${dv.getUint32(4, true)}, ${dv.getUint32(8, true)}/${glb.byteLength}`,
+        '46546c67, v2, lengths equal');
+      const jsonLen = dv.getUint32(12, true);
+      test('gltf', 'chunks 4-byte aligned with JSON + BIN\\0 tags',
+        jsonLen % 4 === 0 && dv.getUint32(16, true) === 0x4E4F534A && dv.getUint32(20 + jsonLen + 4, true) === 0x004E4942,
+        `jsonLen ${jsonLen}, tags ok`, 'aligned, JSON then BIN');
+      const gj = JSON.parse(new TextDecoder().decode(new Uint8Array(glb, 20, jsonLen)));
+      test('gltf', 'one node per part, all POSITION accessors carry min/max',
+        gj.nodes.length === model2.parts.length &&
+        gj.meshes.every(m => { const acc = gj.accessors[m.primitives[0].attributes.POSITION]; return acc.min && acc.max; }),
+        `${gj.nodes.length} nodes`, `${model2.parts.length} nodes, min/max present`);
+      const braceNode = gj.nodes.find(nd => nd.name === 'brace');
+      const q = braceNode && braceNode.rotation;
+      const qy = Math.sin(Math.PI / 8), qw = Math.cos(Math.PI / 8);
+      test('gltf', 'rotated part carries the y=45° quaternion [0, sin22.5°, 0, cos22.5°]',
+        q && Math.abs(q[0]) < 1e-6 && Math.abs(q[1] - qy) < 1e-6 && Math.abs(q[2]) < 1e-6 && Math.abs(q[3] - qw) < 1e-6,
+        q ? q.map(v => v.toFixed(4)).join(', ') : 'missing', `0, ${qy.toFixed(4)}, 0, ${qw.toFixed(4)}`);
+      test('gltf', 'unrotated nodes omit rotation; identical legs share one mesh',
+        !gj.nodes.find(nd => nd.name === 'leg_a').rotation &&
+        gj.nodes.find(nd => nd.name === 'leg_a').mesh === gj.nodes.find(nd => nd.name === 'leg_b').mesh,
+        'shared mesh, no rotation', 'shared mesh, no rotation');
+
+      // Quaternion → matrix round-trip against the source rotation matrix.
+      const R = BB.Geo.rotMat(20, 45, 10);
+      const [x, y, z, w] = BB.GLTF.mat3ToQuat(R);
+      const RQ = [
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]
+      ];
+      let worstQ = 0;
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) worstQ = Math.max(worstQ, Math.abs(R[i][j] - RQ[i][j]));
+      test('gltf', 'mat3ToQuat round-trips a compound rotation within 1e-6', worstQ < 1e-6, worstQ.toExponential(2), '< 1e-6');
+
+      // Cylinder prism data: 16-gon sides + caps, indices in range.
+      const cd = BB.GLTF.cylData(20, 80);
+      test('gltf', 'cylinder prism: 66 verts, 192 indices, all in range',
+        cd.pos.length === 66 * 3 && cd.idx.length === 192 && cd.idx.every(i => i < 66),
+        `${cd.pos.length / 3} verts, ${cd.idx.length} idx`, '66 verts, 192 idx');
+
+      // Rotation in the legacy exporters (audit F-S1-3 implementation): DAE
+      // writes the Z-up rotation block (y=45° about scene-up = Rz(45): row
+      // "0.707 -0.707 0"); Ruby places EVERY instance with one full 16-array
+      // Geom::Transformation — the rotated one carries the 0.707107 columns.
+      const dae2 = BB.Exports.toDAE(spec2, model2);
+      test('gltf', 'DAE carries rotation for rotated parts (Rz45 rows present)',
+        dae2.includes('0.707 -0.707 0') && dae2.includes('0.707 0.707 0'),
+        dae2.match(/<matrix>[^<]{0,40}/g).filter(s => s.includes('0.707')).length + ' rotated matrices', 'Rz(45) rows present');
+      const rb2 = BB.Exports.toRuby(spec2, model2);
+      const fullTransforms = (rb2.match(/Transformation\.new\(\[/g) || []).length;
+      test('gltf', 'Ruby: every instance places via a full 16-array transform; rotation lands in the matrix',
+        fullTransforms === model2.parts.length && rb2.includes('0.707107') && !rb2.includes('Transformation.axes'),
+        `${fullTransforms}/${model2.parts.length} full transforms, Rz45 ${rb2.includes('0.707107') ? 'present' : 'missing'}`,
+        'all instances full-matrix, Rz(45) present');
+    }
+
+    /* ============ drafting: dimensioned elevations ============ */
+    {
+      const savedU = BB.Units.get();
+      try {
+        BB.Units.set({ system: 'imperial', precision: 16, dual: false });
+        const fmt = v => BB.Units.fmtLength(v);
+
+        const seed = pipeline(Spec.defaultSpec('table'));
+        const front = BB.Drafting.elevationSVG(seed.spec, seed.model, 'front', fmt);
+        const rects = (front.match(/<rect /g) || []).length;
+        test('drafting', 'front elevation draws every part (≥9 shapes for the seed table)',
+          rects >= 9, rects + ' rects', '≥ 9');
+        test('drafting', 'overall width dimension label routes through BB.Units',
+          front.includes('>' + fmt(seed.model.bounds.w) + '<') && front.includes('>' + fmt(seed.model.bounds.h) + '<'),
+          `${fmt(seed.model.bounds.w)} / ${fmt(seed.model.bounds.h)} present: ${front.includes(fmt(seed.model.bounds.w))}`, 'width + height labels present');
+        const side = BB.Drafting.elevationSVG(seed.spec, seed.model, 'side', fmt);
+        test('drafting', 'side elevation carries depth + height dimensions',
+          side.includes('>' + fmt(seed.model.bounds.d) + '<') && side.includes('SIDE ELEVATION'),
+          'depth label + title', 'depth label + title');
+
+        // Drawer openings appear as dashed callouts on the nightstand front.
+        const ns2 = pipeline({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate' }, drawers: { count: 2 } });
+        const nsFront = BB.Drafting.elevationSVG(ns2.spec, ns2.model, 'front', fmt);
+        const openN = (nsFront.match(/class="opening"/g) || []).length;
+        test('drafting', 'front elevation calls out each drawer opening',
+          openN === ns2.model.openings.length, openN, ns2.model.openings.length);
+
+        // A compound-rotated part projects as its convex-hull silhouette (6 corners).
+        const modelRot = {
+          bounds: { w: 600, d: 200, h: 700 },
+          parts: [{ id: 'b', name: 'Brace', role: 'rail', defKey: 'b', material: 'red_oak', size: { w: 500, h: 60, d: 30 }, pos: { x: 0, y: 350, z: 0 }, rot: { x: 30, y: 30, z: 0 } }],
+          openings: []
+        };
+        const rotSVG = BB.Drafting.elevationSVG(seed.spec, modelRot, 'front', fmt);
+        const poly = rotSVG.match(/<polygon points="([^"]+)"/);
+        const nPts = poly ? poly[1].trim().split(/\s+/).length : 0;
+        test('drafting', 'compound-rotated part renders as a 6-vertex hull polygon',
+          nPts === 6, nPts + ' vertices', '6 vertices');
+
+        // Drawing sheet: three views + title block, no unresolved CSS vars after print swap.
+        const sheet = BB.Exports.printSVG(BB.Drafting.sheetSVG(seed.spec, seed.model, fmt));
+        test('drafting', 'drawing sheet composes 3 elevations + title block, print-safe',
+          sheet.includes('FRONT ELEVATION') && sheet.includes('SIDE ELEVATION') && sheet.includes('PLAN ELEVATION') &&
+          sheet.includes('BLUEPRINT BUDDY') && !sheet.includes('var(--'),
+          'views + title block, vars swapped', 'views + title block, vars swapped');
+      } finally { BB.Units.set(savedU); }
+    }
+
+    /* ============ joint inspector geometry ============ */
+    {
+      const apron = { id: 'a', name: 'Apron', material: 'red_oak', size: { w: 600, h: 89, d: 19 } };
+      const leg = { id: 'l', name: 'Leg', material: 'red_oak', size: { w: 60, h: 700, d: 60 } };
+      const shelf = { id: 's', name: 'Shelf', material: 'red_oak', size: { w: 800, h: 19, d: 280 } };
+      const side = { id: 'c', name: 'Side', material: 'baltic_birch', size: { w: 18, h: 900, d: 280 } };
+      const dSide = { id: 'ds', name: 'Drawer side', material: 'baltic_birch', size: { w: 400, h: 120, d: 12 } };
+      const dFront = { id: 'df', name: 'Drawer front', material: 'red_oak', size: { w: 450, h: 120, d: 19 } };
+      const membersFor = t => {
+        const kind = K.JOINERY[t].kinds[0];
+        return kind === 'frame' ? [apron, leg] : kind === 'case' ? [shelf, side] : [dSide, dFront];
+      };
+
+      // Every joint type builds: pieces with positive volume, both members
+      // represented, a unit-length insert axis, and at least one sizing rule.
+      let bad = null;
+      for (const t of Object.keys(K.JOINERY)) {
+        const [ma, mb] = membersFor(t);
+        const d = BB.Joinery3D.buildJoint(t, ma, mb, v => v + 'mm');
+        const volOK = d.pieces.every(p =>
+          p.kind === 'cuboid' ? p.e.every(e => e > 0)
+            : p.kind === 'cylinder' ? p.r > 0 && p.len > 0
+              : p.profile.length >= 3 && p.depth > 0);
+        const members = new Set(d.pieces.map(p => p.member));
+        const axisLen = Math.hypot(...d.insertAxis);
+        if (!volOK || !members.has('a') || !members.has('b') || Math.abs(axisLen - 1) > 1e-9 || !d.labels.length) {
+          bad = `${t}: vol ${volOK}, members ${[...members]}, axis ${axisLen}`;
+          break;
+        }
+      }
+      test('joints3d', 'all 8 joint builders return sound geometry (volumes, members, axis, rules)', !bad, bad || 'all sound', 'all sound');
+
+      // Mortise & tenon: tenon = ⅓ stock, fits the pocket exactly, 30 mm deep.
+      const mt = BB.Joinery3D.buildJoint('mortise_tenon', apron, leg, v => v + 'mm');
+      const tenon = mt.pieces.filter(p => p.member === 'a').sort((x, y) => x.e[0] * x.e[1] * x.e[2] - y.e[0] * y.e[1] * y.e[2])[0];
+      const pocketBack = mt.pieces.filter(p => p.member === 'b').sort((x, y) => x.e[0] - y.e[0])[0];
+      test('joints3d', 'tenon is ⅓ of stock thickness and 30 mm long',
+        Math.abs(tenon.e[2] * 2 - 19 / 3) < 0.01 && Math.abs(tenon.e[0] * 2 - 30) < 0.01,
+        `${(tenon.e[2] * 2).toFixed(2)} thick × ${(tenon.e[0] * 2).toFixed(1)} long`, `${(19 / 3).toFixed(2)} × 30`);
+      test('joints3d', 'mortise pocket matches the tenon section',
+        Math.abs(pocketBack.e[1] - tenon.e[1]) < 0.01 && Math.abs(pocketBack.e[2] - tenon.e[2]) < 0.01,
+        `pocket ${(pocketBack.e[1] * 2).toFixed(1)}×${(pocketBack.e[2] * 2).toFixed(2)}`, `tenon ${(tenon.e[1] * 2).toFixed(1)}×${(tenon.e[2] * 2).toFixed(2)}`);
+
+      // Dado: groove depth = ⅓ housing thickness; the shelf rides in it.
+      const dd = BB.Joinery3D.buildJoint('dado', shelf, side, v => v + 'mm');
+      const floorPiece = dd.pieces.filter(p => p.member === 'b').sort((a, b) => a.e[0] - b.e[0])[0];
+      test('joints3d', 'dado floor strip depth complements the ⅓ groove',
+        Math.abs(floorPiece.e[0] * 2 - (18 - 18 / 3)) < 0.01,
+        (floorPiece.e[0] * 2).toFixed(2), (18 - 18 / 3).toFixed(2));
+      test('joints3d', 'dado assembles along the groove (Z), not the face',
+        dd.insertAxis[2] === 1 && dd.insertAxis[0] === 0, dd.insertAxis.join(','), '0,0,1');
+
+      // Dovetail: 1:8 flare — flank angle ≈ 7.13°, tails slide along Z.
+      const dt = BB.Joinery3D.buildJoint('half_blind_dovetail', dSide, dFront, v => v + 'mm');
+      const tail = dt.pieces.find(p => p.kind === 'prism' && p.member === 'a');
+      const [p0, p1, p2] = [tail.profile[0], tail.profile[1], tail.profile[2]];
+      void p1;
+      const flank = Math.atan(Math.abs(p2[1] - tail.profile[1][1]) / Math.abs(p2[0] - tail.profile[1][0])) * 180 / Math.PI;
+      void p0;
+      test('joints3d', 'dovetail flank follows the 1:8 rule (≈7.1°, within 7–14°)',
+        flank >= 6.9 && flank <= 14, flank.toFixed(2) + '°', '7.13°');
+      test('joints3d', 'dovetail assembles along the side face normal (Z)', dt.insertAxis[2] === 1, dt.insertAxis.join(','), '0,0,1');
     }
 
     return results;
@@ -7548,15 +8717,396 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.SelfTest = { run, V3_FIXTURE, bigComposition, deepEqual, firstDiff };
 })();
 </script>
+<script>/* Blueprint Buddy — parametric joint geometry (Phase 5 Joint Inspector).
+ * Pure data, no THREE: buildJoint(type, partA, partB, fmt) returns close-up
+ * geometry for one joint of the design, sized from the REAL parts —
+ * `a` is the inserted member and `b` the housing member, matching
+ * model.joints. All sizing rules are code-owned and mirror the cut-list
+ * doctrine (tenon = ⅓ stock and 30 mm long per JOINT_ALLOWANCE, dado depth
+ * = ⅓ housing thickness, dovetail flare 1:8, pocket holes 15°).
+ *
+ * Output, in joint-local millimetres (interface plane at x = 0, member A
+ * entering from +X, vertical = Y):
+ *   { pieces: [ {member:'a'|'b'|'fastener', kind:'cuboid', c:[x,y,z], e:[hx,hy,hz]}
+ *             | {member, kind:'cylinder', c, axis:[x,y,z], r, len}
+ *             | {member, kind:'prism', profile:[[x,y]…] (convex, CCW), z0, depth} ],
+ *     insertAxis: [x,y,z],   // member A slides along this to explode
+ *     labels: [string…],     // sizing rules, dimensions via fmt
+ *     title: string }
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  /* Cross-section of a part: thickness = smallest dimension, width = middle. */
+  function section(part) {
+    const d = [part.size.w, part.size.h, part.size.d].sort((x, y) => x - y);
+    return { t: d[0], w: d[1] };
+  }
+  const cub = (member, x0, x1, y0, y1, z0, z1) => ({
+    member, kind: 'cuboid',
+    c: [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2],
+    e: [(x1 - x0) / 2, (y1 - y0) / 2, (z1 - z0) / 2]
+  });
+  const cyl = (member, c, axis, r, len) => ({ member, kind: 'cylinder', c, axis, r, len });
+
+  function buildJoint(type, partA, partB, fmt) {
+    fmt = fmt || (v => Math.round(v) + ' mm');
+    const A = section(partA), B = section(partB);
+    const tA = A.t, wA = A.w, tB = B.t, wB = B.w;
+    const LA = clamp(tA * 3.5, 90, 170);   // stub of the inserted member
+    const LB = clamp(wA * 1.8, 140, 260);  // stub of the housing member
+    const pieces = [], labels = [];
+    let insertAxis = [1, 0, 0];
+    const J = BB.K.JOINERY[type];
+    const title = (J ? J.label : type) + ' — ' + (partA.name || partA.id) + ' → ' + (partB.name || partB.id);
+
+    if (type === 'butt_screws' || type === 'pocket_screws' || type === 'dowels') {
+      // Butt family: A's end meets B's face at x = 0.
+      const dB = Math.min(tB * 2, wB); // housing depth along the insert
+      pieces.push(cub('b', -dB, 0, -LB / 2, LB / 2, -wB / 2, wB / 2));
+      pieces.push(cub('a', 0, LA, -wA / 2, wA / 2, -tA / 2, tA / 2));
+      if (type === 'butt_screws') {
+        for (const s of [-1, 1]) {
+          pieces.push(cyl('fastener', [-dB / 2 + 12, s * wA / 4, 0], [1, 0, 0], 2.2, dB + 24));
+        }
+        labels.push('Screws drive through the housing into the end — pilot-drill both.');
+      } else if (type === 'pocket_screws') {
+        const c15 = Math.cos(15 * Math.PI / 180), s15 = Math.sin(15 * Math.PI / 180);
+        for (const s of [-1, 1]) {
+          pieces.push(cyl('fastener', [16, s * wA / 4, -tA / 2 + 9], [-c15, 0, s15], 2.4, 52));
+        }
+        labels.push('Pockets bored at 15° from the hidden face; screws bite the housing.');
+      } else {
+        for (const s of [-1, 1]) {
+          pieces.push(cyl('fastener', [0, s * wA / 4, 0], [1, 0, 0], 4, 40));
+        }
+        labels.push(`${fmt(8)} × ${fmt(40)} fluted dowels — half in each member, glued.`);
+      }
+    } else if (type === 'dado') {
+      // Housing panel B (thickness tB along X); shelf A rides a groove
+      // ⅓ tB deep, cut across the inner face. Slides in along Z.
+      const depth = tB / 3, zSpan = clamp(wB, 120, 240) / 2;
+      pieces.push(cub('b', -tB, 0, -LB / 2, -tA / 2, -zSpan, zSpan));
+      pieces.push(cub('b', -tB, 0, tA / 2, LB / 2, -zSpan, zSpan));
+      pieces.push(cub('b', -tB, -depth, -tA / 2, tA / 2, -zSpan, zSpan));
+      pieces.push(cub('a', -depth, LA, -tA / 2, tA / 2, -zSpan, zSpan));
+      insertAxis = [0, 0, 1];
+      labels.push(`Groove ${fmt(depth)} deep (⅓ of the ${fmt(tB)} side) × ${fmt(tA)} wide — cut to the measured shelf thickness.`);
+    } else if (type === 'rabbet') {
+      // Housing B rabbeted along its top edge (y = 0); panel A drops in.
+      const depth = tA, wall = tB / 2, zSpan = clamp(wB, 120, 240) / 2;
+      pieces.push(cub('b', -tB / 2, tB / 2, -LB, -depth, -zSpan, zSpan));
+      pieces.push(cub('b', 0, tB / 2, -depth, 0, -zSpan, zSpan));
+      pieces.push(cub('a', -LA, 0, -depth, 0, -zSpan, zSpan));
+      insertAxis = [-1, 0, 0];
+      labels.push(`Rabbet ${fmt(depth)} × ${fmt(wall)} — keep the wall at least half the ${fmt(tB)} stock.`);
+    } else if (type === 'locking_rabbet') {
+      // Drawer corner: front A (thickness along X), side B (thickness along
+      // Z). The side's tongue locks into a dado in the front's back half.
+      const tF = tA, tS = tB, h = clamp(wA, 80, 140);
+      const LF = clamp(tS * 4, 90, 150), LS = clamp(tF * 5, 110, 170);
+      pieces.push(cub('a', -tF, -tF / 2, -h / 2, h / 2, -LF, tS));
+      pieces.push(cub('a', -tF / 2, 0, -h / 2, h / 2, -LF, tS / 3));
+      pieces.push(cub('a', -tF / 2, 0, -h / 2, h / 2, 2 * tS / 3, tS));
+      pieces.push(cub('b', 0, LS, -h / 2, h / 2, 0, tS));
+      pieces.push(cub('b', -tF / 2, 0, -h / 2, h / 2, tS / 3, 2 * tS / 3));
+      insertAxis = [1, 0, 0];
+      labels.push(`Tongue ${fmt(tS / 3)} thick × ${fmt(tF / 2)} long locks into the front — sneak up on a hand-pressed fit.`);
+    } else if (type === 'mortise_tenon') {
+      // Leg B with a blind mortise; apron A's tenon = ⅓ stock, 30 mm long.
+      const tT = tA / 3, depth = 30, shoulder = clamp(wA * 0.12, 8, 16);
+      const wT = wA - 2 * shoulder;
+      const dB = Math.min(tB * 2, Math.max(tB, depth + 15));
+      pieces.push(cub('b', -dB, 0, -LB / 2, LB / 2, -wB / 2, -tT / 2));
+      pieces.push(cub('b', -dB, 0, -LB / 2, LB / 2, tT / 2, wB / 2));
+      pieces.push(cub('b', -dB, 0, wT / 2, LB / 2, -tT / 2, tT / 2));
+      pieces.push(cub('b', -dB, 0, -LB / 2, -wT / 2, -tT / 2, tT / 2));
+      pieces.push(cub('b', -dB, -depth, -wT / 2, wT / 2, -tT / 2, tT / 2));
+      pieces.push(cub('a', 0, LA, -wA / 2, wA / 2, -tA / 2, tA / 2));
+      pieces.push(cub('a', -depth, 0, -wT / 2, wT / 2, -tT / 2, tT / 2));
+      labels.push(`Tenon ${fmt(tT)} (⅓ of ${fmt(tA)} stock) × ${fmt(wT)} wide × ${fmt(depth)} long; ${fmt(shoulder)} shoulders.`);
+      labels.push('Aim for a firm hand-press fit — a mallet-tight tenon splits the mortise cheek.');
+    } else if (type === 'half_blind_dovetail') {
+      // Drawer side A: tails on its end; front B keeps a ⅓ lap so nothing
+      // shows from the face. Tails slide in along Z (the side's face normal).
+      const tS = tA, tF = Math.max(tB, 16), h = clamp(wA, 90, 150);
+      const lap = tF / 3, sock = tF - lap; // socket depth into the front
+      const LS = clamp(tS * 6, 110, 170);
+      const nTails = 3, flare = sock / 8; // 1:8
+      const pitch = h / (nTails + 1);
+      pieces.push(cub('a', 0, LS, -h / 2, h / 2, 0, tS)); // side body
+      pieces.push(cub('b', -tF, -sock, -h / 2, h / 2, 0, tS)); // front lap slab
+      const boundaries = [-h / 2];
+      for (let i = 1; i <= nTails; i++) {
+        const yc = -h / 2 + i * pitch;
+        const wNarrow = pitch * 0.42;
+        // tail (member a): narrow at the shoulder (x=0), wide at the lap
+        pieces.push({
+          member: 'a', kind: 'prism', z0: 0, depth: tS,
+          profile: [
+            [0, yc - wNarrow / 2], [0, yc + wNarrow / 2],
+            [-sock, yc + wNarrow / 2 + flare], [-sock, yc - wNarrow / 2 - flare]
+          ]
+        });
+        boundaries.push(yc - wNarrow / 2, yc + wNarrow / 2);
+      }
+      boundaries.push(h / 2);
+      // front pins fill the gaps between tails (complementary flare)
+      for (let i = 0; i < boundaries.length; i += 2) {
+        const y0 = boundaries[i], y1 = boundaries[i + 1];
+        if (y1 - y0 < 2) continue;
+        pieces.push({
+          member: 'b', kind: 'prism', z0: 0, depth: tS,
+          profile: [
+            [0, y0], [0, y1],
+            [-sock, y1 - (i > 0 ? flare : 0)], [-sock, y0 + (i < boundaries.length - 2 ? flare : 0)]
+          ]
+        });
+      }
+      insertAxis = [0, 0, 1];
+      labels.push(`${nTails} tails, 1:8 flare, sockets ${fmt(sock)} deep — a ${fmt(lap)} lap hides the joinery from the front.`);
+      labels.push('Chop the socket floors halfway from each side to avoid blow-out.');
+    } else {
+      // Unknown joint: honest fallback — two butted blocks, no fasteners.
+      pieces.push(cub('b', -tB, 0, -LB / 2, LB / 2, -wB / 2, wB / 2));
+      pieces.push(cub('a', 0, LA, -wA / 2, wA / 2, -tA / 2, tA / 2));
+    }
+
+    return { pieces, insertAxis, labels, title };
+  }
+
+  BB.Joinery3D = { buildJoint, section };
+})();
+</script>
+<script>/* Blueprint Buddy — Joint Inspector viewport (Phase 5).
+ * A transient THREE scene in the joint modal: builds real geometry from
+ * BB.Joinery3D piece data, species-tinted, with an assemble slider along the
+ * joint's insert axis and a cutaway section toggle (clipping plane).
+ *
+ * Lifecycle contract: the renderer is a lazy per-session singleton (contexts
+ * are expensive); geometries and materials are created per open() and
+ * disposed per close(). The render loop watches the scrim and self-disposes
+ * if the modal was closed by any path (Escape, backdrop, button).
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  let renderer = null, canvas = null;
+  let live = null; // { scene, camera, group, groupA, disposables, raf, cam, clip, spread }
+
+  function ensureRenderer() {
+    const THREE = globalThis.THREE;
+    if (renderer) return;
+    canvas = document.getElementById('jointCanvas');
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(2, globalThis.devicePixelRatio || 1));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.localClippingEnabled = true;
+  }
+
+  /* Convex profile prism (dovetail tails/pins): flat-shaded, non-indexed. */
+  function prismGeometry(THREE, profile, z0, depth) {
+    const n = profile.length;
+    const tris = [];
+    const at = (i, z) => [profile[i][0], profile[i][1], z];
+    for (let i = 1; i < n - 1; i++) { // front fan (+z)
+      tris.push(at(0, z0 + depth), at(i, z0 + depth), at(i + 1, z0 + depth));
+    }
+    for (let i = 1; i < n - 1; i++) { // back fan (reversed)
+      tris.push(at(0, z0), at(i + 1, z0), at(i, z0));
+    }
+    for (let i = 0; i < n; i++) {     // side quads
+      const j = (i + 1) % n;
+      tris.push(at(i, z0), at(j, z0), at(j, z0 + depth));
+      tris.push(at(i, z0), at(j, z0 + depth), at(i, z0 + depth));
+    }
+    const pos = new Float32Array(tris.flat());
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  }
+
+  function open(type, partA, partB, opts) {
+    const THREE = globalThis.THREE;
+    opts = opts || {};
+    ensureRenderer();
+    close(); // dispose any previous scene
+
+    const fmt = opts.fmt || (v => Math.round(v) + ' mm');
+    const data = BB.Joinery3D.buildJoint(type, partA, partB, fmt);
+
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xfff6e8, 0x8a7a66, 1.0));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+    sun.position.set(300, 500, 400);
+    scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.4);
+    fill.position.set(-400, 200, -300);
+    scene.add(fill);
+
+    const camera = new THREE.PerspectiveCamera(38, 1, 1, 10000);
+    const disposables = [];
+    const clip = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
+
+    // Species-tinted member materials: inserted member reads lighter than
+    // the housing so the mechanism is legible; fasteners are steel.
+    const toneOf = p => (BB.K.WOOD_SPECIES[p.material] || {}).tone || 0xb98d62;
+    const roughOf = p => (BB.K.WOOD_SPECIES[p.material] || {}).rough || 0.7;
+    const mats = {
+      a: new THREE.MeshStandardMaterial({ color: new THREE.Color(toneOf(partA)).multiplyScalar(1.08), roughness: roughOf(partA), metalness: 0.02, side: THREE.DoubleSide }),
+      b: new THREE.MeshStandardMaterial({ color: new THREE.Color(toneOf(partB)).multiplyScalar(0.82), roughness: roughOf(partB), metalness: 0.02, side: THREE.DoubleSide }),
+      fastener: new THREE.MeshStandardMaterial({ color: 0x8a8a90, roughness: 0.35, metalness: 0.6, side: THREE.DoubleSide })
+    };
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.34 });
+    disposables.push(mats.a, mats.b, mats.fastener, edgeMat);
+
+    const group = new THREE.Group();   // whole joint
+    const groupA = new THREE.Group();  // inserted member — the explode rider
+    group.add(groupA);
+    scene.add(group);
+
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const piece of data.pieces) {
+      let geo;
+      if (piece.kind === 'cuboid') {
+        geo = new THREE.BoxGeometry(piece.e[0] * 2, piece.e[1] * 2, piece.e[2] * 2);
+      } else if (piece.kind === 'cylinder') {
+        geo = new THREE.CylinderGeometry(piece.r, piece.r, piece.len, 16);
+      } else {
+        geo = prismGeometry(THREE, piece.profile, piece.z0, piece.depth);
+      }
+      const mesh = new THREE.Mesh(geo, mats[piece.member] || mats.a);
+      if (piece.kind === 'cuboid') mesh.position.set(piece.c[0], piece.c[1], piece.c[2]);
+      if (piece.kind === 'cylinder') {
+        mesh.position.set(piece.c[0], piece.c[1], piece.c[2]);
+        mesh.quaternion.setFromUnitVectors(up, new THREE.Vector3(...piece.axis).normalize());
+      }
+      const edgeGeo = new THREE.EdgesGeometry(geo, 25);
+      mesh.add(new THREE.LineSegments(edgeGeo, edgeMat));
+      disposables.push(geo, edgeGeo);
+      (piece.member === 'a' ? groupA : group).add(mesh);
+    }
+
+    // Frame the joint; section plane sits at the scene's z-center.
+    const box = new THREE.Box3().setFromObject(group);
+    const center = box.getCenter(new THREE.Vector3());
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    clip.constant = center.z;
+    const cam = {
+      theta: 0.7, phi: 1.15,
+      dist: sphere.radius / Math.tan(19 * Math.PI / 180) * 1.25,
+      goalTheta: 0.7, goalPhi: 1.15, goalDist: 0
+    };
+    cam.goalDist = cam.dist;
+    const spread = Math.max(60, sphere.radius * 0.9);
+
+    live = {
+      scene, camera, group, groupA, disposables, raf: 0, cam, clip, center,
+      insertAxis: data.insertAxis, spread, explodeT: 0, cutaway: false,
+      reduced: !!opts.reducedMotion
+    };
+
+    const scrim = document.getElementById('jointScrim');
+    const clock = new THREE.Clock();
+    function tick() {
+      if (!live) return;
+      if (!scrim.classList.contains('open')) { close(); return; } // self-dispose
+      live.raf = requestAnimationFrame(tick);
+      const dt = Math.min(0.05, clock.getDelta());
+      const k = live.reduced ? 1 : 1 - Math.exp(-dt * 9);
+      const c = live.cam;
+      c.theta += (c.goalTheta - c.theta) * k;
+      c.phi += (c.goalPhi - c.phi) * k;
+      c.dist += (c.goalDist - c.dist) * k;
+      camera.position.set(
+        center.x + c.dist * Math.sin(c.phi) * Math.sin(c.theta),
+        center.y + c.dist * Math.cos(c.phi),
+        center.z + c.dist * Math.sin(c.phi) * Math.cos(c.theta));
+      camera.lookAt(center);
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (w && h) {
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+      const off = live.explodeT * live.spread;
+      groupA.position.set(data.insertAxis[0] * off, data.insertAxis[1] * off, data.insertAxis[2] * off);
+      renderer.render(scene, camera);
+    }
+    tick();
+    return data; // title + labels for the caption
+  }
+
+  /* Pointer orbit + wheel zoom on the joint canvas (bound once). */
+  let bound = false;
+  function bindControls() {
+    if (bound) return;
+    bound = true;
+    const c = document.getElementById('jointCanvas');
+    let drag = null;
+    c.addEventListener('pointerdown', e => { c.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY }; });
+    c.addEventListener('pointermove', e => {
+      if (!drag || !live) return;
+      live.cam.goalTheta -= (e.clientX - drag.x) * 0.0055;
+      live.cam.goalPhi = Math.max(0.15, Math.min(1.5, live.cam.goalPhi - (e.clientY - drag.y) * 0.0045));
+      drag = { x: e.clientX, y: e.clientY };
+    });
+    c.addEventListener('pointerup', () => { drag = null; });
+    c.addEventListener('pointercancel', () => { drag = null; });
+    c.addEventListener('wheel', e => {
+      if (!live) return;
+      e.preventDefault();
+      live.cam.goalDist = Math.max(80, Math.min(4000, live.cam.goalDist * (1 + e.deltaY * 0.0011)));
+    }, { passive: false });
+  }
+
+  function setExplode(t) { if (live) live.explodeT = Math.max(0, Math.min(1, t)); }
+  function setCutaway(on) {
+    if (!live) return;
+    live.cutaway = !!on;
+    const planes = on ? [live.clip] : [];
+    live.scene.traverse(o => {
+      if (o.isMesh && o.material) o.material.clippingPlanes = planes;
+    });
+  }
+  function setReducedMotion(v) { if (live) live.reduced = !!v; }
+
+  function close() {
+    if (!live) return;
+    cancelAnimationFrame(live.raf);
+    for (const d of live.disposables) d.dispose();
+    live = null;
+  }
+
+  BB.JointView = { open, close, setExplode, setCutaway, setReducedMotion, bindControls, _live: () => live };
+})();
+</script>
 <script>/* Blueprint Buddy — 3D engine (THREE r152, global build).
  *
  * Memory contract (Phase 1 item, re-verified in Phase 2): every part mesh
- * shares ONE unit BoxGeometry and ONE unit EdgesGeometry, scaled per part, so
+ * shares one unit geometry per (primitive, grain axis) — three UV-variant
+ * unit boxes plus one unit cylinder, allocated once — scaled per part, so
  * scene rebuilds allocate no geometry. Materials live in a bounded pool keyed
- * by (material, role, bucket) and are disposed on hard teardown. The only
- * per-rebuild GPU allocations are dimension-label textures, which are disposed
- * whenever annotations rebuild. `engine.stats()` exposes renderer.info for the
- * leak check.
+ * by (material, role, bucket, textured) and are disposed on hard teardown.
+ * Wood textures are pooled per species in BB.Materials (app lifetime, shared
+ * across engine instances). The only per-rebuild GPU allocations are
+ * dimension-label textures, which are disposed whenever annotations rebuild.
+ * `engine.stats()` exposes renderer.info for the leak check.
+ *
+ * Render pipeline (Phase 5): ACES tone mapping, a procedural PMREM studio
+ * environment (regenerated per theme, old target disposed), and one PCFSoft
+ * sun shadow onto a ShadowMaterial plane so parts stay grounded mid-flight
+ * during explode/playback. The flat quality tier trades both for a painted
+ * contact blob. Background stays transparent — the page's --paper shows
+ * through in every mode.
  *
  * Motion: one damped-lerp family drives everything — part positions, scales,
  * drawer travel, explosion, camera. Reduced motion snaps all of it.
@@ -7580,52 +9130,159 @@ var BB = globalThis.BB = globalThis.BB || {};
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, globalThis.devicePixelRatio || 1));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(42, 1, 10, 30000);
+    /* Drafting projection: one orthographic camera rides the same spherical
+     * rig — camCur.dist maps to frustum half-height so perspective↔ortho
+     * switches are visually seamless and wheel-zoom keeps working. */
+    const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, -50000, 50000);
+    let activeCamera = camera;
+    let viewAspect = 1;
+    const ORTHO_K = Math.tan((42 / 2) * Math.PI / 180); // fov/2 → dist·k = half-height
 
-    scene.add(new THREE.HemisphereLight(0xfff6e8, 0x9a8a76, 1.05));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    /* Everything a theme touches in-scene, in one table. Wood stays wood in
+     * both themes; what changes is ink, labels, bounce light, and shadows. */
+    const THEMES = {
+      light: {
+        edge: 0x2a2018, edgeSel: 0x2f7fae, dim: 0x7a614a,
+        hemiSky: 0xfff6e8, hemiGround: 0x9a8a76, hemiI: 0.8, sunI: 1.25, fillI: 0.45, shadowOp: 0.2,
+        label: { bg: 'rgba(250,247,242,0.92)', stroke: 'rgba(90,70,50,0.35)', ink: '#4a3826' }
+      },
+      dark: {
+        edge: 0xefe2cc, edgeSel: 0x6fb0d6, dim: 0xcbb695,
+        hemiSky: 0xcabfa8, hemiGround: 0x2e2921, hemiI: 0.7, sunI: 1.1, fillI: 0.35, shadowOp: 0.3,
+        label: { bg: 'rgba(30,26,20,0.92)', stroke: 'rgba(210,190,160,0.35)', ink: '#ede5d6' }
+      }
+    };
+
+    /* Blueprint-mode palette: technical-drawing fills and ink per theme.
+     * Light = ink-on-paper machinist blue; dark = true cyanotype. */
+    const DRAFT = {
+      light: {
+        fill: 0xfdfcf7, ink: 0x1b5d82, dim: 0x14486a,
+        label: { bg: 'rgba(253,252,247,0.95)', stroke: 'rgba(27,93,130,0.45)', ink: '#14486a' }
+      },
+      dark: {
+        fill: 0x143850, ink: 0xd9e8f4, dim: 0xa8cce4,
+        label: { bg: 'rgba(16,45,66,0.95)', stroke: 'rgba(168,204,228,0.45)', ink: '#dbe9f4' }
+      }
+    };
+
+    const hemi = new THREE.HemisphereLight(0xfff6e8, 0x9a8a76, 0.85);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.35);
     sun.position.set(1400, 2200, 1600);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.5);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.45);
     fill.position.set(-1600, 800, -1200);
     scene.add(fill);
 
-    // Ground: faint disc + grid.
+    // Ground: contact blob (flat tier) or shadow plane (default), plus grid.
     const groundGroup = new THREE.Group();
     const discGeo = new THREE.CircleGeometry(1, 64);
-    const discMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.05 });
+    const blobTex = new THREE.CanvasTexture(BB.Materials.blobCanvas());
+    const discMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false });
     const disc = new THREE.Mesh(discGeo, discMat);
     disc.rotation.x = -Math.PI / 2;
     groundGroup.add(disc);
+    const shadowGeo = new THREE.PlaneGeometry(1, 1);
+    const shadowMat = new THREE.ShadowMaterial({ opacity: 0.16 });
+    const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
+    shadowPlane.rotation.x = -Math.PI / 2;
+    shadowPlane.position.y = 1; // above the grid lines, under everything else
+    shadowPlane.receiveShadow = true;
+    groundGroup.add(shadowPlane);
     const grid = new THREE.GridHelper(1, 10, 0x8a7a66, 0x8a7a66);
     grid.material.transparent = true; grid.material.opacity = 0.12;
     groundGroup.add(grid);
     scene.add(groundGroup);
 
-    // Shared geometry — the whole memory story. Cylinders (novel-grammar
-    // primitive) share one unit cylinder the same way boxes share one unit box.
-    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    /* Procedural studio environment: tiny equirect canvas → PMREM. Regenerated
+     * on theme switch; the previous render target is disposed first. */
+    let envRT = null;
+    function applyEnvironment(theme) {
+      const pm = new THREE.PMREMGenerator(renderer);
+      const tex = new THREE.CanvasTexture(BB.Materials.envCanvas(theme));
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const rt = pm.fromEquirectangular(tex);
+      tex.dispose();
+      pm.dispose();
+      if (envRT) envRT.dispose();
+      envRT = rt;
+      scene.environment = rt.texture;
+    }
+
+    /* Shared geometry — the whole memory story. Three unit boxes with
+     * pre-rotated UVs (texture V along local X, Y, or Z) let grain follow
+     * each part's long axis while every part still shares geometry; cylinders
+     * (novel-grammar primitive) share one unit cylinder the same way. */
+    function makeGrainBox(axis) {
+      const g = new THREE.BoxGeometry(1, 1, 1);
+      const pos = g.attributes.position, uv = g.attributes.uv, nrm = g.attributes.normal;
+      for (let i = 0; i < pos.count; i++) {
+        const p = { x: pos.getX(i) + 0.5, y: pos.getY(i) + 0.5, z: pos.getZ(i) + 0.5 };
+        const nAxis = Math.abs(nrm.getX(i)) > 0.5 ? 'x' : Math.abs(nrm.getY(i)) > 0.5 ? 'y' : 'z';
+        if (nAxis === axis) {
+          // End-grain face: any consistent mapping; side grain reads fine here.
+          const t = axis === 'x' ? ['y', 'z'] : axis === 'y' ? ['x', 'z'] : ['x', 'y'];
+          uv.setXY(i, p[t[0]], p[t[1]]);
+        } else {
+          const other = axis !== 'x' && nAxis !== 'x' ? 'x' : axis !== 'y' && nAxis !== 'y' ? 'y' : 'z';
+          uv.setXY(i, p[other], p[axis]); // V runs along the grain axis
+        }
+      }
+      return g;
+    }
+    const unitBoxes = { x: makeGrainBox('x'), y: makeGrainBox('y'), z: makeGrainBox('z') };
+    const unitBox = unitBoxes.y;
     const unitEdges = new THREE.EdgesGeometry(unitBox);
     const unitCyl = new THREE.CylinderGeometry(0.5, 0.5, 1, 24);
     const unitCylEdges = new THREE.EdgesGeometry(unitCyl, 30);
     const DEG = Math.PI / 180;
 
-    // Bounded material pool.
+    /* Grain axis for a part: along its stated grain if the model says so,
+     * else along the longest dimension — the same rule the cut list uses. */
+    function grainAxis(part) {
+      const dims = [['x', part.size.w], ['y', part.size.h], ['z', part.size.d]].sort((a, b) => b[1] - a[1]);
+      return part.grain === 'width' ? dims[1][0] : dims[0][0];
+    }
+
+    /* Quality tiers: default is textured wood + real shadows; the flat tier
+     * (low-power devices, user choice) is solid tones + contact blob. */
+    const quality = { textured: true, shadows: true };
+    let curTheme = 'light';
+
+    // Bounded material pool. Textured wood gets the species grain map with a
+    // near-white tint (ROLE_SHADE still separates legs/tops/backs); flat mode
+    // keeps the original solid species tones.
     const matPool = new Map();
     function materialFor(matKey, role, bucket) {
-      const key = matKey + '|' + role + '|' + bucket;
+      const sp = BB.K.WOOD_SPECIES[matKey];
+      const textured = quality.textured && !!sp;
+      const key = matKey + '|' + role + '|' + bucket + (textured ? '|t' : '');
       if (matPool.has(key)) return matPool.get(key);
       let tone = 0xb98d62, rough = 0.7;
       if (matKey === 'hardware') { tone = 0x46464a; rough = 0.35; }
-      else if (BB.K.WOOD_SPECIES[matKey]) { tone = BB.K.WOOD_SPECIES[matKey].tone; rough = BB.K.WOOD_SPECIES[matKey].rough; }
-      const c = new THREE.Color(tone).multiplyScalar(ROLE_SHADE[role] || 1);
+      else if (sp) { tone = sp.tone; rough = sp.rough; }
+      const shadeF = ROLE_SHADE[role] || 1;
+      const c = textured
+        ? new THREE.Color(1, 1, 1).multiplyScalar(0.55 + 0.45 * shadeF)
+        : new THREE.Color(tone).multiplyScalar(shadeF);
       const opacity = BUCKETS[bucket] !== undefined ? BUCKETS[bucket] : 1;
       const m = new THREE.MeshStandardMaterial({
         color: c, roughness: rough, metalness: matKey === 'hardware' ? 0.6 : 0.02,
         transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
       });
+      if (textured) m.map = BB.Materials.woodTexture(THREE, matKey);
+      m.envMapIntensity = matKey === 'hardware' ? 0.9 : 0.5;
       if (bucket === 'selected') { m.emissive = new THREE.Color(0x2f7fae); m.emissiveIntensity = 0.3; }
       matPool.set(key, m);
       return m;
@@ -7633,6 +9290,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.28 });
     const edgeMatFaint = new THREE.LineBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.05 });
     const selEdgeMat = new THREE.LineBasicMaterial({ color: 0x2f7fae, transparent: true, opacity: 0.95 });
+
+    /* Blueprint mode: flat paper fills — the existing per-mesh edge overlays
+     * become the ink lines, at full weight. Pooled per (bucket, theme). */
+    const draftMats = new Map();
+    const DRAFT_OPACITY = { solid: 0.96, selected: 0.96, dim: 0.4, ghost: 0.3, faint: 0.08, hidden: 0 };
+    function draftMaterialFor(bucket) {
+      const key = bucket + '|' + curTheme;
+      if (draftMats.has(key)) return draftMats.get(key);
+      const pal = DRAFT[curTheme];
+      const opacity = DRAFT_OPACITY[bucket] !== undefined ? DRAFT_OPACITY[bucket] : 0.96;
+      const c = new THREE.Color(bucket === 'selected' ? pal.ink : pal.fill);
+      if (bucket === 'selected') c.lerp(new THREE.Color(pal.fill), 0.75); // pale ink tint
+      const m = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity, depthWrite: opacity > 0.5 });
+      draftMats.set(key, m);
+      return m;
+    }
+    const draftEdge = new THREE.LineBasicMaterial({ color: 0x1b5d82, transparent: true, opacity: 0.9 });
+    const draftEdgeFaint = new THREE.LineBasicMaterial({ color: 0x1b5d82, transparent: true, opacity: 0.12 });
+    const draftSelEdge = new THREE.LineBasicMaterial({ color: 0x1b5d82, transparent: true, opacity: 1 });
 
     const partsGroup = new THREE.Group();
     scene.add(partsGroup);
@@ -7651,6 +9327,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       openDrawers: new Set(),
       selected: null, isolated: null,
       dimsVisible: false,
+      drafting: false,
       playback: null,         // {steps, index}
       reducedMotion: !!opts.reducedMotion,
       bounds: { w: 1500, d: 850, h: 750 },
@@ -7743,15 +9420,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const part of model.parts) {
         seen.add(part.id);
         const isCyl = part.prim === 'cylinder';
+        // Geometry choice is (primitive, grain axis) — all variants are the
+        // module-shared unit geometries, so swapping allocates nothing.
+        const geoKey = isCyl ? 'cyl' : grainAxis(part);
         let rec = E.meshes.get(part.id);
-        if (rec && rec.isCyl !== isCyl) { partsGroup.remove(rec.mesh); E.meshes.delete(part.id); rec = null; }
+        if (rec && rec.geoKey !== geoKey) {
+          rec.mesh.geometry = isCyl ? unitCyl : unitBoxes[geoKey];
+          rec.edge.geometry = isCyl ? unitCylEdges : unitEdges;
+          rec.geoKey = geoKey;
+        }
         if (!rec) {
-          const mesh = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'solid'));
+          const mesh = new THREE.Mesh(isCyl ? unitCyl : unitBoxes[geoKey], materialFor(part.material, part.role, 'solid'));
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
           const edge = new THREE.LineSegments(isCyl ? unitCylEdges : unitEdges, edgeMat);
           mesh.add(edge);
           mesh.userData.partId = part.id;
           partsGroup.add(mesh);
-          rec = { mesh, edge, part, bucket: 'solid', cur: null, isCyl };
+          rec = { mesh, edge, part, bucket: 'solid', cur: null, geoKey };
           E.meshes.set(part.id, rec);
         }
         rec.part = part;
@@ -7775,6 +9461,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       const maxDim = Math.max(model.bounds.w, model.bounds.d, model.bounds.h);
       disc.scale.setScalar(maxDim * 1.4);
       grid.scale.setScalar(maxDim * 2.6 / 1);
+      // Sun distance and shadow frustum track model size, sized once per
+      // model to cover the fully exploded pose (offsets reach ~0.95 × maxDim).
+      sun.position.set(1400, 2200, 1600).normalize().multiplyScalar(maxDim * 2.6);
+      const sc = sun.shadow.camera, ext = maxDim * 1.6;
+      sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
+      sc.near = maxDim * 0.4; sc.far = maxDim * 5.2;
+      sc.updateProjectionMatrix();
+      sun.shadow.normalBias = Math.max(1, maxDim * 0.002);
+      shadowPlane.scale.setScalar(maxDim * 4);
       camTarget.set(0, model.bounds.h * 0.45, 0);
       E.needsAnno = true;
       retargetAll();
@@ -7791,6 +9486,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           // cylinder, everything else the unit box, rotation applied X→Y→Z.
           const isCyl = part.prim === 'cylinder';
           const m = new THREE.Mesh(isCyl ? unitCyl : unitBox, materialFor(part.material, part.role, 'ghost'));
+          m.userData.part = part; // lets setQuality re-derive the material
           const r = part.rot || { x: 0, y: 0, z: 0 };
           m.rotation.set((r.x || 0) * DEG, (r.y || 0) * DEG, (r.z || 0) * DEG, 'ZYX');
           m.scale.set(part.size.w, part.size.h, part.size.d);
@@ -7802,6 +9498,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* ---------------- dimension annotations ---------------- */
     function makeLabel(text) {
+      const pal = (E.drafting ? DRAFT : THEMES)[curTheme].label;
       const c = document.createElement('canvas');
       const ctx = c.getContext('2d');
       const fs = 44;
@@ -7810,13 +9507,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       c.width = w; c.height = fs + 28;
       const ctx2 = c.getContext('2d');
       ctx2.font = `600 ${fs}px system-ui, sans-serif`;
-      ctx2.fillStyle = 'rgba(250,247,242,0.92)';
+      ctx2.fillStyle = pal.bg;
       const r = 14;
       ctx2.beginPath();
       ctx2.roundRect(0, 0, c.width, c.height, r);
       ctx2.fill();
-      ctx2.strokeStyle = 'rgba(90,70,50,0.35)'; ctx2.lineWidth = 2; ctx2.stroke();
-      ctx2.fillStyle = '#4a3826';
+      ctx2.strokeStyle = pal.stroke; ctx2.lineWidth = 2; ctx2.stroke();
+      ctx2.fillStyle = pal.ink;
       ctx2.textBaseline = 'middle'; ctx2.textAlign = 'center';
       ctx2.fillText(text, c.width / 2, c.height / 2 + 2);
       const tex = new THREE.CanvasTexture(c);
@@ -7829,15 +9526,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       return spr;
     }
     const dimLineMat = new THREE.LineBasicMaterial({ color: 0x7a614a, transparent: true, opacity: 0.85 });
+    const tickMat = new THREE.MeshBasicMaterial({ color: 0x7a614a });
+    const tickGeo = new THREE.SphereGeometry(1, 6, 6);
     function dimLine(a, b, label) {
       const g = new THREE.Group();
       const pts = [new THREE.Vector3(a.x, a.y, a.z), new THREE.Vector3(b.x, b.y, b.z)];
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       g.add(new THREE.Line(geo, dimLineMat));
-      // end ticks
+      // end ticks (shared geometry + shared themable material)
       for (const p of pts) {
-        const tickGeo = new THREE.SphereGeometry(1, 6, 6);
-        const tick = new THREE.Mesh(tickGeo, new THREE.MeshBasicMaterial({ color: 0x7a614a }));
+        const tick = new THREE.Mesh(tickGeo, tickMat);
         tick.position.copy(p);
         tick.scale.setScalar(Math.max(E.bounds.w, E.bounds.h) * 0.004 + 2);
         g.add(tick);
@@ -7848,10 +9546,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       return g;
     }
     function rebuildAnnotations() {
-      // Dispose every label texture + line geometry from the previous pass.
+      // Dispose every label texture, sprite material, + line geometry from
+      // the previous pass (tick geometry/material are shared — kept).
       annoGroup.traverse(o => {
-        if (o.geometry && o.geometry !== unitBox && o.geometry !== unitEdges) o.geometry.dispose();
-        if (o.material && o.material.map) { /* sprite mats disposed below */ }
+        if (o.geometry && o.geometry !== tickGeo) o.geometry.dispose();
+        if (o.isSprite && o.material) o.material.dispose();
       });
       while (annoGroup.children.length) annoGroup.remove(annoGroup.children[0]);
       for (const t of labelTextures.splice(0)) t.dispose();
@@ -7969,7 +9668,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1);
       const ray = new THREE.Raycaster();
-      ray.setFromCamera(ndc, camera);
+      ray.setFromCamera(ndc, activeCamera);
       const hits = ray.intersectObjects(partsGroup.children, false);
       for (const h of hits) {
         const rec = E.meshes.get(h.object.userData.partId);
@@ -8007,6 +9706,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     const clock = new THREE.Clock();
     let raf = 0;
     function lerpN(a, b, k) { return a + (b - a) * k; }
+    function placeCamera() {
+      camera.position.set(
+        camTarget.x + camCur.dist * Math.sin(camCur.phi) * Math.sin(camCur.theta),
+        camTarget.y + camCur.dist * Math.cos(camCur.phi),
+        camTarget.z + camCur.dist * Math.sin(camCur.phi) * Math.cos(camCur.theta));
+      camera.lookAt(camTarget);
+      if (activeCamera === ortho) {
+        ortho.position.copy(camera.position);
+        ortho.quaternion.copy(camera.quaternion);
+        const halfH = camCur.dist * ORTHO_K, halfW = halfH * viewAspect;
+        ortho.left = -halfW; ortho.right = halfW; ortho.top = halfH; ortho.bottom = -halfH;
+        ortho.updateProjectionMatrix();
+      }
+    }
     function tick() {
       if (E.disposed) return;
       raf = requestAnimationFrame(tick);
@@ -8023,9 +9736,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         rec.mesh.position.set(c.pos.x, c.pos.y, c.pos.z);
         rec.mesh.scale.set(Math.max(0.001, c.scale.x), Math.max(0.001, c.scale.y), Math.max(0.001, c.scale.z));
         const bucket = rec.part.id === E.selected && rec.bucket === 'solid' ? 'selected' : rec.bucket;
-        const want = materialFor(rec.part.material, rec.part.role, bucket);
+        const want = E.drafting ? draftMaterialFor(bucket) : materialFor(rec.part.material, rec.part.role, bucket);
         if (rec.mesh.material !== want) rec.mesh.material = want;
-        const wantEdge = bucket === 'selected' ? selEdgeMat : (BUCKETS[bucket] !== undefined && BUCKETS[bucket] < 0.2 ? edgeMatFaint : edgeMat);
+        const faintEdge = BUCKETS[bucket] !== undefined && BUCKETS[bucket] < 0.2;
+        const wantEdge = E.drafting
+          ? (bucket === 'selected' ? draftSelEdge : faintEdge ? draftEdgeFaint : draftEdge)
+          : (bucket === 'selected' ? selEdgeMat : faintEdge ? edgeMatFaint : edgeMat);
         if (rec.edge.material !== wantEdge) rec.edge.material = wantEdge;
         rec.mesh.visible = bucket !== 'hidden';
       }
@@ -8033,17 +9749,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       camCur.theta = lerpN(camCur.theta, camGoal.theta, kc);
       camCur.phi = lerpN(camCur.phi, camGoal.phi, kc);
       camCur.dist = lerpN(camCur.dist, camGoal.dist, kc);
-      camera.position.set(
-        camTarget.x + camCur.dist * Math.sin(camCur.phi) * Math.sin(camCur.theta),
-        camTarget.y + camCur.dist * Math.cos(camCur.phi),
-        camTarget.z + camCur.dist * Math.sin(camCur.phi) * Math.cos(camCur.theta));
-      camera.lookAt(camTarget);
+      placeCamera();
 
       const pulse = 1 + 0.22 * Math.sin(performance.now() * 0.005);
       for (const j of jointGroup.children) j.scale.setScalar(j.userData.base * (E.reducedMotion ? 1 : pulse));
 
       if (E.needsAnno) { E.needsAnno = false; rebuildAnnotations(); }
-      renderer.render(scene, camera);
+      renderer.render(scene, activeCamera);
     }
 
     function resize() {
@@ -8051,13 +9763,85 @@ var BB = globalThis.BB = globalThis.BB || {};
       const h = canvas.clientHeight || canvas.parentElement.clientHeight;
       if (!w || !h) return;
       renderer.setSize(w, h, false);
-      camera.aspect = w / h;
+      viewAspect = w / h;
+      camera.aspect = viewAspect;
       camera.updateProjectionMatrix();
     }
+
+    /* ---------------- theme & quality ---------------- */
+    /* Ink-family colors depend on (theme, drafting) together — one place. */
+    function applyInkColors() {
+      const th = THEMES[curTheme], dr = DRAFT[curTheme];
+      edgeMat.color.set(th.edge); edgeMatFaint.color.set(th.edge); selEdgeMat.color.set(th.edgeSel);
+      draftEdge.color.set(dr.ink); draftEdgeFaint.color.set(dr.ink); draftSelEdge.color.set(dr.ink);
+      const dim = E.drafting ? dr.dim : th.dim;
+      dimLineMat.color.set(dim); tickMat.color.set(dim);
+    }
+    function setTheme(mode) {
+      curTheme = THEMES[mode] ? mode : 'light';
+      const th = THEMES[curTheme];
+      applyInkColors();
+      hemi.color.set(th.hemiSky); hemi.groundColor.set(th.hemiGround); hemi.intensity = th.hemiI;
+      sun.intensity = th.sunI; fill.intensity = th.fillI;
+      shadowMat.opacity = th.shadowOp;
+      applyEnvironment(curTheme);
+      E.needsAnno = true; // labels repaint in the new palette
+    }
+    /* Blueprint mode: paper fills + full-weight ink edges, no ground/shadow —
+     * the interactive technical drawing. Lighting is irrelevant (MeshBasic). */
+    function setDrafting(on) {
+      E.drafting = !!on;
+      applyInkColors();
+      groundGroup.visible = !E.drafting;
+      sun.castShadow = E.drafting ? false : quality.shadows;
+      E.needsAnno = true;
+    }
+    function applyQuality() {
+      sun.castShadow = quality.shadows && !E.drafting;
+      shadowPlane.visible = quality.shadows;
+      disc.visible = !quality.shadows;
+      // Re-derive every pooled material so the texture mode flips at once —
+      // the pool is cleared, then live meshes get fresh materials directly
+      // (never a disposed one).
+      for (const m of matPool.values()) m.dispose();
+      matPool.clear();
+      for (const rec of E.meshes.values()) {
+        const bucket = rec.part.id === E.selected && rec.bucket === 'solid' ? 'selected' : rec.bucket;
+        rec.mesh.material = materialFor(rec.part.material, rec.part.role, bucket);
+      }
+      for (const g of ghostGroup.children) {
+        if (g.userData.part) g.material = materialFor(g.userData.part.material, g.userData.part.role, 'ghost');
+      }
+    }
+
+    /* Preset views ride the standing damped camera; front/side use an exactly
+     * horizontal phi and top looks straight down (offset avoids the up-vector
+     * degeneracy). Reduced motion snaps like every other camera move. */
+    const VIEWS = {
+      front: { theta: 0, phi: Math.PI / 2 },
+      side: { theta: Math.PI / 2, phi: Math.PI / 2 },
+      top: { theta: 0, phi: 0.02 },
+      iso: { theta: 0.72, phi: 1.13 }
+    };
 
     /* ---------------- public API ---------------- */
     const api = {
       setModel, setGhost, frame, resize,
+      setTheme,
+      setQuality(q) { Object.assign(quality, q || {}); applyQuality(); },
+      setDrafting,
+      getDrafting() { return E.drafting; },
+      setProjection(mode) {
+        activeCamera = mode === 'ortho' ? ortho : camera;
+        placeCamera();
+      },
+      getProjection() { return activeCamera === ortho ? 'ortho' : 'persp'; },
+      setView(name) {
+        const v = VIEWS[name];
+        if (!v) return;
+        camGoal.theta = v.theta; camGoal.phi = v.phi;
+        if (E.reducedMotion) { Object.assign(camCur, camGoal); placeCamera(); }
+      },
       setExplode(t) { E.explodeT = Math.max(0, Math.min(1, t)); retargetAll(); },
       getExplode() { return E.explodeT; },
       toggleDrawer(i) {
@@ -8075,23 +9859,57 @@ var BB = globalThis.BB = globalThis.BB || {};
       setReducedMotion(v) { E.reducedMotion = !!v; },
       playbackEnter, playbackGoTo, playbackExit, playbackReplay,
       inPlayback() { return !!E.playback; },
+      /* One-shot hero: parts start from their fully exploded playback pose
+       * and the standing damped lerp flies them home while the camera sweeps
+       * in. Reduced motion makes k = 1 in the tick loop, i.e. an instant
+       * snap — no special case needed. */
+      heroAssemble() {
+        const spread = Math.max(E.bounds.w, E.bounds.d, E.bounds.h) * 0.45;
+        for (const rec of E.meshes.values()) {
+          const off = playbackStart(rec.part, spread);
+          rec.cur.pos = { x: rec.part.pos.x + off.x, y: rec.part.pos.y + off.y, z: rec.part.pos.z + off.z };
+        }
+        camCur.theta = camGoal.theta - 0.55;
+        camCur.dist = camGoal.dist * 1.3;
+      },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
       /* Synchronous render + return the canvas — thumbnails read pixels right
        * after this call (the drawing buffer is only valid in the same tick). */
-      renderNow() { renderer.render(scene, camera); return canvas; },
-      snapNow() { for (const rec of E.meshes.values()) { rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } }; } Object.assign(camCur, camGoal); },
+      renderNow() { renderer.render(scene, activeCamera); return canvas; },
+      /* Snap every damped value to its target AND apply the transforms right
+       * now — callers pair this with renderNow() synchronously (thumbnails),
+       * where no tick runs between the calls. */
+      snapNow() {
+        for (const rec of E.meshes.values()) {
+          rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } };
+          rec.mesh.position.set(rec.cur.pos.x, rec.cur.pos.y, rec.cur.pos.z);
+          rec.mesh.scale.set(Math.max(0.001, rec.cur.scale.x), Math.max(0.001, rec.cur.scale.y), Math.max(0.001, rec.cur.scale.z));
+        }
+        Object.assign(camCur, camGoal);
+        placeCamera();
+      },
       dispose() {
         E.disposed = true;
         cancelAnimationFrame(raf);
         for (const m of matPool.values()) m.dispose();
         matPool.clear();
-        unitBox.dispose(); unitEdges.dispose();
+        for (const g of Object.values(unitBoxes)) g.dispose();
+        unitEdges.dispose();
         unitCyl.dispose(); unitCylEdges.dispose();
-        discGeo.dispose(); jointGeo.dispose();
+        discGeo.dispose(); shadowGeo.dispose(); jointGeo.dispose(); tickGeo.dispose();
+        for (const m of [edgeMat, edgeMatFaint, selEdgeMat, draftEdge, draftEdgeFaint, draftSelEdge, dimLineMat, tickMat, discMat, shadowMat, jointMat]) m.dispose();
+        for (const m of draftMats.values()) m.dispose();
+        draftMats.clear();
+        blobTex.dispose();
+        if (envRT) envRT.dispose();
         for (const t of labelTextures.splice(0)) t.dispose();
+        // Deliberately NOT BB.Materials.disposeAll(): the species texture
+        // cache is app-lifetime and shared with other engine instances.
         renderer.dispose();
       }
     };
+    applyEnvironment(curTheme);
+    applyQuality();
     frame();
     Object.assign(camCur, camGoal);
     resize();
@@ -8148,6 +9966,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     speciesPick: []
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
+  const darkMq = matchMedia('(prefers-color-scheme: dark)');
 
   // ALL displayed lengths go through BB.Units — the single mm→text boundary.
   const fmt = mm => Units.fmtLength(mm);
@@ -8308,13 +10127,26 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
-   * the :root[data-theme] overrides. */
+   * the :root[data-theme] overrides. The 3D scene follows the same choice —
+   * engine.setTheme retunes ink lines, labels, bounce light, and regenerates
+   * the environment map. */
   function applyTheme(t) {
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
     else delete document.documentElement.dataset.theme;
     for (const [id, val] of [['themeAuto', 'auto'], ['themeLight', 'light'], ['themeDark', 'dark']]) {
       $(id).setAttribute('aria-pressed', String((t || 'auto') === val));
     }
+    const dark = t === 'dark' || (t !== 'light' && darkMq.matches);
+    if (state.engine) state.engine.setTheme(dark ? 'dark' : 'light');
+  }
+
+  /* Render quality rides prefs the same way; the flat tier is one switch for
+   * both textures and shadows (grain without grounding looks worse, not better). */
+  function applyRender() {
+    const textured = !state.prefs4.render || state.prefs4.render.textured !== false;
+    $('renderRich').setAttribute('aria-pressed', String(textured));
+    $('renderFlat').setAttribute('aria-pressed', String(!textured));
+    if (state.engine) state.engine.setQuality({ textured, shadows: textured });
   }
 
   /* ---------------- render: advisories ----------------
@@ -8335,7 +10167,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       chip.append(el('span', 'adv-icon', it.error ? '🛑' : '⚠️'));
       chip.append(el('span', '', esc(it.text)));
       if (!it.error) {
-        const x = el('button', 'dismiss', '✕');
+        const x = el('button', 'dismiss', BB.Icons.svg('close', 13));
         x.setAttribute('aria-label', 'Dismiss advisory');
         x.onclick = () => { state.dismissed.add(it.id); renderAdvisories(report); renderReadiness(); };
         chip.append(x);
@@ -8555,6 +10387,34 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(tot);
   }
 
+  /* ---------------- Joint Inspector (Phase 5) ----------------
+   * Opens the transient 3D close-up for one joint. From assembly steps it
+   * carries the REAL member parts; from the Shop Reference it demos the
+   * joint on typical members so every joint is learnable before it's used. */
+  const DEMO_MEMBERS = {
+    frame: [{ id: 'demo_apron', name: 'Apron' , size: { w: 600, h: 89, d: 19 } }, { id: 'demo_leg', name: 'Leg', size: { w: 60, h: 700, d: 60 } }],
+    case: [{ id: 'demo_shelf', name: 'Shelf', size: { w: 800, h: 19, d: 280 } }, { id: 'demo_side', name: 'Case side', size: { w: 18, h: 900, d: 280 } }],
+    box: [{ id: 'demo_side', name: 'Drawer side', size: { w: 400, h: 120, d: 12 } }, { id: 'demo_front', name: 'Drawer front', size: { w: 450, h: 120, d: 19 } }]
+  };
+  function openJointInspector(type, partA, partB) {
+    if (!partA || !partB) {
+      const kind = (K.JOINERY[type] && K.JOINERY[type].kinds[0]) || 'frame';
+      const demo = DEMO_MEMBERS[kind] || DEMO_MEMBERS.frame;
+      partA = { ...demo[0], material: state.spec.wood.species };
+      partB = { ...demo[1], material: state.spec.wood.species };
+    }
+    BB.JointView.bindControls();
+    openScrim('jointScrim'); // before open(): the viewer self-disposes when the scrim is closed
+    const data = BB.JointView.open(type, partA, partB, { fmt, reducedMotion: reduceMq.matches });
+    $('jointTitle').textContent = data.title;
+    const j = K.JOINERY[type];
+    $('jointNotes').innerHTML =
+      data.labels.map(l => `<p class="joint-rule">${esc(l)}</p>`).join('') +
+      (j ? `<p class="joint-know"><em>Watch for:</em> ${esc(j.failure)}<br><em>Tools:</em> ${esc(j.tools.join(', '))}</p>` : '');
+    $('jointExplode').value = 0;
+    $('jointCutaway').setAttribute('aria-pressed', 'false');
+  }
+
   function whyJointHTML(type) {
     const j = K.JOINERY[type];
     if (!j) return '';
@@ -8573,6 +10433,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       emptyState(root, 'No steps to walk yet.', 'Once a design has parts, assembly writes itself in build order.');
       return;
     }
+    // Shop-truth header: honest time estimate + the consolidated tool wall,
+    // both derived from the real plan (joints, cuts, glue-ups, finish).
+    const t = Plans.timeEstimate(state.spec, state.model, state.cut, state.steps, state.stockPlan);
+    const tools = Plans.toolList(state.spec, state.model, state.stockPlan);
+    const facts = el('div', 'shop-facts');
+    const wait = t.finishWait ? ` · finish: ${t.finishWait.coats} coats, recoat ${t.finishWait.recoatHrs} h, cure ${t.finishWait.cureDays} d` : '';
+    facts.innerHTML = `<div class="shop-time" title="${esc(t.breakdown.map(b => `${b.label} — ${b.min} min`).join('\n') + `\n× ${t.factor} ${state.spec.meta.level} pace`)}">
+        <strong>≈ ${t.hoursLow}–${t.hoursHigh} h</strong> bench time · ${t.sessions} session${t.sessions === 1 ? '' : 's'} of ~4 h${wait}</div>
+      <details class="tool-wall"><summary>Tools for this build (${tools.length})</summary><ul>${tools.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
+    root.append(facts);
     const list = el('ol', 'step-list');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
@@ -8582,7 +10452,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
       body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
         (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
-      const play = el('button', 'btn icon step-play', '▶');
+      if (jointType) {
+        const j0 = s.joints[0];
+        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) + '<span>Inspect joint in 3D</span>');
+        inspect.onclick = e => {
+          e.stopPropagation();
+          openJointInspector(jointType,
+            state.model.parts.find(p => p.id === j0.a),
+            state.model.parts.find(p => p.id === j0.b));
+        };
+        body.append(inspect);
+      }
+      const play = el('button', 'btn icon step-play', BB.Icons.svg('play', 15));
       play.setAttribute('aria-label', 'Play step ' + (i + 1));
       play.onclick = () => enterPlayback(i);
       item.append(num, body, play);
@@ -8737,9 +10618,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td>${esc(r.appliesTo.join(', '))}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
-      head = '<th>Joint</th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
+      head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
         <td><strong>${esc(j.label)}</strong></td>
+        <td><button type="button" class="btn small ghost joint-demo" data-joint="${esc(j.key)}" title="See this joint in 3D">${BB.Icons.svg('ruler', 13)} 3D</button></td>
         <td><span class="dots">${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span></td>
         <td><span class="dots">${'●'.repeat(j.difficulty)}${'○'.repeat(5 - j.difficulty)}</span></td>
         <td>${esc(j.level)}</td>
@@ -8770,6 +10652,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     scroll.innerHTML = `<table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
     body.append(scroll);
+    // Joinery rows carry a 3D demo button — the learning moment on demand.
+    scroll.querySelectorAll('.joint-demo').forEach(b => {
+      b.addEventListener('click', () => openJointInspector(b.dataset.joint));
+    });
   }
 
   /* ---------------- chat ---------------- */
@@ -9298,9 +11184,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     releaseFocus(s);
   }
 
+  const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
+  let galleryThumbs = null; // rendered thumbs, kept so every re-render gets them back
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
+    galleryCards.length = 0;
     for (const g of Gallery.STARTERS) {
       const r = runPipeline(g.spec);
       const card = el('button', 'gallery-card');
@@ -9316,10 +11205,72 @@ var BB = globalThis.BB = globalThis.BB || {};
         state.turns = [];
         commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
         state.engine.frame();
+        // First starter ever: the piece assembles itself once — the pipeline
+        // dramatized in one shot. Reduced motion snaps it (engine-side).
+        if (!state.prefs4.seenHero) {
+          state.prefs4.seenHero = true;
+          Store.savePrefs(state.prefs4);
+          state.engine.heroAssemble();
+        }
         botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
       };
       grid.append(card);
+      galleryCards.push({ card, model: r.model, spec: r.spec });
     }
+    // The grid rebuilds on every open; without this the idle pass's work
+    // would vanish after the first close (the new shell opens on demand).
+    if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
+  }
+
+  /* Real 3D thumbnails for the starter cards, rendered by a throwaway
+   * mini-engine after boot settles. Cached in storage keyed by a hash of the
+   * starter specs, so repeat boots skip GL work entirely. Failures leave the
+   * emoji cards — this pass is decoration, never load-bearing. */
+  const THUMBS_KEY = 'gallery:thumbs:v1';
+  function startersHash() {
+    const s = JSON.stringify(Gallery.STARTERS.map(g => g.spec));
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+  function patchGalleryThumbs(thumbs) {
+    galleryThumbs = thumbs;
+    galleryCards.forEach(({ card }, i) => {
+      if (!thumbs[i]) return;
+      const emoji = card.querySelector('.g-emoji');
+      if (!emoji) return;
+      const img = document.createElement('img');
+      img.className = 'g-thumb';
+      img.alt = '';
+      img.src = thumbs[i];
+      emoji.replaceWith(img);
+      requestAnimationFrame(() => img.classList.add('on'));
+    });
+  }
+  async function galleryThumbsPass() {
+    try {
+      const hash = startersHash();
+      const cached = await Store.get(THUMBS_KEY);
+      if (cached && cached.hash === hash && Array.isArray(cached.thumbs)) {
+        patchGalleryThumbs(cached.thumbs);
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:256px;height:192px;';
+      document.body.append(canvas);
+      const mini = BB.Engine.create(canvas, { reducedMotion: true });
+      const thumbs = [];
+      for (const { model, spec } of galleryCards) {
+        mini.setModel(model, spec, { snap: true });
+        mini.frame();
+        mini.snapNow();
+        thumbs.push(Store.makeThumb(mini.renderNow()));
+      }
+      mini.dispose();
+      canvas.remove();
+      patchGalleryThumbs(thumbs);
+      await Store.set(THUMBS_KEY, { hash, thumbs });
+    } catch (e) { /* emoji cards remain */ }
   }
 
   /* ---------------- My Projects (Phase 4 item 2) ---------------- */
@@ -9928,8 +11879,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (kind === 'rb') {
       Exports.download(name + '.rb', Exports.toRuby(state.spec, state.model), 'text/x-ruby');
       botSay('Exported the build script. Paste it into SketchUp’s Ruby Console (Window > Ruby Console) — the model rebuilds as components, one undo step.', []);
+    } else if (kind === 'glb') {
+      Exports.download(name + '.glb', BB.GLTF.toGLB(state.spec, state.model), 'model/gltf-binary');
+      botSay('Exported the 3D model as .glb — the universal format. On Android, opening it offers "View in your space" (AR); on desktop, any glTF viewer or the three.js editor reads it; on iOS, convert with Reality Converter for AR Quick Look.', []);
     } else if (kind === 'json') {
       Exports.download(name + '.designspec.json', JSON.stringify(state.spec, null, 2), 'application/json');
+    } else if (kind === 'csv') {
+      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut), 'text/csv');
+      botSay('Exported the cut list as CSV — display units and raw millimetres side by side, ready for a spreadsheet.', []);
+    } else if (kind === 'svg') {
+      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt)), 'image/svg+xml');
+      botSay('Exported the drawing sheet — front, side, and plan elevations with dimensions, plus a title block. Opens in any browser or vector editor.', []);
     } else if (kind === 'share') {
       openShare();
     } else if (kind === 'print') {
@@ -9952,7 +11912,32 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- boot ---------------- */
+  /* One drafting-instrument icon set (BB.Icons) replaces the platform
+   * Unicode glyphs in the chrome — consistent weight and metrics everywhere. */
+  function applyIcons() {
+    const icon = BB.Icons.svg;
+    const set = (id, name, text, textFirst) => {
+      const b = $(id);
+      if (b) b.innerHTML = textFirst ? `<span>${text}</span>${icon(name)}` : icon(name) + (text ? `<span>${text}</span>` : '');
+    };
+    set('undoBtn', 'undo');
+    set('redoBtn', 'redo');
+    set('dualBtn', 'dual');
+    set('inspClose', 'close', undefined);
+    set('historyClose', 'close', undefined);
+    set('jointClose', 'close', undefined);
+    set('frameBtn', 'fit', 'Fit');
+    set('pbPrev', 'prev');
+    set('pbNext', 'next');
+    set('pbReplay', 'replay');
+    set('bmPbPrev', 'prev', 'Prev');
+    set('bmPbNext', 'next', 'Next', true);
+    $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
+    $('exportBtn').innerHTML = `Export ${icon('caret', 13)}`;
+  }
+
   async function boot() {
+    applyIcons();
     const canvas = $('view3d');
     state.engine = BB.Engine.create(canvas, {
       reducedMotion: reduceMq.matches,
@@ -9972,6 +11957,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     });
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
+    // In auto theme, the 3D scene follows the OS the same way the CSS does.
+    darkMq.addEventListener('change', () => {
+      if ((state.prefs4.theme || 'auto') === 'auto') applyTheme('auto');
+    });
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
@@ -9982,6 +11971,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     } catch (e) { /* defaults are the product */ }
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
+    applyRender();
     setChatCollapsed(state.prefs4.ui.chatCollapsed, { persist: false });
     setSplit(state.prefs4.ui.split, { persist: false });
     bindSplitter();
@@ -10012,6 +12002,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       showWelcome(projectCount > 0);
       botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
     }
+
+    // Gallery thumbnails render off the critical path once boot settles.
+    // The render loop's rAF keeps the page from ever reporting truly idle,
+    // so the timeout is the realistic trigger.
+    if (globalThis.requestIdleCallback) requestIdleCallback(() => galleryThumbsPass(), { timeout: 1200 });
+    else setTimeout(() => galleryThumbsPass(), 1200);
 
     /* top bar */
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
@@ -10060,6 +12056,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('themeAuto').onclick = () => setTheme('auto');
     $('themeLight').onclick = () => setTheme('light');
     $('themeDark').onclick = () => setTheme('dark');
+    const setRender = textured => {
+      state.prefs4.render = { textured };
+      Store.savePrefs(state.prefs4);
+      applyRender();
+    };
+    $('renderRich').onclick = () => setRender(true);
+    $('renderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -10082,6 +12085,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('importShare').onclick = importShare;
     $('speciesClose').onclick = () => closeScrim('speciesScrim');
     $('diagClose').onclick = () => closeScrim('diagScrim');
+    $('jointClose').onclick = () => { closeScrim('jointScrim'); BB.JointView.close(); };
+    $('jointExplode').addEventListener('input', e => BB.JointView.setExplode(e.target.value / 100));
+    $('jointCutaway').onclick = () => {
+      const on = $('jointCutaway').getAttribute('aria-pressed') !== 'true';
+      $('jointCutaway').setAttribute('aria-pressed', String(on));
+      BB.JointView.setCutaway(on);
+    };
     $('diagRerun').onclick = runDiagnostics;
     $('buildModeBtn').onclick = enterBuildMode;
     $('bmExit').onclick = exitBuildMode;
@@ -10184,6 +12194,33 @@ var BB = globalThis.BB = globalThis.BB || {};
       $('dimsToggle').setAttribute('aria-pressed', String(on));
       state.engine.setDims(on);
     };
+    /* Blueprint mode: the interactive technical drawing — orthographic
+     * projection, ink-line rendering, dimensions on. One toggle. */
+    const setView = name => {
+      state.engine.setProjection(name === 'iso' ? 'persp' : 'ortho');
+      state.engine.setView(name);
+      for (const [id, v] of [['viewFront', 'front'], ['viewSide', 'side'], ['viewTop', 'top'], ['viewIso', 'iso']]) {
+        $(id).setAttribute('aria-pressed', String(v === name));
+      }
+    };
+    $('viewFront').onclick = () => setView('front');
+    $('viewSide').onclick = () => setView('side');
+    $('viewTop').onclick = () => setView('top');
+    $('viewIso').onclick = () => setView('iso');
+    $('draftToggle').onclick = () => {
+      const on = $('draftToggle').getAttribute('aria-pressed') !== 'true';
+      $('draftToggle').setAttribute('aria-pressed', String(on));
+      document.body.classList.toggle('drafting', on);
+      state.engine.setDrafting(on);
+      if (on) {
+        // Entering the drawing: front elevation with dimensions showing.
+        if (!state.engine.inPlayback()) setView('front');
+        $('dimsToggle').setAttribute('aria-pressed', 'true');
+        state.engine.setDims(true);
+      } else {
+        setView('iso');
+      }
+    };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;
     /* viewport help: a small non-modal card under the toolbar */
@@ -10242,7 +12279,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
-      preview, commitPreview, closeInspector, openInspectorById,
+      preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
       setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness
     };
 

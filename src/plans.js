@@ -393,6 +393,80 @@ var BB = globalThis.BB = globalThis.BB || {};
    * Single source of truth for build-progress keys: the same enumeration
    * names the checkboxes in build mode, prunes stale progress after a
    * re-pack, and counts completion — so the three can never disagree. */
+  /* ---------------- tools & time (Phase 5 shop-truth) ----------------
+   * The consolidated tool wall: a base kit every build needs, plus what the
+   * joints actually in this model demand (from the knowledge base), plus
+   * operation-driven extras read off the real plan — never declared by hand.
+   */
+  const BASE_TOOLS = [
+    'Tape measure', 'Combination square', 'Table saw or circular saw with a guide',
+    'Drill/driver', 'Bar or pipe clamps', 'Sandpaper (120 / 180 / 220 grit)'
+  ];
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  function toolList(spec, model, stockPlan) {
+    const tools = new Set(BASE_TOOLS);
+    for (const t of new Set(model.joints.map(j => j.type))) {
+      for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(cap(tool));
+    }
+    if (model.parts.some(p => BB.Geo.cutAngles(p.rot))) tools.add('Miter saw (angled cuts)');
+    if (model.parts.some(p => p.material === 'baltic_birch')) tools.add('Circular saw + straightedge (sheet breakdown)');
+    if (stockPlan && ((stockPlan.glueups || []).length || (stockPlan.laminations || []).length)) {
+      tools.add('Glue + cauls (panel glue-up)');
+      if ((stockPlan.laminations || []).length) tools.add('Hand plane or thickness planer (laminations)');
+    }
+    if (model.drawers && model.drawers.length) tools.add('Shims + spacers (drawer fitting)');
+    const fin = K.FINISHES.find(f => f.key === spec.finish);
+    if (fin) tools.add(`Rags / applicator (${fin.label.toLowerCase()})`);
+    return [...tools];
+  }
+
+  /* Shop-time estimate: per-operation minutes × counts from the real plan,
+   * scaled by skill level (beginners measure twice — and should). Active
+   * bench time only; finish recoat/cure wall time is reported separately.
+   * Every number here is a count × constant — no geometry, no AI. */
+  const OP_MINUTES = {
+    solidCut: 5, sheetCut: 8, sand: 4, assemblyStep: 10,
+    glueUp: 30, lamination: 25, finishCoat: 20,
+    joint: {
+      butt_screws: 6, pocket_screws: 8, dowels: 12, dado: 15, rabbet: 12,
+      locking_rabbet: 15, mortise_tenon: 40, half_blind_dovetail: 60
+    }
+  };
+  const LEVEL_FACTOR = { beginner: 1.5, intermediate: 1.2, advanced: 1 };
+  function timeEstimate(spec, model, cut, steps, stockPlan) {
+    const breakdown = [];
+    const add = (label, min) => { if (min > 0) breakdown.push({ label, min: Math.round(min) }); };
+    const solidSticks = cut.filter(r => r.stock !== 'sheet').reduce((n, r) => n + r.qty, 0);
+    const sheetPieces = cut.filter(r => r.stock === 'sheet').reduce((n, r) => n + r.qty, 0);
+    add(`${solidSticks} board cuts`, solidSticks * OP_MINUTES.solidCut);
+    add(`${sheetPieces} sheet cuts`, sheetPieces * OP_MINUTES.sheetCut);
+    const byJoint = new Map();
+    for (const j of model.joints) byJoint.set(j.type, (byJoint.get(j.type) || 0) + 1);
+    for (const [type, n] of byJoint) {
+      const label = K.JOINERY[type] ? K.JOINERY[type].label.toLowerCase() : type;
+      add(`${n} × ${label}`, n * (OP_MINUTES.joint[type] || 10));
+    }
+    const glueups = stockPlan ? (stockPlan.glueups || []).length : 0;
+    const laminations = stockPlan ? (stockPlan.laminations || []).length : 0;
+    add(`${glueups} panel glue-up${glueups === 1 ? '' : 's'}`, glueups * OP_MINUTES.glueUp);
+    add(`${laminations} lamination${laminations === 1 ? '' : 's'}`, laminations * OP_MINUTES.lamination);
+    add('Sanding', model.parts.length * OP_MINUTES.sand);
+    add(`${steps.length} assembly steps`, steps.length * OP_MINUTES.assemblyStep);
+    const fin = K.FINISHES.find(f => f.key === spec.finish);
+    const coats = fin ? fin.coats : 0;
+    add(`${coats} finish coats`, coats * OP_MINUTES.finishCoat);
+    const factor = LEVEL_FACTOR[spec.meta.level] || 1.2;
+    const activeMin = Math.round(breakdown.reduce((n, b) => n + b.min, 0) * factor);
+    const hoursLow = Math.max(1, Math.round(activeMin / 60));
+    const hoursHigh = Math.max(hoursLow + 1, Math.round(activeMin * 1.35 / 60));
+    return {
+      activeMin, hoursLow, hoursHigh,
+      sessions: Math.max(1, Math.ceil(hoursHigh / 4)), // ~4 h shop sessions
+      factor, breakdown,
+      finishWait: fin ? { coats, recoatHrs: fin.recoatHrs, cureDays: fin.cureDays, label: fin.label } : null
+    };
+  }
+
   function cutKey(kind, gi, ci, name, len) { return `${kind}:${gi}:${ci}:${name}:${len}`; }
 
   function checklistKeys(stockPlan, cut, steps) {
@@ -424,5 +498,5 @@ var BB = globalThis.BB = globalThis.BB || {};
     return progress;
   }
 
-  BB.Plans = { cutList, bom, assembly, JOINT_ALLOWANCE, jointAllowance, LOAD_BEARING_ROLES, cutKey, checklistKeys, pruneProgress };
+  BB.Plans = { cutList, bom, assembly, toolList, timeEstimate, JOINT_ALLOWANCE, jointAllowance, LOAD_BEARING_ROLES, BASE_TOOLS, cutKey, checklistKeys, pruneProgress };
 })();

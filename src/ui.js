@@ -44,6 +44,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     speciesPick: []
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
+  const darkMq = matchMedia('(prefers-color-scheme: dark)');
 
   // ALL displayed lengths go through BB.Units — the single mm→text boundary.
   const fmt = mm => Units.fmtLength(mm);
@@ -204,13 +205,26 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
-   * the :root[data-theme] overrides. */
+   * the :root[data-theme] overrides. The 3D scene follows the same choice —
+   * engine.setTheme retunes ink lines, labels, bounce light, and regenerates
+   * the environment map. */
   function applyTheme(t) {
     if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
     else delete document.documentElement.dataset.theme;
     for (const [id, val] of [['themeAuto', 'auto'], ['themeLight', 'light'], ['themeDark', 'dark']]) {
       $(id).setAttribute('aria-pressed', String((t || 'auto') === val));
     }
+    const dark = t === 'dark' || (t !== 'light' && darkMq.matches);
+    if (state.engine) state.engine.setTheme(dark ? 'dark' : 'light');
+  }
+
+  /* Render quality rides prefs the same way; the flat tier is one switch for
+   * both textures and shadows (grain without grounding looks worse, not better). */
+  function applyRender() {
+    const textured = !state.prefs4.render || state.prefs4.render.textured !== false;
+    $('renderRich').setAttribute('aria-pressed', String(textured));
+    $('renderFlat').setAttribute('aria-pressed', String(!textured));
+    if (state.engine) state.engine.setQuality({ textured, shadows: textured });
   }
 
   /* ---------------- render: advisories ----------------
@@ -231,7 +245,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       chip.append(el('span', 'adv-icon', it.error ? '🛑' : '⚠️'));
       chip.append(el('span', '', esc(it.text)));
       if (!it.error) {
-        const x = el('button', 'dismiss', '✕');
+        const x = el('button', 'dismiss', BB.Icons.svg('close', 13));
         x.setAttribute('aria-label', 'Dismiss advisory');
         x.onclick = () => { state.dismissed.add(it.id); renderAdvisories(report); renderReadiness(); };
         chip.append(x);
@@ -451,6 +465,34 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(tot);
   }
 
+  /* ---------------- Joint Inspector (Phase 5) ----------------
+   * Opens the transient 3D close-up for one joint. From assembly steps it
+   * carries the REAL member parts; from the Shop Reference it demos the
+   * joint on typical members so every joint is learnable before it's used. */
+  const DEMO_MEMBERS = {
+    frame: [{ id: 'demo_apron', name: 'Apron' , size: { w: 600, h: 89, d: 19 } }, { id: 'demo_leg', name: 'Leg', size: { w: 60, h: 700, d: 60 } }],
+    case: [{ id: 'demo_shelf', name: 'Shelf', size: { w: 800, h: 19, d: 280 } }, { id: 'demo_side', name: 'Case side', size: { w: 18, h: 900, d: 280 } }],
+    box: [{ id: 'demo_side', name: 'Drawer side', size: { w: 400, h: 120, d: 12 } }, { id: 'demo_front', name: 'Drawer front', size: { w: 450, h: 120, d: 19 } }]
+  };
+  function openJointInspector(type, partA, partB) {
+    if (!partA || !partB) {
+      const kind = (K.JOINERY[type] && K.JOINERY[type].kinds[0]) || 'frame';
+      const demo = DEMO_MEMBERS[kind] || DEMO_MEMBERS.frame;
+      partA = { ...demo[0], material: state.spec.wood.species };
+      partB = { ...demo[1], material: state.spec.wood.species };
+    }
+    BB.JointView.bindControls();
+    openScrim('jointScrim'); // before open(): the viewer self-disposes when the scrim is closed
+    const data = BB.JointView.open(type, partA, partB, { fmt, reducedMotion: reduceMq.matches });
+    $('jointTitle').textContent = data.title;
+    const j = K.JOINERY[type];
+    $('jointNotes').innerHTML =
+      data.labels.map(l => `<p class="joint-rule">${esc(l)}</p>`).join('') +
+      (j ? `<p class="joint-know"><em>Watch for:</em> ${esc(j.failure)}<br><em>Tools:</em> ${esc(j.tools.join(', '))}</p>` : '');
+    $('jointExplode').value = 0;
+    $('jointCutaway').setAttribute('aria-pressed', 'false');
+  }
+
   function whyJointHTML(type) {
     const j = K.JOINERY[type];
     if (!j) return '';
@@ -469,6 +511,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       emptyState(root, 'No steps to walk yet.', 'Once a design has parts, assembly writes itself in build order.');
       return;
     }
+    // Shop-truth header: honest time estimate + the consolidated tool wall,
+    // both derived from the real plan (joints, cuts, glue-ups, finish).
+    const t = Plans.timeEstimate(state.spec, state.model, state.cut, state.steps, state.stockPlan);
+    const tools = Plans.toolList(state.spec, state.model, state.stockPlan);
+    const facts = el('div', 'shop-facts');
+    const wait = t.finishWait ? ` · finish: ${t.finishWait.coats} coats, recoat ${t.finishWait.recoatHrs} h, cure ${t.finishWait.cureDays} d` : '';
+    facts.innerHTML = `<div class="shop-time" title="${esc(t.breakdown.map(b => `${b.label} — ${b.min} min`).join('\n') + `\n× ${t.factor} ${state.spec.meta.level} pace`)}">
+        <strong>≈ ${t.hoursLow}–${t.hoursHigh} h</strong> bench time · ${t.sessions} session${t.sessions === 1 ? '' : 's'} of ~4 h${wait}</div>
+      <details class="tool-wall"><summary>Tools for this build (${tools.length})</summary><ul>${tools.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
+    root.append(facts);
     const list = el('ol', 'step-list');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
@@ -478,7 +530,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
       body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
         (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
-      const play = el('button', 'btn icon step-play', '▶');
+      if (jointType) {
+        const j0 = s.joints[0];
+        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) + '<span>Inspect joint in 3D</span>');
+        inspect.onclick = e => {
+          e.stopPropagation();
+          openJointInspector(jointType,
+            state.model.parts.find(p => p.id === j0.a),
+            state.model.parts.find(p => p.id === j0.b));
+        };
+        body.append(inspect);
+      }
+      const play = el('button', 'btn icon step-play', BB.Icons.svg('play', 15));
       play.setAttribute('aria-label', 'Play step ' + (i + 1));
       play.onclick = () => enterPlayback(i);
       item.append(num, body, play);
@@ -633,9 +696,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td>${esc(r.appliesTo.join(', '))}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
-      head = '<th>Joint</th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
+      head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
         <td><strong>${esc(j.label)}</strong></td>
+        <td><button type="button" class="btn small ghost joint-demo" data-joint="${esc(j.key)}" title="See this joint in 3D">${BB.Icons.svg('ruler', 13)} 3D</button></td>
         <td><span class="dots">${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span></td>
         <td><span class="dots">${'●'.repeat(j.difficulty)}${'○'.repeat(5 - j.difficulty)}</span></td>
         <td>${esc(j.level)}</td>
@@ -666,6 +730,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     scroll.innerHTML = `<table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
     body.append(scroll);
+    // Joinery rows carry a 3D demo button — the learning moment on demand.
+    scroll.querySelectorAll('.joint-demo').forEach(b => {
+      b.addEventListener('click', () => openJointInspector(b.dataset.joint));
+    });
   }
 
   /* ---------------- chat ---------------- */
@@ -1194,9 +1262,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     releaseFocus(s);
   }
 
+  const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
+  let galleryThumbs = null; // rendered thumbs, kept so every re-render gets them back
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
+    galleryCards.length = 0;
     for (const g of Gallery.STARTERS) {
       const r = runPipeline(g.spec);
       const card = el('button', 'gallery-card');
@@ -1212,10 +1283,72 @@ var BB = globalThis.BB = globalThis.BB || {};
         state.turns = [];
         commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
         state.engine.frame();
+        // First starter ever: the piece assembles itself once — the pipeline
+        // dramatized in one shot. Reduced motion snaps it (engine-side).
+        if (!state.prefs4.seenHero) {
+          state.prefs4.seenHero = true;
+          Store.savePrefs(state.prefs4);
+          state.engine.heroAssemble();
+        }
         botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
       };
       grid.append(card);
+      galleryCards.push({ card, model: r.model, spec: r.spec });
     }
+    // The grid rebuilds on every open; without this the idle pass's work
+    // would vanish after the first close (the new shell opens on demand).
+    if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
+  }
+
+  /* Real 3D thumbnails for the starter cards, rendered by a throwaway
+   * mini-engine after boot settles. Cached in storage keyed by a hash of the
+   * starter specs, so repeat boots skip GL work entirely. Failures leave the
+   * emoji cards — this pass is decoration, never load-bearing. */
+  const THUMBS_KEY = 'gallery:thumbs:v1';
+  function startersHash() {
+    const s = JSON.stringify(Gallery.STARTERS.map(g => g.spec));
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+  function patchGalleryThumbs(thumbs) {
+    galleryThumbs = thumbs;
+    galleryCards.forEach(({ card }, i) => {
+      if (!thumbs[i]) return;
+      const emoji = card.querySelector('.g-emoji');
+      if (!emoji) return;
+      const img = document.createElement('img');
+      img.className = 'g-thumb';
+      img.alt = '';
+      img.src = thumbs[i];
+      emoji.replaceWith(img);
+      requestAnimationFrame(() => img.classList.add('on'));
+    });
+  }
+  async function galleryThumbsPass() {
+    try {
+      const hash = startersHash();
+      const cached = await Store.get(THUMBS_KEY);
+      if (cached && cached.hash === hash && Array.isArray(cached.thumbs)) {
+        patchGalleryThumbs(cached.thumbs);
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:256px;height:192px;';
+      document.body.append(canvas);
+      const mini = BB.Engine.create(canvas, { reducedMotion: true });
+      const thumbs = [];
+      for (const { model, spec } of galleryCards) {
+        mini.setModel(model, spec, { snap: true });
+        mini.frame();
+        mini.snapNow();
+        thumbs.push(Store.makeThumb(mini.renderNow()));
+      }
+      mini.dispose();
+      canvas.remove();
+      patchGalleryThumbs(thumbs);
+      await Store.set(THUMBS_KEY, { hash, thumbs });
+    } catch (e) { /* emoji cards remain */ }
   }
 
   /* ---------------- My Projects (Phase 4 item 2) ---------------- */
@@ -1824,8 +1957,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (kind === 'rb') {
       Exports.download(name + '.rb', Exports.toRuby(state.spec, state.model), 'text/x-ruby');
       botSay('Exported the build script. Paste it into SketchUp’s Ruby Console (Window > Ruby Console) — the model rebuilds as components, one undo step.', []);
+    } else if (kind === 'glb') {
+      Exports.download(name + '.glb', BB.GLTF.toGLB(state.spec, state.model), 'model/gltf-binary');
+      botSay('Exported the 3D model as .glb — the universal format. On Android, opening it offers "View in your space" (AR); on desktop, any glTF viewer or the three.js editor reads it; on iOS, convert with Reality Converter for AR Quick Look.', []);
     } else if (kind === 'json') {
       Exports.download(name + '.designspec.json', JSON.stringify(state.spec, null, 2), 'application/json');
+    } else if (kind === 'csv') {
+      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut), 'text/csv');
+      botSay('Exported the cut list as CSV — display units and raw millimetres side by side, ready for a spreadsheet.', []);
+    } else if (kind === 'svg') {
+      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt)), 'image/svg+xml');
+      botSay('Exported the drawing sheet — front, side, and plan elevations with dimensions, plus a title block. Opens in any browser or vector editor.', []);
     } else if (kind === 'share') {
       openShare();
     } else if (kind === 'print') {
@@ -1848,7 +1990,32 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- boot ---------------- */
+  /* One drafting-instrument icon set (BB.Icons) replaces the platform
+   * Unicode glyphs in the chrome — consistent weight and metrics everywhere. */
+  function applyIcons() {
+    const icon = BB.Icons.svg;
+    const set = (id, name, text, textFirst) => {
+      const b = $(id);
+      if (b) b.innerHTML = textFirst ? `<span>${text}</span>${icon(name)}` : icon(name) + (text ? `<span>${text}</span>` : '');
+    };
+    set('undoBtn', 'undo');
+    set('redoBtn', 'redo');
+    set('dualBtn', 'dual');
+    set('inspClose', 'close', undefined);
+    set('historyClose', 'close', undefined);
+    set('jointClose', 'close', undefined);
+    set('frameBtn', 'fit', 'Fit');
+    set('pbPrev', 'prev');
+    set('pbNext', 'next');
+    set('pbReplay', 'replay');
+    set('bmPbPrev', 'prev', 'Prev');
+    set('bmPbNext', 'next', 'Next', true);
+    $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
+    $('exportBtn').innerHTML = `Export ${icon('caret', 13)}`;
+  }
+
   async function boot() {
+    applyIcons();
     const canvas = $('view3d');
     state.engine = BB.Engine.create(canvas, {
       reducedMotion: reduceMq.matches,
@@ -1868,6 +2035,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     });
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
+    // In auto theme, the 3D scene follows the OS the same way the CSS does.
+    darkMq.addEventListener('change', () => {
+      if ((state.prefs4.theme || 'auto') === 'auto') applyTheme('auto');
+    });
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
@@ -1878,6 +2049,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     } catch (e) { /* defaults are the product */ }
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
+    applyRender();
     setChatCollapsed(state.prefs4.ui.chatCollapsed, { persist: false });
     setSplit(state.prefs4.ui.split, { persist: false });
     bindSplitter();
@@ -1908,6 +2080,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       showWelcome(projectCount > 0);
       botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
     }
+
+    // Gallery thumbnails render off the critical path once boot settles.
+    // The render loop's rAF keeps the page from ever reporting truly idle,
+    // so the timeout is the realistic trigger.
+    if (globalThis.requestIdleCallback) requestIdleCallback(() => galleryThumbsPass(), { timeout: 1200 });
+    else setTimeout(() => galleryThumbsPass(), 1200);
 
     /* top bar */
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
@@ -1956,6 +2134,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('themeAuto').onclick = () => setTheme('auto');
     $('themeLight').onclick = () => setTheme('light');
     $('themeDark').onclick = () => setTheme('dark');
+    const setRender = textured => {
+      state.prefs4.render = { textured };
+      Store.savePrefs(state.prefs4);
+      applyRender();
+    };
+    $('renderRich').onclick = () => setRender(true);
+    $('renderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -1978,6 +2163,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('importShare').onclick = importShare;
     $('speciesClose').onclick = () => closeScrim('speciesScrim');
     $('diagClose').onclick = () => closeScrim('diagScrim');
+    $('jointClose').onclick = () => { closeScrim('jointScrim'); BB.JointView.close(); };
+    $('jointExplode').addEventListener('input', e => BB.JointView.setExplode(e.target.value / 100));
+    $('jointCutaway').onclick = () => {
+      const on = $('jointCutaway').getAttribute('aria-pressed') !== 'true';
+      $('jointCutaway').setAttribute('aria-pressed', String(on));
+      BB.JointView.setCutaway(on);
+    };
     $('diagRerun').onclick = runDiagnostics;
     $('buildModeBtn').onclick = enterBuildMode;
     $('bmExit').onclick = exitBuildMode;
@@ -2080,6 +2272,33 @@ var BB = globalThis.BB = globalThis.BB || {};
       $('dimsToggle').setAttribute('aria-pressed', String(on));
       state.engine.setDims(on);
     };
+    /* Blueprint mode: the interactive technical drawing — orthographic
+     * projection, ink-line rendering, dimensions on. One toggle. */
+    const setView = name => {
+      state.engine.setProjection(name === 'iso' ? 'persp' : 'ortho');
+      state.engine.setView(name);
+      for (const [id, v] of [['viewFront', 'front'], ['viewSide', 'side'], ['viewTop', 'top'], ['viewIso', 'iso']]) {
+        $(id).setAttribute('aria-pressed', String(v === name));
+      }
+    };
+    $('viewFront').onclick = () => setView('front');
+    $('viewSide').onclick = () => setView('side');
+    $('viewTop').onclick = () => setView('top');
+    $('viewIso').onclick = () => setView('iso');
+    $('draftToggle').onclick = () => {
+      const on = $('draftToggle').getAttribute('aria-pressed') !== 'true';
+      $('draftToggle').setAttribute('aria-pressed', String(on));
+      document.body.classList.toggle('drafting', on);
+      state.engine.setDrafting(on);
+      if (on) {
+        // Entering the drawing: front elevation with dimensions showing.
+        if (!state.engine.inPlayback()) setView('front');
+        $('dimsToggle').setAttribute('aria-pressed', 'true');
+        state.engine.setDims(true);
+      } else {
+        setView('iso');
+      }
+    };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;
     /* viewport help: a small non-modal card under the toolbar */
@@ -2138,7 +2357,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       state, commit, merge, sendMessage, sendPhoto, runPipeline, enterPlayback, scrubPlayback, exitPlayback,
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
-      preview, commitPreview, closeInspector, openInspectorById,
+      preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
       setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness
     };
 

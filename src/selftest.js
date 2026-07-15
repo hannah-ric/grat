@@ -532,6 +532,293 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (savedV1) await Store.set('prefs:v1', savedV1); else await Store.del('prefs:v1');
         if (savedV2) await Store.set('prefs:v2', savedV2); else await Store.del('prefs:v2');
       }
+
+      // Render prefs deep-fill: stored prefs that predate the render block
+      // gain the textured default without touching the user's other choices.
+      const savedV2b = await Store.get('prefs:v2');
+      try {
+        await Store.set('prefs:v2', { climate: 'arid', theme: 'dark', units: { system: 'metric', precision: 16, dual: false } });
+        const filled = await Store.loadPrefs();
+        test('storage', 'prefs without render block gain textured default, keep the rest',
+          filled.render && filled.render.textured === true && filled.climate === 'arid' && filled.units.system === 'metric',
+          `render ${JSON.stringify(filled.render)}, climate ${filled.climate}, ${filled.units.system}`, 'render {"textured":true}, climate arid, metric');
+      } finally {
+        if (savedV2b) await Store.set('prefs:v2', savedV2b); else await Store.del('prefs:v2');
+      }
+    }
+
+    /* ============ procedural materials ============ */
+    {
+      const M = BB.Materials;
+      // Every species carries a full grain recipe.
+      let missing = null;
+      for (const key of Object.keys(K.WOOD_SPECIES)) {
+        const p = M.grainParams(key);
+        if (!p || !(p.grainScale > 0) || p.ringContrast === undefined || p.hueJitter === undefined || p.pores === undefined) { missing = key; break; }
+      }
+      test('materials', 'every species has a complete grain recipe', !missing, missing || 'all present', 'all present');
+      test('materials', 'unknown species yields no params (no phantom textures)', M.grainParams('unobtainium') === null, String(M.grainParams('unobtainium')), 'null');
+
+      // Deterministic grain: same key → same stream; different keys diverge.
+      const a1 = M.seededRand('walnut'), a2 = M.seededRand('walnut'), b = M.seededRand('cherry');
+      const seqA1 = [a1(), a1(), a1()], seqA2 = [a2(), a2(), a2()], seqB = [b(), b(), b()];
+      test('materials', 'seeded PRNG is deterministic per species', JSON.stringify(seqA1) === JSON.stringify(seqA2), seqA1.map(v => v.toFixed(4)).join(','), seqA2.map(v => v.toFixed(4)).join(','));
+      test('materials', 'different species get different grain streams', JSON.stringify(seqA1) !== JSON.stringify(seqB), 'streams differ', 'streams differ');
+      const inRange = seqA1.every(v => v >= 0 && v < 1);
+      test('materials', 'PRNG output stays in [0,1)', inRange, seqA1.map(v => v.toFixed(4)).join(','), 'all in [0,1)');
+
+      // Theme palettes exist and actually differ.
+      test('materials', 'environment palettes: light and dark defined and distinct',
+        M.ENV_PALETTES.light && M.ENV_PALETTES.dark && M.ENV_PALETTES.light.top !== M.ENV_PALETTES.dark.top,
+        `${M.ENV_PALETTES.light.top} vs ${M.ENV_PALETTES.dark.top}`, 'distinct palettes');
+
+      // Texture cache: one entry per species regardless of how many
+      // role/bucket materials request it (browser only — needs a canvas).
+      if (typeof document !== 'undefined' && globalThis.THREE) {
+        const before = M._cacheSize();
+        M.woodTexture(globalThis.THREE, 'walnut');
+        M.woodTexture(globalThis.THREE, 'walnut');
+        const t1 = M.woodTexture(globalThis.THREE, 'walnut');
+        const t2 = M.woodTexture(globalThis.THREE, 'walnut');
+        test('materials', 'texture cache returns one shared texture per species', t1 === t2 && M._cacheSize() <= before + 1, `cache ${before} → ${M._cacheSize()}, identical ${t1 === t2}`, 'one new entry, identical');
+      }
+    }
+
+    /* ============ shop truth: tools, time, CSV ============ */
+    {
+      // Advanced mortise-and-tenon table: the tool wall must demand the
+      // joint's real tools on top of the base kit.
+      const mt = pipeline({ meta: { name: 'MT Table', template: 'table', level: 'advanced' }, joinery: { frame: 'mortise_tenon' } });
+      const mtTools = Plans.toolList(mt.spec, mt.model, null);
+      test('shop', 'tool wall = base kit + joint tools (mortise & tenon adds chisels)',
+        Plans.BASE_TOOLS.every(t => mtTools.includes(t)) && mtTools.some(t => /chisel/i.test(t)),
+        mtTools.filter(t => /chisel|mortis/i.test(t)).join(', ') || 'no joint tools', 'chisels present');
+
+      // Drawered nightstand: sheet goods + drawer fitting appear.
+      const ns = pipeline({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate' }, drawers: { count: 2 } });
+      const nsTools = Plans.toolList(ns.spec, ns.model, null);
+      test('shop', 'drawer build adds sheet breakdown + drawer fitting tools',
+        nsTools.some(t => /sheet/i.test(t)) && nsTools.some(t => /drawer/i.test(t)),
+        nsTools.filter(t => /sheet|drawer/i.test(t)).join(', '), 'sheet + drawer tools');
+
+      // Time estimate: level factor orders the estimates; breakdown is honest.
+      const cutMT = Plans.cutList(mt.spec, mt.model);
+      const stepsMT = Plans.assembly(mt.spec, mt.model, null);
+      const tAdv = Plans.timeEstimate(mt.spec, mt.model, cutMT, stepsMT, null);
+      const beg = pipeline({ meta: { name: 'B Table', template: 'table', level: 'beginner' } });
+      const tBeg = Plans.timeEstimate(beg.spec, beg.model, Plans.cutList(beg.spec, beg.model), Plans.assembly(beg.spec, beg.model, null), null);
+      const sum = tAdv.breakdown.reduce((n, b) => n + b.min, 0);
+      test('shop', 'time estimate: breakdown × level factor = active minutes',
+        Math.abs(tAdv.activeMin - Math.round(sum * tAdv.factor)) <= 1, `${tAdv.activeMin} vs ${Math.round(sum * tAdv.factor)}`, 'equal ±1');
+      test('shop', 'beginner pace multiplier exceeds advanced', tBeg.factor > tAdv.factor, `${tBeg.factor} vs ${tAdv.factor}`, '1.5 vs 1');
+      test('shop', 'estimate is bounded and session count follows hours',
+        tAdv.hoursLow >= 1 && tAdv.hoursHigh > tAdv.hoursLow && tAdv.sessions === Math.ceil(tAdv.hoursHigh / 4),
+        `${tAdv.hoursLow}–${tAdv.hoursHigh} h, ${tAdv.sessions} sessions`, 'low < high, sessions = ceil(high/4)');
+
+      // CSV: one line per row + header, display units AND raw mm, RFC quoting.
+      // Display prefs are pinned imperial for the assertion and restored.
+      const savedUnits = BB.Units.get();
+      let csvLines, nsCut;
+      try {
+        BB.Units.set({ system: 'imperial', precision: 16, dual: false });
+        nsCut = Plans.cutList(ns.spec, ns.model);
+        csvLines = BB.Exports.toCSV(ns.spec, nsCut).trim().split('\r\n');
+      } finally { BB.Units.set(savedUnits); }
+      test('shop', 'CSV has header + one line per cut row', csvLines.length === nsCut.length + 1, csvLines.length, nsCut.length + 1);
+      test('shop', 'CSV carries display units and raw mm side by side',
+        csvLines[0].includes('"Length (mm)"') && / in"/.test(csvLines[1]) && /,\d+(\.\d+)?,/.test(csvLines[1]),
+        csvLines[1].slice(0, 80) + '…', 'formatted + numeric mm columns');
+
+      // Icons: strings, themable, unknown-safe.
+      test('shop', 'icon set emits currentColor SVGs and empty string for unknown names',
+        BB.Icons.svg('undo').includes('currentColor') && BB.Icons.svg('nope') === '',
+        `undo ${BB.Icons.svg('undo').length} chars, unknown "${BB.Icons.svg('nope')}"`, 'svg + empty');
+    }
+
+    /* ============ glTF export + rotation in every exporter ============ */
+    {
+      // Minimal hand-built model: a plain box, a 45°-rotated box, and a
+      // cylinder — exercises dedup, the quaternion path, and prism geometry.
+      const spec2 = Spec.correctSpec(Spec.defaultSpec('table'));
+      const model2 = {
+        parts: [
+          { id: 'leg_a', name: 'Leg', role: 'leg', defKey: 'leg', material: spec2.wood.species, size: { w: 60, h: 700, d: 60 }, pos: { x: -200, y: 350, z: 0 } },
+          { id: 'leg_b', name: 'Leg', role: 'leg', defKey: 'leg', material: spec2.wood.species, size: { w: 60, h: 700, d: 60 }, pos: { x: 200, y: 350, z: 0 } },
+          { id: 'brace', name: 'Brace', role: 'rail', defKey: 'brace', material: spec2.wood.species, size: { w: 500, h: 60, d: 30 }, pos: { x: 0, y: 600, z: 100 }, rot: { x: 0, y: 45, z: 0 } },
+          { id: 'peg', name: 'Peg', role: 'pull', defKey: 'peg', material: 'hardware', prim: 'cylinder', size: { w: 20, h: 80, d: 20 }, pos: { x: 0, y: 640, z: 0 } }
+        ]
+      };
+
+      const glb = BB.GLTF.toGLB(spec2, model2);
+      const dv = new DataView(glb);
+      test('gltf', 'GLB header: magic, version 2, declared length = actual bytes',
+        dv.getUint32(0, true) === 0x46546C67 && dv.getUint32(4, true) === 2 && dv.getUint32(8, true) === glb.byteLength,
+        `magic ${dv.getUint32(0, true).toString(16)}, v${dv.getUint32(4, true)}, ${dv.getUint32(8, true)}/${glb.byteLength}`,
+        '46546c67, v2, lengths equal');
+      const jsonLen = dv.getUint32(12, true);
+      test('gltf', 'chunks 4-byte aligned with JSON + BIN\\0 tags',
+        jsonLen % 4 === 0 && dv.getUint32(16, true) === 0x4E4F534A && dv.getUint32(20 + jsonLen + 4, true) === 0x004E4942,
+        `jsonLen ${jsonLen}, tags ok`, 'aligned, JSON then BIN');
+      const gj = JSON.parse(new TextDecoder().decode(new Uint8Array(glb, 20, jsonLen)));
+      test('gltf', 'one node per part, all POSITION accessors carry min/max',
+        gj.nodes.length === model2.parts.length &&
+        gj.meshes.every(m => { const acc = gj.accessors[m.primitives[0].attributes.POSITION]; return acc.min && acc.max; }),
+        `${gj.nodes.length} nodes`, `${model2.parts.length} nodes, min/max present`);
+      const braceNode = gj.nodes.find(nd => nd.name === 'brace');
+      const q = braceNode && braceNode.rotation;
+      const qy = Math.sin(Math.PI / 8), qw = Math.cos(Math.PI / 8);
+      test('gltf', 'rotated part carries the y=45° quaternion [0, sin22.5°, 0, cos22.5°]',
+        q && Math.abs(q[0]) < 1e-6 && Math.abs(q[1] - qy) < 1e-6 && Math.abs(q[2]) < 1e-6 && Math.abs(q[3] - qw) < 1e-6,
+        q ? q.map(v => v.toFixed(4)).join(', ') : 'missing', `0, ${qy.toFixed(4)}, 0, ${qw.toFixed(4)}`);
+      test('gltf', 'unrotated nodes omit rotation; identical legs share one mesh',
+        !gj.nodes.find(nd => nd.name === 'leg_a').rotation &&
+        gj.nodes.find(nd => nd.name === 'leg_a').mesh === gj.nodes.find(nd => nd.name === 'leg_b').mesh,
+        'shared mesh, no rotation', 'shared mesh, no rotation');
+
+      // Quaternion → matrix round-trip against the source rotation matrix.
+      const R = BB.Geo.rotMat(20, 45, 10);
+      const [x, y, z, w] = BB.GLTF.mat3ToQuat(R);
+      const RQ = [
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]
+      ];
+      let worstQ = 0;
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) worstQ = Math.max(worstQ, Math.abs(R[i][j] - RQ[i][j]));
+      test('gltf', 'mat3ToQuat round-trips a compound rotation within 1e-6', worstQ < 1e-6, worstQ.toExponential(2), '< 1e-6');
+
+      // Cylinder prism data: 16-gon sides + caps, indices in range.
+      const cd = BB.GLTF.cylData(20, 80);
+      test('gltf', 'cylinder prism: 66 verts, 192 indices, all in range',
+        cd.pos.length === 66 * 3 && cd.idx.length === 192 && cd.idx.every(i => i < 66),
+        `${cd.pos.length / 3} verts, ${cd.idx.length} idx`, '66 verts, 192 idx');
+
+      // Rotation in the legacy exporters (audit F-S1-3 implementation): DAE
+      // writes the Z-up rotation block (y=45° about scene-up = Rz(45): row
+      // "0.707 -0.707 0"); Ruby places EVERY instance with one full 16-array
+      // Geom::Transformation — the rotated one carries the 0.707107 columns.
+      const dae2 = BB.Exports.toDAE(spec2, model2);
+      test('gltf', 'DAE carries rotation for rotated parts (Rz45 rows present)',
+        dae2.includes('0.707 -0.707 0') && dae2.includes('0.707 0.707 0'),
+        dae2.match(/<matrix>[^<]{0,40}/g).filter(s => s.includes('0.707')).length + ' rotated matrices', 'Rz(45) rows present');
+      const rb2 = BB.Exports.toRuby(spec2, model2);
+      const fullTransforms = (rb2.match(/Transformation\.new\(\[/g) || []).length;
+      test('gltf', 'Ruby: every instance places via a full 16-array transform; rotation lands in the matrix',
+        fullTransforms === model2.parts.length && rb2.includes('0.707107') && !rb2.includes('Transformation.axes'),
+        `${fullTransforms}/${model2.parts.length} full transforms, Rz45 ${rb2.includes('0.707107') ? 'present' : 'missing'}`,
+        'all instances full-matrix, Rz(45) present');
+    }
+
+    /* ============ drafting: dimensioned elevations ============ */
+    {
+      const savedU = BB.Units.get();
+      try {
+        BB.Units.set({ system: 'imperial', precision: 16, dual: false });
+        const fmt = v => BB.Units.fmtLength(v);
+
+        const seed = pipeline(Spec.defaultSpec('table'));
+        const front = BB.Drafting.elevationSVG(seed.spec, seed.model, 'front', fmt);
+        const rects = (front.match(/<rect /g) || []).length;
+        test('drafting', 'front elevation draws every part (≥9 shapes for the seed table)',
+          rects >= 9, rects + ' rects', '≥ 9');
+        test('drafting', 'overall width dimension label routes through BB.Units',
+          front.includes('>' + fmt(seed.model.bounds.w) + '<') && front.includes('>' + fmt(seed.model.bounds.h) + '<'),
+          `${fmt(seed.model.bounds.w)} / ${fmt(seed.model.bounds.h)} present: ${front.includes(fmt(seed.model.bounds.w))}`, 'width + height labels present');
+        const side = BB.Drafting.elevationSVG(seed.spec, seed.model, 'side', fmt);
+        test('drafting', 'side elevation carries depth + height dimensions',
+          side.includes('>' + fmt(seed.model.bounds.d) + '<') && side.includes('SIDE ELEVATION'),
+          'depth label + title', 'depth label + title');
+
+        // Drawer openings appear as dashed callouts on the nightstand front.
+        const ns2 = pipeline({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate' }, drawers: { count: 2 } });
+        const nsFront = BB.Drafting.elevationSVG(ns2.spec, ns2.model, 'front', fmt);
+        const openN = (nsFront.match(/class="opening"/g) || []).length;
+        test('drafting', 'front elevation calls out each drawer opening',
+          openN === ns2.model.openings.length, openN, ns2.model.openings.length);
+
+        // A compound-rotated part projects as its convex-hull silhouette (6 corners).
+        const modelRot = {
+          bounds: { w: 600, d: 200, h: 700 },
+          parts: [{ id: 'b', name: 'Brace', role: 'rail', defKey: 'b', material: 'red_oak', size: { w: 500, h: 60, d: 30 }, pos: { x: 0, y: 350, z: 0 }, rot: { x: 30, y: 30, z: 0 } }],
+          openings: []
+        };
+        const rotSVG = BB.Drafting.elevationSVG(seed.spec, modelRot, 'front', fmt);
+        const poly = rotSVG.match(/<polygon points="([^"]+)"/);
+        const nPts = poly ? poly[1].trim().split(/\s+/).length : 0;
+        test('drafting', 'compound-rotated part renders as a 6-vertex hull polygon',
+          nPts === 6, nPts + ' vertices', '6 vertices');
+
+        // Drawing sheet: three views + title block, no unresolved CSS vars after print swap.
+        const sheet = BB.Exports.printSVG(BB.Drafting.sheetSVG(seed.spec, seed.model, fmt));
+        test('drafting', 'drawing sheet composes 3 elevations + title block, print-safe',
+          sheet.includes('FRONT ELEVATION') && sheet.includes('SIDE ELEVATION') && sheet.includes('PLAN ELEVATION') &&
+          sheet.includes('BLUEPRINT BUDDY') && !sheet.includes('var(--'),
+          'views + title block, vars swapped', 'views + title block, vars swapped');
+      } finally { BB.Units.set(savedU); }
+    }
+
+    /* ============ joint inspector geometry ============ */
+    {
+      const apron = { id: 'a', name: 'Apron', material: 'red_oak', size: { w: 600, h: 89, d: 19 } };
+      const leg = { id: 'l', name: 'Leg', material: 'red_oak', size: { w: 60, h: 700, d: 60 } };
+      const shelf = { id: 's', name: 'Shelf', material: 'red_oak', size: { w: 800, h: 19, d: 280 } };
+      const side = { id: 'c', name: 'Side', material: 'baltic_birch', size: { w: 18, h: 900, d: 280 } };
+      const dSide = { id: 'ds', name: 'Drawer side', material: 'baltic_birch', size: { w: 400, h: 120, d: 12 } };
+      const dFront = { id: 'df', name: 'Drawer front', material: 'red_oak', size: { w: 450, h: 120, d: 19 } };
+      const membersFor = t => {
+        const kind = K.JOINERY[t].kinds[0];
+        return kind === 'frame' ? [apron, leg] : kind === 'case' ? [shelf, side] : [dSide, dFront];
+      };
+
+      // Every joint type builds: pieces with positive volume, both members
+      // represented, a unit-length insert axis, and at least one sizing rule.
+      let bad = null;
+      for (const t of Object.keys(K.JOINERY)) {
+        const [ma, mb] = membersFor(t);
+        const d = BB.Joinery3D.buildJoint(t, ma, mb, v => v + 'mm');
+        const volOK = d.pieces.every(p =>
+          p.kind === 'cuboid' ? p.e.every(e => e > 0)
+            : p.kind === 'cylinder' ? p.r > 0 && p.len > 0
+              : p.profile.length >= 3 && p.depth > 0);
+        const members = new Set(d.pieces.map(p => p.member));
+        const axisLen = Math.hypot(...d.insertAxis);
+        if (!volOK || !members.has('a') || !members.has('b') || Math.abs(axisLen - 1) > 1e-9 || !d.labels.length) {
+          bad = `${t}: vol ${volOK}, members ${[...members]}, axis ${axisLen}`;
+          break;
+        }
+      }
+      test('joints3d', 'all 8 joint builders return sound geometry (volumes, members, axis, rules)', !bad, bad || 'all sound', 'all sound');
+
+      // Mortise & tenon: tenon = ⅓ stock, fits the pocket exactly, 30 mm deep.
+      const mt = BB.Joinery3D.buildJoint('mortise_tenon', apron, leg, v => v + 'mm');
+      const tenon = mt.pieces.filter(p => p.member === 'a').sort((x, y) => x.e[0] * x.e[1] * x.e[2] - y.e[0] * y.e[1] * y.e[2])[0];
+      const pocketBack = mt.pieces.filter(p => p.member === 'b').sort((x, y) => x.e[0] - y.e[0])[0];
+      test('joints3d', 'tenon is ⅓ of stock thickness and 30 mm long',
+        Math.abs(tenon.e[2] * 2 - 19 / 3) < 0.01 && Math.abs(tenon.e[0] * 2 - 30) < 0.01,
+        `${(tenon.e[2] * 2).toFixed(2)} thick × ${(tenon.e[0] * 2).toFixed(1)} long`, `${(19 / 3).toFixed(2)} × 30`);
+      test('joints3d', 'mortise pocket matches the tenon section',
+        Math.abs(pocketBack.e[1] - tenon.e[1]) < 0.01 && Math.abs(pocketBack.e[2] - tenon.e[2]) < 0.01,
+        `pocket ${(pocketBack.e[1] * 2).toFixed(1)}×${(pocketBack.e[2] * 2).toFixed(2)}`, `tenon ${(tenon.e[1] * 2).toFixed(1)}×${(tenon.e[2] * 2).toFixed(2)}`);
+
+      // Dado: groove depth = ⅓ housing thickness; the shelf rides in it.
+      const dd = BB.Joinery3D.buildJoint('dado', shelf, side, v => v + 'mm');
+      const floorPiece = dd.pieces.filter(p => p.member === 'b').sort((a, b) => a.e[0] - b.e[0])[0];
+      test('joints3d', 'dado floor strip depth complements the ⅓ groove',
+        Math.abs(floorPiece.e[0] * 2 - (18 - 18 / 3)) < 0.01,
+        (floorPiece.e[0] * 2).toFixed(2), (18 - 18 / 3).toFixed(2));
+      test('joints3d', 'dado assembles along the groove (Z), not the face',
+        dd.insertAxis[2] === 1 && dd.insertAxis[0] === 0, dd.insertAxis.join(','), '0,0,1');
+
+      // Dovetail: 1:8 flare — flank angle ≈ 7.13°, tails slide along Z.
+      const dt = BB.Joinery3D.buildJoint('half_blind_dovetail', dSide, dFront, v => v + 'mm');
+      const tail = dt.pieces.find(p => p.kind === 'prism' && p.member === 'a');
+      const [p0, p1, p2] = [tail.profile[0], tail.profile[1], tail.profile[2]];
+      void p1;
+      const flank = Math.atan(Math.abs(p2[1] - tail.profile[1][1]) / Math.abs(p2[0] - tail.profile[1][0])) * 180 / Math.PI;
+      void p0;
+      test('joints3d', 'dovetail flank follows the 1:8 rule (≈7.1°, within 7–14°)',
+        flank >= 6.9 && flank <= 14, flank.toFixed(2) + '°', '7.13°');
+      test('joints3d', 'dovetail assembles along the side face normal (Z)', dt.insertAxis[2] === 1, dt.insertAxis.join(','), '0,0,1');
     }
 
     return results;

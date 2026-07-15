@@ -37,9 +37,12 @@ hand-edit a digest string.
   `parametric.js` templates, `structural.js` physics (creep, BIFMA presets,
   F2057 open-drawer tipping), `fasteners.js` fastener-location/joinery-setout
   engine, `packing.js` stock optimizer, `units.js` display boundary,
-  `ui.js` DOM). Modules attach to the `BB` global; load order is set in
-  `build.js`. Physical constants live in `knowledge.js` (one source each —
-  see `docs/audit/02-constants-reference.md`).
+  `ui.js` DOM, `materials.js` procedural textures/env, `engine.js` 3D
+  viewport, `drafting.js` elevation SVGs + blueprint mode,
+  `joinery3d.js` + `jointview.js` the joint inspector, `gltf.js` GLB export,
+  `icons.js` SVG icon set). Modules attach to the `BB` global; load order is
+  set in `build.js`. Physical constants live in `knowledge.js` (one source
+  each — see `docs/audit/02-constants-reference.md`).
 - `src/index.template.html` + `build.js` — `{{PLACEHOLDER}}` inlining; adding
   a new src module means adding a placeholder in both.
 - `api/chat.js` — the only server code: same-origin Anthropic proxy

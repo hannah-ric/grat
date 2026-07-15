@@ -78,6 +78,13 @@ const clickMoreCtl = async sel => {
   await page.click('#welcomeStarter');
   await page.waitForSelector('#galleryScrim.open');
   ok(true, 'starter gallery opens from the welcome path');
+  // Idle pass swaps the emoji cards for real rendered thumbnails.
+  const thumbs = await page.waitForSelector('.gallery-card .g-thumb', { timeout: 10000 }).then(() => true).catch(() => false);
+  ok(thumbs, 'gallery cards gain rendered 3D thumbnails after idle');
+  ok(await page.evaluate(() => [...document.querySelectorAll('.gallery-card .g-thumb')].every(i => i.src.startsWith('data:image/jpeg'))),
+    'every starter thumbnail rendered to a data URL');
+  // First starter pick fires the one-shot hero assemble (fresh prefs).
+  const heroBefore = await page.evaluate(() => !!__bb.state.prefs4.seenHero);
   await page.click('.gallery-card:nth-child(5)');
   await page.waitForFunction(() => __bb.state.spec.meta.template === 'nightstand');
   ok(await page.evaluate(() => document.getElementById('welcomeOverlay').hidden), 'welcome dismisses once a design is chosen');
@@ -90,6 +97,8 @@ const clickMoreCtl = async sel => {
     bomSlides: __bb.state.bomData.items.filter(i => i.label.includes('slides')).length
   }));
   ok(ns.drawers === 2 && ns.rails === 3, `nightstand starter: 2 drawers, 3 rails (got ${ns.drawers}/${ns.rails})`);
+  ok(!heroBefore && await page.evaluate(() => __bb.state.prefs4.seenHero === true),
+    'first starter pick marks the one-shot hero as seen');
   ok(Math.abs(ns.boxW - (ns.openW - 25.4)) < 0.01, 'box width = opening − 25.4 in live app');
   ok([250, 300, 350, 400, 450, 500].includes(ns.slide), 'standard slide length in live app');
   ok(ns.bomSlides === 2, 'slide pairs in BOM');
@@ -233,6 +242,68 @@ const clickMoreCtl = async sel => {
   const stats1 = await page.evaluate(() => __bb.state.engine.stats());
   ok(stats1.geometries <= stats0.geometries + 1, `geometry count stable across 12 rebuilds (${stats0.geometries} → ${stats1.geometries})`);
   ok(stats1.materials < 200, `material pool bounded (${stats1.materials})`);
+  ok(stats1.textures <= stats0.textures + 1, `texture count stable across 12 rebuilds (${stats0.textures} → ${stats1.textures})`);
+
+  // Theme flip regenerates the environment map without leaking, and quality
+  // toggling swaps the material pool without growing geometry.
+  await page.evaluate(async () => {
+    for (const t of ['dark', 'light', 'dark', 'light']) {
+      __bb.applyTheme(t);
+      await new Promise(r => setTimeout(r, 60));
+    }
+  });
+  const stats2 = await page.evaluate(() => __bb.state.engine.stats());
+  ok(stats2.textures <= stats1.textures + 1, `env map swap doesn't leak textures (${stats1.textures} → ${stats2.textures})`);
+  await page.evaluate(async () => {
+    __bb.state.prefs4.render = { textured: false }; __bb.applyRender();
+    await new Promise(r => setTimeout(r, 60));
+    __bb.state.prefs4.render = { textured: true }; __bb.applyRender();
+    await new Promise(r => setTimeout(r, 60));
+  });
+  const stats3 = await page.evaluate(() => __bb.state.engine.stats());
+  ok(stats3.geometries <= stats2.geometries + 1, `quality toggle keeps geometry shared (${stats2.geometries} → ${stats3.geometries})`);
+  ok(stats3.materials < 200, `quality toggle keeps the material pool bounded (${stats3.materials})`);
+
+  // Blueprint mode: one toggle → drafting render, orthographic front view, dims on.
+  await page.click('#draftToggle');
+  await page.waitForTimeout(500);
+  ok(await page.evaluate(() =>
+    document.body.classList.contains('drafting') &&
+    __bb.state.engine.getDrafting() &&
+    __bb.state.engine.getProjection() === 'ortho' &&
+    document.getElementById('dimsToggle').getAttribute('aria-pressed') === 'true'),
+    'blueprint mode: drafting render + orthographic + dimensions on');
+  await page.screenshot({ path: SHOTS + '/21-blueprint.png' });
+  await page.click('#draftToggle');
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => !__bb.state.engine.getDrafting() && __bb.state.engine.getProjection() === 'persp'),
+    'blueprint off restores the perspective studio view');
+
+  // Joint Inspector: open from an assembly step, drive explode + cutaway, close.
+  await page.click('#tab-assembly');
+  await page.waitForSelector('.joint-inspect');
+  await page.click('.joint-inspect');
+  await page.waitForSelector('#jointScrim.open');
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => !!BB.JointView._live() && document.getElementById('jointTitle').textContent.includes('→')),
+    'joint inspector opens a live scene titled with the real members');
+  await page.evaluate(() => { BB.JointView.setExplode(1); BB.JointView.setCutaway(true); });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: SHOTS + '/22-joint.png' });
+  await page.click('#jointClose');
+  await page.waitForTimeout(150);
+  ok(await page.evaluate(() => !BB.JointView._live()), 'closing the inspector disposes its scene');
+  // Reference-tab demo: every joint learnable before it is used.
+  await page.click('#tab-reference');
+  await page.waitForSelector('.ref-search');
+  await page.click('.ref-tabs .ref-tab:nth-child(3)');
+  await page.waitForSelector('.joint-demo');
+  ok(await page.evaluate(() => document.querySelectorAll('.joint-demo').length === Object.keys(BB.K.JOINERY).length),
+    'shop reference offers a 3D demo for every joint type');
+  await page.click('.joint-demo');
+  await page.waitForSelector('#jointScrim.open');
+  ok(await page.evaluate(() => !!BB.JointView._live()), 'reference demo opens on typical members');
+  await page.click('#jointClose');
 
   // Shop reference searchable.
   await page.click('#tab-reference');
