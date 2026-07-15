@@ -215,10 +215,10 @@ var BB = globalThis.BB = globalThis.BB || {};
             if (sec.kind === 'direct') {
               solidPieces.push({ name: row.name, len: row.L, nominal: sec.nominal, actual: sec.actual, note: sec.actual.w - row.W > 3 ? `rip to ${U().fmtLength(row.W)}` : '' });
             } else if (sec.kind === 'glueup') {
-              glueups.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, W: row.W, T: row.T });
+              glueups.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, W: row.W, T: row.T, L: row.L });
               for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (strip ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: 'glue-up strip' });
             } else {
-              laminations.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, T: row.T });
+              laminations.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, T: row.T, L: row.L });
               for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (layer ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: `laminate + plane to ${U().fmtLength(row.T)}` });
             }
           }

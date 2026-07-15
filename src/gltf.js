@@ -109,7 +109,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const matIndex = new Map(roles.map((r, i) => [r, i]));
     const materials = roles.map(r => {
       const c = roleColor[r] || [180, 140, 95];
-      const metal = r === 'pull';
+      const metal = r === 'pull' || r === 'slide';
       return {
         name: r,
         pbrMetallicRoughness: {

@@ -218,6 +218,10 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   let stab = 0, over = 0;
   const dens = k => K.WOOD_SPECIES[k].sg * 1000;
   for (const p of model.parts) {
+    // 2026: slide/runner running gear is EXCLUDED from the mass model (a
+    // folded steel channel is not a solid box of anything); solid pulls
+    // keep the engine's deliberate 3000 kg/m³ metal-hardware density.
+    if (p.hardware) continue;
     const d = p.material === 'baltic_birch' ? dens('baltic_birch') : p.material === 'hardware' ? 3000 : dens(spec.wood.species);
     const m = p.size.w * p.size.h * p.size.d * 1e-9 * d * (p.prim === 'cylinder' ? Math.PI / 4 : 1);
     const dr = drawerOf.get(p.id);

@@ -44,11 +44,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       'You NEVER compute geometry. You propose intent; the app owns all math, snaps stock sizes, and re-validates everything.',
       'All wire dimensions are millimetres. The app pre-normalizes dimension strings in user messages to explicit millimetres before you see them — NEVER convert units yourself.',
       Codec().SCHEMA_DOC,
-      'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes).',
-      // Generated from the joinery table — never hand-copied (audit F-S3-8).
-      K.levelMatrixLine() + ' (code enforces this regardless).',
+      // The LEVEL MATRIX itself rides the knowledge digest (generated from
+      // the joinery table, audit F-S3-8) — repeating it here cost ~90 tokens
+      // per call saying the same thing twice.
+      'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
       'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
-      'REFINEMENTS: when the user asks for a change, EDIT the current spec — send ONLY the changed wire keys. Do not redesign. STRUCTURAL CRITIQUE: when the message is a structural critique of your last composition, fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
+      'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
       '--- knowledge digest ---',
       K.knowledgeDigest(),
       // Hardware style intent only — every count, rating, and bore is code
@@ -100,7 +101,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       const opts = obj.a !== undefined ? obj.a : obj.options;
       return { kind: 'question', question: q, options: Array.isArray(opts) ? opts.slice(0, 3).map(String) : [] };
     }
-    const explain = String(obj.e !== undefined ? obj.e : (obj.explain || '')).slice(0, 200);
+    // ANSWER shape (2026): pure advice/explanation, no spec change. Before
+    // this, "what finish should I use?" had no legal reply — an answer with
+    // no wire keys parsed to null and burned the validation retry.
+    const info = obj.i !== undefined ? obj.i : obj.info;
+    if (typeof info === 'string' && info.trim()) {
+      return { kind: 'info', text: String(info).slice(0, 900) };
+    }
+    const explain = String(obj.e !== undefined ? obj.e : (obj.explain || '')).slice(0, 320);
     const N = obj.N !== undefined ? obj.N : obj.new;
     if (N && typeof N === 'object') {
       const spec = Codec().decode(N);
@@ -110,7 +118,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       return { kind: 'new', spec, unitsUnspecified: N.u === undefined && N.units === undefined, explain: explain || 'Here’s a starting point.' };
     }
     const wireDiff = {};
-    for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain') wireDiff[k] = obj[k];
+    for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain' && k !== 'i' && k !== 'info') wireDiff[k] = obj[k];
     const patch = Codec().decodePartial(wireDiff);
     if (!patch) return null;
     return { kind: 'diff', patch, explain: explain || 'Updated.' };
@@ -462,7 +470,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   const VISION_PROMPT = [
     'The image is a furniture photo. Identify the furniture type and estimate overall proportions, anchored to standard ergonomic heights from the knowledge digest (' + K.visionRangesLine() + ').',
     'Reply {"N":{full wire spec}} — use a known template (t 0-5) whenever one fits; use t=6 (custom, parts + connections) only if none does.',
-    'Estimate wood species from color/grain (m). If drawers are visible on a nightstand/cabinet, set "d". Minified JSON only.'
+    // Picture identification (2026): everything the wire can carry, the
+    // photo path should read — species by color/grain against the full SPC
+    // list, visible sheet goods, drawer bank, pull style, shelf count, and
+    // the joinery level when exposed joints show.
+    'Read from the photo: wood species by color and grain ("m", a SOLID species from SPC — pale cream=maple/birch, honey/amber=oak/ash/pine, salmon-auburn=cherry, chocolate=walnut, ribbon-striped red-brown=sapele, painted=poplar or mdf); visible sheet goods ("ms"); drawers ("d": count and inset/overlay) with pull style ("hp" from PUL — bars, knobs, cups, ring, leather, none visible = push-to-open); shelf count (s.c); joinery level (l) if exposed dovetails/tenons show.',
+    'Snap thicknesses to stock sizes. Minified JSON only.'
   ].join(' ');
 
   /* Client-side downscale (1d): image tokens scale with pixel count — NEVER

@@ -948,6 +948,14 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   font: 500 12.5px var(--mono); width: 100%; color: var(--ink);
 }
 .price-grid input:focus-visible { outline: none; border-color: var(--accent); }
+.price-group { grid-column: 1 / -1; margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--line-2); font: 650 11.5px var(--body); color: var(--ink-2); letter-spacing: .02em; text-transform: uppercase; }
+
+/* ---------------- account row (More menu) ---------------- */
+.menu-account { display: flex; align-items: center; gap: var(--s2); padding: 7px 10px; font: 550 13px var(--body); color: var(--ink); }
+.menu-account .account-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; }
+.menu-account .account-avatar.fallback { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); font-size: 10px; }
+.menu-account .account-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-account .hint { color: var(--muted); font-size: 11px; }
 
 /* ---------------- provenance popover ---------------- */
 .prov-btn {

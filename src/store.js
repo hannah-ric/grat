@@ -1,7 +1,23 @@
-/* Blueprint Buddy — persistence (Phase 4).
- * Uses the same window.storage API as preferences. EVERY call sits inside
- * try/catch with an in-memory fallback: the app must run fully — session-only
- * — when storage is unavailable, and the user should barely notice.
+/* Blueprint Buddy — persistence (Phase 4; 2026: real persistence everywhere).
+ *
+ * One key-value API over a DRIVER CHAIN, first available wins per call:
+ *   1. artifact — window.storage (claude.ai artifact hosting)
+ *   2. cloud    — /api/store with a signed-in session (Vercel + KV; see
+ *                 api/auth.js). Writes also mirror to device storage, so a
+ *                 network blip or sign-out never loses the latest state.
+ *   3. device   — localStorage ("bb:" prefix). THE fix for the app's oldest
+ *                 silent failure: off-artifact, projects used to evaporate
+ *                 on refresh because only window.storage was ever tried.
+ *   4. memory   — session-only, always mirrored, so a mid-session storage
+ *                 death loses nothing.
+ * EVERY call sits inside try/catch: the app must run fully — session-only —
+ * when all storage is unavailable, and the user should barely notice.
+ *
+ * Accounts: Store.init() probes /api/auth?me=1 once (boot races it against
+ * a short timeout so first paint never waits on the network). Signing in
+ * upgrades the chain to cloud and runs a one-time device→cloud migration
+ * when the cloud side is still empty — existing local projects follow the
+ * user. Cloud documents with data always win; migration never overwrites.
  *
  * Key layout (respecting the 5 MB per-key limit):
  *   projects:index  -> [{id, name, updated, thumb, dims, progressPct}]
@@ -19,45 +35,187 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
-  const memory = new Map(); // silent session-only fallback
-  let storageWorks = null;  // null = unknown, probed lazily
+  const memory = new Map(); // silent session-only fallback, always mirrored
+  const LOCAL_PREFIX = 'bb:';
+  let artifactWorks = null; // null = unknown, probed lazily
+  let localOK = null;       // null = unknown, probed lazily
+  let auth = null;          // { user, providers, storage } from /api/auth?me=1
+  let remoteAlive = false;  // signed in AND the server has a KV backend
+  const modeListeners = [];
 
   function hasStorage() {
     return typeof window !== 'undefined' && window.storage &&
       typeof window.storage.get === 'function' && typeof window.storage.set === 'function';
   }
 
+  function localStore() {
+    if (localOK === false) return null; // a THROWING localStorage stays latched off
+    try {
+      const ls = (typeof window !== 'undefined' ? window : globalThis).localStorage;
+      if (!ls) return null; // absent (headless) — re-checked per call, never latched
+      if (localOK === null) {
+        ls.setItem(LOCAL_PREFIX + 'probe', '1');
+        ls.removeItem(LOCAL_PREFIX + 'probe');
+        localOK = true;
+      }
+      return ls;
+    } catch (e) { localOK = false; return null; }
+  }
+
+  /* ---------------- cloud driver (same-origin /api/store) ---------------- */
+  async function remoteGet(key) {
+    const r = await fetch('/api/store?doc=' + encodeURIComponent(key), { credentials: 'same-origin' });
+    if (r.status === 401 || r.status === 503) { setRemote(false); return undefined; } // signed out / unconfigured
+    if (!r.ok) throw new Error('store ' + r.status);
+    const data = await r.json();
+    return data && typeof data.value === 'string' ? data.value : null;
+  }
+  async function remoteSet(key, value) {
+    const r = await fetch('/api/store?doc=' + encodeURIComponent(key), {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value })
+    });
+    if (r.status === 401 || r.status === 503) { setRemote(false); return false; }
+    return r.ok;
+  }
+  async function remoteDel(key) {
+    const r = await fetch('/api/store?doc=' + encodeURIComponent(key), { method: 'DELETE', credentials: 'same-origin' });
+    if (r.status === 401 || r.status === 503) setRemote(false);
+    return r.ok;
+  }
+
+  function setRemote(on) {
+    if (remoteAlive === !!on) return;
+    remoteAlive = !!on;
+    for (const cb of modeListeners) { try { cb(persistenceMode()); } catch (e) { /* listener's problem */ } }
+  }
+
+  /* ---------------- the unified get/set/del ---------------- */
   async function get(key) {
     if (hasStorage()) {
       try {
         const r = await window.storage.get(key);
-        storageWorks = true;
+        artifactWorks = true;
         if (r && r.value !== undefined && r.value !== null) return JSON.parse(r.value);
         return null;
       } catch (e) { /* missing key or broken storage: fall through */ }
     }
+    if (remoteAlive) {
+      try {
+        const v = await remoteGet(key);
+        if (typeof v === 'string') return JSON.parse(v);
+        if (v === null) return null; // authoritative: signed-in cloud says "no such doc"
+      } catch (e) { /* transient network — fall through for THIS call */ }
+    }
+    const ls = localStore();
+    if (ls) {
+      try {
+        const v = ls.getItem(LOCAL_PREFIX + key);
+        if (v !== null) return JSON.parse(v);
+        return memory.has(key) ? JSON.parse(memory.get(key)) : null;
+      } catch (e) { /* fall through */ }
+    }
     return memory.has(key) ? JSON.parse(memory.get(key)) : null;
   }
+
   async function set(key, obj) {
     const value = JSON.stringify(obj);
-    memory.set(key, value); // memory always mirrors, so a mid-session storage death loses nothing
+    memory.set(key, value); // memory always mirrors
+    let ok = false;
     if (hasStorage()) {
-      try { await window.storage.set(key, value); storageWorks = true; return true; }
-      catch (e) { storageWorks = false; }
+      try { await window.storage.set(key, value); artifactWorks = true; ok = true; }
+      catch (e) { artifactWorks = false; }
     }
-    return false;
+    // Device write-through even when cloud is live: the local copy is the
+    // offline cache and the signed-out fallback.
+    const ls = localStore();
+    if (ls) {
+      try { ls.setItem(LOCAL_PREFIX + key, value); ok = true; }
+      catch (e) { localOK = false; /* quota / private mode */ }
+    }
+    if (remoteAlive) {
+      try { ok = (await remoteSet(key, value)) || ok; }
+      catch (e) { /* transient — local copy already landed */ }
+    }
+    return ok;
   }
+
   async function del(key) {
     memory.delete(key);
+    let ok = false;
     if (hasStorage()) {
       try {
         if (typeof window.storage.delete === 'function') await window.storage.delete(key);
         else await window.storage.set(key, 'null');
-        return true;
+        ok = true;
       } catch (e) { /* silent */ }
     }
-    return false;
+    const ls = localStore();
+    if (ls) { try { ls.removeItem(LOCAL_PREFIX + key); ok = true; } catch (e) { /* silent */ } }
+    if (remoteAlive) { try { ok = (await remoteDel(key)) || ok; } catch (e) { /* transient */ } }
+    return ok;
   }
+
+  /* ---------------- accounts: probe, upgrade, migrate ----------------
+   * init() resolves fast (or the boot race abandons the wait — the chain
+   * upgrades itself mid-session and notifies listeners). On claude.ai and
+   * static hosting the probe 404s once and everything below stays dormant. */
+  async function init(opts) {
+    opts = opts || {};
+    if (typeof fetch !== 'function' || typeof window === 'undefined' || hasStorage()) return authState();
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), opts.timeoutMs || 4000) : null;
+      const r = await fetch('/api/auth?me=1', { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined });
+      if (timer) clearTimeout(timer);
+      if (!r.ok) return authState();
+      auth = await r.json();
+      if (auth && auth.user && auth.storage) {
+        try { await migrateLocalToCloud(); } catch (e) { /* migration is best-effort */ }
+        setRemote(true);
+      }
+    } catch (e) { /* no /api/auth at this origin — device storage it is */ }
+    return authState();
+  }
+
+  /* One-time device→cloud copy on first sign-in: only when the cloud side
+   * has NO project index yet — cloud data always wins, never overwritten. */
+  async function migrateLocalToCloud() {
+    const ls = localStore();
+    if (!ls) return;
+    const remoteIdx = await remoteGet(INDEX_KEY);
+    if (remoteIdx === undefined || remoteIdx !== null) return; // unavailable, or cloud already has data
+    const localIdx = ls.getItem(LOCAL_PREFIX + INDEX_KEY);
+    if (!localIdx) return;
+    let idx;
+    try { idx = JSON.parse(localIdx) || []; } catch (e) { return; }
+    await remoteSet(INDEX_KEY, localIdx);
+    for (const row of idx.slice(0, 100)) {
+      const k = PROJECT_PREFIX + row.id;
+      const v = ls.getItem(LOCAL_PREFIX + k);
+      if (v) await remoteSet(k, v);
+    }
+    for (const k of [PRICES_KEY, PREFS_KEY]) {
+      const v = ls.getItem(LOCAL_PREFIX + k);
+      if (v) await remoteSet(k, v);
+    }
+  }
+
+  const authState = () => ({
+    user: auth && auth.user ? auth.user : null,
+    providers: auth && Array.isArray(auth.providers) ? auth.providers : [],
+    storage: !!(auth && auth.storage),
+    cloud: remoteAlive
+  });
+
+  function persistenceMode() {
+    if (hasStorage() && artifactWorks !== false) return 'artifact';
+    if (remoteAlive) return 'cloud';
+    if (localStore()) return 'device';
+    return 'session';
+  }
+  const onModeChange = cb => { if (typeof cb === 'function') modeListeners.push(cb); };
 
   /* ---------------- projects ---------------- */
   const INDEX_KEY = 'projects:index';
@@ -174,7 +332,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     return {
       dimensional,
       sheet: normalizeSheetPrices(dflt.sheet, stored.sheet),
-      bdft: Object.assign({}, dflt.bdft, stored.bdft || {})
+      bdft: Object.assign({}, dflt.bdft, stored.bdft || {}),
+      // Hardware & consumables (2026): pre-expansion tables gain the block.
+      hardware: Object.assign({}, dflt.hardware, stored.hardware || {})
     };
   }
   const savePrices = prices => set(PRICES_KEY, prices);
@@ -236,7 +396,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Store = {
     get, set, del, hasStorage,
-    isPersistent: () => storageWorks !== false && hasStorage(),
+    isPersistent: () => persistenceMode() !== 'session',
+    persistenceMode, init, auth: authState, onModeChange,
+    loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
+    logoutUrl: '/api/auth?logout=1',
     newId, loadIndex, saveProject, loadProject, deleteProject, renameProject, duplicateProject,
     loadPrices, savePrices, loadPrefs, savePrefs, makeThumb,
     MAX_REVISIONS, DEFAULT_PREFS

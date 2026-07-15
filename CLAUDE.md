@@ -16,10 +16,12 @@ Blueprint Buddy — an AI-guided parametric furniture design studio and workshop
 npm install --ignore-scripts   # only needed for the smoke test (Playwright is the sole devDependency)
 npm run build                  # node build.js → dist/index.html (single file)
 npm run dev                    # build + serve on $PORT (default 3000) + watch-rebuild + /api/chat proxy
-npm test                       # unit + audit-regression + golden-corpus suites (plain node, no browser, no install)
+npm test                       # unit + audit + golden + battery + server suites (plain node, no browser, no install)
 npm run test:smoke             # build + drive the real app in headless Chromium
+npm run test:cloud             # accounts end-to-end: dev login → cloud autosave → reload restore (serve.js + Chromium)
 npm run test:handcalc          # hand-arithmetic vs engine verification worksheet (must stay 14/14)
-npm run test:battery           # live behavior battery (boundary/contradictory/adversarial fixtures)
+npm run test:battery           # live behavior battery (boundary/contradictory/adversarial fixtures) — asserting, part of npm test
+npm run test:server            # api/ handlers: sessions, OAuth flows, document store — part of npm test
 ```
 
 - Run one suite directly: `node test/unit.test.js`, `node test/audit.test.js`, `node test/golden.test.js`. There is no per-test filter — suites are plain Node scripts organized in `section(...)` blocks and run in a few seconds.
@@ -59,7 +61,7 @@ Other load-bearing locations:
 - `src/knowledge.js` — every physical constant (wood species, ergonomics, fasteners, finishes) has exactly one source here; `docs/audit/02-constants-reference.md` maps them. The AI system-prompt digests are **generated from these tables and self-tested — never hand-edit a digest string**.
 - `src/ui.js` — all DOM wiring; every design change (AI edit, inspector edit, integrity fix, history restore) flows through `commit()` so there is one spec and one history stack.
 - `src/spec.js` — every corrected spec carries `specVersion` and loads through a migration registry: a saved design must never fail to open; add a migration rather than changing the schema in place.
-- `api/chat.js` — the only server code: CommonJS, zero deps, same-origin Anthropic proxy holding `ANTHROPIC_API_KEY` (optional `ANTHROPIC_MODEL`, default `claude-sonnet-5`); it owns model choice and the token ceiling. `serve.js` mounts the same handler locally so dev behaves like Vercel/v0 (see `DEPLOYMENT.md`).
+- `api/` — all server code, CommonJS, zero deps, mounted identically by `serve.js` locally and auto-detected by Vercel (see `DEPLOYMENT.md`): `chat.js` (same-origin Anthropic proxy holding `ANTHROPIC_API_KEY`; owns model choice — default `claude-sonnet-5` — and the token ceiling), `auth.js` (optional OAuth logins → stateless HMAC session cookies; `_session.js` is the shared signer, not an endpoint), `store.js` (optional per-user JSON document store on Upstash/Vercel KV REST, or `.data/kv.json` in dev). Everything auth/storage is optional and degrades: no env vars → the client persists to `localStorage`, no login UI appears.
 - `vendor/` — Three.js + Bitter fonts, committed, inlined at build time.
 - `src/selftest.js` — the in-app diagnostics suite (long-press the logo); it ships in the product as a permanent regression net, so keep it in sync with behavior changes.
 
@@ -78,6 +80,6 @@ The 2026 audit (`docs/audit/`, start at `00-final-report.md`) established the re
 - Keep everything inlineable: no ES modules in `src/`, no external URLs in the output, zero fetched assets — textures, environments, and drawings are generated procedurally at runtime.
 - Memory contracts are load-bearing and smoke-tested: shared unit geometries, bounded material pools, one texture per species, dispose-on-teardown, `stats()` asserted stable across rebuilds/theme flips.
 - Reduced motion is a first-class path: one damped-lerp family drives all 3D motion, one easing family in CSS, and reduced motion collapses every animation to a snap.
-- Boot stays untouched: thumbnails, the hero moment, and other extras ride idle time and degrade silently on failure (same for storage: persistence failure falls back to a fully working session-only app).
+- Boot stays untouched: thumbnails, the hero moment, and other extras ride idle time and degrade silently on failure. Storage is a driver chain (artifact → cloud → device → memory, `src/store.js`) — every rung degrades to the next, ending at a fully working session-only app; the auth probe races a short timeout so first paint never waits on the network.
 - UI system of record: `docs/ui/brand-system.md` ("Showroom" tokens — pending adoption into `src/styles.css`), `docs/ui/semantic-skeleton.md` (structural target for shell markup), `docs/ui/phase2-roadmap.md` (evidence-based UI backlog). Verdicts (`PASS`/`ADVISORY`/`FAIL`) always ship as stamps with text, never color alone.
 - Product/creative direction and the built-vs-roadmap line for Phase 5: `DESIGN.md`.

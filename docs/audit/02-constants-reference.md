@@ -171,3 +171,23 @@ every rating, count, position, and bore — all provenance-ready arithmetic in `
 | kidSafe gate (staged) | torsion/soft-down stays required, cord stops refused, ≥12 mm ventilation, no auto-latch | ASTM F963 toy-chest provisions |
 | SLIDE_LENGTHS += 533, 610 | deep-case slides (21/24 in) | append-only |
 | HNG/LID wire enums | **deliberately absent** | no door/lid geometry exists yet — style intent without a code consumer would invert the founding rule |
+
+## 2026 hardening addendum (pulls · running gear · climate · prices · prompt · persistence)
+
+| Constant / rule | Value | Ground truth / rationale |
+|---|---|---|
+| Pull substitution | style-true down to min(CTC series) + 44 for styles with their OWN series (cup, leather); generic 2-hole styles < 300 → knob (≥ 300 → bar pull); result carries `substituted: true` | the BOM label, the boring instructions, the assembly step, and the validation advisory all read the same EFFECTIVE style — they can never disagree |
+| Zero-hole pulls | edge_pull / flush_recessed / none_touch carry `holes: 0` | their install is edge screws or a template mortise, never "one bore, centered" |
+| Custom joint kinds | stick×stick → frame; stick×sheet → frame+case; sheet×sheet → case/panel/box; `external` joints (french cleat) never part-to-part | the same kind gate template slots always had, derived from primitives |
+| Side-mount slide part | 12.7 × min(45, boxH−4) × slideLen, flush with the BOX front plane | fills the exact 12.7 mm per-side clearance; behind an inset front, at the case edge for overlay |
+| Undermount slide part | ~30–42 × 11 × (boxD − 2·boxT − 4), inside the box footprint under the 12.7 recess | invisible from outside, exactly as sold |
+| Wooden runner part | (packout + 19) × 32 × (interior − setback − 28), packed flush to the case face, 19 mm bearing | honest LUMBER: joins the cut list, the packing plan, and the screw counts |
+| Hardware mass | slide/runner `hardware: true` parts excluded from every mass/COG/F2057 sum | a folded steel channel is not a wood-density box; solid pulls keep the deliberate 3000 kg/m³ |
+| Glue-up steps | one step per identical panel group; clamps = max(2, ceil((L−50)/225)+1), alternating over/under | BB.Fasteners.glueupSchedule — the edge_glue joint's own schedule; packing and joinery share one voice |
+| Climate → bench | wooden-runner vertical clearance uses the user's ΔMC (arid 2 / temperate 4 / humid 6) | the one place a craftsman actually uses the climate setting |
+| Price keys | `slide_*`, `pull_*`, `glue_*`, fastener kinds, `finish_flat`, `antitip_kit`, `shelf_pin`, `screw_pack` | the WHOLE BOM is user-editable now, not just lumber; defaults assemble from the owning tables |
+| Prompt ceiling | systemPrompt ≤ 1900 estimated tokens (measured ~1833), LEVEL MATRIX sent exactly once | tested in unit + selftest; regression-guarded growth |
+| ANSWER wire shape | `{"i":"…"}` for pure advice | before this, an advice reply had no legal wire form and burned the validation retry |
+| Word-number lengths | one…twelve + feet/foot/ft/inches/inch normalize; bare "in" never | "four feet wide" parses; "two in the corner" survives |
+| Persistence chain | artifact → cloud → device → memory; cloud writes mirror to device; device→cloud migration only when cloud is empty | sessions are stateless HMAC cookies (AUTH_SECRET); docs namespaced `bb:{uid}:{doc}`, ≤ 400 KB |
+| End grain / butcher block | **deliberately descoped** (2026 direction) | the grain enum stays `length|width`; the NDS ×0.67 end-grain screw derating (F-S2-7) is untouched physics; species color recipes stay accurate |

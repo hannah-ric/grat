@@ -232,6 +232,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     let out = String(text == null ? '' : text);
     const mm = v => trim0(String(r(v, 1))) + 'mm';
 
+    // Word numbers with an EXPLICIT length unit become digits first, so
+    // "four feet wide" normalizes like "4 feet wide". Only feet/inches
+    // spellings that are unambiguous — never bare "in", which is usually a
+    // preposition ("two in the corner").
+    const WORD_NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+    out = out.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(feet|foot|ft\.?|inches|inch)\b/gi,
+      (m0, w, unit) => WORD_NUM[w.toLowerCase()] + ' ' + unit);
+
     // 2' 5", 2ft 5 1/2 in, 6 ft. In running text the inches part must be a
     // fraction or carry an inch marker — "6 ft 4 drawers" keeps its 4.
     out = out.replace(

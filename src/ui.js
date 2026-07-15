@@ -67,8 +67,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.integrity = Structural.computeIntegrity(r.spec, r.model, integrityOpts());
     state.cut = Plans.cutList(r.spec, r.model);
     state.stockPlan = Packing.planStock(r.spec, r.model, state.cut, { prices: state.prices, stockMode: state.prefs4.stockMode });
-    state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan });
-    state.steps = Plans.assembly(r.spec, r.model, state.integrity, { stockPlan: state.stockPlan });
+    state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan, prices: state.prices });
+    state.steps = Plans.assembly(r.spec, r.model, state.integrity, { stockPlan: state.stockPlan, climate: state.prefs4.climate });
     // The checklist just changed shape: progress keys from an older stock
     // layout would otherwise inflate the build percentage forever.
     if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
@@ -179,15 +179,52 @@ var BB = globalThis.BB = globalThis.BB || {};
   let saveFlashTimer = null;
   function flashSave(persistent) {
     const elS = $('saveState');
-    elS.textContent = persistent ? 'saved' : 'session only';
-    elS.title = persistent
-      ? 'Autosaved to this device — find it under More › Projects'
-      : 'Storage is unavailable — this design lives for this session only. Export a share code to keep it.';
+    const mode = Store.persistenceMode();
+    elS.textContent = !persistent ? 'session only' : mode === 'cloud' ? 'saved · cloud' : 'saved';
+    elS.title = !persistent
+      ? 'Storage is unavailable — this design lives for this session only. Export a share code to keep it.'
+      : mode === 'cloud'
+        ? 'Autosaved to your account — projects follow you to any device.'
+        : 'Autosaved to this device — find it under More › Projects';
     elS.classList.toggle('err', !persistent);
     elS.classList.remove('pending');
     elS.classList.add('on');
     clearTimeout(saveFlashTimer);
     saveFlashTimer = setTimeout(() => elS.classList.remove('on'), 1600);
+  }
+
+  /* ---------------- account (optional cloud persistence) ----------------
+   * Rendered inside the More menu. The section exists only when the origin
+   * actually offers accounts (providers configured server-side) — a static
+   * host or claude.ai shows nothing at all. */
+  const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
+  function renderAccount() {
+    const area = $('accountArea'), sep = $('accountSep');
+    if (!area) return;
+    const a = Store.auth();
+    const show = !!(a.user || (a.providers.length && a.storage));
+    area.hidden = !show;
+    sep.hidden = !show;
+    area.textContent = '';
+    if (!show) return;
+    if (a.user) {
+      const row = el('div', 'menu-account');
+      row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : '<span class="account-avatar fallback" aria-hidden="true">●</span>'}
+        <span class="account-name">${esc(a.user.name)}</span>
+        <span class="hint">${a.cloud ? 'cloud sync on' : 'signed in'}</span>`;
+      area.append(row);
+      const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
+      out.setAttribute('role', 'menuitem');
+      out.onclick = () => { window.location.href = Store.logoutUrl; };
+      area.append(out);
+    } else {
+      for (const p of a.providers) {
+        const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">sync projects</span>`);
+        b.setAttribute('role', 'menuitem');
+        b.onclick = () => { window.location.href = Store.loginUrl(p); };
+        area.append(b);
+      }
+    }
   }
 
   /* ---------------- render: top bar ---------------- */
@@ -440,6 +477,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
     grid.append(priceInput(`${K.WOOD_SPECIES[species].label} $/bd ft`, state.prices.bdft[species], v => { state.prices.bdft[species] = v; }));
+    // Hardware & consumables (2026): the WHOLE bill of materials is now
+    // editable — slides, pulls, glue, finish, fasteners — not just lumber.
+    if (!state.prices.hardware) state.prices.hardware = K.hardwarePriceDefaults();
+    const hwKeys = Object.keys(state.prices.hardware)
+      .sort((a, b) => K.hardwarePriceLabel(a).localeCompare(K.hardwarePriceLabel(b)));
+    if (hwKeys.length) {
+      grid.append(el('div', 'price-group', 'Hardware, glue, finish &amp; fasteners ($)'));
+      for (const k of hwKeys) {
+        grid.append(priceInput(K.hardwarePriceLabel(k), state.prices.hardware[k], v => { state.prices.hardware[k] = v; }));
+      }
+    }
     details.append(grid);
     root.append(details);
   }
@@ -842,6 +890,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
       askQuestion(res.reply);
+      return null;
+    }
+    if (res.reply.kind === 'info') {
+      // A thorough answer that changes nothing: show it, keep the design.
+      state.turns = res.turns.slice(-24);
+      botSay(res.reply.text, [], { noChange: true });
       return null;
     }
     let applied = AI.apply(res.reply, state.spec);
@@ -1409,7 +1463,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     grid.innerHTML = '<p class="sub">Loading…</p>';
     openScrim('projectsScrim');
     const idx = await Store.loadIndex();
-    $('storageNote').textContent = Store.isPersistent() ? '' : 'Storage is unavailable — projects live for this session only.';
+    const mode = Store.persistenceMode();
+    const a = Store.auth();
+    $('storageNote').textContent = mode === 'session'
+      ? 'Storage is unavailable — projects live for this session only.'
+      : mode === 'device' && a.providers.length && a.storage
+        ? 'Saved on this device. Sign in (More menu) to sync projects across devices.'
+        : mode === 'cloud' ? `Synced to your account${a.user ? ` (${a.user.name})` : ''}.` : '';
     grid.textContent = '';
     if (!idx.length) {
       grid.innerHTML = '<p class="sub">No projects yet — designs save here automatically as you work.</p>';
@@ -2093,6 +2153,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
+    // Accounts + cloud persistence: probe /api/auth once, racing a short
+    // timeout so first paint NEVER waits on the network. A late-resolving
+    // probe upgrades the storage chain mid-session and re-renders the
+    // account section — boot itself stays untouched.
+    try {
+      await Promise.race([
+        Store.init({ timeoutMs: 4000 }).then(() => { renderAccount(); }),
+        new Promise(r => setTimeout(r, 1200))
+      ]);
+    } catch (e) { /* device storage is the product */ }
+    Store.onModeChange(() => renderAccount());
+
     // Persisted prices + prefs load BEFORE the first paint, so units,
     // precision, dual display, and the shell layout never flash from defaults.
     try {
@@ -2197,6 +2269,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
+    renderAccount();
     $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
     /* chat fold + welcome paths */
     $('chatCollapse').onclick = () => setChatCollapsed(true);

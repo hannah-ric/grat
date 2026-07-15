@@ -45,9 +45,14 @@ hand-edit a digest string.
   each — see `docs/audit/02-constants-reference.md`).
 - `src/index.template.html` + `build.js` — `{{PLACEHOLDER}}` inlining; adding
   a new src module means adding a placeholder in both.
-- `api/chat.js` — the only server code: same-origin Anthropic proxy
-  (`ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`). CommonJS, zero deps.
-- `serve.js` — zero-dep dev server; mounts `api/chat.js` locally.
+- `api/` — all server code, CommonJS, zero deps: `chat.js` (same-origin
+  Anthropic proxy; `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`),
+  `auth.js` (optional OAuth logins → stateless HMAC session cookies;
+  `_session.js` is the shared signer, not an endpoint), `store.js`
+  (optional per-user document store on Upstash/Vercel KV REST, or a local
+  JSON file in dev). All auth/storage degrades: no env vars → the client
+  persists to `localStorage` and shows no login UI (see `DEPLOYMENT.md`).
+- `serve.js` — zero-dep dev server; mounts every `api/` handler locally.
 - `vendor/` — Three.js + fonts, committed, inlined at build time.
 - `blueprint-buddy.jsx` — the earlier React-artifact incarnation (Phase 3);
   reference only, not part of the build.

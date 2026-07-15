@@ -372,6 +372,73 @@ var BB = globalThis.BB = globalThis.BB || {};
         sysHW.includes(HW.digestLine()) && !sysHW.includes('capacityKg'), 'styles only', 'styles only');
     }
 
+    /* ============ 2026 hardening: coherence, budget, persistence ============ */
+    {
+      const HW = BB.HW;
+      // Pull label and bore can never disagree: cup pulls stay style-true on
+      // narrow drawers; generic styles substitute AND say so, everywhere.
+      const cup = HW.pullSpec(240, 'cup_pull');
+      test('hardening', 'cup pull stays a cup pull on a 240 mm front (own CTC series)',
+        cup.style === 'cup_pull' && cup.holes === 2 && cup.ctcMM === 76 && !cup.substituted,
+        `${cup.style} ${cup.holes}×@${cup.ctcMM}`, 'cup_pull 2×@76');
+      const bar = HW.pullSpec(240, 'bar_pull');
+      test('hardening', 'bar pull on a narrow front substitutes a knob and carries the flag',
+        bar.style === 'knob_round' && bar.substituted === true && bar.holes === 1,
+        `${bar.style} substituted=${bar.substituted}`, 'knob_round substituted=true');
+      test('hardening', 'zero-hole styles carry zero bores (edge/flush)',
+        HW.pullSpec(400, 'edge_pull').holes === 0 && HW.pullSpec(400, 'flush_recessed').holes === 0,
+        'holes 0/0', 'holes 0/0');
+      const narrow = pipeline({
+        meta: { name: 'Narrow', template: 'nightstand', level: 'intermediate' },
+        overall: { width: 330, depth: 400, height: 600 },
+        drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+      });
+      const nb = BB.Plans.bom(narrow.spec, narrow.model, {});
+      const knobLine = nb.items.find(i => i.kind === 'hardware' && /knob/i.test(i.label));
+      test('hardening', 'BOM prints the FITTED style with the substitution named',
+        !!knobLine && /substituted/.test(knobLine.detail) && narrow.report.advisories.some(a => a.id.startsWith('hw_pull_narrow')),
+        knobLine ? knobLine.label : 'no knob line', 'Round knob + advisory');
+
+      // Custom connection kinds are gated like template slots; french cleat
+      // (external — its mate is the wall) never joins two parts.
+      const gated = Spec.correctSpec({
+        meta: { name: 'G', template: 'custom', level: 'beginner' },
+        custom: {
+          parts: [
+            { id: 'a', role: 'leg', primitive: 'post', dim: { l: 400, w: 45, t: 45 }, pos: { x: 0, y: 200, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+            { id: 'b', role: 'seat', primitive: 'slab', dim: { l: 400, w: 300, t: 38 }, pos: { x: 0, y: 419, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' }
+          ],
+          connections: [{ a: 'a', b: 'b', joint: 'french_cleat' }]
+        }
+      });
+      test('hardening', 'french cleat between two parts is refused (kind gate)',
+        gated.custom.connections[0].joint !== 'french_cleat', gated.custom.connections[0].joint, 'a level default, never french_cleat');
+
+      // The climate preference reaches the bench text.
+      const wr = pipeline({
+        meta: { name: 'WR', template: 'nightstand', level: 'intermediate' },
+        drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }
+      });
+      const humid = BB.Plans.assembly(wr.spec, wr.model, null, { climate: 'humid' }).find(s => /runners/.test(s.id));
+      test('hardening', 'wooden-runner fitting follows the climate ΔMC',
+        humid && /humid indoor swing/.test(humid.text), humid ? 'humid named' : 'step missing', 'humid named');
+
+      // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
+      const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
+      const tk = BB.Codec.estimateTokens(sysT);
+      test('hardening', 'system prompt under the 1900-token ceiling', tk <= 1900 && tk > 800, tk + ' tokens', '≤ 1900');
+      const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
+      test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
+
+      // Persistence driver chain reports an honest mode.
+      const mode = Store.persistenceMode();
+      test('hardening', 'persistence mode is a known driver name',
+        ['artifact', 'cloud', 'device', 'session'].includes(mode), mode, 'artifact|cloud|device|session');
+      test('hardening', 'hardware price defaults cover slides, pulls, glues',
+        (() => { const h = K.hardwarePriceDefaults(); return h.slide_side_bb_34 === 14 && h.pull_bar_pull === 6 && h.glue_pva_interior === 8; })(),
+        'defaults assemble', 'defaults assemble');
+    }
+
     /* ============ structural: movement / tipping / racking (fixed values) ============ */
     {
       const mv = K.movementMM(900, 'red_oak', 'tangential', 4);

@@ -51,8 +51,23 @@ if (WATCH) {
   console.log('watching src/ and vendor/ for changes');
 }
 
+/* ---- persistence + accounts (optional, dev parity with Vercel) ----
+ * With no cloud KV configured, documents land in .data/kv.json so local
+ * dev has working persistence out of the box. BB_DEV_LOGIN=1 (in .env)
+ * adds a one-click fake login; it needs a session secret, so one is
+ * minted per boot when absent (dev sessions simply expire on restart). */
+if (!process.env.KV_REST_API_URL && !process.env.UPSTASH_REDIS_REST_URL && !process.env.BB_KV_FILE) {
+  process.env.BB_KV_FILE = path.join(root, '.data', 'kv.json');
+}
+if (process.env.BB_DEV_LOGIN === '1' && !process.env.AUTH_SECRET) {
+  process.env.AUTH_SECRET = require('crypto').randomBytes(32).toString('hex');
+  console.log('BB_DEV_LOGIN: minted a per-boot AUTH_SECRET (sessions reset on restart)');
+}
+
 /* ---- server ---- */
 const chat = require('./api/chat.js');
+const auth = require('./api/auth.js');
+const store = require('./api/store.js');
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
@@ -62,6 +77,8 @@ const MIME = {
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/api/chat') return chat(req, res);
+  if (url.pathname === '/api/auth') return auth(req, res);
+  if (url.pathname === '/api/store') return store(req, res);
 
   // Static: mirror how Vercel serves outputDirectory dist/.
   const rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);

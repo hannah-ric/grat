@@ -432,6 +432,34 @@ const clickMoreCtl = async sel => {
   await page.waitForFunction(t => __bb.state.stockPlan.totalCost !== t, before$, { timeout: 5000 });
   ok(true, 'price edit recomputes the shopping list');
 
+  // 2026: the WHOLE bill is editable — the hardware/glue/finish group exists,
+  // and editing the finish price moves the BOM total through the pipeline.
+  const hwGrid = await page.evaluate(() => ({
+    group: !!document.querySelector('.price-group'),
+    finishInput: !!([...document.querySelectorAll('.price-grid input')].find(i => (i.getAttribute('aria-label') || '') === 'Finish (per project)')),
+    bomTotal: __bb.state.bomData.total
+  }));
+  ok(hwGrid.group && hwGrid.finishInput, 'hardware/glue/finish price group present in the editor');
+  await page.evaluate(() => {
+    const inp = [...document.querySelectorAll('.price-grid input')].find(i => (i.getAttribute('aria-label') || '') === 'Finish (per project)');
+    inp.value = '44';
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForFunction(t => __bb.state.bomData.total !== t, hwGrid.bomTotal, { timeout: 5000 });
+  ok(await page.evaluate(() => __bb.state.bomData.items.find(i => i.kind === 'finish').price === 44), 'edited finish price reaches the live BOM line');
+
+  // Running gear renders in the main scene as hardware; never in the cut list.
+  const gear = await page.evaluate(() => ({
+    slides: __bb.state.model.parts.filter(p => p.hardware).length,
+    slideDrawers: __bb.state.model.drawers.filter(d => /slides/.test(d.runner) && d.slideLen).length,
+    inCut: __bb.state.cut.some(r => r.role === 'slide')
+  }));
+  ok(gear.slides === 2 * gear.slideDrawers, `slide pair per slide-mounted drawer in the model (${gear.slides}/${gear.slideDrawers})`);
+  ok(!gear.inCut, 'metal slides never reach the cut list');
+
+  // Accounts: on a static host (no /api/auth) the section stays hidden.
+  ok(await page.evaluate(() => document.getElementById('accountArea').hidden === true), 'account section hidden with no providers configured');
+
   // Integrity tab: checks, movement, tappable fix through the pipeline.
   await page.click('#tab-integrity');
   await page.waitForSelector('.check-card');

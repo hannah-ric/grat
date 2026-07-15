@@ -361,7 +361,7 @@ section('F-S3-1 fastener locations + pilot diameters');
   ok(steps.some(s => /tenon .*thick|mortise/i.test(s.text)), 'assembly text carries the tenon setout');
   const cut = Plans.cutList(r.spec, r.model);
   const html = Exports.printHTML(r.spec, r.model, cut, Plans.bom(r.spec, r.model), Plans.assembly(r.spec, r.model), null);
-  ok(/Joinery detail/i.test(html), 'print sheet gains the joinery-detail section');
+  ok(/Joinery (&amp;|&) hardware detail/i.test(html), 'print sheet gains the joinery + hardware detail section');
   ok(/pilot/i.test(html), 'print sheet lists pilot diameters');
 }
 
