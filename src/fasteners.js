@@ -168,8 +168,9 @@ var BB = globalThis.BB = globalThis.BB || {};
        * uses, and every purchasable item lands in out.fasteners so the BOM
        * and the drilling instructions can never disagree (audit F-S3-1). */
       case 'edge_glue': {
-        // Long-grain lamination: no fasteners — the schedule is clamps.
-        const clamps = Math.max(2, Math.ceil(Math.max(0, runMM - 50) / 225) + 1);
+        // Long-grain lamination: no fasteners — the schedule is clamps
+        // (same arithmetic the stock plan's glue-up steps use).
+        const clamps = glueupSchedule(runMM).clamps;
         out.glueup = { clampCount: clamps };
         out.text = `Edge glue-up along ${len(runMM)}: joint both edges dead square, glue BOTH faces, and set ${clamps} bar clamps at ~${len(225)} centers, alternating over and under. Cauls across the ends keep the panel flat — check with a straightedge before the glue tacks.`;
         break;
@@ -294,6 +295,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
+  /* Clamp schedule for an edge glue-up of a given run (panel length): bar
+   * clamps at ~225 mm centers, minimum two, alternating over and under so
+   * the panel can't bow toward the clamp bars. Shared by the edge_glue
+   * joint setout AND the stock plan's glue-up assembly steps — packing and
+   * joinery speak with one voice (2026). */
+  function glueupSchedule(runMM) {
+    const clamps = Math.max(2, Math.ceil(Math.max(0, runMM - 50) / 225) + 1);
+    return {
+      clamps,
+      text: `Set ${clamps} bar clamps at ~${U().fmtLength(225)} centers, alternating over and under, cauls across the ends — check flat with a straightedge before the glue tacks.`
+    };
+  }
+
   /* One concise fastening line for an assembly step (first joint of each
    * distinct type in the step). */
   function stepNote(spec, model, joints) {
@@ -345,5 +359,5 @@ var BB = globalThis.BB = globalThis.BB || {};
     return [...totals.values()];
   }
 
-  BB.Fasteners = { RULES, CHISELS, DOWEL_DIAMETERS, layoutForJoint, stepNote, detailRows, countFor, jointRun, positions };
+  BB.Fasteners = { RULES, CHISELS, DOWEL_DIAMETERS, layoutForJoint, stepNote, detailRows, countFor, jointRun, positions, glueupSchedule };
 })();

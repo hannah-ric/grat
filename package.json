@@ -10,10 +10,12 @@
     "dev": "node serve.js",
     "build": "node build.js",
     "start": "node serve.js --no-watch",
-    "test": "node test/unit.test.js && node test/audit.test.js && node test/golden.test.js",
+    "test": "node test/unit.test.js && node test/audit.test.js && node test/golden.test.js && node test/battery.js && node test/server.test.js",
     "test:battery": "node test/battery.js",
+    "test:server": "node test/server.test.js",
     "test:handcalc": "node test/handcalc.js",
-    "test:smoke": "node build.js && node test/smoke.playwright.js"
+    "test:smoke": "node build.js && node test/smoke.playwright.js",
+    "test:cloud": "node build.js && node test/cloud.playwright.js"
   },
   "devDependencies": {
     "playwright": "^1.49.1"

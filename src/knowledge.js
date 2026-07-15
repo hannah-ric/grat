@@ -462,6 +462,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     french_cleat: {
       key: 'french_cleat', label: 'French cleat', plural: 'french cleats', strength: 3, difficulty: 2, level: 'beginner',
       kinds: ['case'],
+      // external: the cleat's mate is the BUILDING (studs), never another
+      // part of the model — correction refuses it inside a connection graph.
+      external: true,
       tools: ['table saw (45° rip)', 'level', 'stud finder', 'drill/driver'],
       bestFor: 'Wall-hung cabinets, floating shelves, and shop-wall systems — a gravity lock that lifts off for moving day.',
       failure: 'A cleat screwed to drywall alone sheds the whole case — every cleat lands on studs or rated anchors, no exceptions.'
@@ -706,7 +709,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       sheet[key] = Object.assign({}, SHEET_BASE_PRICES[key] || SHEET_BASE_PRICES.baltic_birch);
     }
     return { dimensional, sheet, bdft: Object.fromEntries(
-      Object.values(WOOD_SPECIES).filter(s => !s.sheet).map(s => [s.key, s.pricePerBdFt])) };
+      Object.values(WOOD_SPECIES).filter(s => !s.sheet).map(s => [s.key, s.pricePerBdFt])),
+      hardware: hardwarePriceDefaults() };
   }
   /* One boundary for sheet-price lookups: tolerates the legacy flat shape
    * ({6:40,...} meaning Baltic) and missing species (falls back to defaults). */
@@ -719,6 +723,50 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     const dflt = SHEET_BASE_PRICES[speciesKey] || SHEET_BASE_PRICES.baltic_birch;
     return dflt[thickness] !== undefined ? dflt[thickness] : 60;
+  }
+
+  /* ---------------- Hardware & consumable prices (2026) ----------------
+   * One editable price key per non-lumber line the BOM prints, so the
+   * "user-editable price list" is finally the WHOLE list, not a third of it.
+   * Defaults assemble lazily from the owning tables (GLUES here, SLIDES and
+   * PULLS in BB.HW, which loads immediately after this module); Store merges
+   * user edits over these, and every BOM lookup routes through
+   * hardwarePrice() so an edited number reaches every line item. */
+  const CONSUMABLE_PRICES = {
+    finish_flat: 18,   // one finish purchase per project (can/bottle)
+    antitip_kit: 7, shelf_pin: 0.25, screw_pack: 1,
+    screw: 0.06, pocket: 0.08, dowel: 0.1, figure8: 0.8,
+    biscuit: 0.15, loose_tenon: 0.5, kd_bolt: 1.5, spline: 0.4
+  };
+  function hardwarePriceDefaults() {
+    const out = Object.assign({}, CONSUMABLE_PRICES);
+    for (const g of GLUES) out['glue_' + g.key] = g.price;
+    const HW = BB.HW;
+    if (HW) {
+      for (const s of Object.values(HW.SLIDES)) out['slide_' + s.key] = s.price;
+      for (const p of Object.values(HW.PULLS)) out['pull_' + p.key] = p.price;
+    }
+    return out;
+  }
+  function hardwarePrice(prices, key, fallback) {
+    const t = prices && prices.hardware;
+    if (t && isFinite(t[key])) return t[key];
+    const d = hardwarePriceDefaults()[key];
+    return d !== undefined ? d : (fallback !== undefined ? fallback : 0);
+  }
+  /* Display labels for the price editor — derived from the owning tables. */
+  function hardwarePriceLabel(key) {
+    const HW = BB.HW;
+    if (key.startsWith('glue_')) { const g = GLUES.find(x => 'glue_' + x.key === key); if (g) return g.label; }
+    if (HW && key.startsWith('slide_')) { const s = HW.SLIDES[key.slice(6)]; if (s) return s.label; }
+    if (HW && key.startsWith('pull_')) { const p = HW.PULLS[key.slice(5)]; if (p) return p.label + (p.key === 'none_touch' ? '' : ' (each)'); }
+    return {
+      finish_flat: 'Finish (per project)', antitip_kit: 'Anti-tip wall anchor kit',
+      shelf_pin: 'Shelf pin (each)', screw_pack: 'Screw pack (drawer mounting)',
+      screw: 'Wood screw (each)', pocket: 'Pocket screw (each)', dowel: 'Fluted dowel (each)',
+      figure8: 'Figure-8 fastener (each)', biscuit: '#20 biscuit (each)',
+      loose_tenon: 'Loose tenon (each)', kd_bolt: 'Knockdown bolt (each)', spline: 'Plywood spline (each)'
+    }[key] || key.replace(/_/g, ' ');
   }
 
   /* ---------------- 3f. Seasonal movement (Phase 4) ----------------
@@ -769,7 +817,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const w = Object.values(WOOD_SPECIES).map(s =>
       `${s.key}(janka ${s.janka},move ${s.movement},$${'●'.repeat(s.costTier)})`).join(' ');
     const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min}–${r.max}mm`).join('; ');
-    const j = Object.values(JOINERY).map(x => `${x.key}(str ${x.strength},lvl ${x.level})`).join(' ');
+    // strength only: each joint's level already rides the LEVEL MATRIX line —
+    // repeating it here spent ~50 prompt tokens saying the same thing twice.
+    const j = Object.values(JOINERY).map(x => `${x.key}(str ${x.strength})`).join(' ');
     return [
       'WOOD: ' + w,
       'ERGONOMICS(mm): ' + e,
@@ -785,6 +835,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,
-    recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES
+    recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES,
+    hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel
   };
 })();

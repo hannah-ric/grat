@@ -286,6 +286,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     });
 
+    /* Joint KIND for a custom pair, derived from the primitives: any pair
+     * involving a stick (post/rail/cylinder) is frame territory (sticks
+     * meeting sheets also take case-style attachment — a shelf dadoed into
+     * a post); two sheet-like parts (panel/slab) may take case, panel, or
+     * box joinery. A joint whose kinds never intersect the pair's — or an
+     * `external` joint whose mate is the building, not a part (french
+     * cleat) — is replaced by the level default for the pair, exactly as
+     * template slots are gated. Before this, a beginner custom could put a
+     * french cleat between a leg and a seat and the setout would tell a
+     * freestanding bench to find studs. */
+    const STICKS = ['post', 'rail', 'cylinder'];
+    const pairKinds = (pa, pb) => {
+      const aS = STICKS.includes(pa.primitive), bS = STICKS.includes(pb.primitive);
+      if (aS && bS) return ['frame'];
+      if (aS || bS) return ['frame', 'case'];
+      return ['case', 'panel', 'box'];
+    };
+    const byNewId = new Map(parts.map(p => [p.id, p]));
     const conns = [];
     const seenPair = new Set();
     const rawConns = Array.isArray(c && c.connections) ? c.connections : [];
@@ -297,7 +315,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const key = a < b ? a + '|' + b : b + '|' + a;
       if (seenPair.has(key)) continue;
       seenPair.add(key);
-      const joint = K.jointAllowed(cn.joint, level) ? cn.joint : K.JOINT_DEFAULTS[level].frame;
+      const kinds = pairKinds(byNewId.get(a), byNewId.get(b));
+      const j = K.JOINERY[cn.joint];
+      const okJoint = j && !j.external && K.jointAllowed(cn.joint, level) &&
+        j.kinds.some(k => kinds.includes(k));
+      const joint = okJoint ? cn.joint
+        : K.JOINT_DEFAULTS[level][kinds.includes('frame') ? 'frame' : 'case'];
       conns.push({ a, b, joint });
     }
 
@@ -390,8 +413,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!sheetSp || !sheetSp.sheet) s.wood.sheetSpecies = 'baltic_birch';
 
     st.topThickness = snap(clamp(num(st.topThickness, 25), 12, 45), K.SOLID_THICKNESS);
-    // 89 = actual 4×4 (2026 expansion) — legs snap to buyable post stock.
-    st.legThickness = snap(clamp(num(st.legThickness, 70), 32, 100), [32, 38, 45, 60, 70, 80, 89, 90, 100]);
+    // Legs snap to the SAME post-stock table custom posts use (values below
+    // the 32 mm clamp floor can never win the nearest-match) — one table,
+    // not a hand-copied twin that drifts.
+    st.legThickness = snap(clamp(num(st.legThickness, 70), 32, 100), K.POST_THICKNESS);
     st.apronThickness = snap(clamp(num(st.apronThickness, 20), 15, 25), [15, 19, 20, 25]);
     st.apronHeight = clamp(num(st.apronHeight, 90), 60, 160);
     st.apronInset = clamp(num(st.apronInset, 12), 0, 30);
@@ -566,7 +591,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     let mass = 0, mx = 0, mz = 0;
     for (const p of parts) {
-      if (p.role === 'pull') continue;
+      if (p.role === 'pull' || p.hardware) continue;
       const m = p.size.w * p.size.h * p.size.d; // uniform density is enough for a hard gate
       mass += m; mx += m * p.pos.x; mz += m * p.pos.z;
     }
@@ -663,6 +688,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         // A 6 mm bottom over a wide box drums and sags (audit F-S3-5).
         if (d.box.w - 2 * d.box.t > 600) {
           advisories.push({ id: 'dr_bottom_' + d.index, text: `Drawer ${d.index + 1}'s bottom spans ${fmt(d.box.w - 2 * d.box.t)} — over ${fmt(600)}, a ${fmt(6)} bottom drums and sags. Use ${fmt(12)} ply or add a center muntin.` });
+        }
+        // Pull substitution honesty (2026): when the front is too narrow for
+        // the requested style, code fits something workable — and says so.
+        const pu = d.pull;
+        if (pu && pu.substituted && BB.HW) {
+          const want = BB.HW.PULLS[pu.styleKey], got = BB.HW.PULLS[pu.style];
+          advisories.push({
+            id: 'hw_pull_narrow_' + d.index,
+            text: `Drawer ${d.index + 1}'s front is ${fmt(d.front.w)} wide — too narrow for ${want ? want.label.toLowerCase() + 's' : 'that pull style'}, so a ${got ? got.label.toLowerCase() : 'round knob'} is fitted instead. Pick a knob or cup pull to make it explicit.`
+          });
         }
       }
     }

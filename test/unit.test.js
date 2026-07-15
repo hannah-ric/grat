@@ -657,6 +657,146 @@ section('geometric buildability audit');
   ok(roguecfg === 0, `template sweep free of rogue geometry (${swept} configs${firstBad ? '; first: ' + firstBad : ''})`);
 }
 
+/* ---------------- 2026 hardening: pulls, gating, climate, prices, prompt ---------------- */
+section('pull coherence: label and bore can never disagree');
+{
+  const HW = BB.HW;
+  // Style-true narrow drawers for styles DESIGNED narrow.
+  const cup = HW.pullSpec(240, 'cup_pull');
+  eq([cup.style, cup.holes, cup.ctcMM, !!cup.substituted], ['cup_pull', 2, 76, false], 'cup pull stays a cup pull on a 240 front (its own CTC series)');
+  const leather = HW.pullSpec(200, 'leather_pull');
+  eq([leather.style, !!leather.substituted], ['leather_pull', false], 'leather strap stays style-true on a 200 front');
+  // Honest substitution for generic styles.
+  const bar = HW.pullSpec(240, 'bar_pull');
+  eq([bar.style, bar.holes, bar.substituted], ['knob_round', 1, true], 'bar pull on a 240 front substitutes a knob AND says so');
+  const app = HW.pullSpec(320, 'appliance_pull');
+  eq([app.style, app.substituted], ['bar_pull', true], 'appliance pull on a 320 front steps down to a bar pull');
+  // Zero-hole styles are never "one bore, centered".
+  eq(HW.pullSpec(400, 'edge_pull').holes, 0, 'edge pull carries zero bores');
+  eq(HW.pullSpec(400, 'flush_recessed').holes, 0, 'flush pull carries zero bores');
+
+  // End to end: the BOM prints the EFFECTIVE style with a substitution note,
+  // and validation raises the advisory. (238 opening → ~234 inset front.)
+  const r = pipeline({
+    meta: { name: 'Narrow', template: 'nightstand', level: 'intermediate' },
+    overall: { width: 330, depth: 400, height: 600 },
+    hardware: { pull: 'bar_pull' },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const d0 = r.model.drawers[0];
+  ok(d0.front.w < 300 && d0.pull.substituted === true, `narrow front (${d0.front.w}) triggers substitution`);
+  const bom = Plans.bom(r.spec, r.model, {});
+  const pullLine = bom.items.find(i => i.kind === 'hardware' && /knob/i.test(i.label));
+  ok(!!pullLine && /substituted/.test(pullLine.detail), 'BOM prints the fitted knob and names the substitution');
+  ok(!bom.items.some(i => /bar pull/i.test(i.label)), 'no phantom bar-pull line remains');
+  ok(r.report.advisories.some(a => a.id.startsWith('hw_pull_narrow')), 'validation raises the narrow-front advisory');
+  const steps = Plans.assembly(r.spec, r.model, null, {});
+  const pullStep = steps.find(s => /pull/.test(s.id));
+  ok(/knob|bore one|hole/i.test(pullStep.text) && /too narrow/i.test(pullStep.text), 'the step speaks the fitted style and the reason');
+}
+
+section('custom connections: joint KINDS are gated like template slots');
+{
+  const mk = (joint, prims) => Spec.correctSpec({
+    meta: { name: 'K', template: 'custom', level: 'intermediate' },
+    custom: {
+      parts: [
+        { id: 'a', role: 'a', primitive: prims[0], dim: { l: 400, w: 300, t: 19 }, pos: { x: 0, y: 200, z: 0 }, rot: prims[0] === 'panel' ? { x: 0, y: 90, z: 0 } : null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'b', role: 'b', primitive: prims[1], dim: { l: 400, w: 300, t: 19 }, pos: { x: 0, y: 405, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' }
+      ],
+      connections: [{ a: 'a', b: 'b', joint }]
+    }
+  }).custom.connections[0].joint;
+
+  eq(mk('french_cleat', ['panel', 'slab']), 'dado', 'french cleat (external — its mate is the wall) is refused part-to-part');
+  eq(mk('box_joint', ['panel', 'panel']), 'box_joint', 'box joints are legal on sheet-to-sheet corners (a chest is a big drawer)');
+  eq(mk('box_joint', ['post', 'rail']), 'dowels', 'box joints on a stick frame snap to the frame default');
+  eq(mk('staked_tenon', ['cylinder', 'slab']), 'staked_tenon', 'staked tenon leg-into-seat stays (frame kind, stick pair)');
+  eq(mk('edge_glue', ['panel', 'panel']), 'edge_glue', 'edge glue-ups are legal panel-to-panel (the panel kind has a consumer)');
+  eq(mk('mortise_tenon', ['post', 'rail']), 'dowels', 'level gating still applies on top of kind gating (M&T is advanced)');
+}
+
+section('climate reaches the bench: wooden-runner clearance follows ΔMC');
+{
+  const raw = {
+    meta: { name: 'Runners', template: 'nightstand', level: 'intermediate' },
+    overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'beech' },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }
+  };
+  const r = pipeline(raw);
+  const stepOf = climate => Plans.assembly(r.spec, r.model, null, { climate }).find(s => /runners/.test(s.id)).text;
+  const temperate = stepOf(undefined), humid = stepOf('humid'), arid = stepOf('arid');
+  ok(/temperate indoor swing/.test(temperate), 'no stated climate keeps the temperate default');
+  ok(/humid indoor swing/.test(humid) && humid !== temperate, 'humid climate changes the fitting clearance text');
+  ok(/arid indoor swing/.test(arid) && arid !== humid, 'arid differs from humid');
+  // The clearance numbers really move: beech box side, ΔMC 6 vs 2.
+  const h = BB.HW.drawerVerticalClearance(r.model.drawers[0].box.h, 'beech', 6);
+  const a = BB.HW.drawerVerticalClearance(r.model.drawers[0].box.h, 'beech', 2);
+  ok(h > a, `computed clearance scales with ΔMC (${a} → ${h})`);
+  // Wooden runners are honest lumber: cut list + model + screws.
+  const cut = Plans.cutList(r.spec, r.model);
+  ok(cut.some(row => row.role === 'runner'), 'runners join the cut list');
+  ok(r.model.parts.some(p => p.role === 'runner' && !p.hardware), 'runner parts render in the model as wood');
+  eq(r.report.errors.length, 0, 'runner geometry passes the buildability audit');
+}
+
+section('editable hardware prices: one table, every BOM line');
+{
+  const dflt = K.defaultPrices();
+  ok(dflt.hardware && dflt.hardware.slide_side_bb_34 === 14 && dflt.hardware.glue_pva_interior === 8, 'defaults assemble from the owning tables');
+  for (const [k, v] of Object.entries(dflt.hardware)) {
+    ok(isFinite(v) && v >= 0, `hardware price ${k} is a number`);
+    ok(typeof K.hardwarePriceLabel(k) === 'string' && K.hardwarePriceLabel(k).length > 2, `label for ${k}`);
+  }
+  const r = pipeline({
+    meta: { name: 'P', template: 'nightstand', level: 'beginner' },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const before = Plans.bom(r.spec, r.model, {});
+  const edited = JSON.parse(JSON.stringify(dflt));
+  edited.hardware.slide_side_bb_34 = 99;
+  edited.hardware.finish_flat = 40;
+  const after = Plans.bom(r.spec, r.model, { prices: edited });
+  const slideBefore = before.items.find(i => /slides \(pair\)/.test(i.label));
+  const slideAfter = after.items.find(i => /slides \(pair\)/.test(i.label));
+  eq([slideBefore.price, slideAfter.price], [14, 99], 'an edited slide price reaches the BOM line');
+  eq(after.items.find(i => i.kind === 'finish').price, 40, 'an edited finish price reaches the BOM');
+  ok(after.total > before.total, 'the total moves with the edits');
+}
+
+section('prompt budget: hard ceiling with measured headroom');
+{
+  const sys = AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
+  const tokens = Codec.estimateTokens(sys);
+  ok(tokens <= 1900, `system prompt stays under the 1900-token ceiling (measured ${tokens})`);
+  ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
+  ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
+  ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
+  // The ANSWER shape: pure advice is legal wire, not a validation failure.
+  const info = AI.classify({ i: 'Use wipe-on poly.' });
+  eq([info.kind, info.text], ['info', 'Use wipe-on poly.'], 'ANSWER replies classify as info');
+  ok(AI.classify({ q: 'which?', a: ['a', 'b'] }).kind === 'question', 'question shape unchanged');
+}
+
+section('word-number lengths and storage driver honesty');
+{
+  const U2 = BB.Units;
+  ok(/1219\.2mm/.test(U2.normalizeLengthText('four feet wide')), 'four feet → 1219.2mm');
+  ok(/152\.4mm/.test(U2.normalizeLengthText('six inches deep')), 'six inches → 152.4mm');
+  eq(U2.normalizeLengthText('two in the corner'), 'two in the corner', 'bare "in" as a preposition is never a unit');
+  // Headless: no artifact storage, no localStorage, no cloud — session-only.
+  eq(BB.Store.persistenceMode(), 'session', 'headless persistence mode is session');
+  ok(BB.Store.isPersistent() === false, 'and isPersistent is honest about it');
+  eq(BB.Store.auth().user, null, 'no auth probe ran — anonymous');
+  // A fake localStorage upgrades the chain to device.
+  globalThis.localStorage = (() => {
+    const m = new Map();
+    return { setItem: (k, v) => m.set(k, String(v)), getItem: k => (m.has(k) ? m.get(k) : null), removeItem: k => m.delete(k) };
+  })();
+  eq(BB.Store.persistenceMode(), 'device', 'localStorage upgrades the chain to device');
+  delete globalThis.localStorage;
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
   section('self-test suite (headless run)');

@@ -168,7 +168,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       failure: 'Past ~{500} of pull, through-bolt it — wood screws in 5 mm bores work loose under body weight.'
     },
     leather_pull: {
-      key: 'leather_pull', label: 'Leather strap pull', price: 4, holes: 2,
+      key: 'leather_pull', label: 'Leather strap pull', price: 4, holes: 2, ctc: [64, 76, 96],
       bestFor: 'Warm, quiet, and shop-makeable — folds flat, never rattles (TRADITIONAL.leather_work).',
       failure: 'Finish washers or the screw heads saw the strap through in a year.'
     },
@@ -523,13 +523,30 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* Pull sizing: CTC ≈ frontWidth / 3 snapped DOWN into the series
    * (floor 64); fronts over 750 take two pulls at the ⅓ and ⅔ points.
-   * Knobs whenever the front is under 300 wide. */
+   *
+   * Narrow fronts: a style with its OWN CTC series (cup pulls, leather
+   * straps) is made for narrow drawers and stays style-true down to its
+   * smallest spacing plus finger room; a generic 2-hole style under 300
+   * reads better as a knob (or a bar pull when there's still real width).
+   * A substitution is carried on the result (`substituted: true`, with
+   * `style` = what is actually fitted) so the BOM, the steps, and the
+   * validation advisory all stay honest about it — the label and the bore
+   * count can never disagree again. Zero-hole styles (edge, flush,
+   * push-to-open) pass through with holes: 0 — their install is a mortise
+   * or edge screws, never a centered bore. */
   function pullSpec(frontWMM, styleKey) {
     const style = PULLS[styleKey] || PULLS.bar_pull;
-    if (style.holes <= 1 || frontWMM < 300) {
-      return { style: style.holes <= 1 ? style.key : 'knob_round', count: 1, ctcMM: 0, holes: Math.max(1, style.holes <= 1 ? style.holes : 1) };
+    if (style.holes <= 1) {
+      return { style: style.key, count: 1, ctcMM: 0, holes: style.holes };
     }
     const series = style.ctc || PULL_CTC_SERIES;
+    const minFront = series[0] + 44; // smallest CTC + finger room both ends
+    const narrow = style.ctc ? frontWMM < minFront : frontWMM < 300;
+    if (narrow) {
+      const sub = pullSpec(frontWMM, frontWMM >= 300 ? 'bar_pull' : 'knob_round');
+      sub.substituted = true;
+      return sub;
+    }
     const target = frontWMM / 3;
     let ctc = series[0];
     for (const c of series) if (c <= target) ctc = c;

@@ -955,6 +955,14 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   font: 500 12.5px var(--mono); width: 100%; color: var(--ink);
 }
 .price-grid input:focus-visible { outline: none; border-color: var(--accent); }
+.price-group { grid-column: 1 / -1; margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--line-2); font: 650 11.5px var(--body); color: var(--ink-2); letter-spacing: .02em; text-transform: uppercase; }
+
+/* ---------------- account row (More menu) ---------------- */
+.menu-account { display: flex; align-items: center; gap: var(--s2); padding: 7px 10px; font: 550 13px var(--body); color: var(--ink); }
+.menu-account .account-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; }
+.menu-account .account-avatar.fallback { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); font-size: 10px; }
+.menu-account .account-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-account .hint { color: var(--muted); font-size: 11px; }
 
 /* ---------------- provenance popover ---------------- */
 .prov-btn {
@@ -1155,6 +1163,8 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
+          <div class="menu-sep" id="accountSep" hidden></div>
+          <div id="accountArea" hidden></div>
           <div class="menu-sep"></div>
           <div class="menu-row">
             <span class="menu-row-label">Units</span>
@@ -1999,6 +2009,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     french_cleat: {
       key: 'french_cleat', label: 'French cleat', plural: 'french cleats', strength: 3, difficulty: 2, level: 'beginner',
       kinds: ['case'],
+      // external: the cleat's mate is the BUILDING (studs), never another
+      // part of the model — correction refuses it inside a connection graph.
+      external: true,
       tools: ['table saw (45° rip)', 'level', 'stud finder', 'drill/driver'],
       bestFor: 'Wall-hung cabinets, floating shelves, and shop-wall systems — a gravity lock that lifts off for moving day.',
       failure: 'A cleat screwed to drywall alone sheds the whole case — every cleat lands on studs or rated anchors, no exceptions.'
@@ -2243,7 +2256,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       sheet[key] = Object.assign({}, SHEET_BASE_PRICES[key] || SHEET_BASE_PRICES.baltic_birch);
     }
     return { dimensional, sheet, bdft: Object.fromEntries(
-      Object.values(WOOD_SPECIES).filter(s => !s.sheet).map(s => [s.key, s.pricePerBdFt])) };
+      Object.values(WOOD_SPECIES).filter(s => !s.sheet).map(s => [s.key, s.pricePerBdFt])),
+      hardware: hardwarePriceDefaults() };
   }
   /* One boundary for sheet-price lookups: tolerates the legacy flat shape
    * ({6:40,...} meaning Baltic) and missing species (falls back to defaults). */
@@ -2256,6 +2270,50 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     const dflt = SHEET_BASE_PRICES[speciesKey] || SHEET_BASE_PRICES.baltic_birch;
     return dflt[thickness] !== undefined ? dflt[thickness] : 60;
+  }
+
+  /* ---------------- Hardware & consumable prices (2026) ----------------
+   * One editable price key per non-lumber line the BOM prints, so the
+   * "user-editable price list" is finally the WHOLE list, not a third of it.
+   * Defaults assemble lazily from the owning tables (GLUES here, SLIDES and
+   * PULLS in BB.HW, which loads immediately after this module); Store merges
+   * user edits over these, and every BOM lookup routes through
+   * hardwarePrice() so an edited number reaches every line item. */
+  const CONSUMABLE_PRICES = {
+    finish_flat: 18,   // one finish purchase per project (can/bottle)
+    antitip_kit: 7, shelf_pin: 0.25, screw_pack: 1,
+    screw: 0.06, pocket: 0.08, dowel: 0.1, figure8: 0.8,
+    biscuit: 0.15, loose_tenon: 0.5, kd_bolt: 1.5, spline: 0.4
+  };
+  function hardwarePriceDefaults() {
+    const out = Object.assign({}, CONSUMABLE_PRICES);
+    for (const g of GLUES) out['glue_' + g.key] = g.price;
+    const HW = BB.HW;
+    if (HW) {
+      for (const s of Object.values(HW.SLIDES)) out['slide_' + s.key] = s.price;
+      for (const p of Object.values(HW.PULLS)) out['pull_' + p.key] = p.price;
+    }
+    return out;
+  }
+  function hardwarePrice(prices, key, fallback) {
+    const t = prices && prices.hardware;
+    if (t && isFinite(t[key])) return t[key];
+    const d = hardwarePriceDefaults()[key];
+    return d !== undefined ? d : (fallback !== undefined ? fallback : 0);
+  }
+  /* Display labels for the price editor — derived from the owning tables. */
+  function hardwarePriceLabel(key) {
+    const HW = BB.HW;
+    if (key.startsWith('glue_')) { const g = GLUES.find(x => 'glue_' + x.key === key); if (g) return g.label; }
+    if (HW && key.startsWith('slide_')) { const s = HW.SLIDES[key.slice(6)]; if (s) return s.label; }
+    if (HW && key.startsWith('pull_')) { const p = HW.PULLS[key.slice(5)]; if (p) return p.label + (p.key === 'none_touch' ? '' : ' (each)'); }
+    return {
+      finish_flat: 'Finish (per project)', antitip_kit: 'Anti-tip wall anchor kit',
+      shelf_pin: 'Shelf pin (each)', screw_pack: 'Screw pack (drawer mounting)',
+      screw: 'Wood screw (each)', pocket: 'Pocket screw (each)', dowel: 'Fluted dowel (each)',
+      figure8: 'Figure-8 fastener (each)', biscuit: '#20 biscuit (each)',
+      loose_tenon: 'Loose tenon (each)', kd_bolt: 'Knockdown bolt (each)', spline: 'Plywood spline (each)'
+    }[key] || key.replace(/_/g, ' ');
   }
 
   /* ---------------- 3f. Seasonal movement (Phase 4) ----------------
@@ -2306,7 +2364,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const w = Object.values(WOOD_SPECIES).map(s =>
       `${s.key}(janka ${s.janka},move ${s.movement},$${'●'.repeat(s.costTier)})`).join(' ');
     const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min}–${r.max}mm`).join('; ');
-    const j = Object.values(JOINERY).map(x => `${x.key}(str ${x.strength},lvl ${x.level})`).join(' ');
+    // strength only: each joint's level already rides the LEVEL MATRIX line —
+    // repeating it here spent ~50 prompt tokens saying the same thing twice.
+    const j = Object.values(JOINERY).map(x => `${x.key}(str ${x.strength})`).join(' ');
     return [
       'WOOD: ' + w,
       'ERGONOMICS(mm): ' + e,
@@ -2322,7 +2382,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,
-    recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES
+    recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES,
+    hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel
   };
 })();
 </script>
@@ -2496,7 +2557,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       failure: 'Past ~{500} of pull, through-bolt it — wood screws in 5 mm bores work loose under body weight.'
     },
     leather_pull: {
-      key: 'leather_pull', label: 'Leather strap pull', price: 4, holes: 2,
+      key: 'leather_pull', label: 'Leather strap pull', price: 4, holes: 2, ctc: [64, 76, 96],
       bestFor: 'Warm, quiet, and shop-makeable — folds flat, never rattles (TRADITIONAL.leather_work).',
       failure: 'Finish washers or the screw heads saw the strap through in a year.'
     },
@@ -2851,13 +2912,30 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* Pull sizing: CTC ≈ frontWidth / 3 snapped DOWN into the series
    * (floor 64); fronts over 750 take two pulls at the ⅓ and ⅔ points.
-   * Knobs whenever the front is under 300 wide. */
+   *
+   * Narrow fronts: a style with its OWN CTC series (cup pulls, leather
+   * straps) is made for narrow drawers and stays style-true down to its
+   * smallest spacing plus finger room; a generic 2-hole style under 300
+   * reads better as a knob (or a bar pull when there's still real width).
+   * A substitution is carried on the result (`substituted: true`, with
+   * `style` = what is actually fitted) so the BOM, the steps, and the
+   * validation advisory all stay honest about it — the label and the bore
+   * count can never disagree again. Zero-hole styles (edge, flush,
+   * push-to-open) pass through with holes: 0 — their install is a mortise
+   * or edge screws, never a centered bore. */
   function pullSpec(frontWMM, styleKey) {
     const style = PULLS[styleKey] || PULLS.bar_pull;
-    if (style.holes <= 1 || frontWMM < 300) {
-      return { style: style.holes <= 1 ? style.key : 'knob_round', count: 1, ctcMM: 0, holes: Math.max(1, style.holes <= 1 ? style.holes : 1) };
+    if (style.holes <= 1) {
+      return { style: style.key, count: 1, ctcMM: 0, holes: style.holes };
     }
     const series = style.ctc || PULL_CTC_SERIES;
+    const minFront = series[0] + 44; // smallest CTC + finger room both ends
+    const narrow = style.ctc ? frontWMM < minFront : frontWMM < 300;
+    if (narrow) {
+      const sub = pullSpec(frontWMM, frontWMM >= 300 ? 'bar_pull' : 'knob_round');
+      sub.substituted = true;
+      return sub;
+    }
     const target = frontWMM / 3;
     let ctc = series[0];
     for (const c of series) if (c <= target) ctc = c;
@@ -3538,6 +3616,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     let out = String(text == null ? '' : text);
     const mm = v => trim0(String(r(v, 1))) + 'mm';
 
+    // Word numbers with an EXPLICIT length unit become digits first, so
+    // "four feet wide" normalizes like "4 feet wide". Only feet/inches
+    // spellings that are unambiguous — never bare "in", which is usually a
+    // preposition ("two in the corner").
+    const WORD_NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+    out = out.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(feet|foot|ft\.?|inches|inch)\b/gi,
+      (m0, w, unit) => WORD_NUM[w.toLowerCase()] + ' ' + unit);
+
     // 2' 5", 2ft 5 1/2 in, 6 ft. In running text the inches part must be a
     // fraction or carry an inch marker — "6 ft 4 drawers" keeps its 4.
     out = out.replace(
@@ -3872,6 +3958,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     });
 
+    /* Joint KIND for a custom pair, derived from the primitives: any pair
+     * involving a stick (post/rail/cylinder) is frame territory (sticks
+     * meeting sheets also take case-style attachment — a shelf dadoed into
+     * a post); two sheet-like parts (panel/slab) may take case, panel, or
+     * box joinery. A joint whose kinds never intersect the pair's — or an
+     * `external` joint whose mate is the building, not a part (french
+     * cleat) — is replaced by the level default for the pair, exactly as
+     * template slots are gated. Before this, a beginner custom could put a
+     * french cleat between a leg and a seat and the setout would tell a
+     * freestanding bench to find studs. */
+    const STICKS = ['post', 'rail', 'cylinder'];
+    const pairKinds = (pa, pb) => {
+      const aS = STICKS.includes(pa.primitive), bS = STICKS.includes(pb.primitive);
+      if (aS && bS) return ['frame'];
+      if (aS || bS) return ['frame', 'case'];
+      return ['case', 'panel', 'box'];
+    };
+    const byNewId = new Map(parts.map(p => [p.id, p]));
     const conns = [];
     const seenPair = new Set();
     const rawConns = Array.isArray(c && c.connections) ? c.connections : [];
@@ -3883,7 +3987,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const key = a < b ? a + '|' + b : b + '|' + a;
       if (seenPair.has(key)) continue;
       seenPair.add(key);
-      const joint = K.jointAllowed(cn.joint, level) ? cn.joint : K.JOINT_DEFAULTS[level].frame;
+      const kinds = pairKinds(byNewId.get(a), byNewId.get(b));
+      const j = K.JOINERY[cn.joint];
+      const okJoint = j && !j.external && K.jointAllowed(cn.joint, level) &&
+        j.kinds.some(k => kinds.includes(k));
+      const joint = okJoint ? cn.joint
+        : K.JOINT_DEFAULTS[level][kinds.includes('frame') ? 'frame' : 'case'];
       conns.push({ a, b, joint });
     }
 
@@ -3976,8 +4085,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!sheetSp || !sheetSp.sheet) s.wood.sheetSpecies = 'baltic_birch';
 
     st.topThickness = snap(clamp(num(st.topThickness, 25), 12, 45), K.SOLID_THICKNESS);
-    // 89 = actual 4×4 (2026 expansion) — legs snap to buyable post stock.
-    st.legThickness = snap(clamp(num(st.legThickness, 70), 32, 100), [32, 38, 45, 60, 70, 80, 89, 90, 100]);
+    // Legs snap to the SAME post-stock table custom posts use (values below
+    // the 32 mm clamp floor can never win the nearest-match) — one table,
+    // not a hand-copied twin that drifts.
+    st.legThickness = snap(clamp(num(st.legThickness, 70), 32, 100), K.POST_THICKNESS);
     st.apronThickness = snap(clamp(num(st.apronThickness, 20), 15, 25), [15, 19, 20, 25]);
     st.apronHeight = clamp(num(st.apronHeight, 90), 60, 160);
     st.apronInset = clamp(num(st.apronInset, 12), 0, 30);
@@ -4152,7 +4263,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     let mass = 0, mx = 0, mz = 0;
     for (const p of parts) {
-      if (p.role === 'pull') continue;
+      if (p.role === 'pull' || p.hardware) continue;
       const m = p.size.w * p.size.h * p.size.d; // uniform density is enough for a hard gate
       mass += m; mx += m * p.pos.x; mz += m * p.pos.z;
     }
@@ -4249,6 +4360,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         // A 6 mm bottom over a wide box drums and sags (audit F-S3-5).
         if (d.box.w - 2 * d.box.t > 600) {
           advisories.push({ id: 'dr_bottom_' + d.index, text: `Drawer ${d.index + 1}'s bottom spans ${fmt(d.box.w - 2 * d.box.t)} — over ${fmt(600)}, a ${fmt(6)} bottom drums and sags. Use ${fmt(12)} ply or add a center muntin.` });
+        }
+        // Pull substitution honesty (2026): when the front is too narrow for
+        // the requested style, code fits something workable — and says so.
+        const pu = d.pull;
+        if (pu && pu.substituted && BB.HW) {
+          const want = BB.HW.PULLS[pu.styleKey], got = BB.HW.PULLS[pu.style];
+          advisories.push({
+            id: 'hw_pull_narrow_' + d.index,
+            text: `Drawer ${d.index + 1}'s front is ${fmt(d.front.w)} wide — too narrow for ${want ? want.label.toLowerCase() + 's' : 'that pull style'}, so a ${got ? got.label.toLowerCase() : 'round knob'} is fitted instead. Pick a knob or cup pull to make it explicit.`
+          });
         }
       }
     }
@@ -4542,6 +4663,66 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const p of dp) { p.drawer = i; p.explode = { x: 0, y: 0, z: 0 }; }
       parts.push(...dp);
 
+      /* Running gear in the model (2026): the case-side members render in
+       * the main scene at their true positions. Metal slides are `hardware`
+       * parts — visible in 3D and every geometry export, excluded from the
+       * cut list, the packing plan, and the mass model (a folded steel
+       * channel is not an oak box). Wooden runners are honest LUMBER: they
+       * join the cut list, the stock plan, and the screw counts, because a
+       * builder really has to cut and fit them. All stay `group: 'frame'` —
+       * the case keeps its rail when the drawer glides open. */
+      const gearIds = [];
+      if (runner === 'side_mount_slides' && slideLen) {
+        // One slide pair filling the exact 12.7 mm per-side clearance,
+        // mounted flush with the BOX front plane (behind an inset front,
+        // at the case edge for overlay) — exactly where a slide really
+        // lands, and pen 0 against box, front, and case alike.
+        const sh = Math.min(45, boxH - 4);
+        [[-1, 'l'], [1, 'r']].forEach(([sgn, side]) => {
+          const id = `${prefix}dr${i + 1}_slide_${side}`;
+          parts.push(part(id, 'slide_side', 'slide', `Drawer ${i + 1} slide`,
+            12.7, sh, slideLen, px + sgn * (op.w / 2 - 12.7 / 2), cy, boxFrontZ - slideLen / 2,
+            { material: 'hardware', hardware: true, group: 'frame' }));
+          gearIds.push(id);
+        });
+      } else if (under && slideLen) {
+        // Undermount arms live INSIDE the box footprint, under the recessed
+        // bottom (12.7 recess, 11 mm arm) — invisible from outside, exactly
+        // as sold.
+        const railW = Math.max(30, Math.min(42, Math.floor((boxW - 2 * boxT) / 4)));
+        const sd = Math.max(50, boxD - 2 * boxT - 4);
+        [[-1, 'l'], [1, 'r']].forEach(([sgn, side]) => {
+          const id = `${prefix}dr${i + 1}_slide_${side}`;
+          parts.push(part(id, 'slide_under', 'slide', `Drawer ${i + 1} undermount slide`,
+            railW, 11, sd, px + sgn * (boxW / 2 - boxT - railW / 2 - 2), boxBottomY + 11 / 2, cz,
+            { material: 'hardware', hardware: true, group: 'frame' }));
+          gearIds.push(id);
+        });
+      } else if (runner === 'wood_runners') {
+        // Traditional runner: a hardwood rail the drawer side rides on,
+        // packed out flush to the case face (legs proud of aprons on a
+        // nightstand make that one thicker block), 19 mm of bearing inside
+        // the opening edge, stopped behind the front rail band.
+        const runW = Math.round((zone.sideInnerX !== undefined ? zone.sideInnerX - op.w / 2 : 0) * 10) / 10 + 19;
+        // Start behind the front structure (legs on a nightstand, the rail
+        // band on a cabinet) and stop short of the rear — the runner spans
+        // between the case's own members, exactly as it would in the shop.
+        const setback = Math.max(RAIL_T, zone.gearFrontSetback || 0) + 2;
+        const runD = Math.max(80, Math.round(op.interiorDepth - setback - 28));
+        const runZ = zone.zFront - setback - runD / 2;
+        [[-1, 0], [1, 1]].forEach(([sgn, ti]) => {
+          const id = `${prefix}dr${i + 1}_runner_${sgn < 0 ? 'l' : 'r'}`;
+          parts.push(part(id, `runner_${runD}`, 'runner', `Drawer ${i + 1} runner`,
+            runW, 32, runD, px + sgn * (op.w / 2 - 19 + runW / 2), boxBottomY - 16, runZ,
+            { group: 'frame' }));
+          gearIds.push(id);
+          const tgt = zone.runnerTargets && zone.runnerTargets[ti];
+          if (tgt) {
+            joints.push({ type: 'butt_screws', a: id, b: tgt, pos: { x: px + sgn * (op.w / 2 - 19 + runW), y: boxBottomY - 16, z: runZ }, noCutAllowance: true });
+          }
+        });
+      }
+
       // Box-corner joints. The front/back are the inserted members (tongue or
       // tails live on them), so they carry the cut-length allowance. Grooved
       // boxes (locking rabbet / dovetail fronts) take a DADO-housed back —
@@ -4561,7 +4742,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         front: { w: fw, h: fh, t: frontT },
         pull: Object.assign({ styleKey: pullStyle }, pSpec),
         travel: Math.round(boxD * 0.8),
-        partIds: dp.map(p => p.id)
+        partIds: dp.map(p => p.id),
+        gearIds
       });
     });
 
@@ -4712,7 +4894,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       interiorDepth: frameD - apT, available,
       overlayMaxW: frameW - 2 * legT + Math.min(20, legT), x: 0,
       // Rails live at the front plane — they join into the FRONT legs.
-      railJointTargets: [{ id: 'leg_3', x: -lx }, { id: 'leg_4', x: lx }]
+      railJointTargets: [{ id: 'leg_3', x: -lx }, { id: 'leg_4', x: lx }],
+      // Running gear: legs stand proud of the aprons, so wooden runners pack
+      // out from the apron face and everything starts behind the front legs.
+      sideInnerX: frameW / 2 - apT, gearFrontSetback: legT,
+      runnerTargets: ['apron_side_1', 'apron_side_2']
     };
     const bankOut = buildBank(spec, zone, parts, joints, '');
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
@@ -4766,7 +4952,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       yTop: o.height - topT, zFront: o.depth / 2,
       interiorDepth: o.depth - 10, available,
       overlayMaxW: innerW + Math.min(20, sideT), x: 0,
-      railJointTargets: [{ id: 'side_1', x: -innerW / 2 }, { id: 'side_2', x: innerW / 2 }]
+      railJointTargets: [{ id: 'side_1', x: -innerW / 2 }, { id: 'side_2', x: innerW / 2 }],
+      // Case sides run flush with the opening: runners land straight on them.
+      sideInnerX: innerW / 2, gearFrontSetback: RAIL_T,
+      runnerTargets: ['side_1', 'side_2']
     };
     let bankOut = { openings: [], drawers: [] };
     if (spec.drawers) bankOut = buildBank(spec, zone, parts, joints, '');
@@ -5170,6 +5359,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const hull = Geo.convexHull2D(footPts);
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
+        if (p.hardware) continue; // steel channels are not wood-density boxes
         const dens = partDensity(p, spec);
         const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
         const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
@@ -5411,7 +5601,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     {
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
-        if (p.role === 'pull') continue;
+        if (p.role === 'pull' || p.hardware) continue;
         const dens = partDensity(p, spec);
         const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
         const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
@@ -5468,6 +5658,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (isFinite(zF)) {
         let stab = 0, over = 0;
         for (const p of parts) {
+          if (p.hardware) continue; // excluded from the mass model, like pulls from COG
           const dens = partDensity(p, spec);
           const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
           const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
@@ -5965,8 +6156,9 @@ var BB = globalThis.BB = globalThis.BB || {};
        * uses, and every purchasable item lands in out.fasteners so the BOM
        * and the drilling instructions can never disagree (audit F-S3-1). */
       case 'edge_glue': {
-        // Long-grain lamination: no fasteners — the schedule is clamps.
-        const clamps = Math.max(2, Math.ceil(Math.max(0, runMM - 50) / 225) + 1);
+        // Long-grain lamination: no fasteners — the schedule is clamps
+        // (same arithmetic the stock plan's glue-up steps use).
+        const clamps = glueupSchedule(runMM).clamps;
         out.glueup = { clampCount: clamps };
         out.text = `Edge glue-up along ${len(runMM)}: joint both edges dead square, glue BOTH faces, and set ${clamps} bar clamps at ~${len(225)} centers, alternating over and under. Cauls across the ends keep the panel flat — check with a straightedge before the glue tacks.`;
         break;
@@ -6091,6 +6283,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
+  /* Clamp schedule for an edge glue-up of a given run (panel length): bar
+   * clamps at ~225 mm centers, minimum two, alternating over and under so
+   * the panel can't bow toward the clamp bars. Shared by the edge_glue
+   * joint setout AND the stock plan's glue-up assembly steps — packing and
+   * joinery speak with one voice (2026). */
+  function glueupSchedule(runMM) {
+    const clamps = Math.max(2, Math.ceil(Math.max(0, runMM - 50) / 225) + 1);
+    return {
+      clamps,
+      text: `Set ${clamps} bar clamps at ~${U().fmtLength(225)} centers, alternating over and under, cauls across the ends — check flat with a straightedge before the glue tacks.`
+    };
+  }
+
   /* One concise fastening line for an assembly step (first joint of each
    * distinct type in the step). */
   function stepNote(spec, model, joints) {
@@ -6142,7 +6347,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     return [...totals.values()];
   }
 
-  BB.Fasteners = { RULES, CHISELS, DOWEL_DIAMETERS, layoutForJoint, stepNote, detailRows, countFor, jointRun, positions };
+  BB.Fasteners = { RULES, CHISELS, DOWEL_DIAMETERS, layoutForJoint, stepNote, detailRows, countFor, jointRun, positions, glueupSchedule };
 })();
 </script>
 <script>/* Blueprint Buddy — stock layout & cut optimization (Phase 4).
@@ -6362,10 +6567,10 @@ var BB = globalThis.BB = globalThis.BB || {};
             if (sec.kind === 'direct') {
               solidPieces.push({ name: row.name, len: row.L, nominal: sec.nominal, actual: sec.actual, note: sec.actual.w - row.W > 3 ? `rip to ${U().fmtLength(row.W)}` : '' });
             } else if (sec.kind === 'glueup') {
-              glueups.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, W: row.W, T: row.T });
+              glueups.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, W: row.W, T: row.T, L: row.L });
               for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (strip ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: 'glue-up strip' });
             } else {
-              laminations.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, T: row.T });
+              laminations.push({ name: row.name, n: sec.pieces, nominal: sec.nominal, T: row.T, L: row.L });
               for (let s2 = 0; s2 < sec.pieces; s2++) solidPieces.push({ name: `${row.name} (layer ${s2 + 1}/${sec.pieces})`, len: row.L, nominal: sec.nominal, actual: sec.actual, note: `laminate + plane to ${U().fmtLength(row.T)}` });
             }
           }
@@ -6591,7 +6796,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     const rows = new Map();
     for (const p of model.parts) {
-      if (p.role === 'pull') continue; // hardware, not lumber
+      if (p.role === 'pull' || p.hardware) continue; // hardware, not lumber
       // Custom-grammar parts carry explicit cut dims (rotation changes the
       // oriented box, never the stick you cut); template parts derive L≥W≥T.
       const dims = p.cutDim ? [p.cutDim.L, p.cutDim.W, p.cutDim.T]
@@ -6671,7 +6876,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       let solidMm3 = 0;
       const sheetArea = new Map(K.SHEET_THICKNESS.map(t => [t, 0]));
       for (const p of model.parts) {
-        if (p.role === 'pull') continue;
+        if (p.role === 'pull' || p.hardware) continue;
         const dims = [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
         if (K.WOOD_SPECIES[p.material] && K.WOOD_SPECIES[p.material].sheet) {
           const t = K.SHEET_THICKNESS.reduce((x, y) => Math.abs(y - dims[2]) < Math.abs(x - dims[2]) ? y : x);
@@ -6700,7 +6905,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Fasteners: counts come from the fastener-location engine, so the
     // shopping list always matches the drilling instructions (audit F-S3-1).
+    // Every non-lumber price routes through the user-editable table
+    // (prices.hardware) with the catalog defaults as fallback.
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const hp = (key, fallback) => K.hardwarePrice(opts.prices, key, fallback);
     const engineCounts = BB.Fasteners ? BB.Fasteners.countFor(spec, model) : [];
     const PRICE_EACH = {
       screw: 0.06, pocket: 0.08, dowel: 0.1, figure8: 0.8,
@@ -6715,7 +6923,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         : c.kind === 'loose_tenon' ? 'mortise setout in the assembly steps'
         : c.kind === 'kd_bolt' ? 'bolt and barrel bores in the assembly steps'
         : 'positions and pilots in the assembly steps';
-      items.push({ kind: 'fastener', label, qty: c.qty, detail, price: Math.ceil(c.qty * (PRICE_EACH[c.kind] || 0.06) * 100) / 100 });
+      items.push({ kind: 'fastener', label, qty: c.qty, detail, price: Math.ceil(c.qty * hp(c.kind, PRICE_EACH[c.kind] || 0.06) * 100) / 100 });
     }
 
     // Glue: code names the bottle (2026 expansion) — food contact, outdoor
@@ -6726,7 +6934,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         items.push({
           kind: 'glue', label: rec.glue.label, qty: 1,
           detail: `${rec.why} · open ${rec.glue.openMin} min · clamp ${rec.glue.clampMin} min · full strength ${rec.glue.cureHrs} h`,
-          price: rec.glue.price
+          price: hp('glue_' + rec.glue.key, rec.glue.price)
         });
       }
     }
@@ -6741,42 +6949,53 @@ var BB = globalThis.BB = globalThis.BB || {};
         const volL = Math.max(0, (d.box.w - 2 * d.box.t) * (d.box.h - d.box.t) * (d.box.d - d.box.t)) * 1e-6;
         const picked = BB.HW ? BB.HW.slidePick(volL * DENSITY_KG_PER_L, { undermount: d.runner === 'undermount_slides' }) : null;
         if (picked && picked.key === 'side_bb_34') {
-          items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
+          items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         } else if (picked) {
-          items.push({ kind: 'hardware', label: `${len(d.slideLen)} ${picked.label.toLowerCase()}`, qty: 1, detail: `drawer ${d.index + 1} — picked for the computed load`, price: picked.price });
+          items.push({ kind: 'hardware', label: `${len(d.slideLen)} ${picked.label.toLowerCase()}`, qty: 1, detail: `drawer ${d.index + 1} — picked for the computed load`, price: hp('slide_' + picked.key, picked.price) });
         } else {
-          items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
+          items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         }
-        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${fine(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: 1 });
+        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${fine(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
       }
-      const pull = d.pull || { styleKey: 'bar_pull', count: 1, ctcMM: 0, holes: 2 };
-      const pStyle = BB.HW && BB.HW.PULLS[pull.styleKey];
-      if (pull.styleKey === 'none_touch') {
-        items.push({ kind: 'hardware', label: 'Magnetic touch latch (push-to-open)', qty: 1, detail: `drawer ${d.index + 1} — needs a ${len(2)} to ${len(3)} front gap`, price: pStyle ? pStyle.price : 6 });
+      // Pull lines print the EFFECTIVE style — what pullSpec actually fitted
+      // — so the label and the boring instructions can never disagree. A
+      // substitution (front too narrow for the requested style) says so.
+      const pull = d.pull || { styleKey: 'bar_pull', style: 'bar_pull', count: 1, ctcMM: 0, holes: 2 };
+      const effKey = pull.style || pull.styleKey;
+      const pStyle = BB.HW && BB.HW.PULLS[effKey];
+      const reqStyle = BB.HW && BB.HW.PULLS[pull.styleKey];
+      const subNote = pull.substituted && reqStyle && pStyle && reqStyle.key !== pStyle.key
+        ? ` · front too narrow for ${reqStyle.label.toLowerCase()}s — substituted` : '';
+      if (effKey === 'none_touch') {
+        items.push({ kind: 'hardware', label: 'Magnetic touch latch (push-to-open)', qty: 1, detail: `drawer ${d.index + 1} — needs a ${len(2)} to ${len(3)} front gap`, price: hp('pull_none_touch', 6) });
       } else if (pStyle) {
-        const boreDetail = pull.ctcMM
-          ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`
-          : `one ${fine(pStyle.boreDia || 5)} bore, centered · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`;
-        items.push({ kind: 'hardware', label: pull.count > 1 ? `${pStyle.label} (pair)` : pStyle.label, qty: pull.count, detail: `drawer ${d.index + 1} — ${boreDetail}`, price: pStyle.price * pull.count });
+        const boreDetail = pull.holes === 0
+          ? (effKey === 'edge_pull'
+            ? `screws into the front’s top edge — pre-drill, this is end grain`
+            : `template-routed mortise in the face — nothing proud`)
+          : pull.ctcMM
+            ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`
+            : `one ${fine(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`}`;
+        items.push({ kind: 'hardware', label: pull.count > 1 ? `${pStyle.label} (pair)` : pStyle.label, qty: pull.count, detail: `drawer ${d.index + 1} — ${boreDetail}${subNote}`, price: hp('pull_' + pStyle.key, pStyle.price) * pull.count });
       } else {
-        items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: 6 });
+        items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
       }
-      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${fine(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: 1 });
+      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${fine(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
     const shelfParts = model.parts.filter(p => p.role === 'shelf');
     if (shelfParts.length && ['bookshelf', 'cabinet'].includes(spec.meta.template)) {
       // "5 mm shelf pin" IS the trade name in every market — stays literal.
-      items.push({ kind: 'hardware', label: '5 mm shelf pins', qty: shelfParts.length * 4, detail: '4 per adjustable shelf', price: Math.ceil(shelfParts.length) });
+      items.push({ kind: 'hardware', label: '5 mm shelf pins', qty: shelfParts.length * 4, detail: '4 per adjustable shelf', price: Math.ceil(shelfParts.length * 4 * hp('shelf_pin', 0.25) * 100) / 100 });
     }
 
     // Mandatory anti-tip hardware when the stability check demands it — a
     // line item, not a suggestion.
     if (opts.integrity && opts.integrity.antiTip) {
-      items.push({ kind: 'hardware', label: 'Anti-tip wall anchor kit (strap + wall screws) — REQUIRED', qty: 1, detail: 'tall or top-heavy: anchor to a stud before loading', price: 7 });
+      items.push({ kind: 'hardware', label: 'Anti-tip wall anchor kit (strap + wall screws) — REQUIRED', qty: 1, detail: 'tall or top-heavy: anchor to a stud before loading', price: hp('antitip_kit', 7) });
     }
 
     const fin = K.FINISHES.find(f => f.key === spec.finish);
-    items.push({ kind: 'finish', label: fin.label, qty: 1, detail: `${fin.coats} coats · recoat ${fin.recoatHrs} h · cure ${fin.cureDays} days`, price: 18 });
+    items.push({ kind: 'finish', label: fin.label, qty: 1, detail: `${fin.coats} coats · recoat ${fin.recoatHrs} h · cure ${fin.cureDays} days`, price: hp('finish_flat', 18) });
 
     const total = Math.round(items.reduce((s, i) => s + (i.price || 0), 0) * 100) / 100;
     return { items, total };
@@ -6791,7 +7010,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     return model.joints.filter(j => set.has(j.a) || set.has(j.b));
   }
 
-  function drawerSteps(spec, model, out) {
+  function drawerSteps(spec, model, out, opts) {
+    opts = opts || {};
+    // The user's climate preference reaches the bench: ΔMC drives the
+    // wooden-runner fitting clearance, exactly as it drives the movement
+    // checks. Default temperate — a plan without a stated climate keeps
+    // the 4% swing.
+    const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
     const boxJ = K.JOINERY[spec.joinery.box];
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
     /* Screwed/pocketed boxes have a relieved back: the bottom slides in from
@@ -6817,20 +7042,21 @@ var BB = globalThis.BB = globalThis.BB || {};
           boxIds.concat(ids('bottom')), { drawer: d.index }));
       }
       const railIds = model.parts.filter(p => p.role === 'rail').slice(d.index, d.index + 2).map(p => p.id);
+      const gearIds = railIds.concat(d.gearIds || []);
       if (d.runner === 'side_mount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the slides`,
           `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(16)} pan-heads. A spacer block beats a tape measure here.`,
-          railIds, { drawer: d.index }));
+          gearIds, { drawer: d.index }));
       } else if (d.runner === 'undermount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the undermount slides`,
           `Screw the ${len(d.slideLen)} undermount slides to the case floor of the opening, dead parallel and flush to the front edge. The box was built to the slide — width = opening − ${len(27)}, depth exactly ${len(d.slideLen)}, bottom recessed ${fine(12.7)} — so notch the box back for the hooks and press the locking clips on under the front corners.`,
-          railIds, { drawer: d.index }));
+          gearIds, { drawer: d.index }));
       } else {
         const sp = K.WOOD_SPECIES[spec.wood.species];
-        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, K.CLIMATE_DMC.temperate) : 2;
+        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, K.CLIMATE_DMC[climate]) : 2;
         out.push(step(`dr${n}_runners`, `Drawer ${n}: fit wood runners`,
-          `Glue and screw the hardwood runners level in the opening, with a kicker above so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, temperate indoor swing), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
-          railIds, { drawer: d.index }));
+          `Glue and screw the hardwood runners level in the opening (they're in the cut list), with the rail above as the kicker so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, ${climate} indoor swing), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
+          gearIds, { drawer: d.index }));
       }
       out.push(step(`dr${n}_hang`, `Drawer ${n}: hang the box`,
         `Set the box on its runners and check it runs true with an even gap.`, boxIds.concat(ids('bottom')), { drawer: d.index }));
@@ -6839,17 +7065,26 @@ var BB = globalThis.BB = globalThis.BB || {};
           ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then screw it from inside the box with #8 × ${len(25)} screws.`
           : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and screw it from inside the box with #8 × ${len(25)} screws.`,
         ids('front'), { drawer: d.index }));
-      const pull = d.pull || { styleKey: 'bar_pull', count: 1, ctcMM: 0 };
-      const pRow = BB.HW && BB.HW.PULLS[pull.styleKey];
+      // Steps speak the EFFECTIVE style — the one pullSpec actually fitted.
+      const pull = d.pull || { styleKey: 'bar_pull', style: 'bar_pull', count: 1, ctcMM: 0 };
+      const pEff = pull.style || pull.styleKey;
+      const pRow = BB.HW && BB.HW.PULLS[pEff];
+      const pReq = BB.HW && BB.HW.PULLS[pull.styleKey];
+      const pSub = pull.substituted && pReq && pRow && pReq.key !== pRow.key
+        ? ` (The front is too narrow for ${pReq.label.toLowerCase()}s — a ${pRow.label.toLowerCase()} is fitted instead.)` : '';
       let pullText;
-      if (pull.styleKey === 'none_touch') {
+      if (pEff === 'none_touch') {
         pullText = `No pull on this front: fit the magnetic touch latch behind it, striker on the box — press to pop open. It needs ${fine(2)} to ${fine(3)} of travel in the reveal.`;
+      } else if (pull.holes === 0) {
+        pullText = pEff === 'edge_pull'
+          ? `Screw the edge pull to the front’s TOP EDGE, centered — pre-drill every hole, this is end grain and it splits without pilots.${pSub}`
+          : `Rout the flush-pull mortise with the maker’s template, centered on the front — freehand walls show through the finish forever.${pSub}`;
       } else if (pull.ctcMM) {
-        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). M4 screws, length = front + ${len(6)}.`;
+        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). M4 screws, length = front + ${len(6)}.${pSub}`;
       } else {
-        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pull.styleKey === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : ', M4 screw from inside'}. Every front in the stack shares one centerline.`;
+        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : ', M4 screw from inside'}. Every front in the stack shares one centerline.${pSub}`;
       }
-      out.push(step(`dr${n}_pull`, `Drawer ${n}: ${pull.styleKey === 'none_touch' ? 'fit the touch latch' : 'add the pull'}`,
+      out.push(step(`dr${n}_pull`, `Drawer ${n}: ${pEff === 'none_touch' ? 'fit the touch latch' : 'add the pull'}`,
         pullText, ids('pull'), { drawer: d.index }));
     }
   }
@@ -6918,6 +7153,36 @@ var BB = globalThis.BB = globalThis.BB || {};
       millingSteps(spec, model, cutList(spec, model), out);
     }
 
+    /* Panel glue-ups and laminations from the stock plan are real bench
+     * steps with a real clamp schedule — before this, the optimizer could
+     * demand a three-strip seat and the steps never mentioned building it.
+     * The clamp arithmetic is the edge_glue joint's own schedule
+     * (BB.Fasteners.glueupSchedule), so the packing layer and the joinery
+     * knowledge finally speak with one voice. */
+    if (opts.stockPlan) {
+      const fmtL = mm => U().fmtLength(mm);
+      // Identical panels group into one step (× N) — two matching case
+      // sides are one bench operation repeated, not two instructions.
+      const grouped = list => {
+        const m = new Map();
+        for (const g of list) {
+          const k = [g.name, g.n, g.nominal, g.W, g.T, g.L].join('|');
+          if (!m.has(k)) m.set(k, Object.assign({ qty: 0 }, g));
+          m.get(k).qty++;
+        }
+        return [...m.values()];
+      };
+      grouped(opts.stockPlan.glueups || []).forEach((g, i) => {
+        const sch = BB.Fasteners && BB.Fasteners.glueupSchedule ? BB.Fasteners.glueupSchedule(g.L || 600) : null;
+        out.push(step('glueup' + (i + 1), `Glue up: ${g.name.toLowerCase()}${g.qty > 1 ? ` (× ${g.qty})` : ''}`,
+          `Edge-glue ${g.qty > 1 ? `${g.qty} panels, each ` : ''}${g.n} × ${g.nominal} strips (long grain to long grain — the joint outlasts the wood), then rip and crosscut to ${fmtL(g.L)} × ${fmtL(g.W)}. ${sch ? sch.text : 'Alternate clamps over and under; check flat with a straightedge.'}`, []));
+      });
+      grouped(opts.stockPlan.laminations || []).forEach((l, i) => {
+        out.push(step('lam' + (i + 1), `Laminate: ${l.name.toLowerCase()}${l.qty > 1 ? ` (× ${l.qty})` : ''}`,
+          `Face-laminate ${l.qty > 1 ? `${l.qty} blanks, each ` : ''}${l.n} × ${l.nominal} layers with the crowns opposed, clamp from the center outward on both faces, and plane to ${fmtL(l.T)} once cured — equal passes off both faces so it stays straight.`, []));
+      });
+    }
+
     if (t === 'custom') {
       // Novel pieces: walk the connection graph bottom-up so every step rests
       // on the one before it.
@@ -6956,14 +7221,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
       if (shelves.length) out.push(step('s6', 'Add the shelves',
         `Drill the 32 mm system for the pins: rows of ${U().fmtSmall(5)} holes, ${U().fmtLength(9)} deep, at ${U().fmtLength(32)} pitch, ${U().fmtLength(37)} in from each edge — one drilled story stick indexes every row off the case bottom so the shelves can never rock. Set the shelves on their pins.`, shelves));
-      drawerSteps(spec, model, out);
+      drawerSteps(spec, model, out, opts);
     } else if (t === 'nightstand') {
       out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
       out.push(step('s2', 'Connect with back apron and rails', `Join the back apron and the front drawer rails between the side frames with ${frP}.`, ['apron_back_1', ...rails]));
       if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf', 'Notch the shelf around the legs and fasten it.', ['shelf_1']));
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
-      drawerSteps(spec, model, out);
+      drawerSteps(spec, model, out, opts);
     } else {
       out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. Glue, clamp, and check for square.`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
       out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. Work on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
@@ -7395,7 +7660,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const matIndex = new Map(roles.map((r, i) => [r, i]));
     const materials = roles.map(r => {
       const c = roleColor[r] || [180, 140, 95];
-      const metal = r === 'pull';
+      const metal = r === 'pull' || r === 'slide';
       return {
         name: r,
         pbrMetallicRoughness: {
@@ -7535,7 +7800,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     side: [176, 136, 90], bottom: [176, 136, 90], back: [222, 205, 166],
     plinth: [120, 90, 60], drawer_side: [233, 216, 174], drawer_boxfront: [233, 216, 174],
     drawer_boxback: [233, 216, 174], drawer_bottom: [240, 226, 190],
-    drawer_front: [186, 138, 88], pull: [70, 70, 74]
+    drawer_front: [186, 138, 88], pull: [70, 70, 74],
+    slide: [70, 70, 74], runner: [160, 120, 76]
   };
   const roleColor = role => ROLE_COLORS[role] || [180, 140, 95];
 
@@ -7840,16 +8106,44 @@ BlueprintBuddyImport.build
     }
 
     // Joinery detail: fastener positions, pilots, and setout per unique joint
-    // pairing (audit F-S3-1) — what separates a plan from a picture.
+    // pairing (audit F-S3-1) — what separates a plan from a picture. Drawer
+    // hardware boring (2026) rides the same table: slide mounting and pull
+    // bores are setout lines too, not just shopping-list rows.
     let joineryHTML = '';
     if (BB.Fasteners) {
       const rows = BB.Fasteners.detailRows(spec, model);
-      if (rows.length) {
-        const jr = rows.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('');
+      const hw = [];
+      if (BB.HW && model.drawers) {
+        for (const d of model.drawers) {
+          const n = d.index + 1;
+          if (d.runner === 'side_mount_slides' && d.slideLen) {
+            hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtSmall(3)}.` });
+          } else if (d.runner === 'undermount_slides' && d.slideLen) {
+            hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
+          } else if (d.runner === 'wood_runners') {
+            hw.push({ label: 'Wooden runners', qty: 2, where: `Drawer ${n} opening`, text: `Hardwood rails from the cut list, glued + screwed level; ${U.fmtSmall(1)} side clearance, computed vertical clearance in the steps.` });
+          }
+          const pu = d.pull || {};
+          const eff = BB.HW.PULLS[pu.style || pu.styleKey];
+          if (eff && (pu.style || pu.styleKey) !== 'none_touch') {
+            const text = pu.holes === 0
+              ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
+              : pu.ctcMM
+                ? `${pu.holes} × ${U.fmtSmall(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.front.t))}.`
+                : `One ${U.fmtSmall(eff.boreDia || 5)} bore, centered on the shared centerline.`;
+            hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
+          } else if (eff) {
+            hw.push({ label: 'Magnetic touch latch', qty: 1, where: `Drawer ${n} front`, text: `Latch behind the front, striker on the box; needs ${U.fmtSmall(2)}–${U.fmtSmall(3)} of travel in the reveal.` });
+          }
+        }
+      }
+      if (rows.length || hw.length) {
+        const jr = rows.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('') +
+          hw.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('');
         joineryHTML = `
   <section class="print-section page-break">
-    <h2>Joinery detail — locations, pilots, setout</h2>
-    <table><thead><tr><th>Joint</th><th>Qty</th><th>Where</th><th>Setout</th></tr></thead><tbody>${jr}</tbody></table>
+    <h2>Joinery &amp; hardware detail — locations, pilots, setout</h2>
+    <table><thead><tr><th>Joint / hardware</th><th>Qty</th><th>Where</th><th>Setout</th></tr></thead><tbody>${jr}</tbody></table>
   </section>`;
       }
     }
@@ -8245,8 +8539,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
-    'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER in mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Primitive orientations before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part must appear in at least one connection; connected parts must physically touch; unconnected parts must not intersect. Set loadBearing=1 for every part in a load path and SURF for anything loaded or sat on. 2–40 parts.',
-    'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (one short sentence), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers).'
+    'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
+    'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
   ].join('\n');
 
   /* ---------------- running history digest ----------------
@@ -8321,11 +8615,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       'You NEVER compute geometry. You propose intent; the app owns all math, snaps stock sizes, and re-validates everything.',
       'All wire dimensions are millimetres. The app pre-normalizes dimension strings in user messages to explicit millimetres before you see them — NEVER convert units yourself.',
       Codec().SCHEMA_DOC,
-      'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes).',
-      // Generated from the joinery table — never hand-copied (audit F-S3-8).
-      K.levelMatrixLine() + ' (code enforces this regardless).',
+      // The LEVEL MATRIX itself rides the knowledge digest (generated from
+      // the joinery table, audit F-S3-8) — repeating it here cost ~90 tokens
+      // per call saying the same thing twice.
+      'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
       'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
-      'REFINEMENTS: when the user asks for a change, EDIT the current spec — send ONLY the changed wire keys. Do not redesign. STRUCTURAL CRITIQUE: when the message is a structural critique of your last composition, fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
+      'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
       '--- knowledge digest ---',
       K.knowledgeDigest(),
       // Hardware style intent only — every count, rating, and bore is code
@@ -8377,7 +8672,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       const opts = obj.a !== undefined ? obj.a : obj.options;
       return { kind: 'question', question: q, options: Array.isArray(opts) ? opts.slice(0, 3).map(String) : [] };
     }
-    const explain = String(obj.e !== undefined ? obj.e : (obj.explain || '')).slice(0, 200);
+    // ANSWER shape (2026): pure advice/explanation, no spec change. Before
+    // this, "what finish should I use?" had no legal reply — an answer with
+    // no wire keys parsed to null and burned the validation retry.
+    const info = obj.i !== undefined ? obj.i : obj.info;
+    if (typeof info === 'string' && info.trim()) {
+      return { kind: 'info', text: String(info).slice(0, 900) };
+    }
+    const explain = String(obj.e !== undefined ? obj.e : (obj.explain || '')).slice(0, 320);
     const N = obj.N !== undefined ? obj.N : obj.new;
     if (N && typeof N === 'object') {
       const spec = Codec().decode(N);
@@ -8387,7 +8689,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       return { kind: 'new', spec, unitsUnspecified: N.u === undefined && N.units === undefined, explain: explain || 'Here’s a starting point.' };
     }
     const wireDiff = {};
-    for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain') wireDiff[k] = obj[k];
+    for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain' && k !== 'i' && k !== 'info') wireDiff[k] = obj[k];
     const patch = Codec().decodePartial(wireDiff);
     if (!patch) return null;
     return { kind: 'diff', patch, explain: explain || 'Updated.' };
@@ -8739,7 +9041,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   const VISION_PROMPT = [
     'The image is a furniture photo. Identify the furniture type and estimate overall proportions, anchored to standard ergonomic heights from the knowledge digest (' + K.visionRangesLine() + ').',
     'Reply {"N":{full wire spec}} — use a known template (t 0-5) whenever one fits; use t=6 (custom, parts + connections) only if none does.',
-    'Estimate wood species from color/grain (m). If drawers are visible on a nightstand/cabinet, set "d". Minified JSON only.'
+    // Picture identification (2026): everything the wire can carry, the
+    // photo path should read — species by color/grain against the full SPC
+    // list, visible sheet goods, drawer bank, pull style, shelf count, and
+    // the joinery level when exposed joints show.
+    'Read from the photo: wood species by color and grain ("m", a SOLID species from SPC — pale cream=maple/birch, honey/amber=oak/ash/pine, salmon-auburn=cherry, chocolate=walnut, ribbon-striped red-brown=sapele, painted=poplar or mdf); visible sheet goods ("ms"); drawers ("d": count and inset/overlay) with pull style ("hp" from PUL — bars, knobs, cups, ring, leather, none visible = push-to-open); shelf count (s.c); joinery level (l) if exposed dovetails/tenons show.',
+    'Snap thicknesses to stock sizes. Minified JSON only.'
   ].join(' ');
 
   /* Client-side downscale (1d): image tokens scale with pixel count — NEVER
@@ -8799,10 +9106,26 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
 })();
 </script>
-<script>/* Blueprint Buddy — persistence (Phase 4).
- * Uses the same window.storage API as preferences. EVERY call sits inside
- * try/catch with an in-memory fallback: the app must run fully — session-only
- * — when storage is unavailable, and the user should barely notice.
+<script>/* Blueprint Buddy — persistence (Phase 4; 2026: real persistence everywhere).
+ *
+ * One key-value API over a DRIVER CHAIN, first available wins per call:
+ *   1. artifact — window.storage (claude.ai artifact hosting)
+ *   2. cloud    — /api/store with a signed-in session (Vercel + KV; see
+ *                 api/auth.js). Writes also mirror to device storage, so a
+ *                 network blip or sign-out never loses the latest state.
+ *   3. device   — localStorage ("bb:" prefix). THE fix for the app's oldest
+ *                 silent failure: off-artifact, projects used to evaporate
+ *                 on refresh because only window.storage was ever tried.
+ *   4. memory   — session-only, always mirrored, so a mid-session storage
+ *                 death loses nothing.
+ * EVERY call sits inside try/catch: the app must run fully — session-only —
+ * when all storage is unavailable, and the user should barely notice.
+ *
+ * Accounts: Store.init() probes /api/auth?me=1 once (boot races it against
+ * a short timeout so first paint never waits on the network). Signing in
+ * upgrades the chain to cloud and runs a one-time device→cloud migration
+ * when the cloud side is still empty — existing local projects follow the
+ * user. Cloud documents with data always win; migration never overwrites.
  *
  * Key layout (respecting the 5 MB per-key limit):
  *   projects:index  -> [{id, name, updated, thumb, dims, progressPct}]
@@ -8820,45 +9143,187 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
-  const memory = new Map(); // silent session-only fallback
-  let storageWorks = null;  // null = unknown, probed lazily
+  const memory = new Map(); // silent session-only fallback, always mirrored
+  const LOCAL_PREFIX = 'bb:';
+  let artifactWorks = null; // null = unknown, probed lazily
+  let localOK = null;       // null = unknown, probed lazily
+  let auth = null;          // { user, providers, storage } from /api/auth?me=1
+  let remoteAlive = false;  // signed in AND the server has a KV backend
+  const modeListeners = [];
 
   function hasStorage() {
     return typeof window !== 'undefined' && window.storage &&
       typeof window.storage.get === 'function' && typeof window.storage.set === 'function';
   }
 
+  function localStore() {
+    if (localOK === false) return null; // a THROWING localStorage stays latched off
+    try {
+      const ls = (typeof window !== 'undefined' ? window : globalThis).localStorage;
+      if (!ls) return null; // absent (headless) — re-checked per call, never latched
+      if (localOK === null) {
+        ls.setItem(LOCAL_PREFIX + 'probe', '1');
+        ls.removeItem(LOCAL_PREFIX + 'probe');
+        localOK = true;
+      }
+      return ls;
+    } catch (e) { localOK = false; return null; }
+  }
+
+  /* ---------------- cloud driver (same-origin /api/store) ---------------- */
+  async function remoteGet(key) {
+    const r = await fetch('/api/store?doc=' + encodeURIComponent(key), { credentials: 'same-origin' });
+    if (r.status === 401 || r.status === 503) { setRemote(false); return undefined; } // signed out / unconfigured
+    if (!r.ok) throw new Error('store ' + r.status);
+    const data = await r.json();
+    return data && typeof data.value === 'string' ? data.value : null;
+  }
+  async function remoteSet(key, value) {
+    const r = await fetch('/api/store?doc=' + encodeURIComponent(key), {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value })
+    });
+    if (r.status === 401 || r.status === 503) { setRemote(false); return false; }
+    return r.ok;
+  }
+  async function remoteDel(key) {
+    const r = await fetch('/api/store?doc=' + encodeURIComponent(key), { method: 'DELETE', credentials: 'same-origin' });
+    if (r.status === 401 || r.status === 503) setRemote(false);
+    return r.ok;
+  }
+
+  function setRemote(on) {
+    if (remoteAlive === !!on) return;
+    remoteAlive = !!on;
+    for (const cb of modeListeners) { try { cb(persistenceMode()); } catch (e) { /* listener's problem */ } }
+  }
+
+  /* ---------------- the unified get/set/del ---------------- */
   async function get(key) {
     if (hasStorage()) {
       try {
         const r = await window.storage.get(key);
-        storageWorks = true;
+        artifactWorks = true;
         if (r && r.value !== undefined && r.value !== null) return JSON.parse(r.value);
         return null;
       } catch (e) { /* missing key or broken storage: fall through */ }
     }
+    if (remoteAlive) {
+      try {
+        const v = await remoteGet(key);
+        if (typeof v === 'string') return JSON.parse(v);
+        if (v === null) return null; // authoritative: signed-in cloud says "no such doc"
+      } catch (e) { /* transient network — fall through for THIS call */ }
+    }
+    const ls = localStore();
+    if (ls) {
+      try {
+        const v = ls.getItem(LOCAL_PREFIX + key);
+        if (v !== null) return JSON.parse(v);
+        return memory.has(key) ? JSON.parse(memory.get(key)) : null;
+      } catch (e) { /* fall through */ }
+    }
     return memory.has(key) ? JSON.parse(memory.get(key)) : null;
   }
+
   async function set(key, obj) {
     const value = JSON.stringify(obj);
-    memory.set(key, value); // memory always mirrors, so a mid-session storage death loses nothing
+    memory.set(key, value); // memory always mirrors
+    let ok = false;
     if (hasStorage()) {
-      try { await window.storage.set(key, value); storageWorks = true; return true; }
-      catch (e) { storageWorks = false; }
+      try { await window.storage.set(key, value); artifactWorks = true; ok = true; }
+      catch (e) { artifactWorks = false; }
     }
-    return false;
+    // Device write-through even when cloud is live: the local copy is the
+    // offline cache and the signed-out fallback.
+    const ls = localStore();
+    if (ls) {
+      try { ls.setItem(LOCAL_PREFIX + key, value); ok = true; }
+      catch (e) { localOK = false; /* quota / private mode */ }
+    }
+    if (remoteAlive) {
+      try { ok = (await remoteSet(key, value)) || ok; }
+      catch (e) { /* transient — local copy already landed */ }
+    }
+    return ok;
   }
+
   async function del(key) {
     memory.delete(key);
+    let ok = false;
     if (hasStorage()) {
       try {
         if (typeof window.storage.delete === 'function') await window.storage.delete(key);
         else await window.storage.set(key, 'null');
-        return true;
+        ok = true;
       } catch (e) { /* silent */ }
     }
-    return false;
+    const ls = localStore();
+    if (ls) { try { ls.removeItem(LOCAL_PREFIX + key); ok = true; } catch (e) { /* silent */ } }
+    if (remoteAlive) { try { ok = (await remoteDel(key)) || ok; } catch (e) { /* transient */ } }
+    return ok;
   }
+
+  /* ---------------- accounts: probe, upgrade, migrate ----------------
+   * init() resolves fast (or the boot race abandons the wait — the chain
+   * upgrades itself mid-session and notifies listeners). On claude.ai and
+   * static hosting the probe 404s once and everything below stays dormant. */
+  async function init(opts) {
+    opts = opts || {};
+    if (typeof fetch !== 'function' || typeof window === 'undefined' || hasStorage()) return authState();
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), opts.timeoutMs || 4000) : null;
+      const r = await fetch('/api/auth?me=1', { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined });
+      if (timer) clearTimeout(timer);
+      if (!r.ok) return authState();
+      auth = await r.json();
+      if (auth && auth.user && auth.storage) {
+        try { await migrateLocalToCloud(); } catch (e) { /* migration is best-effort */ }
+        setRemote(true);
+      }
+    } catch (e) { /* no /api/auth at this origin — device storage it is */ }
+    return authState();
+  }
+
+  /* One-time device→cloud copy on first sign-in: only when the cloud side
+   * has NO project index yet — cloud data always wins, never overwritten. */
+  async function migrateLocalToCloud() {
+    const ls = localStore();
+    if (!ls) return;
+    const remoteIdx = await remoteGet(INDEX_KEY);
+    if (remoteIdx === undefined || remoteIdx !== null) return; // unavailable, or cloud already has data
+    const localIdx = ls.getItem(LOCAL_PREFIX + INDEX_KEY);
+    if (!localIdx) return;
+    let idx;
+    try { idx = JSON.parse(localIdx) || []; } catch (e) { return; }
+    await remoteSet(INDEX_KEY, localIdx);
+    for (const row of idx.slice(0, 100)) {
+      const k = PROJECT_PREFIX + row.id;
+      const v = ls.getItem(LOCAL_PREFIX + k);
+      if (v) await remoteSet(k, v);
+    }
+    for (const k of [PRICES_KEY, PREFS_KEY]) {
+      const v = ls.getItem(LOCAL_PREFIX + k);
+      if (v) await remoteSet(k, v);
+    }
+  }
+
+  const authState = () => ({
+    user: auth && auth.user ? auth.user : null,
+    providers: auth && Array.isArray(auth.providers) ? auth.providers : [],
+    storage: !!(auth && auth.storage),
+    cloud: remoteAlive
+  });
+
+  function persistenceMode() {
+    if (hasStorage() && artifactWorks !== false) return 'artifact';
+    if (remoteAlive) return 'cloud';
+    if (localStore()) return 'device';
+    return 'session';
+  }
+  const onModeChange = cb => { if (typeof cb === 'function') modeListeners.push(cb); };
 
   /* ---------------- projects ---------------- */
   const INDEX_KEY = 'projects:index';
@@ -8975,7 +9440,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     return {
       dimensional,
       sheet: normalizeSheetPrices(dflt.sheet, stored.sheet),
-      bdft: Object.assign({}, dflt.bdft, stored.bdft || {})
+      bdft: Object.assign({}, dflt.bdft, stored.bdft || {}),
+      // Hardware & consumables (2026): pre-expansion tables gain the block.
+      hardware: Object.assign({}, dflt.hardware, stored.hardware || {})
     };
   }
   const savePrices = prices => set(PRICES_KEY, prices);
@@ -9037,7 +9504,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Store = {
     get, set, del, hasStorage,
-    isPersistent: () => storageWorks !== false && hasStorage(),
+    isPersistent: () => persistenceMode() !== 'session',
+    persistenceMode, init, auth: authState, onModeChange,
+    loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
+    logoutUrl: '/api/auth?logout=1',
     newId, loadIndex, saveProject, loadProject, deleteProject, renameProject, duplicateProject,
     loadPrices, savePrices, loadPrefs, savePrefs, makeThumb,
     MAX_REVISIONS, DEFAULT_PREFS
@@ -9674,6 +10144,73 @@ var BB = globalThis.BB = globalThis.BB || {};
       const sysHW = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       test('hardware', 'system prompt carries hardware STYLES only (ratings stay in code)',
         sysHW.includes(HW.digestLine()) && !sysHW.includes('capacityKg'), 'styles only', 'styles only');
+    }
+
+    /* ============ 2026 hardening: coherence, budget, persistence ============ */
+    {
+      const HW = BB.HW;
+      // Pull label and bore can never disagree: cup pulls stay style-true on
+      // narrow drawers; generic styles substitute AND say so, everywhere.
+      const cup = HW.pullSpec(240, 'cup_pull');
+      test('hardening', 'cup pull stays a cup pull on a 240 mm front (own CTC series)',
+        cup.style === 'cup_pull' && cup.holes === 2 && cup.ctcMM === 76 && !cup.substituted,
+        `${cup.style} ${cup.holes}×@${cup.ctcMM}`, 'cup_pull 2×@76');
+      const bar = HW.pullSpec(240, 'bar_pull');
+      test('hardening', 'bar pull on a narrow front substitutes a knob and carries the flag',
+        bar.style === 'knob_round' && bar.substituted === true && bar.holes === 1,
+        `${bar.style} substituted=${bar.substituted}`, 'knob_round substituted=true');
+      test('hardening', 'zero-hole styles carry zero bores (edge/flush)',
+        HW.pullSpec(400, 'edge_pull').holes === 0 && HW.pullSpec(400, 'flush_recessed').holes === 0,
+        'holes 0/0', 'holes 0/0');
+      const narrow = pipeline({
+        meta: { name: 'Narrow', template: 'nightstand', level: 'intermediate' },
+        overall: { width: 330, depth: 400, height: 600 },
+        drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+      });
+      const nb = BB.Plans.bom(narrow.spec, narrow.model, {});
+      const knobLine = nb.items.find(i => i.kind === 'hardware' && /knob/i.test(i.label));
+      test('hardening', 'BOM prints the FITTED style with the substitution named',
+        !!knobLine && /substituted/.test(knobLine.detail) && narrow.report.advisories.some(a => a.id.startsWith('hw_pull_narrow')),
+        knobLine ? knobLine.label : 'no knob line', 'Round knob + advisory');
+
+      // Custom connection kinds are gated like template slots; french cleat
+      // (external — its mate is the wall) never joins two parts.
+      const gated = Spec.correctSpec({
+        meta: { name: 'G', template: 'custom', level: 'beginner' },
+        custom: {
+          parts: [
+            { id: 'a', role: 'leg', primitive: 'post', dim: { l: 400, w: 45, t: 45 }, pos: { x: 0, y: 200, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+            { id: 'b', role: 'seat', primitive: 'slab', dim: { l: 400, w: 300, t: 38 }, pos: { x: 0, y: 419, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' }
+          ],
+          connections: [{ a: 'a', b: 'b', joint: 'french_cleat' }]
+        }
+      });
+      test('hardening', 'french cleat between two parts is refused (kind gate)',
+        gated.custom.connections[0].joint !== 'french_cleat', gated.custom.connections[0].joint, 'a level default, never french_cleat');
+
+      // The climate preference reaches the bench text.
+      const wr = pipeline({
+        meta: { name: 'WR', template: 'nightstand', level: 'intermediate' },
+        drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }
+      });
+      const humid = BB.Plans.assembly(wr.spec, wr.model, null, { climate: 'humid' }).find(s => /runners/.test(s.id));
+      test('hardening', 'wooden-runner fitting follows the climate ΔMC',
+        humid && /humid indoor swing/.test(humid.text), humid ? 'humid named' : 'step missing', 'humid named');
+
+      // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
+      const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
+      const tk = BB.Codec.estimateTokens(sysT);
+      test('hardening', 'system prompt under the 1900-token ceiling', tk <= 1900 && tk > 800, tk + ' tokens', '≤ 1900');
+      const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
+      test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
+
+      // Persistence driver chain reports an honest mode.
+      const mode = Store.persistenceMode();
+      test('hardening', 'persistence mode is a known driver name',
+        ['artifact', 'cloud', 'device', 'session'].includes(mode), mode, 'artifact|cloud|device|session');
+      test('hardening', 'hardware price defaults cover slides, pulls, glues',
+        (() => { const h = K.hardwarePriceDefaults(); return h.slide_side_bb_34 === 14 && h.pull_bar_pull === 6 && h.glue_pva_interior === 8; })(),
+        'defaults assemble', 'defaults assemble');
     }
 
     /* ============ structural: movement / tipping / racking (fixed values) ============ */
@@ -11846,8 +12383,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.integrity = Structural.computeIntegrity(r.spec, r.model, integrityOpts());
     state.cut = Plans.cutList(r.spec, r.model);
     state.stockPlan = Packing.planStock(r.spec, r.model, state.cut, { prices: state.prices, stockMode: state.prefs4.stockMode });
-    state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan });
-    state.steps = Plans.assembly(r.spec, r.model, state.integrity, { stockPlan: state.stockPlan });
+    state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan, prices: state.prices });
+    state.steps = Plans.assembly(r.spec, r.model, state.integrity, { stockPlan: state.stockPlan, climate: state.prefs4.climate });
     // The checklist just changed shape: progress keys from an older stock
     // layout would otherwise inflate the build percentage forever.
     if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
@@ -11958,15 +12495,52 @@ var BB = globalThis.BB = globalThis.BB || {};
   let saveFlashTimer = null;
   function flashSave(persistent) {
     const elS = $('saveState');
-    elS.textContent = persistent ? 'saved' : 'session only';
-    elS.title = persistent
-      ? 'Autosaved to this device — find it under More › Projects'
-      : 'Storage is unavailable — this design lives for this session only. Export a share code to keep it.';
+    const mode = Store.persistenceMode();
+    elS.textContent = !persistent ? 'session only' : mode === 'cloud' ? 'saved · cloud' : 'saved';
+    elS.title = !persistent
+      ? 'Storage is unavailable — this design lives for this session only. Export a share code to keep it.'
+      : mode === 'cloud'
+        ? 'Autosaved to your account — projects follow you to any device.'
+        : 'Autosaved to this device — find it under More › Projects';
     elS.classList.toggle('err', !persistent);
     elS.classList.remove('pending');
     elS.classList.add('on');
     clearTimeout(saveFlashTimer);
     saveFlashTimer = setTimeout(() => elS.classList.remove('on'), 1600);
+  }
+
+  /* ---------------- account (optional cloud persistence) ----------------
+   * Rendered inside the More menu. The section exists only when the origin
+   * actually offers accounts (providers configured server-side) — a static
+   * host or claude.ai shows nothing at all. */
+  const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
+  function renderAccount() {
+    const area = $('accountArea'), sep = $('accountSep');
+    if (!area) return;
+    const a = Store.auth();
+    const show = !!(a.user || (a.providers.length && a.storage));
+    area.hidden = !show;
+    sep.hidden = !show;
+    area.textContent = '';
+    if (!show) return;
+    if (a.user) {
+      const row = el('div', 'menu-account');
+      row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : '<span class="account-avatar fallback" aria-hidden="true">●</span>'}
+        <span class="account-name">${esc(a.user.name)}</span>
+        <span class="hint">${a.cloud ? 'cloud sync on' : 'signed in'}</span>`;
+      area.append(row);
+      const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
+      out.setAttribute('role', 'menuitem');
+      out.onclick = () => { window.location.href = Store.logoutUrl; };
+      area.append(out);
+    } else {
+      for (const p of a.providers) {
+        const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">sync projects</span>`);
+        b.setAttribute('role', 'menuitem');
+        b.onclick = () => { window.location.href = Store.loginUrl(p); };
+        area.append(b);
+      }
+    }
   }
 
   /* ---------------- render: top bar ---------------- */
@@ -12219,6 +12793,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
     grid.append(priceInput(`${K.WOOD_SPECIES[species].label} $/bd ft`, state.prices.bdft[species], v => { state.prices.bdft[species] = v; }));
+    // Hardware & consumables (2026): the WHOLE bill of materials is now
+    // editable — slides, pulls, glue, finish, fasteners — not just lumber.
+    if (!state.prices.hardware) state.prices.hardware = K.hardwarePriceDefaults();
+    const hwKeys = Object.keys(state.prices.hardware)
+      .sort((a, b) => K.hardwarePriceLabel(a).localeCompare(K.hardwarePriceLabel(b)));
+    if (hwKeys.length) {
+      grid.append(el('div', 'price-group', 'Hardware, glue, finish &amp; fasteners ($)'));
+      for (const k of hwKeys) {
+        grid.append(priceInput(K.hardwarePriceLabel(k), state.prices.hardware[k], v => { state.prices.hardware[k] = v; }));
+      }
+    }
     details.append(grid);
     root.append(details);
   }
@@ -12621,6 +13206,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
       askQuestion(res.reply);
+      return null;
+    }
+    if (res.reply.kind === 'info') {
+      // A thorough answer that changes nothing: show it, keep the design.
+      state.turns = res.turns.slice(-24);
+      botSay(res.reply.text, [], { noChange: true });
       return null;
     }
     let applied = AI.apply(res.reply, state.spec);
@@ -13188,7 +13779,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     grid.innerHTML = '<p class="sub">Loading…</p>';
     openScrim('projectsScrim');
     const idx = await Store.loadIndex();
-    $('storageNote').textContent = Store.isPersistent() ? '' : 'Storage is unavailable — projects live for this session only.';
+    const mode = Store.persistenceMode();
+    const a = Store.auth();
+    $('storageNote').textContent = mode === 'session'
+      ? 'Storage is unavailable — projects live for this session only.'
+      : mode === 'device' && a.providers.length && a.storage
+        ? 'Saved on this device. Sign in (More menu) to sync projects across devices.'
+        : mode === 'cloud' ? `Synced to your account${a.user ? ` (${a.user.name})` : ''}.` : '';
     grid.textContent = '';
     if (!idx.length) {
       grid.innerHTML = '<p class="sub">No projects yet — designs save here automatically as you work.</p>';
@@ -13872,6 +14469,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
 
+    // Accounts + cloud persistence: probe /api/auth once, racing a short
+    // timeout so first paint NEVER waits on the network. A late-resolving
+    // probe upgrades the storage chain mid-session and re-renders the
+    // account section — boot itself stays untouched.
+    try {
+      await Promise.race([
+        Store.init({ timeoutMs: 4000 }).then(() => { renderAccount(); }),
+        new Promise(r => setTimeout(r, 1200))
+      ]);
+    } catch (e) { /* device storage is the product */ }
+    Store.onModeChange(() => renderAccount());
+
     // Persisted prices + prefs load BEFORE the first paint, so units,
     // precision, dual display, and the shell layout never flash from defaults.
     try {
@@ -13976,6 +14585,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
+    renderAccount();
     $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
     /* chat fold + welcome paths */
     $('chatCollapse').onclick = () => setChatCollapsed(true);

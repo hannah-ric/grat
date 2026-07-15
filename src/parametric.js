@@ -203,6 +203,66 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const p of dp) { p.drawer = i; p.explode = { x: 0, y: 0, z: 0 }; }
       parts.push(...dp);
 
+      /* Running gear in the model (2026): the case-side members render in
+       * the main scene at their true positions. Metal slides are `hardware`
+       * parts — visible in 3D and every geometry export, excluded from the
+       * cut list, the packing plan, and the mass model (a folded steel
+       * channel is not an oak box). Wooden runners are honest LUMBER: they
+       * join the cut list, the stock plan, and the screw counts, because a
+       * builder really has to cut and fit them. All stay `group: 'frame'` —
+       * the case keeps its rail when the drawer glides open. */
+      const gearIds = [];
+      if (runner === 'side_mount_slides' && slideLen) {
+        // One slide pair filling the exact 12.7 mm per-side clearance,
+        // mounted flush with the BOX front plane (behind an inset front,
+        // at the case edge for overlay) — exactly where a slide really
+        // lands, and pen 0 against box, front, and case alike.
+        const sh = Math.min(45, boxH - 4);
+        [[-1, 'l'], [1, 'r']].forEach(([sgn, side]) => {
+          const id = `${prefix}dr${i + 1}_slide_${side}`;
+          parts.push(part(id, 'slide_side', 'slide', `Drawer ${i + 1} slide`,
+            12.7, sh, slideLen, px + sgn * (op.w / 2 - 12.7 / 2), cy, boxFrontZ - slideLen / 2,
+            { material: 'hardware', hardware: true, group: 'frame' }));
+          gearIds.push(id);
+        });
+      } else if (under && slideLen) {
+        // Undermount arms live INSIDE the box footprint, under the recessed
+        // bottom (12.7 recess, 11 mm arm) — invisible from outside, exactly
+        // as sold.
+        const railW = Math.max(30, Math.min(42, Math.floor((boxW - 2 * boxT) / 4)));
+        const sd = Math.max(50, boxD - 2 * boxT - 4);
+        [[-1, 'l'], [1, 'r']].forEach(([sgn, side]) => {
+          const id = `${prefix}dr${i + 1}_slide_${side}`;
+          parts.push(part(id, 'slide_under', 'slide', `Drawer ${i + 1} undermount slide`,
+            railW, 11, sd, px + sgn * (boxW / 2 - boxT - railW / 2 - 2), boxBottomY + 11 / 2, cz,
+            { material: 'hardware', hardware: true, group: 'frame' }));
+          gearIds.push(id);
+        });
+      } else if (runner === 'wood_runners') {
+        // Traditional runner: a hardwood rail the drawer side rides on,
+        // packed out flush to the case face (legs proud of aprons on a
+        // nightstand make that one thicker block), 19 mm of bearing inside
+        // the opening edge, stopped behind the front rail band.
+        const runW = Math.round((zone.sideInnerX !== undefined ? zone.sideInnerX - op.w / 2 : 0) * 10) / 10 + 19;
+        // Start behind the front structure (legs on a nightstand, the rail
+        // band on a cabinet) and stop short of the rear — the runner spans
+        // between the case's own members, exactly as it would in the shop.
+        const setback = Math.max(RAIL_T, zone.gearFrontSetback || 0) + 2;
+        const runD = Math.max(80, Math.round(op.interiorDepth - setback - 28));
+        const runZ = zone.zFront - setback - runD / 2;
+        [[-1, 0], [1, 1]].forEach(([sgn, ti]) => {
+          const id = `${prefix}dr${i + 1}_runner_${sgn < 0 ? 'l' : 'r'}`;
+          parts.push(part(id, `runner_${runD}`, 'runner', `Drawer ${i + 1} runner`,
+            runW, 32, runD, px + sgn * (op.w / 2 - 19 + runW / 2), boxBottomY - 16, runZ,
+            { group: 'frame' }));
+          gearIds.push(id);
+          const tgt = zone.runnerTargets && zone.runnerTargets[ti];
+          if (tgt) {
+            joints.push({ type: 'butt_screws', a: id, b: tgt, pos: { x: px + sgn * (op.w / 2 - 19 + runW), y: boxBottomY - 16, z: runZ }, noCutAllowance: true });
+          }
+        });
+      }
+
       // Box-corner joints. The front/back are the inserted members (tongue or
       // tails live on them), so they carry the cut-length allowance. Grooved
       // boxes (locking rabbet / dovetail fronts) take a DADO-housed back —
@@ -222,7 +282,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         front: { w: fw, h: fh, t: frontT },
         pull: Object.assign({ styleKey: pullStyle }, pSpec),
         travel: Math.round(boxD * 0.8),
-        partIds: dp.map(p => p.id)
+        partIds: dp.map(p => p.id),
+        gearIds
       });
     });
 
@@ -373,7 +434,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       interiorDepth: frameD - apT, available,
       overlayMaxW: frameW - 2 * legT + Math.min(20, legT), x: 0,
       // Rails live at the front plane — they join into the FRONT legs.
-      railJointTargets: [{ id: 'leg_3', x: -lx }, { id: 'leg_4', x: lx }]
+      railJointTargets: [{ id: 'leg_3', x: -lx }, { id: 'leg_4', x: lx }],
+      // Running gear: legs stand proud of the aprons, so wooden runners pack
+      // out from the apron face and everything starts behind the front legs.
+      sideInnerX: frameW / 2 - apT, gearFrontSetback: legT,
+      runnerTargets: ['apron_side_1', 'apron_side_2']
     };
     const bankOut = buildBank(spec, zone, parts, joints, '');
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
@@ -427,7 +492,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       yTop: o.height - topT, zFront: o.depth / 2,
       interiorDepth: o.depth - 10, available,
       overlayMaxW: innerW + Math.min(20, sideT), x: 0,
-      railJointTargets: [{ id: 'side_1', x: -innerW / 2 }, { id: 'side_2', x: innerW / 2 }]
+      railJointTargets: [{ id: 'side_1', x: -innerW / 2 }, { id: 'side_2', x: innerW / 2 }],
+      // Case sides run flush with the opening: runners land straight on them.
+      sideInnerX: innerW / 2, gearFrontSetback: RAIL_T,
+      runnerTargets: ['side_1', 'side_2']
     };
     let bankOut = { openings: [], drawers: [] };
     if (spec.drawers) bankOut = buildBank(spec, zone, parts, joints, '');

@@ -19,7 +19,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     side: [176, 136, 90], bottom: [176, 136, 90], back: [222, 205, 166],
     plinth: [120, 90, 60], drawer_side: [233, 216, 174], drawer_boxfront: [233, 216, 174],
     drawer_boxback: [233, 216, 174], drawer_bottom: [240, 226, 190],
-    drawer_front: [186, 138, 88], pull: [70, 70, 74]
+    drawer_front: [186, 138, 88], pull: [70, 70, 74],
+    slide: [70, 70, 74], runner: [160, 120, 76]
   };
   const roleColor = role => ROLE_COLORS[role] || [180, 140, 95];
 
@@ -324,16 +325,44 @@ BlueprintBuddyImport.build
     }
 
     // Joinery detail: fastener positions, pilots, and setout per unique joint
-    // pairing (audit F-S3-1) — what separates a plan from a picture.
+    // pairing (audit F-S3-1) — what separates a plan from a picture. Drawer
+    // hardware boring (2026) rides the same table: slide mounting and pull
+    // bores are setout lines too, not just shopping-list rows.
     let joineryHTML = '';
     if (BB.Fasteners) {
       const rows = BB.Fasteners.detailRows(spec, model);
-      if (rows.length) {
-        const jr = rows.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('');
+      const hw = [];
+      if (BB.HW && model.drawers) {
+        for (const d of model.drawers) {
+          const n = d.index + 1;
+          if (d.runner === 'side_mount_slides' && d.slideLen) {
+            hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtSmall(3)}.` });
+          } else if (d.runner === 'undermount_slides' && d.slideLen) {
+            hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
+          } else if (d.runner === 'wood_runners') {
+            hw.push({ label: 'Wooden runners', qty: 2, where: `Drawer ${n} opening`, text: `Hardwood rails from the cut list, glued + screwed level; ${U.fmtSmall(1)} side clearance, computed vertical clearance in the steps.` });
+          }
+          const pu = d.pull || {};
+          const eff = BB.HW.PULLS[pu.style || pu.styleKey];
+          if (eff && (pu.style || pu.styleKey) !== 'none_touch') {
+            const text = pu.holes === 0
+              ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
+              : pu.ctcMM
+                ? `${pu.holes} × ${U.fmtSmall(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.front.t))}.`
+                : `One ${U.fmtSmall(eff.boreDia || 5)} bore, centered on the shared centerline.`;
+            hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
+          } else if (eff) {
+            hw.push({ label: 'Magnetic touch latch', qty: 1, where: `Drawer ${n} front`, text: `Latch behind the front, striker on the box; needs ${U.fmtSmall(2)}–${U.fmtSmall(3)} of travel in the reveal.` });
+          }
+        }
+      }
+      if (rows.length || hw.length) {
+        const jr = rows.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('') +
+          hw.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('');
         joineryHTML = `
   <section class="print-section page-break">
-    <h2>Joinery detail — locations, pilots, setout</h2>
-    <table><thead><tr><th>Joint</th><th>Qty</th><th>Where</th><th>Setout</th></tr></thead><tbody>${jr}</tbody></table>
+    <h2>Joinery &amp; hardware detail — locations, pilots, setout</h2>
+    <table><thead><tr><th>Joint / hardware</th><th>Qty</th><th>Where</th><th>Setout</th></tr></thead><tbody>${jr}</tbody></table>
   </section>`;
       }
     }

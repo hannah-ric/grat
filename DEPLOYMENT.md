@@ -40,6 +40,51 @@ vercel env add ANTHROPIC_API_KEY development
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | For AI features | Server-side only (`api/chat.js`) | Auth for the Anthropic API. The browser never sees it — the client calls the same-origin `/api/chat` proxy. Without it, the app degrades gracefully to its built-in offline intent parser. |
 | `ANTHROPIC_MODEL` | No | Server-side only | Override the model (default `claude-sonnet-5`). |
+| `AUTH_SECRET` | For accounts | Server-side only (`api/auth.js`, `api/store.js`) | Signs stateless session cookies (`openssl rand -hex 32`). |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | No | Server-side only | Enables "Sign in with Google". |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | No | Server-side only | Enables "Sign in with GitHub". |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | For cloud sync | Server-side only (`api/store.js`) | Upstash Redis REST endpoint — auto-injected by the Vercel Marketplace integration. Upstash-native names (`UPSTASH_REDIS_REST_URL`/`_TOKEN`) also work. |
+| `APP_ORIGIN` | No | Server-side only | Override the derived origin for OAuth redirect URIs (normally unnecessary). |
+
+## Accounts & cloud persistence (optional)
+
+Everything above the line works with **zero** of this configured: the app
+persists projects, prices, and preferences to the browser (`localStorage`)
+on any static host, and to `window.storage` on claude.ai. Configure accounts
+when you want projects to **follow the user across devices**:
+
+1. **Storage** — in Vercel: *Marketplace → Upstash → Redis*, attach it to the
+   project. Vercel injects `KV_REST_API_URL` + `KV_REST_API_TOKEN`
+   automatically. (Any Upstash Redis works — set the two env vars by hand.)
+2. **Session secret** — `vercel env add AUTH_SECRET` with the output of
+   `openssl rand -hex 32`.
+3. **Login providers** (either or both):
+   - **Google**: Google Cloud Console → Credentials → OAuth client
+     (*Web application*), authorized redirect URI
+     `https://YOUR-APP.vercel.app/api/auth`. Set
+     `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
+   - **GitHub**: Settings → Developer settings → OAuth Apps, callback URL
+     `https://YOUR-APP.vercel.app/api/auth`. Set
+     `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`.
+4. Redeploy. The **More** menu now offers *Sign in with…*; on first sign-in
+   the device's existing projects migrate to the account (cloud data, when
+   present, always wins — the migration never overwrites).
+
+Implementation notes — all zero-dependency, in keeping with the repo rule:
+
+- `api/auth.js` runs the standard OAuth 2.0 code flow itself and issues
+  **stateless HMAC-signed cookies** (`api/_session.js`); no auth SDK, no
+  vendor `<script>` (the single-file build stays self-contained), nothing
+  stored server-side, sessions survive deploys.
+- `api/store.js` is a per-user JSON document store over the Upstash REST
+  API via plain `fetch`. Documents are namespaced `bb:{userId}:{doc}` and
+  size-capped; users can only ever touch their own keys.
+- The client (`src/store.js`) runs a driver chain — artifact → cloud →
+  device → memory — and **writes through to device storage even when cloud
+  is live**, so a network blip or an expired session never loses work.
+- Local dev: `serve.js` mounts the same handlers and stores documents in
+  `.data/kv.json` (gitignored). Add `BB_DEV_LOGIN=1` to `.env` for a
+  one-click fake login while developing the signed-in experience.
 
 **v0-specific caveats (from Vercel's docs):**
 

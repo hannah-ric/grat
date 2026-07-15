@@ -324,6 +324,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const hull = Geo.convexHull2D(footPts);
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
+        if (p.hardware) continue; // steel channels are not wood-density boxes
         const dens = partDensity(p, spec);
         const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
         const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
@@ -565,7 +566,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     {
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
-        if (p.role === 'pull') continue;
+        if (p.role === 'pull' || p.hardware) continue;
         const dens = partDensity(p, spec);
         const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
         const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
@@ -622,6 +623,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (isFinite(zF)) {
         let stab = 0, over = 0;
         for (const p of parts) {
+          if (p.hardware) continue; // excluded from the mass model, like pulls from COG
           const dens = partDensity(p, spec);
           const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
           const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
