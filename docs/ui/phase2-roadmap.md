@@ -67,6 +67,9 @@ draggable (grabber affordance, `cursor: grab`) but doesn't follow a finger.
 `prefers-reduced-motion`. Keep tap-to-toggle. ~60 lines, no layout change.
 **Effort:** M. **Risk:** touch-action interplay with chat-log scrolling —
 gate the drag to the handle element only.
+**Status:** shipped (interaction-system pass, July 2026) — drag gated to
+`#sheetHandle`, velocity + position snap, tap preserved, reduced motion
+keeps tap-only.
 
 ---
 
@@ -147,6 +150,8 @@ easing family (`--ease`) is in place but unused on dot state transitions.
 120 ms stagger between the three cards, splitter grip scale on grab. All
 inside the existing `prefers-reduced-motion` kill switch.
 **Effort:** S.
+**Status:** shipped (interaction-system pass, July 2026) — card stagger +
+grip grab scale; dot fills were already transitioned by then.
 
 ### 14. PWA shell for the shop
 **Evidence:** build mode is designed for a phone at the bench (wake lock,

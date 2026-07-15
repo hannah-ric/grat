@@ -526,7 +526,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     box: [{ id: 'demo_side', name: 'Drawer side', size: { w: 400, h: 120, d: 12 } }, { id: 'demo_front', name: 'Drawer front', size: { w: 450, h: 120, d: 19 } }],
     panel: [{ id: 'demo_board_a', name: 'Board A', size: { w: 600, h: 19, d: 140 } }, { id: 'demo_board_b', name: 'Board B', size: { w: 600, h: 19, d: 140 } }]
   };
-  function openJointInspector(type, partA, partB) {
+  /* Qualitative location for a joint position — enough to point a hand at
+   * the piece ("front left, up top"). +z faces the viewer (drawer travel). */
+  function jointWhere(pos, b) {
+    const t = 0.18, side = [];
+    if (pos.z > b.d * t) side.push('front'); else if (pos.z < -b.d * t) side.push('back');
+    if (pos.x < -b.w * t) side.push('left'); else if (pos.x > b.w * t) side.push('right');
+    const band = pos.y < b.h * 0.3 ? 'near the floor' : pos.y > b.h * 0.7 ? 'up top' : 'at mid-height';
+    return (side.length ? side.join(' ') + ', ' : '') + band;
+  }
+  function openJointInspector(type, partA, partB, opts) {
     if (!partA || !partB) {
       const kind = (K.JOINERY[type] && K.JOINERY[type].kinds[0]) || 'frame';
       const demo = DEMO_MEMBERS[kind] || DEMO_MEMBERS.frame;
@@ -539,6 +548,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('jointTitle').textContent = data.title;
     const j = K.JOINERY[type];
     $('jointNotes').innerHTML =
+      ((opts && opts.context) ? `<p class="joint-where">${esc(opts.context)}</p>` : '') +
       data.labels.map(l => `<p class="joint-rule">${esc(l)}</p>`).join('') +
       (j ? `<p class="joint-know"><em>Watch for:</em> ${esc(j.failure)}<br><em>Tools:</em> ${esc(j.tools.join(', '))}</p>` : '');
     $('jointExplode').value = 0;
@@ -558,7 +568,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function renderAssembly(root) {
     root.append(el('h3', '', 'Assembly'));
-    root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow.'));
+    root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow. Tap any glowing dot for a 3D close-up of exactly what to cut and where.'));
     if (!state.steps.length) {
       emptyState(root, 'No steps to walk yet.', 'Once a design has parts, assembly writes itself in build order.');
       return;
@@ -2133,17 +2143,34 @@ var BB = globalThis.BB = globalThis.BB || {};
       reducedMotion: reduceMq.matches,
       onPick(part, info) {
         if (!part) {
-          if (state.engine.getIsolated()) state.engine.isolate(null);
+          if (state.engine.getIsolated()) { state.engine.isolate(null); state.engine.clearFocus(); }
           else closeInspector();
           return;
         }
         if (info.double) {
-          state.engine.isolate(state.engine.getIsolated() === part.id ? null : part.id);
+          const clearing = state.engine.getIsolated() === part.id;
+          state.engine.isolate(clearing ? null : part.id);
+          // Isolation also frames (design §4b): the camera glides to the part
+          // and one stored pose brings it back when isolation ends.
+          if (clearing) state.engine.clearFocus();
+          else state.engine.focusPart(part.id);
           openInspector(part);
           return;
         }
         if (part.drawer !== undefined && part.drawer !== null) state.engine.toggleDrawer(part.drawer);
         openInspector(part);
+      },
+      onJointPick(joint) {
+        // A glowing dot in step playback is a door: open the 3D close-up of
+        // THAT joint on its real members, captioned with where it sits.
+        if (!joint || !joint.type || !state.model) return;
+        const partA = state.model.parts.find(p => p.id === joint.a);
+        const partB = state.model.parts.find(p => p.id === joint.b);
+        const s = state.steps[state.playbackIndex];
+        openJointInspector(joint.type, partA, partB, {
+          context: (s ? `Step ${state.playbackIndex + 1} — ${s.title}: ` : '') +
+            `the dot you tapped sits ${jointWhere(joint.pos, state.model.bounds)}.`
+        });
       }
     });
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
@@ -2152,6 +2179,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       if ((state.prefs4.theme || 'auto') === 'auto') applyTheme('auto');
     });
     new ResizeObserver(() => state.engine.resize()).observe($('viewportWrap'));
+    $('viewportWrap').addEventListener('animationend', e => {
+      if (e.animationName === 'inkwash') $('viewportWrap').classList.remove('inkwash');
+    });
 
     // Accounts + cloud persistence: probe /api/auth once, racing a short
     // timeout so first paint NEVER waits on the network. A late-resolving
@@ -2384,11 +2414,64 @@ var BB = globalThis.BB = globalThis.BB || {};
       e.target.value = '';
       if (file) sendPhoto(file);
     });
-    $('sheetHandle').onclick = () => {
-      const expanded = $('chatPanel').classList.toggle('expanded');
+    /* Sheet gesture physics (roadmap #5 / interaction design §3a): the handle
+     * follows the finger and a release snaps by position + velocity. Tap
+     * still toggles; the drag is gated to the handle so chat-log scrolling is
+     * untouched; reduced motion keeps the tap-only behavior. */
+    const sheet = { drag: null, suppressTap: false };
+    const sheetSet = expanded => {
+      $('chatPanel').classList.toggle('expanded', expanded);
       $('sheetHandle').setAttribute('aria-expanded', String(expanded));
       $('sheetHandle').setAttribute('aria-label', expanded ? 'Collapse chat' : 'Expand chat');
     };
+    $('sheetHandle').onclick = () => {
+      if (sheet.suppressTap) { sheet.suppressTap = false; return; }
+      sheetSet(!$('chatPanel').classList.contains('expanded'));
+    };
+    $('sheetHandle').style.touchAction = 'none';
+    $('sheetHandle').addEventListener('pointerdown', e => {
+      if (reduceMq.matches) return;
+      $('sheetHandle').setPointerCapture(e.pointerId);
+      const panel = $('chatPanel');
+      const m = new DOMMatrixReadOnly(getComputedStyle(panel).transform);
+      const h = panel.getBoundingClientRect().height;
+      // Collapsed travel: measured when starting collapsed; estimated from
+      // the peek height when starting expanded (release logic uses halves,
+      // so ±safe-area error is immaterial).
+      const collapsedTy = panel.classList.contains('expanded') ? Math.max(60, h - 150) : m.m42;
+      sheet.drag = { id: e.pointerId, y0: e.clientY, ty0: m.m42, collapsedTy, moved: 0, v: 0, last: e.clientY, lastT: performance.now() };
+    });
+    $('sheetHandle').addEventListener('pointermove', e => {
+      const d = sheet.drag;
+      if (!d || e.pointerId !== d.id) return;
+      const dy = e.clientY - d.y0;
+      d.moved = Math.max(d.moved, Math.abs(dy));
+      const now = performance.now();
+      d.v = d.v * 0.6 + ((e.clientY - d.last) / (Math.max(8, now - d.lastT) / 1000)) * 0.4; // px/s EMA
+      d.last = e.clientY; d.lastT = now;
+      const panel = $('chatPanel');
+      panel.style.transition = 'none';
+      panel.style.transform = `translateY(${Math.max(0, Math.min(d.collapsedTy, d.ty0 + dy))}px)`;
+    });
+    const sheetRelease = e => {
+      const d = sheet.drag;
+      if (!d || e.pointerId !== d.id) return;
+      sheet.drag = null;
+      const panel = $('chatPanel');
+      if (d.moved < 6) { // a tap: restore and let the click handler toggle
+        panel.style.transition = '';
+        panel.style.transform = '';
+        return;
+      }
+      sheet.suppressTap = true; // the drag already chose a state
+      const ty = Math.max(0, Math.min(d.collapsedTy, d.ty0 + (d.last - d.y0)));
+      const expand = Math.abs(d.v) > 240 ? d.v < 0 : ty < d.collapsedTy / 2;
+      sheetSet(expand);
+      panel.style.transition = '';
+      panel.style.transform = ''; // transitions from the drag pose to the class pose
+    };
+    $('sheetHandle').addEventListener('pointerup', sheetRelease);
+    $('sheetHandle').addEventListener('pointercancel', sheetRelease);
 
     /* stage controls */
     $('explodeRange').addEventListener('input', e => state.engine.setExplode(e.target.value / 100));
@@ -2414,6 +2497,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const on = $('draftToggle').getAttribute('aria-pressed') !== 'true';
       $('draftToggle').setAttribute('aria-pressed', String(on));
       document.body.classList.toggle('drafting', on);
+      // One-beat ink-wash on the canvas sells the flip to/from the drawing.
+      // CSS-only; the global reduced-motion kill switch flattens it.
+      const vw = $('viewportWrap');
+      vw.classList.remove('inkwash');
+      void vw.offsetWidth;
+      vw.classList.add('inkwash');
       state.engine.setDrafting(on);
       if (on) {
         // Entering the drawing: front elevation with dimensions showing.

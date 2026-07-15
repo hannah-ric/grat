@@ -354,6 +354,16 @@ body.drafting .viewport-wrap {
 }
 .view-seg button { min-width: 34px; }
 
+/* Blueprint toggle: a one-beat ink-wash develop on the canvas — the flip
+   reads as turning to the drawing. Filter-only (no overlay), so it can never
+   cover controls; the global reduced-motion kill switch flattens it. */
+@keyframes inkwash {
+  0% { filter: none; }
+  40% { filter: saturate(.35) sepia(.4) hue-rotate(160deg) contrast(1.05) brightness(.94); }
+  100% { filter: none; }
+}
+.viewport-wrap.inkwash #view3d { animation: inkwash 280ms var(--ease); }
+
 .splitter {
   flex: none; height: 9px; margin: -2px 0; cursor: row-resize; z-index: 12;
   display: flex; align-items: center; justify-content: center;
@@ -372,6 +382,8 @@ body.drafting .viewport-wrap {
 .splitter:hover::before, .splitter.dragging::before { background: var(--accent); }
 .splitter:focus-visible { outline: none; }
 .splitter:focus-visible .splitter-grip { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* motion micro-polish (roadmap #13): the grip acknowledges the grab */
+.splitter.dragging .splitter-grip, .splitter:active .splitter-grip { transform: scaleX(1.5); }
 
 .stage-controls {
   position: absolute; top: var(--s3); right: var(--s3); display: flex; flex-direction: column; gap: var(--s2);
@@ -446,7 +458,11 @@ body.drafting .viewport-wrap {
   text-align: left; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
   padding: var(--s2) var(--s3); cursor: pointer; display: flex; flex-direction: column; gap: 3px;
   transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  /* motion micro-polish (roadmap #13): the three paths rise in sequence */
+  animation: rise var(--t-slow) var(--ease) backwards;
 }
+.welcome-paths .welcome-card:nth-child(2) { animation-delay: 120ms; }
+.welcome-paths .welcome-card:nth-child(3) { animation-delay: 240ms; }
 .welcome-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
 .welcome-card .w-emoji { font-size: 20px; }
 .welcome-card .w-name { font-family: var(--display); font-weight: 650; font-size: 14px; }
@@ -746,6 +762,12 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .joint-controls input[type="range"] { flex: 1; min-width: 120px; }
 .joint-notes .joint-rule { margin: var(--s1) 0; font-size: 13px; color: var(--ink-2); }
 .joint-notes .joint-know { margin: var(--s2) 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+/* opened from a playback joint dot: step context + where the joint sits */
+.joint-notes .joint-where {
+  margin: 0 0 var(--s2); padding: 6px 10px; font-size: 12.5px; line-height: 1.5;
+  color: var(--accent); background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: var(--radius);
+}
 .joint-inspect { margin-top: var(--s2); }
 .joint-demo { white-space: nowrap; }
 
