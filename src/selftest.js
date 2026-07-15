@@ -693,17 +693,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         cd.pos.length === 66 * 3 && cd.idx.length === 192 && cd.idx.every(i => i < 66),
         `${cd.pos.length / 3} verts, ${cd.idx.length} idx`, '66 verts, 192 idx');
 
-      // Rotation fix in the legacy exporters: DAE writes the Z-up rotation
-      // block (y=45° about scene-up = Rz(45): row "0.707 -0.707 0"), Ruby
-      // places rotated instances via Transformation.axes.
+      // Rotation in the legacy exporters (audit F-S1-3 implementation): DAE
+      // writes the Z-up rotation block (y=45° about scene-up = Rz(45): row
+      // "0.707 -0.707 0"); Ruby places EVERY instance with one full 16-array
+      // Geom::Transformation — the rotated one carries the 0.707107 columns.
       const dae2 = BB.Exports.toDAE(spec2, model2);
       test('gltf', 'DAE carries rotation for rotated parts (Rz45 rows present)',
         dae2.includes('0.707 -0.707 0') && dae2.includes('0.707 0.707 0'),
         dae2.match(/<matrix>[^<]{0,40}/g).filter(s => s.includes('0.707')).length + ' rotated matrices', 'Rz(45) rows present');
       const rb2 = BB.Exports.toRuby(spec2, model2);
-      test('gltf', 'Ruby: rotated instance uses Transformation.axes, plain ones stay Point3d',
-        (rb2.match(/Transformation\.axes/g) || []).length === 1 && rb2.includes('Transformation.new(Geom::Point3d.new('),
-        `${(rb2.match(/Transformation\.axes/g) || []).length} axes placements`, '1 axes placement');
+      const fullTransforms = (rb2.match(/Transformation\.new\(\[/g) || []).length;
+      test('gltf', 'Ruby: every instance places via a full 16-array transform; rotation lands in the matrix',
+        fullTransforms === model2.parts.length && rb2.includes('0.707107') && !rb2.includes('Transformation.axes'),
+        `${fullTransforms}/${model2.parts.length} full transforms, Rz45 ${rb2.includes('0.707107') ? 'present' : 'missing'}`,
+        'all instances full-matrix, Rz(45) present');
     }
 
     /* ============ drafting: dimensioned elevations ============ */

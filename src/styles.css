@@ -386,6 +386,7 @@ body.drafting .viewport-wrap {
 }
 .control-card label { font-size: 12px; color: var(--ink-2); font-weight: 550; }
 .viewport-toolbar { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - var(--s4)); }
+.viewport-toolbar .vt-short { display: none; }
 .vt-sep { width: 1px; align-self: stretch; background: var(--line-2); margin: 2px 0; }
 .control-card input[type="range"] { width: 110px; accent-color: var(--accent); }
 .toggle {
@@ -822,8 +823,17 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   }
   .stage-controls { flex-direction: column; }
   .control-card { padding: 6px 10px; }
-  .control-card input[type="range"] { width: 80px; }
+  .control-card input[type="range"] { width: 64px; }
   .viewport-toolbar label { display: none; }
+  /* Phase 5 controls join the one-row toolbar contract: separators drop,
+     labels shorten, help defers to gestures — nothing wraps. */
+  .viewport-toolbar { gap: 6px; flex-wrap: nowrap; }
+  .viewport-toolbar .vt-sep, .viewport-toolbar #vpHelpBtn { display: none; }
+  .viewport-toolbar .vt-long { display: none; }
+  .viewport-toolbar .vt-short { display: inline; }
+  .viewport-toolbar .toggle { font-size: 11px; }
+  .viewport-toolbar #frameBtn span { display: none; }
+  .view-seg button { min-width: 26px; padding: 5px 7px; font-size: 11px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,

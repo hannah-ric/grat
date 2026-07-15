@@ -393,6 +393,7 @@ body.drafting .viewport-wrap {
 }
 .control-card label { font-size: 12px; color: var(--ink-2); font-weight: 550; }
 .viewport-toolbar { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - var(--s4)); }
+.viewport-toolbar .vt-short { display: none; }
 .vt-sep { width: 1px; align-self: stretch; background: var(--line-2); margin: 2px 0; }
 .control-card input[type="range"] { width: 110px; accent-color: var(--accent); }
 .toggle {
@@ -829,8 +830,17 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   }
   .stage-controls { flex-direction: column; }
   .control-card { padding: 6px 10px; }
-  .control-card input[type="range"] { width: 80px; }
+  .control-card input[type="range"] { width: 64px; }
   .viewport-toolbar label { display: none; }
+  /* Phase 5 controls join the one-row toolbar contract: separators drop,
+     labels shorten, help defers to gestures — nothing wraps. */
+  .viewport-toolbar { gap: 6px; flex-wrap: nowrap; }
+  .viewport-toolbar .vt-sep, .viewport-toolbar #vpHelpBtn { display: none; }
+  .viewport-toolbar .vt-long { display: none; }
+  .viewport-toolbar .vt-short { display: inline; }
+  .viewport-toolbar .toggle { font-size: 11px; }
+  .viewport-toolbar #frameBtn span { display: none; }
+  .view-seg button { min-width: 26px; padding: 5px 7px; font-size: 11px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,
@@ -1278,9 +1288,9 @@ body.bm-playback .playback-bar { display: none !important; }
             <label for="explodeRange">Explode</label>
             <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
             <span class="vt-sep" aria-hidden="true"></span>
-            <button class="toggle" id="dimsToggle" aria-pressed="false"><span class="track"></span>Dimensions</button>
+            <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
-            <button class="toggle" id="draftToggle" aria-pressed="false" title="Technical-drawing view"><span class="track"></span>Blueprint</button>
+            <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
             <div class="seg view-seg" role="group" aria-label="Camera view">
               <button id="viewFront" title="Front elevation (orthographic)">F</button>
@@ -8573,17 +8583,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         cd.pos.length === 66 * 3 && cd.idx.length === 192 && cd.idx.every(i => i < 66),
         `${cd.pos.length / 3} verts, ${cd.idx.length} idx`, '66 verts, 192 idx');
 
-      // Rotation fix in the legacy exporters: DAE writes the Z-up rotation
-      // block (y=45° about scene-up = Rz(45): row "0.707 -0.707 0"), Ruby
-      // places rotated instances via Transformation.axes.
+      // Rotation in the legacy exporters (audit F-S1-3 implementation): DAE
+      // writes the Z-up rotation block (y=45° about scene-up = Rz(45): row
+      // "0.707 -0.707 0"); Ruby places EVERY instance with one full 16-array
+      // Geom::Transformation — the rotated one carries the 0.707107 columns.
       const dae2 = BB.Exports.toDAE(spec2, model2);
       test('gltf', 'DAE carries rotation for rotated parts (Rz45 rows present)',
         dae2.includes('0.707 -0.707 0') && dae2.includes('0.707 0.707 0'),
         dae2.match(/<matrix>[^<]{0,40}/g).filter(s => s.includes('0.707')).length + ' rotated matrices', 'Rz(45) rows present');
       const rb2 = BB.Exports.toRuby(spec2, model2);
-      test('gltf', 'Ruby: rotated instance uses Transformation.axes, plain ones stay Point3d',
-        (rb2.match(/Transformation\.axes/g) || []).length === 1 && rb2.includes('Transformation.new(Geom::Point3d.new('),
-        `${(rb2.match(/Transformation\.axes/g) || []).length} axes placements`, '1 axes placement');
+      const fullTransforms = (rb2.match(/Transformation\.new\(\[/g) || []).length;
+      test('gltf', 'Ruby: every instance places via a full 16-array transform; rotation lands in the matrix',
+        fullTransforms === model2.parts.length && rb2.includes('0.707107') && !rb2.includes('Transformation.axes'),
+        `${fullTransforms}/${model2.parts.length} full transforms, Rz45 ${rb2.includes('0.707107') ? 'present' : 'missing'}`,
+        'all instances full-matrix, Rz(45) present');
     }
 
     /* ============ drafting: dimensioned elevations ============ */
@@ -11172,6 +11185,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
+  let galleryThumbs = null; // rendered thumbs, kept so every re-render gets them back
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
@@ -11203,6 +11217,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       grid.append(card);
       galleryCards.push({ card, model: r.model, spec: r.spec });
     }
+    // The grid rebuilds on every open; without this the idle pass's work
+    // would vanish after the first close (the new shell opens on demand).
+    if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
   }
 
   /* Real 3D thumbnails for the starter cards, rendered by a throwaway
@@ -11217,6 +11234,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     return (h >>> 0).toString(36);
   }
   function patchGalleryThumbs(thumbs) {
+    galleryThumbs = thumbs;
     galleryCards.forEach(({ card }, i) => {
       if (!thumbs[i]) return;
       const emoji = card.querySelector('.g-emoji');

@@ -1263,6 +1263,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
+  let galleryThumbs = null; // rendered thumbs, kept so every re-render gets them back
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
@@ -1294,6 +1295,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       grid.append(card);
       galleryCards.push({ card, model: r.model, spec: r.spec });
     }
+    // The grid rebuilds on every open; without this the idle pass's work
+    // would vanish after the first close (the new shell opens on demand).
+    if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
   }
 
   /* Real 3D thumbnails for the starter cards, rendered by a throwaway
@@ -1308,6 +1312,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     return (h >>> 0).toString(36);
   }
   function patchGalleryThumbs(thumbs) {
+    galleryThumbs = thumbs;
     galleryCards.forEach(({ card }, i) => {
       if (!thumbs[i]) return;
       const emoji = card.querySelector('.g-emoji');
