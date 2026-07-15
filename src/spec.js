@@ -88,6 +88,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
+      hardware: { pull: 'bar_pull' },
       drawers: null,
       custom: null
     };
@@ -179,7 +180,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     'structure.shelfThickness': 'shelf thickness', 'structure.sideThickness': 'side thickness',
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
-    'finish': 'finish',
+    'finish': 'finish', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
   };
   const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness)/;
@@ -196,6 +197,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (K.JOINERY[v]) return K.JOINERY[v].label;
       const f = K.FINISHES.find(x => x.key === v);
       if (f) return f.label;
+      if (BB.HW && BB.HW.PULLS[v]) return BB.HW.PULLS[v].label;
       return String(v).replace(/_/g, ' ');
     }
     return String(v);
@@ -410,13 +412,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
 
+    // Hardware style intent (2026 expansion): the AI proposes a pull STYLE;
+    // code owns every count, size, spacing, and bore (BB.HW).
+    s.hardware = s.hardware && typeof s.hardware === 'object' ? s.hardware : {};
+    if (!BB.HW || !BB.HW.PULLS[s.hardware.pull]) s.hardware.pull = 'bar_pull';
+
     // Drawers: only templates with openings support them.
     if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
       const d = s.drawers;
       d.count = clamp(Math.round(num(d.count, 1)), 1, 4);
       d.frontStyle = d.frontStyle === 'overlay' ? 'overlay' : 'inset';
-      d.runner = d.runner === 'wood_runners' ? 'wood_runners' : 'side_mount_slides';
-      if (d.runner === 'wood_runners' && lvl === 'beginner') d.runner = 'side_mount_slides';
+      d.runner = ['wood_runners', 'undermount_slides'].includes(d.runner) ? d.runner : 'side_mount_slides';
+      // Fussier running gear is gated past beginner: wood runners need
+      // fitting, undermounts forgive nothing (box built to the slide).
+      if (d.runner !== 'side_mount_slides' && lvl === 'beginner') d.runner = 'side_mount_slides';
       // Reduce count until every opening clears the 80 mm minimum (correction
       // owns geometry; validation only reports what remains).
       while (d.count > 1 && BB.Parametric && BB.Parametric.openingHeightFor(s) < 80) d.count--;
@@ -599,6 +608,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    // Outdoor hardware truth (2026 hardware expansion): an exterior finish
+    // on a tannin-rich species means plain-steel hardware streaks black.
+    const finRow = K.FINISHES.find(f => f.key === spec.finish);
+    const spRow = K.WOOD_SPECIES[spec.wood.species];
+    if (finRow && finRow.exterior && BB.HW && spRow &&
+      (spRow.outdoor || BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key))) {
+      advisories.push({
+        id: 'hw_outdoor',
+        text: `Outdoor duty: every screw, hinge, and fitting should be stainless, brass, or galvanized — plain steel streaks tannin-rich ${spRow.label.toLowerCase()} black in the rain.`
+      });
+    }
+    // Push-to-open needs a gap to push through: overlay fronts sit proud
+    // and touch — inset fronts already carry the 2 mm reveal.
+    if (spec.hardware && spec.hardware.pull === 'none_touch' && spec.drawers && spec.drawers.frontStyle === 'overlay') {
+      advisories.push({
+        id: 'hw_touch_gap',
+        text: `Push-to-open needs a ${fmt(2)} to ${fmt(3)} gap to travel through — use inset fronts with a touch latch, or add bumper spacers behind overlay fronts.`
+      });
+    }
+
     // Wide solid top in a high-movement species.
     const sp = K.WOOD_SPECIES[spec.wood.species];
     const hasWideTop = ['table', 'desk', 'bench', 'nightstand', 'cabinet'].includes(t) && o.depth >= K.WIDE_TOP_MM;
@@ -626,7 +655,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (model && model.drawers) {
       for (const d of model.drawers) {
-        if (d.runner === 'side_mount_slides' && !d.slideLen) {
+        if ((d.runner === 'side_mount_slides' || d.runner === 'undermount_slides') && !d.slideLen) {
           errors.push({ id: 'dr_slide_' + d.index, text: `Drawer ${d.index + 1}'s interior is too shallow for the shortest ${fmt(250)} slide. Deepen the piece or switch to wood runners.` });
         } else if (d.box.d < 120) {
           errors.push({ id: 'dr_depth_' + d.index, text: `Drawer ${d.index + 1} would only be ${fmt(d.box.d)} deep — the interior doesn't leave a workable drawer. Deepen the piece or remove the drawers.` });

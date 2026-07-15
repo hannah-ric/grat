@@ -78,15 +78,15 @@
   },
   {
     "name": "F2057 margin = stabilizing / overturning",
-    "hand": 1.1829595323631126,
-    "engine": 1.1829595323631126,
+    "hand": 1.12975206722208,
+    "engine": 1.12975206722208,
     "errPct": 0,
     "pass": true
   },
   {
     "name": "drawer volume estimate (kg at 0.24 kg/L)",
-    "hand": 8.379209856,
-    "engine": 8.379209856,
+    "hand": 8.945836752,
+    "engine": 8.945836752,
     "errPct": 0,
     "pass": true
   },

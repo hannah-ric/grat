@@ -646,7 +646,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     const tabs = el('div', 'ref-tabs');
     tabs.setAttribute('role', 'tablist');
-    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']];
+    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
     for (const [key, label] of refEntries) {
       const b = el('button', 'ref-tab', esc(label));
       b.setAttribute('role', 'tab');
@@ -710,6 +710,46 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td style="font-size:12.5px">${esc(j.bestFor)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.failure)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
+    } else if (state.refTab === 'hardware') {
+      // The hardware repository: when, why, how, where — quantities and
+      // ratings are computed by code (BB.HW rules), the table teaches the
+      // rest. Rows with a 3D button open a dimensioned inspector view.
+      head = '<th>Hardware</th><th></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
+      const HW = BB.HW;
+      const view3d = { euro_cup: 'hw_cup_hinge', drop_leaf: 'hw_rule_joint', rule_joint_ref: 'hw_rule_joint', pivot_pin_hinge: 'hw_pivot_pin', tambour: 'hw_tambour', sawtooth_supports: 'hw_sawtooth', sawtooth: 'hw_sawtooth', undermount_45: 'hw_undermount' };
+      const groups = [
+        ['Hinges', Object.values(HW.HINGES)], ['Pulls', Object.values(HW.PULLS)],
+        ['Slides', Object.values(HW.SLIDES)], ['Lifts & stays', Object.values(HW.LIFTS)],
+        ['Catches', Object.values(HW.CATCHES)], ['Locks', Object.values(HW.LOCKS)],
+        ['Shelf support', Object.values(HW.SHELF_SUPPORT)], ['Table & bed', Object.values(HW.TABLE_BED)],
+        ['Wall hanging', Object.values(HW.WALL_HANG)], ['Feet & pass-throughs', Object.values(HW.FEET_MISC)],
+        ['Traditional (no hardware)', Object.values(HW.TRADITIONAL)]
+      ];
+      const classOf = x => {
+        const bits = [];
+        if (x.capacityKg) bits.push(`${x.capacityKg} kg`);
+        if (x.capacityKgPair) bits.push(`${x.capacityKgPair} kg/pair`);
+        if (x.holdKg) bits.push(`holds ${x.holdKg} kg`);
+        if (x.holdKgEach) bits.push(`${x.holdKgEach} kg each`);
+        if (x.holdKgPair) bits.push(`${x.holdKgPair} kg/pair`);
+        if (x.forceClassesN) bits.push(x.forceClassesN.join('/') + ' N');
+        if (x.torqueClassesNm) bits.push(x.torqueClassesNm.join('/') + ' N·m');
+        if (x.opening) bits.push(`opens ${x.opening}°`);
+        if (x.extension) bits.push(x.extension === 1 ? 'full ext.' : Math.round(x.extension * 100) + '% ext.');
+        if (x.replaces) bits.push('replaces ' + x.replaces);
+        if (x.price) bits.push('~$' + x.price);
+        if (x.price === 0) bits.push('shop-made, $0');
+        return bits.join(' · ');
+      };
+      rows = groups.map(([gLabel, list]) => {
+        const body2 = list.filter(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))).map(x => `<tr>
+          <td><strong>${esc(Units.fmtTemplate(x.label))}</strong><br><span class="kind-tag">${esc(gLabel)}</span></td>
+          <td>${view3d[x.key] ? `<button type="button" class="btn small ghost joint-demo" data-joint="${esc(view3d[x.key])}" title="See it in 3D">${BB.Icons.svg('ruler', 13)} 3D</button>` : ''}</td>
+          <td class="num" style="font-size:12px">${esc(classOf(x))}</td>
+          <td style="font-size:12.5px">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
+          <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
+        return body2;
+      }).join('');
     } else if (state.refTab === 'lumber') {
       head = '<th>Nominal</th><th class="num">Actual (T × W)</th><th class="num">Stock lengths</th>';
       rows = Object.entries(K.LUMBER.NOMINALS).filter(([n]) => hit(n)).map(([n, a]) => `<tr>
@@ -1038,9 +1078,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(paramSeg('Front style', [['inset', 'Inset'], ['overlay', 'Overlay']], s.drawers.frontStyle,
         v => { merge({ drawers: { frontStyle: v } }, 'manual'); openInspectorById(part.id); }));
       const runnerOpts = [['side_mount_slides', 'Slides']];
-      if (s.meta.level !== 'beginner') runnerOpts.push(['wood_runners', 'Wood runners']);
+      if (s.meta.level !== 'beginner') runnerOpts.push(['undermount_slides', 'Undermount'], ['wood_runners', 'Wood runners']);
       body.append(paramSeg('Runners', runnerOpts, s.drawers.runner,
         v => { merge({ drawers: { runner: v } }, 'manual'); openInspectorById(part.id); }));
+      body.append(paramSelect('Pull style', Object.values(BB.HW.PULLS).map(p => [p.key, p.label]),
+        s.hardware.pull, v => { merge({ hardware: { pull: v } }, 'manual'); openInspectorById(part.id); }));
     }
     body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); openInspectorById(part.id); }));
@@ -1894,7 +1936,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- shell: URL-restorable tabs ----------------
    * The active plan tab (and reference subtab) mirrors into location.hash via
    * replaceState — deep-linkable and reload-safe, with no history spam. */
-  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'lumber'];
+  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'hardware', 'lumber'];
   function syncHash() {
     const h = '#' + state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
     if (location.hash !== h) {

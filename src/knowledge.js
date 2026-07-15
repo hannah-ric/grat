@@ -622,8 +622,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       blurb: 'The poplar, SPF, and MDF path: one primer coat, two enamel. Prime MDF edges twice — they drink the first coat whole.' }
   ];
 
-  /* Standard slide lengths (mm), used by drawer-box math. */
-  const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500];
+  /* Standard slide lengths (mm), used by drawer-box math.
+   * 533/610 (21/24 in) appended for deep cases (2026 hardware expansion). */
+  const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500, 533, 610];
   /* Side-mount ball-bearing slides need exactly 1/2 in (12.7 mm) per side —
    * total box-to-opening clearance. 12.5 binds the slide (audit F-S1-4). */
   const SLIDE_SPACE_MM = 25.4;

@@ -34,6 +34,9 @@
    "box": "half_blind_dovetail"
   },
   "finish": "danish_oil",
+  "hardware": {
+   "pull": "bar_pull"
+  },
   "drawers": {
    "count": 2,
    "frontStyle": "overlay",
@@ -250,9 +253,9 @@
     "id": "tip_f2057",
     "status": "advisory",
     "data": {
-     "marginRatio": 1.103,
+     "marginRatio": 1.095,
      "stabilizingNmm": 67872.514,
-     "overturningNmm": 61557.247,
+     "overturningNmm": 62003.425,
      "testKg": 22.7,
      "openFraction": 0.667
     }
@@ -709,7 +712,7 @@
    },
    {
     "kind": "hardware",
-    "label": "Drawer pull",
+    "label": "Bar pull",
     "qty": 1,
     "price": 6
    },
@@ -733,7 +736,7 @@
    },
    {
     "kind": "hardware",
-    "label": "Drawer pull",
+    "label": "Bar pull",
     "qty": 1,
     "price": 6
    },

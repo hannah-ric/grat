@@ -31,7 +31,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   const LVL = ['beginner', 'intermediate', 'advanced'];
   const UNITS = ['mm', 'in'];
   const FRONT = ['inset', 'overlay'];
-  const RUN = ['side_mount_slides', 'wood_runners'];
+  // RUN and PUL: 2026 hardware expansion — append only. PUL is pull STYLE
+  // intent; every count, size, and bore is computed by code (BB.HW).
+  const RUN = ['side_mount_slides', 'wood_runners', 'undermount_slides'];
+  const PUL = ['bar_pull', 'knob_round', 'knob_turned_wood', 'cup_pull', 'ring_pull',
+    'edge_pull', 'flush_recessed', 'appliance_pull', 'leather_pull', 'none_touch'];
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
@@ -78,6 +82,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // so every pre-expansion design encodes byte-identically.
     if (spec.wood.sheetSpecies && spec.wood.sheetSpecies !== 'baltic_birch') {
       w.ms = ix(SPC, spec.wood.sheetSpecies, 8);
+    }
+    // Pull style likewise: only a non-default choice rides the wire.
+    if (spec.hardware && spec.hardware.pull && spec.hardware.pull !== 'bar_pull') {
+      w.hp = ix(PUL, spec.hardware.pull, 0);
     }
     for (const [k, path] of S_KEYS) {
       const v = spec.structure[path];
@@ -141,6 +149,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
       finish: at(FIN, w.f, 'wipe_poly'),
+      hardware: { pull: at(PUL, w.hp, 'bar_pull') },
       drawers: Array.isArray(w.d) && w.d.length
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
         : null,
@@ -187,6 +196,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (w.j.b !== undefined) patch.joinery.box = at(JNT, w.j.b, undefined);
     }
     if (w.f !== undefined) patch.finish = at(FIN, w.f, undefined);
+    if (w.hp !== undefined) patch.hardware = { pull: at(PUL, w.hp, undefined) };
     if (w.d !== undefined) {
       if (!w.d) patch.drawers = null;
       else if (Array.isArray(w.d)) patch.drawers = { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') };
@@ -252,9 +262,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- static schema documentation (sent ONCE, in the system prompt) ---------------- */
   const SCHEMA_DOC = [
     'WIRE FORMAT — every reply is minified JSON in this compact format (mm integers; enums are 0-based indexes into these lists, documented once here):',
-    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
+    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
     'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
+    '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER in mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Primitive orientations before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part must appear in at least one connection; connected parts must physically touch; unconnected parts must not intersect. Set loadBearing=1 for every part in a load path and SURF for anything loaded or sat on. 2–40 parts.',
     'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (one short sentence), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers).'
@@ -280,7 +291,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PRIM, SURF, GRAIN, STK,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };

@@ -34,6 +34,9 @@
    "box": "locking_rabbet"
   },
   "finish": "hardwax_oil",
+  "hardware": {
+   "pull": "bar_pull"
+  },
   "drawers": {
    "count": 2,
    "frontStyle": "inset",
@@ -250,9 +253,9 @@
     "id": "tip_f2057",
     "status": "advisory",
     "data": {
-     "marginRatio": 0.618,
+     "marginRatio": 0.619,
      "stabilizingNmm": 23633.477,
-     "overturningNmm": 38219.628,
+     "overturningNmm": 38193.057,
      "testKg": 22.7,
      "openFraction": 0.667
     }
@@ -740,7 +743,7 @@
    },
    {
     "kind": "hardware",
-    "label": "Drawer pull",
+    "label": "Bar pull",
     "qty": 1,
     "price": 6
    },
@@ -764,7 +767,7 @@
    },
    {
     "kind": "hardware",
-    "label": "Drawer pull",
+    "label": "Bar pull",
     "qty": 1,
     "price": 6
    },

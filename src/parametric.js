@@ -111,6 +111,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Drawer boxes: every dimension derives from the opening (§5 math).
     openings.forEach((op, i) => {
       const runner = d.runner;
+      const under = runner === 'undermount_slides';
       let boxW, boxH, boxD, slideLen = null;
       if (runner === 'side_mount_slides') {
         // Ball-bearing slides are 1/2 in (12.7 mm) per side — 12.5 binds
@@ -122,6 +123,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         for (const L of K.SLIDE_LENGTHS) if (L <= maxLen) slideLen = L;
         // No slide fits: the box still must not punch through the back —
         // validation reports the too-shallow interior; geometry stays honest.
+        boxD = slideLen || Math.max(10, Math.floor(maxLen / 10) * 10);
+      } else if (under) {
+        // Undermount regime (2026 hardware expansion): the box is BUILT TO
+        // THE SLIDE — width = opening − 27, 19 mm height clearance, depth
+        // exactly the slide length, captured bottom recessed 12.7.
+        boxW = op.w - 27;
+        boxH = op.h - 19;
+        const maxLen = op.interiorDepth - 25;
+        slideLen = null;
+        for (const L of K.SLIDE_LENGTHS) if (L <= maxLen) slideLen = L;
         boxD = slideLen || Math.max(10, Math.floor(maxLen / 10) * 10);
       } else {
         boxW = op.w - 4;                        // fitted wood runners
@@ -140,17 +151,21 @@ var BB = globalThis.BB = globalThis.BB || {};
       const px = op.x;
 
       const boxJoint = spec.joinery.box;
-      const slideIn = boxJoint === 'butt_screws' || boxJoint === 'pocket_screws';
+      // Undermount boxes always capture their bottom (the slide hooks it).
+      const slideIn = !under && (boxJoint === 'butt_screws' || boxJoint === 'pocket_screws');
       const dp = [];
       dp.push(part(`${prefix}dr${i + 1}_side_l`, `drbox_side_${boxD}x${boxH}`, 'drawer_side', `Drawer ${i + 1} side`, boxT, boxH, boxD, px - boxW / 2 + boxT / 2, cy, cz, { material: boxMat, group: g }));
       dp.push(part(`${prefix}dr${i + 1}_side_r`, `drbox_side_${boxD}x${boxH}`, 'drawer_side', `Drawer ${i + 1} side`, boxT, boxH, boxD, px + boxW / 2 - boxT / 2, cy, cz, { material: boxMat, group: g }));
       dp.push(part(`${prefix}dr${i + 1}_boxfront`, `drbox_front_${boxW}x${boxH}`, 'drawer_boxfront', `Drawer ${i + 1} box front`, boxW - 2 * boxT, boxH, boxT, px, cy, boxFrontZ - boxT / 2, { material: boxMat, group: g }));
       const backH = slideIn ? boxH - 16 : boxH; // cut down so the bottom slides in from the rear
       dp.push(part(`${prefix}dr${i + 1}_boxback`, `drbox_back_${boxW}x${backH}`, 'drawer_boxback', `Drawer ${i + 1} box back`, boxW - 2 * boxT, backH, boxT, px, boxBottomY + (slideIn ? backH / 2 + 16 : boxH / 2), boxFrontZ - boxD + boxT / 2, { material: boxMat, group: g }));
-      // 6 mm bottom in a 6 mm groove, 10 mm up from the bottom edge.
+      // Bottom: 6 mm in a 6 mm groove 10 mm up — except undermount, whose
+      // 12 mm bottom sits recessed 12.7 so the slide arms tuck under it.
+      const botT = under ? 12 : 6;
+      const botY = under ? boxBottomY + 12.7 + botT / 2 : boxBottomY + 13;
       const botW = boxW - 2 * boxT + 10;
       const botD = slideIn ? boxD - boxT - (boxT - 6) : boxD - 2 * boxT + 10;
-      dp.push(part(`${prefix}dr${i + 1}_bottom`, `drbox_bot_${Math.round(botW)}x${Math.round(botD)}`, 'drawer_bottom', `Drawer ${i + 1} bottom`, botW, 6, botD, px, boxBottomY + 13, cz, { material: boxMat, group: g }));
+      dp.push(part(`${prefix}dr${i + 1}_bottom`, `drbox_bot_${Math.round(botW)}x${Math.round(botD)}`, 'drawer_bottom', `Drawer ${i + 1} bottom`, botW, botT, botD, px, botY, cz, { material: boxMat, group: g }));
 
       // Applied front: inset = opening − 2 mm gap all around; overlay = +10 mm
       // per side where the surround allows.
@@ -166,7 +181,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       const f = dp[dp.length - 1];
       f.size = { w: fw, h: fh, d: frontT };
       f.pos = { x: px, y: op.yBottom + op.h / 2, z: frontZ };
-      dp.push(part(`${prefix}dr${i + 1}_pull`, 'pull', 'pull', `Drawer ${i + 1} pull`, Math.min(120, fw * 0.4), 12, 22, px, op.yBottom + op.h / 2, frontZ + frontT / 2 + 11, { material: 'hardware', group: g }));
+      // Pull(s): STYLE from the spec; count, size, and spacing from the
+      // hardware rules (BB.HW.pullSpec) — code owns the numbers.
+      const pullStyle = (BB.HW && spec.hardware && BB.HW.PULLS[spec.hardware.pull]) ? spec.hardware.pull : 'bar_pull';
+      const pSpec = BB.HW ? BB.HW.pullSpec(fw, pullStyle) : { style: 'bar_pull', count: 1, ctcMM: 96, holes: 2 };
+      if (pullStyle !== 'none_touch') {
+        const isKnob = /knob|ring/.test(pSpec.style);
+        const pw = isKnob ? 35 : Math.max(60, Math.min(fw - 40, (pSpec.ctcMM || 96) + 14));
+        const ph = isKnob ? 35 : 12;
+        const pd = /cup/.test(pSpec.style) ? 28 : 22;
+        // Tall fronts carry hardware in the upper-rail zone; a stack shares
+        // one centerline (all fronts here already share px).
+        const pullY = fh > 250 ? f.pos.y + fh / 2 - 60 : f.pos.y;
+        for (let pi = 0; pi < pSpec.count; pi++) {
+          const pxOff = pSpec.count === 1 ? 0 : (pi === 0 ? -fw / 6 : fw / 6);
+          dp.push(part(`${prefix}dr${i + 1}_pull${pSpec.count > 1 ? '_' + (pi + 1) : ''}`, 'pull', 'pull', `Drawer ${i + 1} pull`,
+            pw, ph, pd, px + pxOff, pullY, frontZ + frontT / 2 + pd / 2, { material: 'hardware', group: g }));
+        }
+      }
 
       for (const p of dp) { p.drawer = i; p.explode = { x: 0, y: 0, z: 0 }; }
       parts.push(...dp);
@@ -188,6 +220,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         box: { w: boxW, h: boxH, d: boxD, t: boxT },
         slideLen, runner, frontStyle: d.frontStyle,
         front: { w: fw, h: fh, t: frontT },
+        pull: Object.assign({ styleKey: pullStyle }, pSpec),
         travel: Math.round(boxD * 0.8),
         partIds: dp.map(p => p.id)
       });

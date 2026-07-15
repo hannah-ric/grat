@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
+const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'drafting.js', 'gltf.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'joinery3d.js', 'selftest.js'];
 for (const f of SRC) {
   const p = path.join(__dirname, '..', 'src', f);
@@ -646,6 +646,103 @@ section('KB-4 the expanded lumber catalog packs and prices');
   // first, so adding it would silently shift every plan onto 16-footers.
   ok(!K.LUMBER.STOCK_LENGTHS.includes(4877), 'no 16 ft stock (deliberate — see knowledge.js)');
   eq(Math.max(...K.LUMBER.STOCK_LENGTHS), 3658, '12 ft remains the longest board');
+}
+
+/* ================= 2026 hardware repository ================= */
+section('KB-5 hardware is a pure function of the corrected spec');
+{
+  const HW = BB.HW;
+  // The doctrine: style on the wire, numbers in code. The digest names
+  // styles; capacities and formulas never enter the prompt.
+  ok(Codec.PUL.length === Object.keys(HW.PULLS).length && Codec.PUL.every(k => HW.PULLS[k]), 'PUL wire enum matches the PULLS table exactly');
+  ok(Codec.RUN.includes('undermount_slides'), 'RUN gained undermount (append-only)');
+  const sys = AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
+  ok(sys.includes(HW.digestLine()) && !/capacityKg|forceClasses|torqueClasses/.test(sys), 'prompt carries styles, never ratings');
+
+  // Undermount: the box is built to the slide — the one slide family where
+  // geometry is the spec sheet.
+  const um = pipeline({
+    meta: { name: 'UM', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 800, depth: 500, height: 900 }, structure: { toeKick: true },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'undermount_slides' }
+  });
+  for (const d of um.model.drawers) {
+    eq(d.opening.w - d.box.w, 27, `drawer ${d.index + 1}: box width = opening − 27`);
+    eq(d.opening.h - d.box.h, 19, `drawer ${d.index + 1}: 19 mm height clearance`);
+    eq(d.box.d, d.slideLen, `drawer ${d.index + 1}: box depth = slide length exactly`);
+    const bot = um.model.parts.find(p => p.id === `dr${d.index + 1}_bottom`);
+    eq(bot.size.h, 12, `drawer ${d.index + 1}: captured 12 mm bottom`);
+    near(bot.pos.y - bot.size.h / 2 - (d.opening.yBottom + (d.opening.h - d.box.h) / 2), 12.7, 0.05, `drawer ${d.index + 1}: bottom recessed 12.7`);
+  }
+  ok(!um.report.errors.length, 'undermount cabinet validates clean');
+  eq(Spec.correctSpec({ meta: { template: 'cabinet', level: 'beginner' }, drawers: { count: 1, runner: 'undermount_slides' } }).drawers.runner,
+    'side_mount_slides', 'undermount gated past beginner (forgives nothing)');
+
+  // Pull system: BOM, model parts, and step instructions agree.
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const nsBom = Plans.bom(ns.spec, ns.model);
+  const pullLines = nsBom.items.filter(i => i.label === 'Bar pull');
+  eq(pullLines.length, 2, 'BOM: one styled pull line per drawer');
+  ok(pullLines.every(l => /through-bores.*centers.*M4/.test(l.detail)), 'pull lines carry bores, series spacing, and M4 length');
+  const d0 = ns.model.drawers[0];
+  ok(BB.HW.PULL_CTC_SERIES.includes(d0.pull.ctcMM), `pull spacing ${d0.pull.ctcMM} is a real series value`);
+  const nsSteps = Plans.assembly(ns.spec, ns.model, null, {});
+  ok(/ONE centerline/.test(nsSteps.find(s => s.id === 'dr1_pull').text), 'pull step carries the shared-centerline rule');
+  eq(ns.model.parts.filter(p => p.role === 'pull').length, 2, 'one pull part per drawer at default style');
+
+  // Push-to-open: no pull part, a touch latch in the BOM, and the gap
+  // advisory on overlay fronts.
+  const touch = pipeline({
+    meta: { name: 'T', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    hardware: { pull: 'none_touch' },
+    drawers: { count: 1, frontStyle: 'overlay', runner: 'side_mount_slides' }
+  });
+  eq(touch.model.parts.filter(p => p.role === 'pull').length, 0, 'push-to-open builds no pull part');
+  ok(Plans.bom(touch.spec, touch.model).items.some(i => /touch latch/i.test(i.label)), 'BOM buys the touch latch instead');
+  ok(touch.report.advisories.some(a => a.id === 'hw_touch_gap'), 'overlay + push-to-open raises the 2–3 mm gap advisory');
+
+  // Slide family: the integrity check and the BOM pick the same class from
+  // the same computed load, and small drawers keep the incumbent class.
+  const ig = Structural.computeIntegrity(ns.spec, ns.model, {});
+  const slideCheck = ig.checks.find(c => c.id.startsWith('slide:'));
+  eq(slideCheck.data.capKg, 34, 'small drawers keep the 34 kg class (golden-stable)');
+  ok(nsBom.items.some(i => /side-mount slides \(pair\)/.test(i.label)), 'BOM buys the same class the check rated');
+  eq(HW.slidePick(30).capacityKg, 45, 'a 30 kg computed load climbs to the 45 kg class');
+
+  // Wooden runners: the fitted clearance is the computed movement number.
+  const wr = pipeline({
+    meta: { name: 'WR', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 }, wood: { species: 'beech' },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }
+  });
+  const wrStep = Plans.assembly(wr.spec, wr.model, null, {}).find(s => s.id === 'dr1_runners');
+  const wrClr = HW.drawerVerticalClearance(wr.model.drawers[0].box.h, 'beech', K.CLIMATE_DMC.temperate);
+  ok(wrStep.text.includes('computed seasonal movement'), 'runner step explains the clearance is computed');
+  near(wrClr, wr.model.drawers[0].box.h * K.WOOD_SPECIES.beech.ct * 4 + 1, 0.06, 'clearance = height × ct × ΔMC + 1 floor');
+
+  // Safety knowledge is live where geometry exists, staged where it does not.
+  const outdoor = pipeline({ meta: { template: 'table' }, wood: { species: 'white_oak' }, finish: 'spar_urethane' });
+  ok(outdoor.report.advisories.some(a => a.id === 'hw_outdoor'), 'exterior finish on tannic species → stainless/brass/galvanized advisory');
+  ok(HW.GATES.kidSafe.refusedLidSupport.includes('cord_stay'), 'kidSafe gate data refuses cord stops (ASTM F963), ready for the lids workstream');
+  ok(/NEVER the answer on a toy chest/.test(HW.TRADITIONAL.cord_stay.failure), 'the cord stop itself carries the toy-chest refusal');
+
+  // 3D teaching views: dimensionally true and structurally sound.
+  for (const v of ['hw_cup_hinge', 'hw_rule_joint', 'hw_pivot_pin', 'hw_tambour', 'hw_sawtooth', 'hw_undermount']) {
+    const d = BB.Joinery3D.buildJoint(v, null, null, x => x + 'mm');
+    const volOK = d.pieces.every(p => p.kind === 'cuboid' ? p.e.every(e => e > 0)
+      : p.kind === 'cylinder' ? p.r > 0 && p.len > 0 : p.profile.length >= 3 && p.depth > 0);
+    ok(volOK && d.labels.length >= 2 && Math.abs(Math.hypot(...d.insertAxis) - 1) < 1e-9, `${v} builds sound, labeled geometry`);
+  }
+  const cup = BB.Joinery3D.buildJoint('hw_cup_hinge', null, null, x => x + 'mm');
+  const cupCyl = cup.pieces.find(p => p.kind === 'cylinder');
+  ok(cupCyl.r === 17.5 && cupCyl.len === 13, 'cup view is a true 35 × 13 cup');
+  const rjLabel = BB.Joinery3D.buildJoint('hw_rule_joint', null, null, x => x + 'mm').labels[0];
+  ok(/22mm.*5mm.*3mm.*14mm/.test(rjLabel.replace(/[^0-9a-z.]/gi, '')) || /14/.test(rjLabel), 'rule-joint view teaches r = t − fillet − pin height');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

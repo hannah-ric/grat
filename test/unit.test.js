@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
+const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'drafting.js', 'gltf.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'joinery3d.js', 'selftest.js'];
 for (const f of SRC) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
@@ -124,7 +124,7 @@ section('drawer-box math (nightstand, 2 drawers)');
   // BOM: slide pairs + pulls + mounting screws.
   const bom = Plans.bom(spec, model);
   eq(bom.items.filter(i => i.label.includes('side-mount slides')).length, 2, 'BOM: one slide pair per drawer');
-  eq(bom.items.filter(i => i.label === 'Drawer pull').length, 2, 'BOM: one pull per drawer');
+  eq(bom.items.filter(i => i.label === 'Bar pull').length, 2, 'BOM: one styled pull per drawer (bar pull default)');
   ok(bom.items.some(i => i.label.includes('M4 ×')), 'BOM: slide mounting screws');
   ok(bom.items.some(i => i.detail && i.detail.includes('front attachment')), 'BOM: front attachment screws');
 
@@ -245,6 +245,14 @@ section('local intent parser');
   const mdfPatch = AI.localModel('use mdf for the boxes', spec).patch;
   eq(mdfPatch.wood.sheetSpecies, 'mdf', 'sheet-good mention sets the sheet species');
   ok(!mdfPatch.wood.species, 'sheet-good mention leaves the solid species alone');
+
+  // Hardware style intent (2026 hardware expansion): style only — the
+  // counts, sizes, and bores are code-owned (BB.HW).
+  const ns2 = Spec.correctSpec({ meta: { template: 'nightstand' } });
+  eq(AI.localModel('use cup pulls', ns2).patch.hardware.pull, 'cup_pull', 'pull style intent parsed');
+  eq(AI.localModel('make it handleless, push to open', ns2).patch.hardware.pull, 'none_touch', 'push-to-open parsed');
+  eq(AI.localModel('turned wooden knobs please', ns2).patch.hardware.pull, 'knob_turned_wood', 'turned knob beats plain knob');
+  eq(AI.localModel('switch to undermount slides', ns2).patch.drawers.runner, 'undermount_slides', 'undermount runner parsed');
 
   const ns = Spec.correctSpec({ meta: { template: 'nightstand' } });
   const dr = AI.localModel('add another drawer', ns);

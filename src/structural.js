@@ -656,34 +656,37 @@ var BB = globalThis.BB = globalThis.BB || {};
         });
       }
 
-      /* ---- slide capacity vs drawer size (audit F-S3-6) ---- */
-      const slideRow = (K.FASTENERS.hardware || []).find(h => h.key === 'slide_pair');
-      const capKg = slideRow && slideRow.capacityKg;
-      if (capKg) {
-        const DENSITY_KG_PER_L = 0.24; // general household storage; paper runs ~0.72
-        let worst = null;
-        for (const d of model.drawers) {
-          if (d.runner !== 'side_mount_slides') continue;
-          const volL = Math.max(0, (d.box.w - 2 * d.box.t) * (d.box.h - d.box.t) * (d.box.d - d.box.t)) * 1e-6;
-          const estKg = volL * DENSITY_KG_PER_L;
-          if (!worst || estKg > worst.estKg) worst = { d, volL, estKg };
-        }
-        if (worst) {
-          const fileKg = worst.volL * 0.72;
-          const overCap = worst.estKg > capKg;
-          checks.push({
-            id: 'slide:dr' + worst.d.index, title: 'Drawer slide capacity',
-            status: overCap ? 'advisory' : 'pass',
-            value: `largest drawer ≈ ${U().fmtPointLoad(worst.estKg)} loaded vs ${U().fmtPointLoad(capKg)} slide rating (pair)`,
-            threshold: `≤ ${U().fmtPointLoad(capKg)} per pair (75 lb-class ball-bearing slides)`,
-            explain: (overCap
-              ? 'Packed full, this drawer would exceed its slide rating — specify 100 lb slides or split the storage.'
-              : 'Everyday storage sits inside the slide rating.') +
-              (fileKg > capKg ? ` Loaded with paper or files (~0.72 kg/L) it would reach ${U().fmtPointLoad(fileKg)} — beyond the rating; use file-rated slides for that duty.` : ''),
-            fixes: [],
-            data: { estKg: worst.estKg, capKg, volumeL: worst.volL }
-          });
-        }
+      /* ---- slide capacity vs drawer size (audit F-S3-6) ----
+       * 2026 hardware expansion: the slide FAMILY is picked by computed
+       * load (BB.HW.slidePick) — the check reports the picked class and
+       * the BOM buys the same one; both call the same pure function. */
+      const DENSITY_KG_PER_L = 0.24; // general household storage; paper runs ~0.72
+      let worst = null;
+      for (const d of model.drawers) {
+        if (d.runner !== 'side_mount_slides' && d.runner !== 'undermount_slides') continue;
+        const volL = Math.max(0, (d.box.w - 2 * d.box.t) * (d.box.h - d.box.t) * (d.box.d - d.box.t)) * 1e-6;
+        const estKg = volL * DENSITY_KG_PER_L;
+        if (!worst || estKg > worst.estKg) worst = { d, volL, estKg };
+      }
+      if (worst) {
+        const picked = BB.HW
+          ? BB.HW.slidePick(worst.estKg, { undermount: worst.d.runner === 'undermount_slides' })
+          : { label: 'Side-mount ball-bearing slides (pair)', capacityKg: 34 };
+        const capKg = picked.capacityKg;
+        const fileKg = worst.volL * 0.72;
+        const overCap = worst.estKg > capKg;
+        checks.push({
+          id: 'slide:dr' + worst.d.index, title: 'Drawer slide capacity',
+          status: overCap ? 'advisory' : 'pass',
+          value: `largest drawer ≈ ${U().fmtPointLoad(worst.estKg)} loaded vs ${U().fmtPointLoad(capKg)} slide rating (pair)`,
+          threshold: `≤ ${U().fmtPointLoad(capKg)} per pair (${picked.label.toLowerCase()})`,
+          explain: (overCap
+            ? 'Packed full, this drawer would exceed its slide rating — specify 100 lb slides or split the storage.'
+            : `Everyday storage sits inside the rating of the picked class (${picked.label.toLowerCase()}).`) +
+            (fileKg > capKg ? ` Loaded with paper or files (~0.72 kg/L) it would reach ${U().fmtPointLoad(fileKg)} — beyond the rating; use file-rated slides for that duty.` : ''),
+          fixes: [],
+          data: { estKg: worst.estKg, capKg, volumeL: worst.volL }
+        });
       }
     }
 

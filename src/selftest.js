@@ -313,6 +313,65 @@ var BB = globalThis.BB = globalThis.BB || {};
         !('ms' in BB.Codec.encode(Spec.correctSpec(Spec.defaultSpec('table')))), 'ms omitted', 'ms omitted');
     }
 
+    /* ============ hardware repository: code owns every number ============ */
+    {
+      const HW = BB.HW;
+      // Hinge count: band edges and the weight rule (ceil kg/3.5, floor 2).
+      test('hardware', 'door hinge count: height bands 900/1600/2000 and the 3.5 kg weight rule',
+        HW.doorHingeCount(899, 1) === 2 && HW.doorHingeCount(901, 1) === 3 &&
+        HW.doorHingeCount(1601, 1) === 4 && HW.doorHingeCount(600, 8) === 3,
+        [HW.doorHingeCount(899, 1), HW.doorHingeCount(901, 1), HW.doorHingeCount(1601, 1), HW.doorHingeCount(600, 8)].join('/'), '2/3/4/3');
+      // Gas strut hand calc: 6.8 kg lid, 450 deep, defaults → 1.3·W·g·(225/90)
+      // = 3.25·W·g ≈ 216.8 N — over the 200 N class on one strut, honest;
+      // split across two on a 700-wide lid → 108.4 N → 120 N class.
+      const gs = HW.gasStrut(6.8, 450, 700);
+      test('hardware', 'gas strut moment balance matches hand arithmetic and snaps UP',
+        gs.count === 2 && Math.abs(gs.requiredNEach - 108.4) < 0.05 && gs.classN === 120,
+        JSON.stringify(gs), '2 struts, 108.4 N each, 120 N class');
+      // Cup hinge: overlay solves the boring distance; outside 3–7 the
+      // answer is a different plate/crank, never a wilder bore.
+      const cb = HW.cupBoring(16, 0), cbOut = HW.cupBoring(25, 0);
+      test('hardware', 'cup boring solved from overlay and clamped to the legal 3–7 range',
+        cb.tbMM === 5 && cb.inRange && cbOut.tbMM === 7 && !cbOut.inRange,
+        `overlay16→TB${cb.tbMM}, overlay25→TB${cbOut.tbMM}(out)`, 'TB5 in range; TB7 flagged out');
+      // Pull sizing: ⅓ width snapped DOWN into the CTC series; two pulls
+      // past 750; knobs under 300.
+      const p1 = HW.pullSpec(430, 'bar_pull'), p2 = HW.pullSpec(800, 'bar_pull'), p3 = HW.pullSpec(250, 'bar_pull');
+      test('hardware', 'pull sizing: series snap, two-pull rule past 750, knob under 300',
+        p1.ctcMM === 128 && p2.count === 2 && p3.style === 'knob_round',
+        `${p1.ctcMM} / ×${p2.count} / ${p3.style}`, '128 / ×2 / knob_round');
+      test('hardware', 'every CTC the sizer can emit is a real series spacing',
+        HW.PULL_CTC_SERIES.includes(HW.pullSpec(600, 'bar_pull').ctcMM), String(HW.pullSpec(600, 'bar_pull').ctcMM), 'in series');
+      // Rule joint: r = t − fillet − pinH.
+      const rj = HW.ruleJoint(22);
+      test('hardware', 'rule joint radius = thickness − fillet − pin height', rj.radiusMM === 14, `${rj.radiusMM}`, '14');
+      // Slide picker climbs the family by computed load.
+      test('hardware', 'slide picker: 34 kg default, 45 kg past 25, 100 kg past 45, undermount honored',
+        HW.slidePick(8).key === 'side_bb_34' && HW.slidePick(30).key === 'side_bb_45' &&
+        HW.slidePick(60).key === 'heavy_duty_100' && HW.slidePick(8, { undermount: true }).key === 'undermount_45',
+        'family climbs', 'family climbs');
+      // Undermount geometry: the box is built to the slide.
+      const um = pipeline({
+        meta: { name: 'UM', template: 'cabinet', level: 'intermediate', units: 'mm' },
+        overall: { width: 800, depth: 500, height: 900 }, structure: { toeKick: true },
+        drawers: { count: 1, frontStyle: 'inset', runner: 'undermount_slides' }
+      });
+      const d0 = um.model.drawers[0];
+      test('hardware', 'undermount box: width = opening − 27, height − 19, depth = slide length exactly',
+        d0.opening.w - d0.box.w === 27 && d0.opening.h - d0.box.h === 19 && d0.box.d === d0.slideLen,
+        `−${d0.opening.w - d0.box.w}/−${(d0.opening.h - d0.box.h)}/${d0.box.d}=${d0.slideLen}`, '−27/−19/depth=slideLen');
+      // kidSafe gate data is ready for the lids workstream, with the cord
+      // stop explicitly refused.
+      test('hardware', 'kidSafe gate: torsion/soft stays required, cord stop refused, ventilation specified',
+        HW.GATES.kidSafe.requiredLidSupport.includes('torsion_lid') &&
+        HW.GATES.kidSafe.refusedLidSupport.includes('cord_stay') && HW.GATES.kidSafe.ventilationMM >= 12,
+        'gate complete', 'gate complete');
+      // The system prompt carries the style digest but no capacities.
+      const sysHW = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
+      test('hardware', 'system prompt carries hardware STYLES only (ratings stay in code)',
+        sysHW.includes(HW.digestLine()) && !sysHW.includes('capacityKg'), 'styles only', 'styles only');
+    }
+
     /* ============ structural: movement / tipping / racking (fixed values) ============ */
     {
       const mv = K.movementMM(900, 'red_oak', 'tangential', 4);

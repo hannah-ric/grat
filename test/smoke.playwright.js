@@ -315,6 +315,24 @@ const clickMoreCtl = async sel => {
   ok(jointRows === 3, `reference search filters (${jointRows} rows for “dovetail”)`);
   await page.screenshot({ path: SHOTS + '/11-reference.png' });
 
+  // Hardware tab (2026 hardware expansion): the repository renders, and a
+  // hardware teaching view opens real 3D in the joint inspector.
+  await page.fill('.ref-search', '');
+  await page.click('.ref-tabs .ref-tab:nth-child(5)');
+  const hwText = await page.textContent('#panel-main');
+  ok(/undermount/i.test(hwText) && /rule joint/i.test(hwText) && /tambour/i.test(hwText), 'hardware reference renders slides, rule joint, and the traditional layer');
+  await page.fill('.ref-search', 'rule joint');
+  const hwDemo = await page.$('#panel-main .joint-demo[data-joint="hw_rule_joint"]');
+  ok(!!hwDemo, 'rule joint row carries a 3D demo button');
+  await hwDemo.click();
+  await page.waitForSelector('#jointScrim.open');
+  ok(await page.evaluate(() => !!BB.JointView._live()), 'hardware 3D view opens on the joint inspector');
+  const hwTitle = await page.textContent('#jointTitle');
+  ok(/radius = thickness − fillet − pin height/.test(hwTitle), 'rule-joint view teaches its geometry law in the title');
+  await page.screenshot({ path: SHOTS + '/11b-hardware-reference.png' });
+  await page.click('#jointClose');
+  await page.fill('.ref-search', '');
+
   // Units control: imperial fractions by default, instant metric on toggle,
   // dual display renders both systems, and the choice persists to prefs.
   await page.click('#tab-cut');

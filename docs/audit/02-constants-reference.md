@@ -150,3 +150,24 @@ Every physical constant added by the expansion keeps the one-source rule: the ro
 | POST_THICKNESS += 89 | custom posts snap to buyable 4×4 | |
 | GLUE_LINE_PENALTY_MM2 | 400 (packing.js) | labor charge per glue line when a glue-up challenges a direct fit |
 | 16 ft stock (4877) | **deliberately absent** | pack1D opens longest-first; would shift every plan onto boards most people cannot transport |
+
+## 2026 hardware repository addendum (src/hardware.js, BB.HW)
+
+Doctrine: the AI proposes hardware STYLE only (`hp` wire key, PUL enum); code computes
+every rating, count, position, and bore — all provenance-ready arithmetic in `BB.HW`.
+
+| Constant / rule | Value | Ground truth |
+|---|---|---|
+| Door hinge count | max(height band 900/1600/2000/2400, ceil(kg/3.5), floor 2) | Blum-class count/weight charts, conservative floor |
+| Cup hinge boring | Ø35 × 13 deep, boring distance 3–7 (default 5), plate line 37 | Blum published boring geometry; overlay ≈ TB + 11 − plate |
+| Gas strut | F = 1.3·W·g·(Lcg/d), d ≈ 0.2 × lid depth, 2 struts > 600 wide, snap UP to 50…200 N | gas-spring vendor moment calculators |
+| Lid stay torque | ΣT_rated ≥ 1.25 × W·g × Dcg; classes 1.1–6.8 N·m | retail soft-down stay classes |
+| Pull sizing | CTC ≈ width/3 snapped DOWN into 64…457 series; 2 pulls > 750; knob < 300; M4 len = front + 6 | Amerock-class series + kitchen-trade placement |
+| Slide family | 22/34/45/45/100 kg classes; picked by computed load (0.24 kg/L household) | KV/Blum spec sheets; 34 kg class stays default |
+| Undermount regime | box = opening − 27 wide, − 19 tall, depth = slide length, 12 mm bottom recessed 12.7, back notched | Blum Tandem-class documentation |
+| Wooden runner fit | vertical clearance = drawer height × ct × ΔMC + 1 floor | the movement engine, applied to drawer fitting |
+| Rule joint | radius = top t − fillet(≥5) − pin height(≈3); pin at arc center + 1 outboard | FWW rule-joint canon |
+| 32 mm system | 5 mm pins, 32 pitch, 37 setback, 9 deep (same 37 as the cup-hinge plate line) | system-32 casework standard |
+| kidSafe gate (staged) | torsion/soft-down stays required, cord stops refused, ≥12 mm ventilation, no auto-latch | ASTM F963 toy-chest provisions |
+| SLIDE_LENGTHS += 533, 610 | deep-case slides (21/24 in) | append-only |
+| HNG/LID wire enums | **deliberately absent** | no door/lid geometry exists yet — style intent without a code consumer would invert the founding rule |

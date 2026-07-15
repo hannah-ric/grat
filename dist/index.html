@@ -2159,8 +2159,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       blurb: 'The poplar, SPF, and MDF path: one primer coat, two enamel. Prime MDF edges twice — they drink the first coat whole.' }
   ];
 
-  /* Standard slide lengths (mm), used by drawer-box math. */
-  const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500];
+  /* Standard slide lengths (mm), used by drawer-box math.
+   * 533/610 (21/24 in) appended for deep cases (2026 hardware expansion). */
+  const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500, 533, 610];
   /* Side-mount ball-bearing slides need exactly 1/2 in (12.7 mm) per side —
    * total box-to-opening clearance. 12.5 binds the slide (audit F-S1-4). */
   const SLIDE_SPACE_MM = 25.4;
@@ -2322,6 +2323,614 @@ var BB = globalThis.BB = globalThis.BB || {};
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,
     recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES
+  };
+})();
+</script>
+<script>/* Blueprint Buddy — furniture hardware repository (2026 expansion).
+ *
+ * THE DOCTRINE, founding rule extended one layer: the AI proposes hardware
+ * STYLE intent only ("bar pulls", "no visible hardware", "undermount
+ * slides"); CODE selects every rating, count, position, and bore. The app
+ * already computes every part's dimensions and weight (geometry × SG), so
+ * hinge counts, slide classes, gas-strut forces, and lid-stay torques are
+ * pure functions of the corrected spec — exactly like beam math, and every
+ * one is provenance-friendly arithmetic (RULES below).
+ *
+ * Three strata, honestly separated:
+ *   LIVE — consumed by today's geometry (drawer slides, pulls, shelf pins,
+ *          wooden-runner fitting, the outdoor-hardware advisory).
+ *   READY — selection rules with no geometry yet (door hinges, lifts,
+ *          stays): tested code awaiting the doors/lids workstream. Their
+ *          wire enums are deliberately NOT minted until a consumer exists.
+ *   REFERENCE — the teaching layer (catches, locks, wall hanging, feet,
+ *          and the traditional no-hardware solutions), searchable in the
+ *          Shop Reference, several with 3D inspector models.
+ *
+ * All mm, N, kg, N·m. {mm} tokens render via BB.Units.fmtTemplate.
+ * Capacity fields are conservative class ratings, not brand promises.
+ * Sources: Blum-class cup-hinge geometry and count charts, KV/Blum slide
+ * specifications (27 mm undermount regime), gas-spring vendor moment
+ * calculators, ASTM F963 toy-chest provisions, Amerock-class CTC series,
+ * FWW rule-joint canon. Full register in the PR.
+ */
+var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  /* ---------------- §1 Hinges (READY: awaits the doors workstream) ---- */
+  const HINGES = {
+    euro_cup: {
+      key: 'euro_cup', label: '35 mm concealed cup hinge', price: 4.5,
+      fronts: ['overlay', 'inset'], opening: 110, softCloseAvail: true,
+      capacityKgPair: 7, countRule: 'doorHinges',
+      boring: { cupDia: 35, cupDepth: 13, tbMin: 3, tbMax: 7, tbDefault: 5, plateSetback: 37, maxDoorT: 26 },
+      bestFor: 'Cabinet doors of every kind — 3-axis adjustable after hanging, soft-close available, invisible when closed.',
+      failure: 'Cup bored too far from the edge robs the opening angle and drags the door on the carcass — respect the 3 to 7 mm boring distance.'
+    },
+    compact_ff: {
+      key: 'compact_ff', label: 'Compact face-frame hinge', price: 4,
+      fronts: ['overlay'], opening: 105, softCloseAvail: true, capacityKgPair: 7, countRule: 'doorHinges',
+      boring: { cupDia: 35, cupDepth: 13, pattern: 45 },
+      bestFor: 'Overlay doors on face-frame cabinets — the cup hinge that screws straight to the frame stile, no plate.',
+      failure: 'Overlay is fixed by the hinge model, not adjustment — buy the overlay you designed, don’t bend the one you have.'
+    },
+    butt_brass: {
+      key: 'butt_brass', label: 'Brass butt hinge', price: 6,
+      fronts: ['inset'], opening: 180, sizes: [51, 64, 76], capacityKgPair: 9, countRule: 'doorHinges',
+      boring: { gainDepth: 'one leaf thickness (~2.3)', screws: '#5 × {16}' },
+      bestFor: 'Inset doors on fine casework and boxes — the traditional exposed knuckle, mortised flush.',
+      failure: 'A gain cut deeper than one leaf binds the door and springs the screws — the knuckle, not the leaf, sets the reveal.'
+    },
+    no_mortise: {
+      key: 'no_mortise', label: 'No-mortise hinge', price: 3.5,
+      fronts: ['inset'], opening: 180, capacityKgPair: 7, countRule: 'doorHinges',
+      bestFor: 'Inset doors without the chisel work — interleaved leaves add only one leaf thickness of gap.',
+      failure: 'The built-in ~2 mm gap IS the reveal — plan the door size around it instead of fighting it.'
+    },
+    piano: {
+      key: 'piano', label: 'Piano (continuous) hinge', price: 12,
+      fronts: ['inset', 'overlay'], opening: 270, stockLenMM: 1829, capacityKgPair: 25, countRule: 'fullLength',
+      boring: { screws: '#4 × {13} every {64}' },
+      bestFor: 'Chest and bench lids, fold-down desks — carries the whole edge, so a slightly twisted lid still closes true.',
+      failure: 'Cutting to length and leaving a half screw hole at the end — trim between holes and dress the cut with a file.'
+    },
+    soss_invisible: {
+      key: 'soss_invisible', label: 'Invisible (Soss-type) hinge', price: 14,
+      fronts: ['inset'], opening: 180, sizesByDoorT: { 13: '#101', 16: '#203', 19: '#204', 22: '#208' },
+      capacityKgPair: 5, countRule: 'doorHinges',
+      bestFor: 'Doors and folding panels that must show nothing, open or closed — barrels mortise fully into both members.',
+      failure: 'Deep twin mortises leave thin walls in {16} stock — step up a stock thickness before stepping up a hinge size.'
+    },
+    knife_pivot: {
+      key: 'knife_pivot', label: 'Knife (pivot) hinge', price: 16,
+      fronts: ['inset'], opening: 180, reveal: 1.5, capacityKgPair: 8, countRule: 'pairOnly',
+      boring: { gainDepth: 'one blade thickness (~2.4)', position: 'door top/bottom edge + case' },
+      bestFor: 'The fine-furniture inset door — a sliver of brass at top and bottom and nothing else visible.',
+      failure: 'They install DURING case assembly — a case glued up first cannot take straight knife hinges. Sequence or suffer.'
+    },
+    pivot_offset: {
+      key: 'pivot_offset', label: 'Offset pivot hinge', price: 15,
+      fronts: ['overlay', 'inset'], opening: 180, capacityKgPair: 12, countRule: 'pairOnly',
+      bestFor: 'Overlay doors and mid-century-style pivots — hardware hides in the top and bottom rails of the case.',
+      failure: 'All the load rides two points — through-bolt or hard-point the case panels, never screw into raw MDF edge.'
+    },
+    drop_leaf: {
+      key: 'drop_leaf', label: 'Drop-leaf (rule joint) hinge', price: 7,
+      fronts: ['special'], opening: 90, capacityKgPair: 10, countRule: 'ruleJoint',
+      bestFor: 'Drop-leaf tables — the rule joint carries the raised leaf along its whole length; the hinge only steers (RULES.ruleJoint solves the geometry).',
+      failure: 'Treating it like a butt hinge: the barrel needs its own deeper mortise, and the LONG leaf goes on the drop leaf.'
+    },
+    quadrant_stay: {
+      key: 'quadrant_stay', label: 'Quadrant hinge with stop', price: 18,
+      fronts: ['inset'], opening: 95, capacityKgPair: 3, countRule: 'pairOnly',
+      bestFor: 'Jewelry and humidor lids — hinge plus built-in 95° stay in one small brass arc.',
+      failure: 'The arc needs a curved mortise in BOTH lid and box wall — rout with the maker’s template, never freehand.'
+    },
+    butler_tray: {
+      key: 'butler_tray', label: 'Butler tray hinge', price: 12,
+      fronts: ['special'], opening: 90, capacityKgPair: 6, countRule: 'pairOnly',
+      bestFor: 'Fold-flat tray tables and gallery-edged trays — leaves lie flat open and latch upright at 90°.',
+      failure: 'Spring detents chew soft woods — hard shims under the leaves in pine and poplar trays.'
+    },
+    torsion_lid: {
+      key: 'torsion_lid', label: 'Torsion lid-stay hinge', price: 22,
+      fronts: ['special'], opening: 90, torqueClassesNm: [1.1, 2.3, 3.4, 4.5, 6.8], countRule: 'lidTorque',
+      bestFor: 'Toy chests and bench lids — hinge and damped stay in one; the lid hangs wherever you leave it. The kidSafe answer.',
+      failure: 'Under-torqued pairs let a heavy lid drift down — size by computed lid torque (RULES.lidStay), never by eye.'
+    },
+    strap_t: {
+      key: 'strap_t', label: 'Strap / T-hinge', price: 8,
+      fronts: ['overlay'], opening: 180, sizes: [150, 200, 300], capacityKgPair: 20, countRule: 'doorHinges', exterior: true,
+      bestFor: 'Outdoor chests, gates, and rustic cabinet doors — long leaves spread load across weak or narrow stiles.',
+      failure: 'Plain steel streaks tannin-rich woods (oak, cedar) black in the rain — go stainless or galvanized outdoors.'
+    }
+  };
+
+  /* ---------------- §2 Pulls (LIVE on drawer fronts today) ------------
+   * ctc: the industry center-to-center series — pick from it, never
+   * invent a spacing (a spacing outside the series is a pull nobody can
+   * ever replace). Boring: 5 mm through-holes, M4 machine screws,
+   * screw length = front thickness + 6. */
+  const PULL_CTC_SERIES = [64, 76, 96, 128, 160, 192, 224, 256, 305, 457];
+
+  const PULLS = {
+    bar_pull: {
+      key: 'bar_pull', label: 'Bar pull', price: 6, holes: 2, boreDia: 5,
+      bestFor: 'The modern default — length ≈ ⅓ of the front width, snapped into the CTC series.',
+      failure: 'A spacing outside the 64…457 series is a pull nobody can ever replace — snap to the series.'
+    },
+    knob_round: {
+      key: 'knob_round', label: 'Round knob', price: 3, holes: 1, boreDia: 5, diaRange: [25, 45],
+      bestFor: 'Doors and small drawers — the default when a pull would crowd the front.',
+      failure: 'One loose knob spins forever — a drop of thread-locker on the M4, never glue.'
+    },
+    knob_turned_wood: {
+      key: 'knob_turned_wood', label: 'Turned wood knob', price: 2, holes: 1, boreDia: 12,
+      bestFor: 'Shaker and country work — the knob the piece would grow on its own (TRADITIONAL.turned_knob to make it).',
+      failure: 'The {12} tenon wedges from inside, wedge ACROSS the front’s grain — with it is a splitting jig.'
+    },
+    cup_pull: {
+      key: 'cup_pull', label: 'Cup (bin) pull', price: 5, holes: 2, boreDia: 5, ctc: [76, 96], drawersOnly: true,
+      bestFor: 'Drawers only — fingers curl up under the cup; the classic on apothecary and Shaker banks.',
+      failure: 'A cup pull on a door is upside-down half the time — drawers only.'
+    },
+    ring_pull: {
+      key: 'ring_pull', label: 'Ring / drop pull', price: 7, holes: 1, boreDia: 5,
+      bestFor: 'Campaign and period pieces — folds flat so nothing snags.',
+      failure: 'Backplate screws want pilot holes in hardwood — brass screws shear like cheese.'
+    },
+    edge_pull: {
+      key: 'edge_pull', label: 'Edge pull', price: 8, holes: 0,
+      bestFor: 'Handleless modern fronts — a finger ledge of aluminum let into the top edge; pairs with push-to-open.',
+      failure: 'Screws enter the front’s top EDGE — pre-drill, this is end grain territory.'
+    },
+    flush_recessed: {
+      key: 'flush_recessed', label: 'Recessed flush pull', price: 9, holes: 0,
+      bestFor: 'Sliding doors and anything that passes another front — nothing proud of the face. Mandatory on bypass doors.',
+      failure: 'The router mortise wants a template — freehand walls show through the finish forever.'
+    },
+    appliance_pull: {
+      key: 'appliance_pull', label: 'Appliance pull', price: 22, holes: 2, boreDia: 5, ctc: [305, 457],
+      bestFor: 'Big heavy fronts — pantry doors, refrigerator panels, workshop drawer banks.',
+      failure: 'Past ~{500} of pull, through-bolt it — wood screws in 5 mm bores work loose under body weight.'
+    },
+    leather_pull: {
+      key: 'leather_pull', label: 'Leather strap pull', price: 4, holes: 2,
+      bestFor: 'Warm, quiet, and shop-makeable — folds flat, never rattles (TRADITIONAL.leather_work).',
+      failure: 'Finish washers or the screw heads saw the strap through in a year.'
+    },
+    none_touch: {
+      key: 'none_touch', label: 'No hardware (push-to-open)', price: 6, holes: 0,
+      bestFor: 'Handleless fronts via a magnetic touch latch — press to pop open.',
+      failure: 'Needs a 2 to 3 mm front gap and a light front — past ~4 kg the pop-out spring loses.'
+    }
+  };
+
+  /* ---------------- §3 Drawer slides (LIVE) --------------------------- */
+  const SLIDES = {
+    euro_roller: {
+      key: 'euro_roller', label: 'Euro roller slides (pair)', price: 6, capacityKg: 22, extension: 0.75, softClose: false, sideClearMM: 12.7,
+      bestFor: 'Utility and paint-grade drawers — cheap, forgiving of sloppy openings, self-closing bump at the end.',
+      failure: 'Plastic wheels flat-spot under heavy static loads — keep them out of tool and dish drawers.'
+    },
+    side_bb_34: {
+      key: 'side_bb_34', label: 'Side-mount ball-bearing slides (pair)', price: 14, capacityKg: 34, extension: 1.0, softClose: false, sideClearMM: 12.7,
+      bestFor: 'The default — full extension, 75 lb class, tolerant of ±0.5 mm.',
+      failure: 'Exactly {12.7} per side or it binds — 12.5 is not 12.7 (the audit already knows).'
+    },
+    side_bb_45: {
+      key: 'side_bb_45', label: 'HD side-mount ball-bearing, soft-close (pair)', price: 22, capacityKg: 45, extension: 1.0, softClose: true, sideClearMM: 12.7,
+      bestFor: 'Pot drawers, file drawers, shop banks — the 100 lb class with a damper.',
+      failure: 'Wide drawers rack the slides before they overload them — past {750} wide, geometry is the limit, not capacity.'
+    },
+    undermount_45: {
+      key: 'undermount_45', label: 'Undermount soft-close slides (pair)', price: 30, capacityKg: 45, extension: 1.0, softClose: true,
+      clearances: { widthTotal: 27, heightMin: 19, bottomRecess: 12.7, bottomT: 12, backNotch: true },
+      bestFor: 'Invisible running gear and full interior width — the fine-furniture and kitchen standard. The app builds the box to the slide.',
+      failure: 'They forgive nothing: box width = opening − {27}, depth = slide length exactly, square within 0.5 mm.'
+    },
+    heavy_duty_100: {
+      key: 'heavy_duty_100', label: 'Heavy-duty locking slides (pair)', price: 45, capacityKg: 100, extension: 1.0, softClose: false, sideClearMM: 12.7,
+      bestFor: 'Workbench and vehicle drawers — lock-in/lock-out detents.',
+      failure: 'The case, not the slide, fails first — {100} kg cantilevered wants screws into solid wood or through-bolts.'
+    }
+  };
+
+  /* ---------------- §4 Lift & stay hardware (READY: awaits lids) ------ */
+  const LIFTS = {
+    gas_strut: {
+      key: 'gas_strut', label: 'Gas strut', price: 9, forceClassesN: [50, 80, 100, 120, 150, 200], countRule: 'gasStrut',
+      geometry: { strutLen: '≈ 0.6 × lid depth', stroke: '≈ 0.55 × extended length', mountFromHinge: '≈ 0.2 × lid depth' },
+      bestFor: 'Top-opening chests, window-seat lids, lift-up flaps — constant assist, holds open at full extension.',
+      failure: 'Oversized launches the lid; undersized won’t hold — size by the moment balance (RULES.gasStrut), buy adjustable when unsure.'
+    },
+    lid_stay_soft: {
+      key: 'lid_stay_soft', label: 'Soft-down lid stay', price: 12, torqueClassesNm: [1.1, 2.3, 3.4, 4.5, 6.8], countRule: 'lidTorque',
+      bestFor: 'Chest and toy-box lids — friction/damper arm that lowers the lid gently and holds any angle.',
+      failure: 'Rated torque is PER STAY — a wide heavy lid needs one each end, and the pair’s sum must clear the computed torque with 25% margin.'
+    },
+    flap_lift_up: {
+      key: 'flap_lift_up', label: 'Lift-up flap fitting (Aventos-class)', price: 60, countRule: 'powerFactor',
+      variants: { HK: 'single flap swings up', HF: 'bi-fold, tall openings', HL: 'flap rises parallel', HS: 'up-and-over the top' },
+      bestFor: 'Overhead doors that get out of the way — the app prints the power factor (kg × mm) on the BOM so you order the right mechanism.',
+      failure: 'Bought by looks instead of power factor — the arms either can’t lift the door or slam it skyward.'
+    },
+    fall_flap_stay: {
+      key: 'fall_flap_stay', label: 'Fall-flap (drop-front) stay', price: 10, countRule: 'pairOnly',
+      bestFor: 'Secretary desks and bar cabinets — the flap drops to horizontal and the stays carry writing loads.',
+      failure: 'Stays support, hinges locate: the flap ALSO needs a continuous or 3-hinge bottom edge, or it twists.'
+    },
+    tv_desk_lift: {
+      key: 'tv_desk_lift', label: 'Lifting column (TV / sit-stand)', price: 180, capacityKg: 60,
+      bestFor: 'Motorized TV cabinets and sit-stand desks — a purchased column; the app supplies the enclosure math.',
+      failure: 'The cabinet must brace against the lift’s racking moment at full height — cross-panel or steel angle, per the racking score.'
+    }
+  };
+
+  /* ---------------- §5 Catches, locks, shelf, table/bed, wall, feet --- */
+  const CATCHES = {
+    magnetic: { key: 'magnetic', label: 'Magnetic catch', price: 1.5, holdKg: 3, bestFor: 'The default door keeper — surface-mounts anywhere, strike plate on the door.' },
+    rare_earth_cup: { key: 'rare_earth_cup', label: '{10} rare-earth magnet + cup + washer', price: 1.2, holdKg: 4, bestFor: 'Shop-fit invisible catch — magnet in a {10} bore in the case, washer or second magnet in the door.' },
+    ball_catch: { key: 'ball_catch', label: '{8} ball catch', price: 2, holdKg: 3, bestFor: 'Inset doors on fine work — bores into the door edge, strike in the case; invisible when open.' },
+    roller_catch: { key: 'roller_catch', label: 'Roller catch', price: 2, holdKg: 4, bestFor: 'Bigger doors and slightly out-of-true cases — the forgiving one.' },
+    touch_latch: {
+      key: 'touch_latch', label: 'Magnetic touch latch (push-to-open)', price: 6, holdKg: 2,
+      bestFor: 'Handleless fronts — press to pop open. Needs a 2 to 3 mm gap.',
+      failure: 'On tall or heavy fronts the pop-out spring loses — keep to fronts under ~4 kg.'
+    },
+    elbow_catch: { key: 'elbow_catch', label: 'Elbow catch', price: 2.5, holdKg: 5, bestFor: 'The inactive half of a door pair — hooks the fixed door to the case behind the active one.' },
+    hook_eye: { key: 'hook_eye', label: 'Hook and eye', price: 1, holdKg: 5, bestFor: 'Rustic and utility latching, lids and gates — honest hardware in plain sight.' },
+    bullet_catch: { key: 'bullet_catch', label: '{6} bullet catch', price: 1.5, holdKg: 1.5, bestFor: 'Small box lids and light doors — a spring pip in a drilled hole, nearly invisible.' }
+  };
+
+  const LOCKS = {
+    half_mortise: {
+      key: 'half_mortise', label: 'Half-mortise chest/drawer lock', price: 14,
+      bestFor: 'Chests, drawers, and doors on period work — the lock body hides in the wood, only the keyhole shows.',
+      failure: 'Cutting the mortise after assembly, upside down, in the dark — fit the lock to the drawer front BEFORE the box goes together.'
+    },
+    cam_lock: {
+      key: 'cam_lock', label: '{19} cam lock', price: 4,
+      bestFor: 'Utility security — office drawers, shop cabinets, mailbox-grade privacy.',
+      failure: 'It is privacy, not security — say so on the plan and nobody is disappointed.'
+    }
+  };
+
+  /* The 32 mm system, formalized on the existing 5 mm pin: rows at 32
+   * pitch, 37 from the edges, 9 deep — the same 37 the cup-hinge plate
+   * wants, because the 32 mm system is one system. */
+  const SHELF_SUPPORT = {
+    pin_5: { key: 'pin_5', label: '5 mm shelf pin', price: 0.25, holdKgEach: 10, boring: { dia: 5, depth: 9, pitch: 32, setback: 37 },
+      bestFor: 'The 32 mm system — rows of {5} holes at {32} pitch, {37} from the edges; adjustable forever.' },
+    sawtooth: { key: 'sawtooth', label: 'Sawtooth supports (shop-made)', price: 0,
+      bestFor: 'The traditional adjustable system — see TRADITIONAL.sawtooth_supports; zero hardware, period-correct.' },
+    standards: { key: 'standards', label: 'Steel shelf standards + clips', price: 4, holdKgEach: 20,
+      bestFor: 'Utility shelving and closets — surface-mounted or let into {16} grooves; fast and strong.',
+      failure: 'Standards let into grooves must all index from the SAME end of the case or the shelves rock forever.' }
+  };
+
+  const TABLE_BED = {
+    z_clip: { key: 'z_clip', label: 'Z-clip (tabletop fastener)', price: 0.5,
+      bestFor: 'Solid-top attachment that moves — clip screws to the top, tongue rides a {4} kerf in the apron; slot travel = the computed movement.' },
+    corner_bracket: { key: 'corner_bracket', label: 'Steel corner bracket + M8 hanger bolt', price: 6,
+      bestFor: 'Knockdown tables — legs come off with a wing nut; honestly rated below a mortise and tenon, but this one unbolts.',
+      failure: 'The bracket needs kerfs in BOTH apron ends and a hanger bolt dead on the leg’s diagonal — 45° or it racks.' },
+    equalizer_slides: { key: 'equalizer_slides', label: 'Table extension slides (pair)', price: 55, sizes: [660, 810, 970, 1070], crownMM: 3,
+      bestFor: 'Extension dining tables — geared halves open evenly; built with a ~{3} crown that flattens under the leaves’ weight.',
+      failure: 'Mounted dead flat they sag open — the crown bows UP at install, by design.' },
+    table_pin: { key: 'table_pin', label: 'Tapered table alignment pin', price: 1.2,
+      bestFor: 'Leaf-to-leaf registration — brass pin one edge, socket the other, two per joint minimum.' },
+    draw_catch: { key: 'draw_catch', label: 'Table draw catch', price: 3.5,
+      bestFor: 'Pulls extension halves tight so the seam disappears — one per leaf joint, centered.' },
+    keyhole_bed: { key: 'keyhole_bed', label: 'Keyhole bed-rail fitting (pair)', price: 9,
+      bestFor: 'The other knockdown bed answer — hooks drop over lag-screwed pins in the post; silent, tool-free.',
+      failure: 'Pins must land in the post’s center third — edge-close pins split the post the first time someone sits hard.' }
+  };
+
+  const WALL_HANG = {
+    keyhole_plate: { key: 'keyhole_plate', label: 'Keyhole plate', price: 0.8, holdKgEach: 10,
+      bestFor: 'Small shelves, mirrors, coat racks — let flush into the back, opening DOWN, two per piece, level, on studs/anchors.' },
+    flush_mount: { key: 'flush_mount', label: 'Flush-mount interlock (pair)', price: 2.5, holdKgPair: 30,
+      bestFor: 'Heavier wall cabinets — two interlocking plates; lifts off like a cleat.' },
+    cleat_ref: { key: 'cleat_ref', label: 'French cleat', price: 0,
+      bestFor: 'Already in JOINERY (french_cleat) — the capacity king; every cleat lands on studs, per the existing wall-anchor rule.' }
+  };
+
+  const FEET_MISC = {
+    rubber_foot_food: { key: 'rubber_foot_food', label: '{19} rubber foot + stainless screw', price: 0.6,
+      bestFor: 'Cutting boards and butcher blocks — air under the board so it dries flat; screws enter from BELOW only (food-zone rule).' },
+    felt_pad: { key: 'felt_pad', label: 'Felt pad', price: 0.15,
+      bestFor: 'Anything that lives on a wood floor. One per corner. The cheapest insurance in the catalog.' },
+    glide_nail: { key: 'glide_nail', label: 'Nail-on glide', price: 0.3,
+      bestFor: 'Chairs and stools on hard floors — takes the scrape out of the daily drag.' },
+    grommet_60: { key: 'grommet_60', label: '{60} desk grommet', price: 2.5, boring: { dia: 60 },
+      bestFor: 'Desks and media consoles — the cable pass-through that keeps the back panel honest. Forstner or hole saw, back edge of the top.' }
+  };
+
+  /* ---------------- §6 The traditional layer (REFERENCE + LIVE rules) -
+   * Shop-made replacements for everything above, each with real setout
+   * numbers. Where movement matters they lean on BB.K.movementMM — the
+   * drawer-fitting clearance is computed per species and climate, which
+   * is exactly how a craftsman fits drawers, done by code. */
+  const TRADITIONAL = {
+    wooden_runners: {
+      key: 'wooden_runners', label: 'Wooden runners, kickers & guides', replaces: 'drawer slides', level: 'intermediate',
+      setout: [
+        'Runner: {19} × {32} rail the drawer side rides on, glued/screwed level in the case.',
+        'Kicker: the same rail ABOVE the drawer so it cannot tip open.',
+        'Side clearance {1} per side; vertical clearance = drawer height × ct × ΔMC (computed per species and climate) + {1} floor.',
+        'Wax the meeting surfaces with paraffin; quartersawn sides move half as much.'
+      ],
+      bestFor: 'Every drawer in furniture history before 1950 — silent, serviceable, and free.',
+      failure: 'Fitting drawers tight in July or loose in January — the clearance is a computed number, not a feel.'
+    },
+    side_hung: {
+      key: 'side_hung', label: 'Side-hung drawer', replaces: 'drawer slides', level: 'advanced',
+      setout: ['Groove in the drawer side: {6} deep × {13} tall, at mid-height.',
+        'Hardwood runner strip {12} × {12} screwed + glued to the case side, {0.5} vertical play.',
+        'Groove stops {19} short of the drawer front so it never shows.'],
+      bestFor: 'Cases with thin sides or no front rails — the drawer hangs on its own grooves; classic in Krenov-school work.',
+      failure: 'Runner and groove cut from different reference faces — index both off the case bottom or the drawer smiles.'
+    },
+    center_runner: {
+      key: 'center_runner', label: 'Center runner & slip', replaces: 'drawer slides', level: 'intermediate',
+      setout: ['{19} × {32} rail under the drawer centerline; grooved guide block on the drawer bottom rides it.',
+        'Front edge flush with the rail below the opening; wax.'],
+      bestFor: 'Small and mid drawers — one rail keeps the box tracking dead straight with almost no fitting.',
+      failure: 'Skipping the kicker above — a center-run drawer noses down hard when pulled far.'
+    },
+    sliding_doors_grooved: {
+      key: 'sliding_doors_grooved', label: 'Grooved sliding doors', replaces: 'hinges + slides', level: 'intermediate',
+      setout: ['Top groove depth = 2 × bottom groove depth + {1}: typically {11} top, {5} bottom in {19} case stock.',
+        'Door height = opening + bottom depth + {1} — lift into the top groove, drop into the bottom.',
+        'Groove width = door thickness + {1}; two tracks {3} apart; doors overlap {25} to {40}.',
+        'Pulls must be flush (flush_recessed) — anything proud collides with the passing door.'],
+      bestFor: 'Bookcase and record-cabinet doors, Japanese-style cases — no swing space needed, no hardware bought.',
+      failure: 'Equal top and bottom grooves — the door that cannot lift in cannot ever come out.'
+    },
+    tambour: {
+      key: 'tambour', label: 'Tambour door', replaces: 'lift/roll-up hardware', level: 'advanced',
+      setout: ['Slats ~{9} thick × {20} to {40} face, backs glued to canvas (end tongues left dry).',
+        'Track groove = slat tongue + {1} wide × {11} deep, routed in both case sides from ONE template.',
+        'Minimum track radius ≥ 2.5 × slat face width. Lead slat is a stiffer lift rail with the pull.',
+        'Wax the track; finish slats BEFORE gluing the canvas.'],
+      bestFor: 'Roll-tops, appliance garages, media cabinets — the door disappears into the case.',
+      failure: 'A curve tighter than the slats can turn — the radius rule is the whole game; template both sides identically.'
+    },
+    wooden_knuckle_hinge: {
+      key: 'wooden_knuckle_hinge', label: 'Wooden knuckle (finger) hinge', replaces: 'butt/piano hinges', level: 'advanced',
+      setout: ['Interlocking fingers on both parts, odd count (3 or 5), {0.5} side play.',
+        'Barrel diameter ≈ stock thickness; {6} brass rod pin through all knuckles.',
+        'Round the knuckles to the pin center or the joint binds at 90°. Grain runs ALONG the barrel.'],
+      bestFor: 'Screens, box lids, fold-flat stands — furniture with no metal anywhere.',
+      failure: 'Short grain across a knuckle — one dropped lid shears it; orient grain along the barrel, always.'
+    },
+    pivot_pin_hinge: {
+      key: 'pivot_pin_hinge', label: 'Pivot-pin door', replaces: 'butt/knife hinges', level: 'intermediate',
+      setout: ['{6} to {8} brass or steel pin into the door’s top and bottom edges, into case bores.',
+        'Pin axis set in from the hinge edge ≥ door t/2 + {2}; round the hinge edge to radius = axis-to-back-edge distance so it clears in swing.',
+        'UHMW or brass washer under the bottom pin — the door floats on it.'],
+      bestFor: 'Inset doors and mid-century pivots with two dots of brass as the only hardware.',
+      failure: 'Square hinge edge + offset pin = a door that jams at 30° — the edge radius is not optional.'
+    },
+    rule_joint_ref: {
+      key: 'rule_joint_ref', label: 'Rule joint (drop leaf)', replaces: 'plain hinged leaf', level: 'advanced',
+      setout: ['Roundover on the top, matching cove on the leaf; fillet ≥ {5}.',
+        'Pin center at the roundover arc center, nudged ~{1} toward the edge; pin sits ~{3} above the underside (half the barrel).',
+        'radius = top thickness − fillet − pin height (RULES.ruleJoint solves it).',
+        'Hinges {75} to {100} from each end, then every ~{250}; install with a veneer-thickness spacer in the joint.'],
+      bestFor: 'Drop-leaf tables — the raised leaf bears on the wood along its whole length, not on screws.',
+      failure: 'Pin below the arc center: the leaf binds going down and gaps going up. The geometry is the joint.'
+    },
+    knuckle_swing_arm: {
+      key: 'knuckle_swing_arm', label: 'Knuckle-joint swing arm', replaces: 'metal leaf supports', level: 'advanced',
+      setout: ['A wooden knuckle hinge built into the apron: the outer section swings 90° out under the raised leaf.',
+        'Stop shoulder at 90°; arm reaches ≥ 40% of the leaf width.'],
+      bestFor: 'Period drop-leaf tables — the support IS the apron; nothing to buy, nothing to see.',
+      failure: 'An arm that stops short of 40% lets the leaf lever the joint apart — reach matters more than strength.'
+    },
+    sawtooth_supports: {
+      key: 'sawtooth_supports', label: 'Sawtooth shelf supports', replaces: 'shelf pins/standards', level: 'intermediate',
+      setout: ['Four vertical strips with matching 45° sawtooth notches at {25} pitch, cut in one gang.',
+        'Shelf-end cleats drop into the teeth; shelf length = opening − 2 × strip thickness.'],
+      bestFor: 'Adjustable shelving in traditional casework — infinitely serviceable, period-correct, free.',
+      failure: 'Strips cut in separate setups never line up — gang-cut all four or the shelves rock.'
+    },
+    turn_button: {
+      key: 'turn_button', label: 'Turn button (spinner)', replaces: 'catches', level: 'beginner',
+      setout: ['Hardwood button ~{19} × {50}, pivot screw + washer through the center, {1} clearance to the door face.'],
+      bestFor: 'Cupboard doors, dust panels, jig storage — the catch a child understands and nobody breaks.',
+      failure: 'Overtightening the pivot — it should spin with two fingers and stay put with one.'
+    },
+    wooden_spring_catch: {
+      key: 'wooden_spring_catch', label: 'Wooden spring catch', replaces: 'ball/roller catches', level: 'advanced',
+      setout: ['Thin springy strip (ash/hickory) with a pip that snaps into a strike notch; feathered to ~{3} at the flex.'],
+      bestFor: 'All-wood boxes and cabinets — a soft click with zero metal.',
+      failure: 'A pip too proud doubles as a lock — {1.5} engagement is plenty.'
+    },
+    turned_knob: {
+      key: 'turned_knob', label: 'Turned/shop-made knob', replaces: 'bought knobs', level: 'intermediate',
+      setout: ['{12} tenon, glued into a {12} bore and wedged from inside the front, wedge across the front’s grain.'],
+      bestFor: 'Knobs from the project’s own offcuts — grain-matched hardware money cannot buy.',
+      failure: 'Wedge aligned WITH the front’s grain — that’s a splitting jig, not a knob.'
+    },
+    carved_scoop: {
+      key: 'carved_scoop', label: 'Carved finger scoop', replaces: 'pulls', level: 'intermediate',
+      setout: ['Scooped recess ~{100} × {25}, max depth = HALF the front thickness, centered or in the top rail zone.'],
+      bestFor: 'Sculpted modern fronts — the pull is subtraction, not addition.',
+      failure: 'Scooping past half the thickness telegraphs a shadow through — or a hole.'
+    },
+    cutout_handle: {
+      key: 'cutout_handle', label: 'Cutout handhold', replaces: 'pulls', level: 'beginner',
+      setout: ['{100} × {30} slot, {15} corner radii, ≥ {40} from every edge; ease both faces heavily.'],
+      bestFor: 'Shop furniture, crates, step stools, kids’ pieces — grab it anywhere with gloves on.',
+      failure: 'A cutout near an edge is a crack starter — the {40} margin is structural, not aesthetic.'
+    },
+    finger_groove: {
+      key: 'finger_groove', label: 'Finger groove (J-pull)', replaces: 'edge pulls', level: 'intermediate',
+      setout: ['{15} cove bit under the drawer lip or along the door edge, full width, BEFORE assembly.'],
+      bestFor: 'Handleless fronts in solid wood — the routed shadow line IS the handle.',
+      failure: 'Routing after assembly — the climb-cut at the stile ends tears out; machine the parts, then build.'
+    },
+    leather_work: {
+      key: 'leather_work', label: 'Leather pulls & hinges', replaces: 'pulls / light hinges', level: 'beginner',
+      setout: ['Pulls: {75} × {20} strap folded, two #8 screws + finish washers.',
+        'Hinges: {40} wide straps, three screws per leaf — LIGHT lids only (camp boxes, toy crates).'],
+      bestFor: 'Warm, silent, cheap, and replaceable in ten minutes forever.',
+      failure: 'Leather hinges on a heavy lid stretch into a sad smile — hardware for weight, leather for charm.'
+    },
+    cord_stay: {
+      key: 'cord_stay', label: 'Cord / chain lid stop', replaces: 'lid stays (NOT for toy chests)', level: 'beginner',
+      setout: ['Anchor at distance d down the box side and d out the lid; cord length L = 2 × d × sin(max angle ÷ 2).',
+        'Stainless screws + washers; leave {10} slack out of the pinch line.'],
+      bestFor: 'Blanket chests and site boxes — the honest stop that costs a shoelace.',
+      failure: 'It stops, it does not SUPPORT — a falling lid still falls. NEVER the answer on a toy chest (GATES.kidSafe).'
+    }
+  };
+
+  /* ---------------- §7 Selection rules — pure functions ---------------
+   * Deterministic, provenance-ready arithmetic. The model never picks
+   * hardware quantities or ratings; code does. Weights come from
+   * geometry × SG, which the app already owns. */
+  const GRAV = 9.81;
+
+  /* Panel weight (kg) from code-owned dimensions and species SG. */
+  function panelWeightKg(wMM, hMM, tMM, speciesKey) {
+    const sp = BB.K.WOOD_SPECIES[speciesKey] || BB.K.WOOD_SPECIES.pine;
+    return wMM * hMM * tMM * 1e-9 * sp.sg * 1000;
+  }
+
+  /* Door hinge count = max(height band, weight rule).
+   * Height bands: ≤900 → 2, ≤1600 → 3, ≤2000 → 4, else 5.
+   * Weight: ceil(kg / 3.5), floor 2 (Blum-class chart floor). */
+  function doorHingeCount(doorHMM, doorKg) {
+    const band = doorHMM <= 900 ? 2 : doorHMM <= 1600 ? 3 : doorHMM <= 2000 ? 4 : 5;
+    return Math.max(band, Math.max(2, Math.ceil(doorKg / 3.5)));
+  }
+
+  /* Cup-hinge boring distance solved FROM the designed overlay (straight
+   * arm, 0-plate anchor: overlay ≈ TB + 11 − plateHeight). Returns the
+   * clamped TB and whether the design needs a different plate/crank
+   * instead of a wilder bore. */
+  function cupBoring(overlayMM, plateHeightMM) {
+    const b = HINGES.euro_cup.boring;
+    const raw = overlayMM - 11 + (plateHeightMM || 0);
+    const tb = Math.min(b.tbMax, Math.max(b.tbMin, Math.round(raw * 10) / 10));
+    return { tbMM: tb, inRange: raw >= b.tbMin && raw <= b.tbMax, cupDia: b.cupDia, cupDepth: b.cupDepth, plateSetback: b.plateSetback };
+  }
+
+  /* Gas strut moment balance: F_total = 1.3 × W·g × (Lcg / d),
+   * d defaulting to 0.2 × lid depth and Lcg to half the depth — which
+   * collapses to ≈ 3.25 × lid weight at defaults. Split across two
+   * struts on lids wider than 600; snap UP into the force classes. */
+  function gasStrut(lidKg, lidDepthMM, lidWidthMM, opts) {
+    opts = opts || {};
+    const d = opts.mountMM || 0.2 * lidDepthMM;
+    const lcg = opts.cgMM || lidDepthMM / 2;
+    const n = lidWidthMM > 600 ? 2 : 1;
+    const perStrut = 1.3 * lidKg * GRAV * (lcg / d) / n;
+    const cls = LIFTS.gas_strut.forceClassesN.find(c => c >= perStrut) ||
+      LIFTS.gas_strut.forceClassesN[LIFTS.gas_strut.forceClassesN.length - 1];
+    return { count: n, requiredNEach: Math.round(perStrut * 10) / 10, classN: cls, over: perStrut > cls };
+  }
+
+  /* Lid stay torque: T = W·g × Dcg (N·m); the summed stay rating must
+   * clear it with 25% margin; wide lids take one stay per end. */
+  function lidStay(lidKg, cgDistMM, lidWidthMM) {
+    const T = lidKg * GRAV * (cgDistMM / 1000);
+    const n = lidWidthMM > 600 ? 2 : 1;
+    const perStay = 1.25 * T / n;
+    const cls = LIFTS.lid_stay_soft.torqueClassesNm.find(c => c >= perStay) ||
+      LIFTS.lid_stay_soft.torqueClassesNm[LIFTS.lid_stay_soft.torqueClassesNm.length - 1];
+    return { count: n, requiredNmTotal: Math.round(T * 100) / 100, classNmEach: cls, over: perStay > cls };
+  }
+
+  /* Flap power factor, printed on the BOM for ordering. */
+  const powerFactor = (doorKg, doorHMM) => Math.round(doorKg * doorHMM);
+
+  /* Pull sizing: CTC ≈ frontWidth / 3 snapped DOWN into the series
+   * (floor 64); fronts over 750 take two pulls at the ⅓ and ⅔ points.
+   * Knobs whenever the front is under 300 wide. */
+  function pullSpec(frontWMM, styleKey) {
+    const style = PULLS[styleKey] || PULLS.bar_pull;
+    if (style.holes <= 1 || frontWMM < 300) {
+      return { style: style.holes <= 1 ? style.key : 'knob_round', count: 1, ctcMM: 0, holes: Math.max(1, style.holes <= 1 ? style.holes : 1) };
+    }
+    const series = style.ctc || PULL_CTC_SERIES;
+    const target = frontWMM / 3;
+    let ctc = series[0];
+    for (const c of series) if (c <= target) ctc = c;
+    if (frontWMM > 750) {
+      return { style: style.key, count: 2, ctcMM: Math.max(ctc, 96), holes: 4, note: 'two pulls at the 1/3 and 2/3 points, one shared centerline' };
+    }
+    return { style: style.key, count: 1, ctcMM: ctc, holes: 2 };
+  }
+  const pullScrewLenMM = frontT => Math.round(frontT + 6);
+
+  /* Slide picker: by computed load, ask, and fit. The 34 kg class stays
+   * the default; heavier computed loads climb the family. */
+  function slidePick(loadKg, opts) {
+    opts = opts || {};
+    if (opts.heavyDuty || loadKg > 45) return SLIDES.heavy_duty_100;
+    if (opts.undermount) return SLIDES.undermount_45;
+    if (loadKg > 25 || opts.softClose) return SLIDES.side_bb_45;
+    if (opts.utility && loadKg <= 15) return SLIDES.euro_roller;
+    return SLIDES.side_bb_34;
+  }
+
+  /* Rule joint geometry: radius = top thickness − fillet − pin height;
+   * fillet ≥ 5, pin ≈ 3 above the underside (half the barrel), pin
+   * center nudged 1 mm outboard of the arc center. */
+  function ruleJoint(topTMM, filletMM) {
+    const fillet = Math.max(5, filletMM || 5);
+    const pinH = 3;
+    const r = Math.max(0, topTMM - fillet - pinH);
+    return { radiusMM: r, filletMM: fillet, pinHeightMM: pinH, pinNudgeMM: 1, workable: r >= 6 };
+  }
+
+  /* Wooden-runner drawer fitting: the vertical clearance IS the computed
+   * seasonal movement of the drawer side, plus a 1 mm floor. */
+  function drawerVerticalClearance(drawerHMM, speciesKey, dMC) {
+    const mv = BB.K.movementMM(drawerHMM, speciesKey, 'tangential', dMC);
+    return Math.max(1.5, Math.round((mv + 1) * 10) / 10);
+  }
+
+  /* ---------------- §8 Safety gates (data for validation) -------------
+   * kidSafe is live the day a lid exists; foodZone the day a cutting
+   * surface exists; outdoorHardware is live NOW (species + finish). */
+  const GATES = {
+    kidSafe: {
+      basis: 'ASTM F963 toy-chest lid support, latch, and ventilation provisions',
+      requiredLidSupport: ['torsion_lid', 'lid_stay_soft'],
+      refusedLidSupport: ['cord_stay'],
+      noAutoLatch: true,
+      ventilationMM: 12
+    },
+    foodZone: {
+      basis: 'FDA 21 CFR 175.105 (glue, cured) + food-contact finish rows',
+      noMetalInCuttingZone: true, feetScrewFromBelow: true,
+      glue: 'pva_waterproof', finishes: ['mineral_oil', 'board_butter', 'tung_pure']
+    },
+    outdoorHardware: {
+      finishes: ['stainless', 'brass', 'galvanized'],
+      tannicSpecies: ['red_oak', 'white_oak', 'western_red_cedar', 'hickory'],
+      note: 'Plain steel streaks tannin-rich woods black in the rain.'
+    }
+  };
+
+  /* ---------------- §9 Digest (one generated line, style keys only) --- */
+  function digestLine() {
+    return 'HARDWARE STYLES (quantities/ratings computed by code): pulls={' +
+      Object.keys(PULLS).join(',') + '} runners per RUN enum; slides sized by load.';
+  }
+
+  BB.HW = {
+    HINGES, PULLS, PULL_CTC_SERIES, SLIDES, LIFTS, CATCHES, LOCKS,
+    SHELF_SUPPORT, TABLE_BED, WALL_HANG, FEET_MISC, TRADITIONAL, GATES,
+    panelWeightKg, doorHingeCount, cupBoring, gasStrut, lidStay, powerFactor,
+    pullSpec, pullScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
+    digestLine
   };
 })();
 </script>
@@ -3065,6 +3674,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
+      hardware: { pull: 'bar_pull' },
       drawers: null,
       custom: null
     };
@@ -3156,7 +3766,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     'structure.shelfThickness': 'shelf thickness', 'structure.sideThickness': 'side thickness',
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
-    'finish': 'finish',
+    'finish': 'finish', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
   };
   const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness)/;
@@ -3173,6 +3783,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (K.JOINERY[v]) return K.JOINERY[v].label;
       const f = K.FINISHES.find(x => x.key === v);
       if (f) return f.label;
+      if (BB.HW && BB.HW.PULLS[v]) return BB.HW.PULLS[v].label;
       return String(v).replace(/_/g, ' ');
     }
     return String(v);
@@ -3387,13 +3998,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
 
+    // Hardware style intent (2026 expansion): the AI proposes a pull STYLE;
+    // code owns every count, size, spacing, and bore (BB.HW).
+    s.hardware = s.hardware && typeof s.hardware === 'object' ? s.hardware : {};
+    if (!BB.HW || !BB.HW.PULLS[s.hardware.pull]) s.hardware.pull = 'bar_pull';
+
     // Drawers: only templates with openings support them.
     if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
       const d = s.drawers;
       d.count = clamp(Math.round(num(d.count, 1)), 1, 4);
       d.frontStyle = d.frontStyle === 'overlay' ? 'overlay' : 'inset';
-      d.runner = d.runner === 'wood_runners' ? 'wood_runners' : 'side_mount_slides';
-      if (d.runner === 'wood_runners' && lvl === 'beginner') d.runner = 'side_mount_slides';
+      d.runner = ['wood_runners', 'undermount_slides'].includes(d.runner) ? d.runner : 'side_mount_slides';
+      // Fussier running gear is gated past beginner: wood runners need
+      // fitting, undermounts forgive nothing (box built to the slide).
+      if (d.runner !== 'side_mount_slides' && lvl === 'beginner') d.runner = 'side_mount_slides';
       // Reduce count until every opening clears the 80 mm minimum (correction
       // owns geometry; validation only reports what remains).
       while (d.count > 1 && BB.Parametric && BB.Parametric.openingHeightFor(s) < 80) d.count--;
@@ -3576,6 +4194,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    // Outdoor hardware truth (2026 hardware expansion): an exterior finish
+    // on a tannin-rich species means plain-steel hardware streaks black.
+    const finRow = K.FINISHES.find(f => f.key === spec.finish);
+    const spRow = K.WOOD_SPECIES[spec.wood.species];
+    if (finRow && finRow.exterior && BB.HW && spRow &&
+      (spRow.outdoor || BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key))) {
+      advisories.push({
+        id: 'hw_outdoor',
+        text: `Outdoor duty: every screw, hinge, and fitting should be stainless, brass, or galvanized — plain steel streaks tannin-rich ${spRow.label.toLowerCase()} black in the rain.`
+      });
+    }
+    // Push-to-open needs a gap to push through: overlay fronts sit proud
+    // and touch — inset fronts already carry the 2 mm reveal.
+    if (spec.hardware && spec.hardware.pull === 'none_touch' && spec.drawers && spec.drawers.frontStyle === 'overlay') {
+      advisories.push({
+        id: 'hw_touch_gap',
+        text: `Push-to-open needs a ${fmt(2)} to ${fmt(3)} gap to travel through — use inset fronts with a touch latch, or add bumper spacers behind overlay fronts.`
+      });
+    }
+
     // Wide solid top in a high-movement species.
     const sp = K.WOOD_SPECIES[spec.wood.species];
     const hasWideTop = ['table', 'desk', 'bench', 'nightstand', 'cabinet'].includes(t) && o.depth >= K.WIDE_TOP_MM;
@@ -3603,7 +4241,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (model && model.drawers) {
       for (const d of model.drawers) {
-        if (d.runner === 'side_mount_slides' && !d.slideLen) {
+        if ((d.runner === 'side_mount_slides' || d.runner === 'undermount_slides') && !d.slideLen) {
           errors.push({ id: 'dr_slide_' + d.index, text: `Drawer ${d.index + 1}'s interior is too shallow for the shortest ${fmt(250)} slide. Deepen the piece or switch to wood runners.` });
         } else if (d.box.d < 120) {
           errors.push({ id: 'dr_depth_' + d.index, text: `Drawer ${d.index + 1} would only be ${fmt(d.box.d)} deep — the interior doesn't leave a workable drawer. Deepen the piece or remove the drawers.` });
@@ -3812,6 +4450,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Drawer boxes: every dimension derives from the opening (§5 math).
     openings.forEach((op, i) => {
       const runner = d.runner;
+      const under = runner === 'undermount_slides';
       let boxW, boxH, boxD, slideLen = null;
       if (runner === 'side_mount_slides') {
         // Ball-bearing slides are 1/2 in (12.7 mm) per side — 12.5 binds
@@ -3823,6 +4462,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         for (const L of K.SLIDE_LENGTHS) if (L <= maxLen) slideLen = L;
         // No slide fits: the box still must not punch through the back —
         // validation reports the too-shallow interior; geometry stays honest.
+        boxD = slideLen || Math.max(10, Math.floor(maxLen / 10) * 10);
+      } else if (under) {
+        // Undermount regime (2026 hardware expansion): the box is BUILT TO
+        // THE SLIDE — width = opening − 27, 19 mm height clearance, depth
+        // exactly the slide length, captured bottom recessed 12.7.
+        boxW = op.w - 27;
+        boxH = op.h - 19;
+        const maxLen = op.interiorDepth - 25;
+        slideLen = null;
+        for (const L of K.SLIDE_LENGTHS) if (L <= maxLen) slideLen = L;
         boxD = slideLen || Math.max(10, Math.floor(maxLen / 10) * 10);
       } else {
         boxW = op.w - 4;                        // fitted wood runners
@@ -3841,17 +4490,21 @@ var BB = globalThis.BB = globalThis.BB || {};
       const px = op.x;
 
       const boxJoint = spec.joinery.box;
-      const slideIn = boxJoint === 'butt_screws' || boxJoint === 'pocket_screws';
+      // Undermount boxes always capture their bottom (the slide hooks it).
+      const slideIn = !under && (boxJoint === 'butt_screws' || boxJoint === 'pocket_screws');
       const dp = [];
       dp.push(part(`${prefix}dr${i + 1}_side_l`, `drbox_side_${boxD}x${boxH}`, 'drawer_side', `Drawer ${i + 1} side`, boxT, boxH, boxD, px - boxW / 2 + boxT / 2, cy, cz, { material: boxMat, group: g }));
       dp.push(part(`${prefix}dr${i + 1}_side_r`, `drbox_side_${boxD}x${boxH}`, 'drawer_side', `Drawer ${i + 1} side`, boxT, boxH, boxD, px + boxW / 2 - boxT / 2, cy, cz, { material: boxMat, group: g }));
       dp.push(part(`${prefix}dr${i + 1}_boxfront`, `drbox_front_${boxW}x${boxH}`, 'drawer_boxfront', `Drawer ${i + 1} box front`, boxW - 2 * boxT, boxH, boxT, px, cy, boxFrontZ - boxT / 2, { material: boxMat, group: g }));
       const backH = slideIn ? boxH - 16 : boxH; // cut down so the bottom slides in from the rear
       dp.push(part(`${prefix}dr${i + 1}_boxback`, `drbox_back_${boxW}x${backH}`, 'drawer_boxback', `Drawer ${i + 1} box back`, boxW - 2 * boxT, backH, boxT, px, boxBottomY + (slideIn ? backH / 2 + 16 : boxH / 2), boxFrontZ - boxD + boxT / 2, { material: boxMat, group: g }));
-      // 6 mm bottom in a 6 mm groove, 10 mm up from the bottom edge.
+      // Bottom: 6 mm in a 6 mm groove 10 mm up — except undermount, whose
+      // 12 mm bottom sits recessed 12.7 so the slide arms tuck under it.
+      const botT = under ? 12 : 6;
+      const botY = under ? boxBottomY + 12.7 + botT / 2 : boxBottomY + 13;
       const botW = boxW - 2 * boxT + 10;
       const botD = slideIn ? boxD - boxT - (boxT - 6) : boxD - 2 * boxT + 10;
-      dp.push(part(`${prefix}dr${i + 1}_bottom`, `drbox_bot_${Math.round(botW)}x${Math.round(botD)}`, 'drawer_bottom', `Drawer ${i + 1} bottom`, botW, 6, botD, px, boxBottomY + 13, cz, { material: boxMat, group: g }));
+      dp.push(part(`${prefix}dr${i + 1}_bottom`, `drbox_bot_${Math.round(botW)}x${Math.round(botD)}`, 'drawer_bottom', `Drawer ${i + 1} bottom`, botW, botT, botD, px, botY, cz, { material: boxMat, group: g }));
 
       // Applied front: inset = opening − 2 mm gap all around; overlay = +10 mm
       // per side where the surround allows.
@@ -3867,7 +4520,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       const f = dp[dp.length - 1];
       f.size = { w: fw, h: fh, d: frontT };
       f.pos = { x: px, y: op.yBottom + op.h / 2, z: frontZ };
-      dp.push(part(`${prefix}dr${i + 1}_pull`, 'pull', 'pull', `Drawer ${i + 1} pull`, Math.min(120, fw * 0.4), 12, 22, px, op.yBottom + op.h / 2, frontZ + frontT / 2 + 11, { material: 'hardware', group: g }));
+      // Pull(s): STYLE from the spec; count, size, and spacing from the
+      // hardware rules (BB.HW.pullSpec) — code owns the numbers.
+      const pullStyle = (BB.HW && spec.hardware && BB.HW.PULLS[spec.hardware.pull]) ? spec.hardware.pull : 'bar_pull';
+      const pSpec = BB.HW ? BB.HW.pullSpec(fw, pullStyle) : { style: 'bar_pull', count: 1, ctcMM: 96, holes: 2 };
+      if (pullStyle !== 'none_touch') {
+        const isKnob = /knob|ring/.test(pSpec.style);
+        const pw = isKnob ? 35 : Math.max(60, Math.min(fw - 40, (pSpec.ctcMM || 96) + 14));
+        const ph = isKnob ? 35 : 12;
+        const pd = /cup/.test(pSpec.style) ? 28 : 22;
+        // Tall fronts carry hardware in the upper-rail zone; a stack shares
+        // one centerline (all fronts here already share px).
+        const pullY = fh > 250 ? f.pos.y + fh / 2 - 60 : f.pos.y;
+        for (let pi = 0; pi < pSpec.count; pi++) {
+          const pxOff = pSpec.count === 1 ? 0 : (pi === 0 ? -fw / 6 : fw / 6);
+          dp.push(part(`${prefix}dr${i + 1}_pull${pSpec.count > 1 ? '_' + (pi + 1) : ''}`, 'pull', 'pull', `Drawer ${i + 1} pull`,
+            pw, ph, pd, px + pxOff, pullY, frontZ + frontT / 2 + pd / 2, { material: 'hardware', group: g }));
+        }
+      }
 
       for (const p of dp) { p.drawer = i; p.explode = { x: 0, y: 0, z: 0 }; }
       parts.push(...dp);
@@ -3889,6 +4559,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         box: { w: boxW, h: boxH, d: boxD, t: boxT },
         slideLen, runner, frontStyle: d.frontStyle,
         front: { w: fw, h: fh, t: frontT },
+        pull: Object.assign({ styleKey: pullStyle }, pSpec),
         travel: Math.round(boxD * 0.8),
         partIds: dp.map(p => p.id)
       });
@@ -4831,34 +5502,37 @@ var BB = globalThis.BB = globalThis.BB || {};
         });
       }
 
-      /* ---- slide capacity vs drawer size (audit F-S3-6) ---- */
-      const slideRow = (K.FASTENERS.hardware || []).find(h => h.key === 'slide_pair');
-      const capKg = slideRow && slideRow.capacityKg;
-      if (capKg) {
-        const DENSITY_KG_PER_L = 0.24; // general household storage; paper runs ~0.72
-        let worst = null;
-        for (const d of model.drawers) {
-          if (d.runner !== 'side_mount_slides') continue;
-          const volL = Math.max(0, (d.box.w - 2 * d.box.t) * (d.box.h - d.box.t) * (d.box.d - d.box.t)) * 1e-6;
-          const estKg = volL * DENSITY_KG_PER_L;
-          if (!worst || estKg > worst.estKg) worst = { d, volL, estKg };
-        }
-        if (worst) {
-          const fileKg = worst.volL * 0.72;
-          const overCap = worst.estKg > capKg;
-          checks.push({
-            id: 'slide:dr' + worst.d.index, title: 'Drawer slide capacity',
-            status: overCap ? 'advisory' : 'pass',
-            value: `largest drawer ≈ ${U().fmtPointLoad(worst.estKg)} loaded vs ${U().fmtPointLoad(capKg)} slide rating (pair)`,
-            threshold: `≤ ${U().fmtPointLoad(capKg)} per pair (75 lb-class ball-bearing slides)`,
-            explain: (overCap
-              ? 'Packed full, this drawer would exceed its slide rating — specify 100 lb slides or split the storage.'
-              : 'Everyday storage sits inside the slide rating.') +
-              (fileKg > capKg ? ` Loaded with paper or files (~0.72 kg/L) it would reach ${U().fmtPointLoad(fileKg)} — beyond the rating; use file-rated slides for that duty.` : ''),
-            fixes: [],
-            data: { estKg: worst.estKg, capKg, volumeL: worst.volL }
-          });
-        }
+      /* ---- slide capacity vs drawer size (audit F-S3-6) ----
+       * 2026 hardware expansion: the slide FAMILY is picked by computed
+       * load (BB.HW.slidePick) — the check reports the picked class and
+       * the BOM buys the same one; both call the same pure function. */
+      const DENSITY_KG_PER_L = 0.24; // general household storage; paper runs ~0.72
+      let worst = null;
+      for (const d of model.drawers) {
+        if (d.runner !== 'side_mount_slides' && d.runner !== 'undermount_slides') continue;
+        const volL = Math.max(0, (d.box.w - 2 * d.box.t) * (d.box.h - d.box.t) * (d.box.d - d.box.t)) * 1e-6;
+        const estKg = volL * DENSITY_KG_PER_L;
+        if (!worst || estKg > worst.estKg) worst = { d, volL, estKg };
+      }
+      if (worst) {
+        const picked = BB.HW
+          ? BB.HW.slidePick(worst.estKg, { undermount: worst.d.runner === 'undermount_slides' })
+          : { label: 'Side-mount ball-bearing slides (pair)', capacityKg: 34 };
+        const capKg = picked.capacityKg;
+        const fileKg = worst.volL * 0.72;
+        const overCap = worst.estKg > capKg;
+        checks.push({
+          id: 'slide:dr' + worst.d.index, title: 'Drawer slide capacity',
+          status: overCap ? 'advisory' : 'pass',
+          value: `largest drawer ≈ ${U().fmtPointLoad(worst.estKg)} loaded vs ${U().fmtPointLoad(capKg)} slide rating (pair)`,
+          threshold: `≤ ${U().fmtPointLoad(capKg)} per pair (${picked.label.toLowerCase()})`,
+          explain: (overCap
+            ? 'Packed full, this drawer would exceed its slide rating — specify 100 lb slides or split the storage.'
+            : `Everyday storage sits inside the rating of the picked class (${picked.label.toLowerCase()}).`) +
+            (fileKg > capKg ? ` Loaded with paper or files (~0.72 kg/L) it would reach ${U().fmtPointLoad(fileKg)} — beyond the rating; use file-rated slides for that duty.` : ''),
+          fixes: [],
+          data: { estKg: worst.estKg, capKg, volumeL: worst.volL }
+        });
       }
     }
 
@@ -6059,12 +6733,34 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Drawer hardware from the fastener catalog. (M4 is a metric trade name
     // in every market; the screw length still renders through the boundary.)
+    // Slides are picked by computed load via the same pure function the
+    // integrity check uses; pulls carry their style, spacing, and bores.
+    const DENSITY_KG_PER_L = 0.24;
     for (const d of model.drawers) {
-      if (d.runner === 'side_mount_slides') {
-        items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
+      if (d.runner === 'side_mount_slides' || d.runner === 'undermount_slides') {
+        const volL = Math.max(0, (d.box.w - 2 * d.box.t) * (d.box.h - d.box.t) * (d.box.d - d.box.t)) * 1e-6;
+        const picked = BB.HW ? BB.HW.slidePick(volL * DENSITY_KG_PER_L, { undermount: d.runner === 'undermount_slides' }) : null;
+        if (picked && picked.key === 'side_bb_34') {
+          items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
+        } else if (picked) {
+          items.push({ kind: 'hardware', label: `${len(d.slideLen)} ${picked.label.toLowerCase()}`, qty: 1, detail: `drawer ${d.index + 1} — picked for the computed load`, price: picked.price });
+        } else {
+          items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: 14 });
+        }
         items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${fine(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: 1 });
       }
-      items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: 6 });
+      const pull = d.pull || { styleKey: 'bar_pull', count: 1, ctcMM: 0, holes: 2 };
+      const pStyle = BB.HW && BB.HW.PULLS[pull.styleKey];
+      if (pull.styleKey === 'none_touch') {
+        items.push({ kind: 'hardware', label: 'Magnetic touch latch (push-to-open)', qty: 1, detail: `drawer ${d.index + 1} — needs a ${len(2)} to ${len(3)} front gap`, price: pStyle ? pStyle.price : 6 });
+      } else if (pStyle) {
+        const boreDetail = pull.ctcMM
+          ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`
+          : `one ${fine(pStyle.boreDia || 5)} bore, centered · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`;
+        items.push({ kind: 'hardware', label: pull.count > 1 ? `${pStyle.label} (pair)` : pStyle.label, qty: pull.count, detail: `drawer ${d.index + 1} — ${boreDetail}`, price: pStyle.price * pull.count });
+      } else {
+        items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: 6 });
+      }
       items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${fine(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: 1 });
     }
     const shelfParts = model.parts.filter(p => p.role === 'shelf');
@@ -6125,9 +6821,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the slides`,
           `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(16)} pan-heads. A spacer block beats a tape measure here.`,
           railIds, { drawer: d.index }));
+      } else if (d.runner === 'undermount_slides') {
+        out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the undermount slides`,
+          `Screw the ${len(d.slideLen)} undermount slides to the case floor of the opening, dead parallel and flush to the front edge. The box was built to the slide — width = opening − ${len(27)}, depth exactly ${len(d.slideLen)}, bottom recessed ${fine(12.7)} — so notch the box back for the hooks and press the locking clips on under the front corners.`,
+          railIds, { drawer: d.index }));
       } else {
+        const sp = K.WOOD_SPECIES[spec.wood.species];
+        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, K.CLIMATE_DMC.temperate) : 2;
         out.push(step(`dr${n}_runners`, `Drawer ${n}: fit wood runners`,
-          `Glue and screw the hardwood runners level in the opening; wax them well.`, railIds, { drawer: d.index }));
+          `Glue and screw the hardwood runners level in the opening, with a kicker above so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, temperate indoor swing), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
+          railIds, { drawer: d.index }));
       }
       out.push(step(`dr${n}_hang`, `Drawer ${n}: hang the box`,
         `Set the box on its runners and check it runs true with an even gap.`, boxIds.concat(ids('bottom')), { drawer: d.index }));
@@ -6136,8 +6839,18 @@ var BB = globalThis.BB = globalThis.BB || {};
           ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then screw it from inside the box with #8 × ${len(25)} screws.`
           : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and screw it from inside the box with #8 × ${len(25)} screws.`,
         ids('front'), { drawer: d.index }));
-      out.push(step(`dr${n}_pull`, `Drawer ${n}: add the pull`,
-        `Drill for the pull at the front’s centerline and bolt it on.`, ids('pull'), { drawer: d.index }));
+      const pull = d.pull || { styleKey: 'bar_pull', count: 1, ctcMM: 0 };
+      const pRow = BB.HW && BB.HW.PULLS[pull.styleKey];
+      let pullText;
+      if (pull.styleKey === 'none_touch') {
+        pullText = `No pull on this front: fit the magnetic touch latch behind it, striker on the box — press to pop open. It needs ${fine(2)} to ${fine(3)} of travel in the reveal.`;
+      } else if (pull.ctcMM) {
+        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). M4 screws, length = front + ${len(6)}.`;
+      } else {
+        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pull.styleKey === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : ', M4 screw from inside'}. Every front in the stack shares one centerline.`;
+      }
+      out.push(step(`dr${n}_pull`, `Drawer ${n}: ${pull.styleKey === 'none_touch' ? 'fit the touch latch' : 'add the pull'}`,
+        pullText, ids('pull'), { drawer: d.index }));
     }
   }
 
@@ -6241,7 +6954,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
-      if (shelves.length) out.push(step('s6', 'Add the shelves', 'Set the shelves on their pins.', shelves));
+      if (shelves.length) out.push(step('s6', 'Add the shelves',
+        `Drill the 32 mm system for the pins: rows of ${U().fmtSmall(5)} holes, ${U().fmtLength(9)} deep, at ${U().fmtLength(32)} pitch, ${U().fmtLength(37)} in from each edge — one drilled story stick indexes every row off the case bottom so the shelves can never rock. Set the shelves on their pins.`, shelves));
       drawerSteps(spec, model, out);
     } else if (t === 'nightstand') {
       out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
@@ -7295,7 +8009,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   const LVL = ['beginner', 'intermediate', 'advanced'];
   const UNITS = ['mm', 'in'];
   const FRONT = ['inset', 'overlay'];
-  const RUN = ['side_mount_slides', 'wood_runners'];
+  // RUN and PUL: 2026 hardware expansion — append only. PUL is pull STYLE
+  // intent; every count, size, and bore is computed by code (BB.HW).
+  const RUN = ['side_mount_slides', 'wood_runners', 'undermount_slides'];
+  const PUL = ['bar_pull', 'knob_round', 'knob_turned_wood', 'cup_pull', 'ring_pull',
+    'edge_pull', 'flush_recessed', 'appliance_pull', 'leather_pull', 'none_touch'];
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
@@ -7342,6 +8060,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // so every pre-expansion design encodes byte-identically.
     if (spec.wood.sheetSpecies && spec.wood.sheetSpecies !== 'baltic_birch') {
       w.ms = ix(SPC, spec.wood.sheetSpecies, 8);
+    }
+    // Pull style likewise: only a non-default choice rides the wire.
+    if (spec.hardware && spec.hardware.pull && spec.hardware.pull !== 'bar_pull') {
+      w.hp = ix(PUL, spec.hardware.pull, 0);
     }
     for (const [k, path] of S_KEYS) {
       const v = spec.structure[path];
@@ -7405,6 +8127,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
       finish: at(FIN, w.f, 'wipe_poly'),
+      hardware: { pull: at(PUL, w.hp, 'bar_pull') },
       drawers: Array.isArray(w.d) && w.d.length
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
         : null,
@@ -7451,6 +8174,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (w.j.b !== undefined) patch.joinery.box = at(JNT, w.j.b, undefined);
     }
     if (w.f !== undefined) patch.finish = at(FIN, w.f, undefined);
+    if (w.hp !== undefined) patch.hardware = { pull: at(PUL, w.hp, undefined) };
     if (w.d !== undefined) {
       if (!w.d) patch.drawers = null;
       else if (Array.isArray(w.d)) patch.drawers = { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') };
@@ -7516,9 +8240,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- static schema documentation (sent ONCE, in the system prompt) ---------------- */
   const SCHEMA_DOC = [
     'WIRE FORMAT — every reply is minified JSON in this compact format (mm integers; enums are 0-based indexes into these lists, documented once here):',
-    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
+    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
     'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
+    '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER in mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Primitive orientations before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part must appear in at least one connection; connected parts must physically touch; unconnected parts must not intersect. Set loadBearing=1 for every part in a load path and SURF for anything loaded or sat on. 2–40 parts.',
     'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (one short sentence), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers).'
@@ -7544,7 +8269,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PRIM, SURF, GRAIN, STK,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };
@@ -7603,6 +8328,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       'REFINEMENTS: when the user asks for a change, EDIT the current spec — send ONLY the changed wire keys. Do not redesign. STRUCTURAL CRITIQUE: when the message is a structural critique of your last composition, fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
       '--- knowledge digest ---',
       K.knowledgeDigest(),
+      // Hardware style intent only — every count, rating, and bore is code
+      // (BB.HW), so capacities and formulas never spend prompt tokens.
+      BB.HW ? BB.HW.digestLine() : '',
       '--- current spec (wire format) ---',
       JSON.stringify(Codec().encode(spec))
     ].join('\n');
@@ -7782,7 +8510,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (/\binset\b/.test(t)) set('drawers.frontStyle', 'inset');
       if (/\bwood(en)? runners?\b/.test(t)) set('drawers.runner', 'wood_runners');
       if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) set('drawers.runner', 'side_mount_slides');
+      if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
     }
+
+    // Hardware style intent (2026 expansion): the style is the whole ask —
+    // counts, sizes, spacing, and bores are computed by code (BB.HW).
+    if (/push[ -]?to[ -]?open|handleless|no (visible )?(hardware|handles|pulls)/.test(t)) { set('hardware.pull', 'none_touch'); notes.push('push-to-open'); }
+    else if (/turned (wood(en)? )?knobs?|wood(en)? knobs?/.test(t)) { set('hardware.pull', 'knob_turned_wood'); notes.push('turned knobs'); }
+    else if (/\bknobs?\b/.test(t)) { set('hardware.pull', 'knob_round'); notes.push('knobs'); }
+    else if (/\b(cup|bin) pulls?\b/.test(t)) { set('hardware.pull', 'cup_pull'); notes.push('cup pulls'); }
+    else if (/\bleather (strap )?pulls?\b/.test(t)) { set('hardware.pull', 'leather_pull'); notes.push('leather pulls'); }
+    else if (/\bring pulls?\b/.test(t)) { set('hardware.pull', 'ring_pull'); notes.push('ring pulls'); }
+    else if (/\bbar pulls?\b/.test(t)) { set('hardware.pull', 'bar_pull'); notes.push('bar pulls'); }
 
     // Finish.
     for (const f of K.FINISHES) {
@@ -8878,6 +9617,65 @@ var BB = globalThis.BB = globalThis.BB || {};
         !('ms' in BB.Codec.encode(Spec.correctSpec(Spec.defaultSpec('table')))), 'ms omitted', 'ms omitted');
     }
 
+    /* ============ hardware repository: code owns every number ============ */
+    {
+      const HW = BB.HW;
+      // Hinge count: band edges and the weight rule (ceil kg/3.5, floor 2).
+      test('hardware', 'door hinge count: height bands 900/1600/2000 and the 3.5 kg weight rule',
+        HW.doorHingeCount(899, 1) === 2 && HW.doorHingeCount(901, 1) === 3 &&
+        HW.doorHingeCount(1601, 1) === 4 && HW.doorHingeCount(600, 8) === 3,
+        [HW.doorHingeCount(899, 1), HW.doorHingeCount(901, 1), HW.doorHingeCount(1601, 1), HW.doorHingeCount(600, 8)].join('/'), '2/3/4/3');
+      // Gas strut hand calc: 6.8 kg lid, 450 deep, defaults → 1.3·W·g·(225/90)
+      // = 3.25·W·g ≈ 216.8 N — over the 200 N class on one strut, honest;
+      // split across two on a 700-wide lid → 108.4 N → 120 N class.
+      const gs = HW.gasStrut(6.8, 450, 700);
+      test('hardware', 'gas strut moment balance matches hand arithmetic and snaps UP',
+        gs.count === 2 && Math.abs(gs.requiredNEach - 108.4) < 0.05 && gs.classN === 120,
+        JSON.stringify(gs), '2 struts, 108.4 N each, 120 N class');
+      // Cup hinge: overlay solves the boring distance; outside 3–7 the
+      // answer is a different plate/crank, never a wilder bore.
+      const cb = HW.cupBoring(16, 0), cbOut = HW.cupBoring(25, 0);
+      test('hardware', 'cup boring solved from overlay and clamped to the legal 3–7 range',
+        cb.tbMM === 5 && cb.inRange && cbOut.tbMM === 7 && !cbOut.inRange,
+        `overlay16→TB${cb.tbMM}, overlay25→TB${cbOut.tbMM}(out)`, 'TB5 in range; TB7 flagged out');
+      // Pull sizing: ⅓ width snapped DOWN into the CTC series; two pulls
+      // past 750; knobs under 300.
+      const p1 = HW.pullSpec(430, 'bar_pull'), p2 = HW.pullSpec(800, 'bar_pull'), p3 = HW.pullSpec(250, 'bar_pull');
+      test('hardware', 'pull sizing: series snap, two-pull rule past 750, knob under 300',
+        p1.ctcMM === 128 && p2.count === 2 && p3.style === 'knob_round',
+        `${p1.ctcMM} / ×${p2.count} / ${p3.style}`, '128 / ×2 / knob_round');
+      test('hardware', 'every CTC the sizer can emit is a real series spacing',
+        HW.PULL_CTC_SERIES.includes(HW.pullSpec(600, 'bar_pull').ctcMM), String(HW.pullSpec(600, 'bar_pull').ctcMM), 'in series');
+      // Rule joint: r = t − fillet − pinH.
+      const rj = HW.ruleJoint(22);
+      test('hardware', 'rule joint radius = thickness − fillet − pin height', rj.radiusMM === 14, `${rj.radiusMM}`, '14');
+      // Slide picker climbs the family by computed load.
+      test('hardware', 'slide picker: 34 kg default, 45 kg past 25, 100 kg past 45, undermount honored',
+        HW.slidePick(8).key === 'side_bb_34' && HW.slidePick(30).key === 'side_bb_45' &&
+        HW.slidePick(60).key === 'heavy_duty_100' && HW.slidePick(8, { undermount: true }).key === 'undermount_45',
+        'family climbs', 'family climbs');
+      // Undermount geometry: the box is built to the slide.
+      const um = pipeline({
+        meta: { name: 'UM', template: 'cabinet', level: 'intermediate', units: 'mm' },
+        overall: { width: 800, depth: 500, height: 900 }, structure: { toeKick: true },
+        drawers: { count: 1, frontStyle: 'inset', runner: 'undermount_slides' }
+      });
+      const d0 = um.model.drawers[0];
+      test('hardware', 'undermount box: width = opening − 27, height − 19, depth = slide length exactly',
+        d0.opening.w - d0.box.w === 27 && d0.opening.h - d0.box.h === 19 && d0.box.d === d0.slideLen,
+        `−${d0.opening.w - d0.box.w}/−${(d0.opening.h - d0.box.h)}/${d0.box.d}=${d0.slideLen}`, '−27/−19/depth=slideLen');
+      // kidSafe gate data is ready for the lids workstream, with the cord
+      // stop explicitly refused.
+      test('hardware', 'kidSafe gate: torsion/soft stays required, cord stop refused, ventilation specified',
+        HW.GATES.kidSafe.requiredLidSupport.includes('torsion_lid') &&
+        HW.GATES.kidSafe.refusedLidSupport.includes('cord_stay') && HW.GATES.kidSafe.ventilationMM >= 12,
+        'gate complete', 'gate complete');
+      // The system prompt carries the style digest but no capacities.
+      const sysHW = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
+      test('hardware', 'system prompt carries hardware STYLES only (ratings stay in code)',
+        sysHW.includes(HW.digestLine()) && !sysHW.includes('capacityKg'), 'styles only', 'styles only');
+    }
+
     /* ============ structural: movement / tipping / racking (fixed values) ============ */
     {
       const mv = K.movementMM(900, 'red_oak', 'tangential', 4);
@@ -9500,8 +10298,135 @@ var BB = globalThis.BB = globalThis.BB || {};
   });
   const cyl = (member, c, axis, r, len) => ({ member, kind: 'cylinder', c, axis, r, len });
 
+  /* ---------------- hardware teaching views (2026 hardware expansion) --
+   * Keyed 'hw_*', shown from the Shop Reference. Fixed didactic sizes, but
+   * every dimension that teaches is TRUE: cup 35 × 13 at boring distance 5
+   * and plate line 37; rule-joint radius = t − fillet − pin height; pivot
+   * edge radius from the axis inset; tambour radius ≥ 2.5 × slat; sawtooth
+   * at 25 pitch; undermount 27 / 19 / 12.7. */
+  function buildHardwareView(type, fmt) {
+    const pieces = [], labels = [];
+    let insertAxis = [1, 0, 0], title = type;
+    const HW = BB.HW || { HINGES: {}, TRADITIONAL: {}, SLIDES: {} };
+
+    if (type === 'hw_cup_hinge') {
+      title = 'Cup hinge in section — 35 mm cup, boring distance, 37 mm plate line';
+      const tb = 5, cupR = 17.5, doorT = 19;
+      // Door slab lying flat (thickness up); hinge edge at x = 0.
+      pieces.push(cub('a', 0, 130, -55, 55, 0, doorT));
+      // The 35 × 13 cup sunk in the door's back face, edge tb from the door edge.
+      pieces.push(cyl('fastener', [tb + cupR, 0, doorT - 6.5], [0, 0, 1], cupR, 13));
+      // Hinge arm reaching back over the door edge to the mounting plate.
+      pieces.push(cub('fastener', -37, tb + cupR, -8, 8, doorT, doorT + 6));
+      // Case side behind the edge; plate boss on its face at the 37 mm line.
+      pieces.push(cub('b', -56, -18, -70, 70, -80, doorT + 14));
+      pieces.push(cub('fastener', -37 - 9, -37 + 9, -19, 19, doorT + 6, doorT + 12));
+      insertAxis = [1, 0, 0];
+      labels.push(`Cup Ø ${fmt(35)}, bored ${fmt(13)} deep; cup edge ${fmt(tb)} from the door edge (legal range ${fmt(3)} to ${fmt(7)}).`);
+      labels.push(`Mounting plate on the ${fmt(37)} system line — the same 37 the shelf-pin rows use; overlay solves the boring distance, never the other way around.`);
+    } else if (type === 'hw_rule_joint') {
+      title = 'Rule joint — radius = thickness − fillet − pin height';
+      const t = 22, fillet = 5, pinH = 3, r = t - fillet - pinH; // 14
+      const zSpan = 55;
+      // Top (x ≤ 0 body): fillet, then the convex roundover bulging toward
+      // the leaf; the arc's center IS the pin position (0, pinH).
+      const arc = [];
+      for (let i = 0; i <= 6; i++) {
+        const th = Math.PI / 2 - (Math.PI / 2) * i / 6; // 90° → 0°
+        arc.push([Math.round(r * Math.cos(th) * 100) / 100, Math.round((pinH + r * Math.sin(th)) * 100) / 100]);
+      }
+      pieces.push({ member: 'b', kind: 'prism', z0: -zSpan, depth: 2 * zSpan,
+        profile: [[-110, 0], [-110, t], [0, t], ...arc, [r, 0]] });
+      // Leaf: body past the cove + a stepped cove lip that wraps the
+      // roundover from above, with 1 mm operating clearance (radius r + 1).
+      pieces.push(cub('a', r + 1, 110, 0, t, -zSpan, zSpan));
+      const rc = r + 1;
+      for (let i = 0; i < 5; i++) {
+        const x0 = Math.max(1, rc * (i / 5));
+        const x1 = rc * ((i + 1) / 5);
+        // Arc height at the band's LEFT edge — the step stays outside the swing.
+        const yLow = pinH + Math.sqrt(Math.max(0, rc * rc - x0 * x0));
+        if (x1 - x0 > 0.4 && t - yLow > 0.4) pieces.push(cub('a', x0, x1, Math.min(t - 0.4, yLow), t, -zSpan, zSpan));
+      }
+      // The hinge pin at the arc center, nudged 1 mm outboard.
+      pieces.push(cyl('fastener', [1, pinH, 0], [0, 0, 1], 1.6, 2 * zSpan * 0.9));
+      insertAxis = [0, -1, 0];
+      labels.push(`radius = ${fmt(t)} top − ${fmt(fillet)} fillet − ${fmt(pinH)} pin height = ${fmt(r)}; the pin sits AT the arc center, nudged ${fmt(1)} outboard.`);
+      labels.push('Short leaf and barrel mortise into the top; the LONG leaf spans the leaf’s cove. Pin below center binds going down and gaps going up.');
+    } else if (type === 'hw_pivot_pin') {
+      title = 'Pivot-pin door — the edge radius is not optional';
+      const t = 19, inset = t / 2 + 2; // 11.5
+      const half = Math.sqrt(inset * inset - (t / 2) * (t / 2)); // where the arc meets the faces
+      const a0 = Math.atan2(t / 2, -half), a1 = 2 * Math.PI - a0; // sweep around the hinge edge
+      const arc = [];
+      for (let i = 0; i <= 8; i++) {
+        const th = a0 + (a1 - a0) * i / 8;
+        arc.push([Math.round((inset + inset * Math.cos(th)) * 100) / 100, Math.round((t / 2 + inset * Math.sin(th)) * 100) / 100]);
+      }
+      pieces.push({ member: 'a', kind: 'prism', z0: -60, depth: 120, profile: [[120, 0], [120, t], ...arc] });
+      pieces.push(cyl('fastener', [inset, t / 2, 66], [0, 0, 1], 3.5, 16)); // top pin
+      pieces.push(cyl('fastener', [inset, t / 2, -66], [0, 0, 1], 3.5, 16)); // bottom pin
+      pieces.push(cub('b', -50, 110, 0, t, 63, 82)); // case top rail carrying the bore
+      insertAxis = [0, 0, -1];
+      labels.push(`Pin axis ${fmt(inset)} in from the hinge edge (≥ door t/2 + ${fmt(2)}); round the edge to that same radius so it clears in swing.`);
+      labels.push('A square hinge edge with an offset pin jams at 30° — UHMW or brass washer under the bottom pin; the door floats on it.');
+    } else if (type === 'hw_tambour') {
+      title = 'Tambour — track radius ≥ 2.5 × slat width';
+      const slat = 20, minR = 2.5 * slat; // 50
+      // Track path (groove floor shown dark): run, 45° turn, drop.
+      pieces.push(cub('fastener', -90, 10, 96, 100, -2, 2));
+      pieces.push({ member: 'fastener', kind: 'prism', z0: -2, depth: 4,
+        profile: [[10, 100], [10 + minR * 0.7, 100 - minR * 0.7], [10 + minR * 0.7 + 4, 100 - minR * 0.7 + 3], [14, 103]] });
+      pieces.push(cub('fastener', 10 + minR * 0.7, 14 + minR * 0.7, 10, 100 - minR * 0.7 + 3, -2, 2));
+      // Case side the groove lives in.
+      pieces.push(cub('b', -100, 60, 0, 112, 8, 26));
+      // Slats riding the path: flat, one on the turn, two dropping.
+      for (let i = 0; i < 3; i++) pieces.push(cub('a', -85 + i * 26, -85 + i * 26 + slat, 88, 97, -30, -4));
+      pieces.push({ member: 'a', kind: 'prism', z0: -30, depth: 26,
+        profile: [[16, 92], [30, 78], [36, 84], [22, 98]] });
+      for (let i = 0; i < 2; i++) pieces.push(cub('a', 42 + minR * 0.7, 51 + minR * 0.7, 70 - i * 26 - slat, 70 - i * 26, -30, -4));
+      insertAxis = [-1, 0, 0];
+      labels.push(`Slats ~${fmt(9)} × ${fmt(slat)} to ${fmt(40)} on canvas; track ${fmt(11)} deep, routed from ONE template in both sides.`);
+      labels.push(`Minimum track radius ≥ 2.5 × slat width (${fmt(minR)} here) — a curve tighter than the slats can turn is the whole failure mode.`);
+    } else if (type === 'hw_sawtooth') {
+      title = 'Sawtooth supports — gang-cut, period-correct, free';
+      const pitch = 25;
+      pieces.push(cub('b', 0, 16, -90, 90, 0, 19)); // strip body
+      for (let i = 0; i < 6; i++) {
+        const y0 = -75 + i * pitch;
+        pieces.push({ member: 'b', kind: 'prism', z0: 0, depth: 19,
+          profile: [[16, y0], [16 + 10, y0 + pitch / 2], [16, y0 + pitch]] });
+      }
+      // Shelf cleat dropped into one notch + shelf stub.
+      pieces.push({ member: 'a', kind: 'prism', z0: 0, depth: 19,
+        profile: [[16, -25], [26, -12.5], [16, 0], [44, 0], [44, -25]] });
+      pieces.push(cub('a', 26, 110, -8, 0, 0, 19));
+      insertAxis = [0, 1, 0];
+      labels.push(`45° teeth at ${fmt(pitch)} pitch, four strips cut in ONE gang — separate setups never line up and the shelves rock forever.`);
+      labels.push('Shelf-end cleats drop into the teeth; shelf length = opening − 2 × strip thickness.');
+    } else if (type === 'hw_undermount') {
+      title = 'Undermount slides — the box is built to the slide';
+      const boxW = 180, boxH = 70, boxD = 150, sideT = 12, botT = 12, recess = 12.7;
+      pieces.push(cub('b', -boxW / 2 - 30, boxW / 2 + 30, -14, -8, -boxD / 2 - 20, boxD / 2 + 10)); // case floor
+      // Slide rails under the box, tucked inside the recess.
+      for (const s of [-1, 1]) pieces.push(cub('fastener', s * (boxW / 2 - 21) - 6, s * (boxW / 2 - 21) + 6, -8, recess - botT / 2, -boxD / 2, boxD / 2));
+      pieces.push(cub('a', -boxW / 2, -boxW / 2 + sideT, 0, boxH, -boxD / 2, boxD / 2));
+      pieces.push(cub('a', boxW / 2 - sideT, boxW / 2, 0, boxH, -boxD / 2, boxD / 2));
+      pieces.push(cub('a', -boxW / 2 + sideT, boxW / 2 - sideT, 0, boxH, boxD / 2 - sideT, boxD / 2));
+      pieces.push(cub('a', -boxW / 2 + sideT, boxW / 2 - sideT, recess, recess + botT, -boxD / 2, boxD / 2 - sideT)); // recessed captured bottom
+      insertAxis = [0, 0, 1];
+      labels.push(`Box width = opening − ${fmt(27)}; ${fmt(19)} height clearance; ${fmt(botT)} bottom captured and recessed ${fmt(12.7)} so the arms tuck under; depth = slide length EXACTLY.`);
+      labels.push('They forgive nothing — square within 0.5 mm, and notch the back for the hooks. Build the box to the slide, never the reverse.');
+    } else {
+      pieces.push(cub('b', -60, 0, -40, 40, -20, 20));
+      pieces.push(cub('a', 0, 90, -30, 30, -10, 10));
+    }
+    return { pieces, insertAxis, labels, title };
+  }
+
   function buildJoint(type, partA, partB, fmt) {
     fmt = fmt || (v => Math.round(v) + ' mm');
+    if (/^hw_/.test(type)) return buildHardwareView(type, fmt);
     const A = section(partA), B = section(partB);
     const tA = A.t, wA = A.w, tB = B.t, wB = B.w;
     const LA = clamp(tA * 3.5, 90, 170);   // stub of the inserted member
@@ -11500,7 +12425,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     const tabs = el('div', 'ref-tabs');
     tabs.setAttribute('role', 'tablist');
-    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']];
+    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
     for (const [key, label] of refEntries) {
       const b = el('button', 'ref-tab', esc(label));
       b.setAttribute('role', 'tab');
@@ -11564,6 +12489,46 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td style="font-size:12.5px">${esc(j.bestFor)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.failure)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
+    } else if (state.refTab === 'hardware') {
+      // The hardware repository: when, why, how, where — quantities and
+      // ratings are computed by code (BB.HW rules), the table teaches the
+      // rest. Rows with a 3D button open a dimensioned inspector view.
+      head = '<th>Hardware</th><th></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
+      const HW = BB.HW;
+      const view3d = { euro_cup: 'hw_cup_hinge', drop_leaf: 'hw_rule_joint', rule_joint_ref: 'hw_rule_joint', pivot_pin_hinge: 'hw_pivot_pin', tambour: 'hw_tambour', sawtooth_supports: 'hw_sawtooth', sawtooth: 'hw_sawtooth', undermount_45: 'hw_undermount' };
+      const groups = [
+        ['Hinges', Object.values(HW.HINGES)], ['Pulls', Object.values(HW.PULLS)],
+        ['Slides', Object.values(HW.SLIDES)], ['Lifts & stays', Object.values(HW.LIFTS)],
+        ['Catches', Object.values(HW.CATCHES)], ['Locks', Object.values(HW.LOCKS)],
+        ['Shelf support', Object.values(HW.SHELF_SUPPORT)], ['Table & bed', Object.values(HW.TABLE_BED)],
+        ['Wall hanging', Object.values(HW.WALL_HANG)], ['Feet & pass-throughs', Object.values(HW.FEET_MISC)],
+        ['Traditional (no hardware)', Object.values(HW.TRADITIONAL)]
+      ];
+      const classOf = x => {
+        const bits = [];
+        if (x.capacityKg) bits.push(`${x.capacityKg} kg`);
+        if (x.capacityKgPair) bits.push(`${x.capacityKgPair} kg/pair`);
+        if (x.holdKg) bits.push(`holds ${x.holdKg} kg`);
+        if (x.holdKgEach) bits.push(`${x.holdKgEach} kg each`);
+        if (x.holdKgPair) bits.push(`${x.holdKgPair} kg/pair`);
+        if (x.forceClassesN) bits.push(x.forceClassesN.join('/') + ' N');
+        if (x.torqueClassesNm) bits.push(x.torqueClassesNm.join('/') + ' N·m');
+        if (x.opening) bits.push(`opens ${x.opening}°`);
+        if (x.extension) bits.push(x.extension === 1 ? 'full ext.' : Math.round(x.extension * 100) + '% ext.');
+        if (x.replaces) bits.push('replaces ' + x.replaces);
+        if (x.price) bits.push('~$' + x.price);
+        if (x.price === 0) bits.push('shop-made, $0');
+        return bits.join(' · ');
+      };
+      rows = groups.map(([gLabel, list]) => {
+        const body2 = list.filter(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))).map(x => `<tr>
+          <td><strong>${esc(Units.fmtTemplate(x.label))}</strong><br><span class="kind-tag">${esc(gLabel)}</span></td>
+          <td>${view3d[x.key] ? `<button type="button" class="btn small ghost joint-demo" data-joint="${esc(view3d[x.key])}" title="See it in 3D">${BB.Icons.svg('ruler', 13)} 3D</button>` : ''}</td>
+          <td class="num" style="font-size:12px">${esc(classOf(x))}</td>
+          <td style="font-size:12.5px">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
+          <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
+        return body2;
+      }).join('');
     } else if (state.refTab === 'lumber') {
       head = '<th>Nominal</th><th class="num">Actual (T × W)</th><th class="num">Stock lengths</th>';
       rows = Object.entries(K.LUMBER.NOMINALS).filter(([n]) => hit(n)).map(([n, a]) => `<tr>
@@ -11892,9 +12857,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(paramSeg('Front style', [['inset', 'Inset'], ['overlay', 'Overlay']], s.drawers.frontStyle,
         v => { merge({ drawers: { frontStyle: v } }, 'manual'); openInspectorById(part.id); }));
       const runnerOpts = [['side_mount_slides', 'Slides']];
-      if (s.meta.level !== 'beginner') runnerOpts.push(['wood_runners', 'Wood runners']);
+      if (s.meta.level !== 'beginner') runnerOpts.push(['undermount_slides', 'Undermount'], ['wood_runners', 'Wood runners']);
       body.append(paramSeg('Runners', runnerOpts, s.drawers.runner,
         v => { merge({ drawers: { runner: v } }, 'manual'); openInspectorById(part.id); }));
+      body.append(paramSelect('Pull style', Object.values(BB.HW.PULLS).map(p => [p.key, p.label]),
+        s.hardware.pull, v => { merge({ hardware: { pull: v } }, 'manual'); openInspectorById(part.id); }));
     }
     body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); openInspectorById(part.id); }));
@@ -12748,7 +13715,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- shell: URL-restorable tabs ----------------
    * The active plan tab (and reference subtab) mirrors into location.hash via
    * replaceState — deep-linkable and reload-safe, with no history spam. */
-  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'lumber'];
+  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'hardware', 'lumber'];
   function syncHash() {
     const h = '#' + state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
     if (location.hash !== h) {

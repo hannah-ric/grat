@@ -33,8 +33,135 @@ var BB = globalThis.BB = globalThis.BB || {};
   });
   const cyl = (member, c, axis, r, len) => ({ member, kind: 'cylinder', c, axis, r, len });
 
+  /* ---------------- hardware teaching views (2026 hardware expansion) --
+   * Keyed 'hw_*', shown from the Shop Reference. Fixed didactic sizes, but
+   * every dimension that teaches is TRUE: cup 35 × 13 at boring distance 5
+   * and plate line 37; rule-joint radius = t − fillet − pin height; pivot
+   * edge radius from the axis inset; tambour radius ≥ 2.5 × slat; sawtooth
+   * at 25 pitch; undermount 27 / 19 / 12.7. */
+  function buildHardwareView(type, fmt) {
+    const pieces = [], labels = [];
+    let insertAxis = [1, 0, 0], title = type;
+    const HW = BB.HW || { HINGES: {}, TRADITIONAL: {}, SLIDES: {} };
+
+    if (type === 'hw_cup_hinge') {
+      title = 'Cup hinge in section — 35 mm cup, boring distance, 37 mm plate line';
+      const tb = 5, cupR = 17.5, doorT = 19;
+      // Door slab lying flat (thickness up); hinge edge at x = 0.
+      pieces.push(cub('a', 0, 130, -55, 55, 0, doorT));
+      // The 35 × 13 cup sunk in the door's back face, edge tb from the door edge.
+      pieces.push(cyl('fastener', [tb + cupR, 0, doorT - 6.5], [0, 0, 1], cupR, 13));
+      // Hinge arm reaching back over the door edge to the mounting plate.
+      pieces.push(cub('fastener', -37, tb + cupR, -8, 8, doorT, doorT + 6));
+      // Case side behind the edge; plate boss on its face at the 37 mm line.
+      pieces.push(cub('b', -56, -18, -70, 70, -80, doorT + 14));
+      pieces.push(cub('fastener', -37 - 9, -37 + 9, -19, 19, doorT + 6, doorT + 12));
+      insertAxis = [1, 0, 0];
+      labels.push(`Cup Ø ${fmt(35)}, bored ${fmt(13)} deep; cup edge ${fmt(tb)} from the door edge (legal range ${fmt(3)} to ${fmt(7)}).`);
+      labels.push(`Mounting plate on the ${fmt(37)} system line — the same 37 the shelf-pin rows use; overlay solves the boring distance, never the other way around.`);
+    } else if (type === 'hw_rule_joint') {
+      title = 'Rule joint — radius = thickness − fillet − pin height';
+      const t = 22, fillet = 5, pinH = 3, r = t - fillet - pinH; // 14
+      const zSpan = 55;
+      // Top (x ≤ 0 body): fillet, then the convex roundover bulging toward
+      // the leaf; the arc's center IS the pin position (0, pinH).
+      const arc = [];
+      for (let i = 0; i <= 6; i++) {
+        const th = Math.PI / 2 - (Math.PI / 2) * i / 6; // 90° → 0°
+        arc.push([Math.round(r * Math.cos(th) * 100) / 100, Math.round((pinH + r * Math.sin(th)) * 100) / 100]);
+      }
+      pieces.push({ member: 'b', kind: 'prism', z0: -zSpan, depth: 2 * zSpan,
+        profile: [[-110, 0], [-110, t], [0, t], ...arc, [r, 0]] });
+      // Leaf: body past the cove + a stepped cove lip that wraps the
+      // roundover from above, with 1 mm operating clearance (radius r + 1).
+      pieces.push(cub('a', r + 1, 110, 0, t, -zSpan, zSpan));
+      const rc = r + 1;
+      for (let i = 0; i < 5; i++) {
+        const x0 = Math.max(1, rc * (i / 5));
+        const x1 = rc * ((i + 1) / 5);
+        // Arc height at the band's LEFT edge — the step stays outside the swing.
+        const yLow = pinH + Math.sqrt(Math.max(0, rc * rc - x0 * x0));
+        if (x1 - x0 > 0.4 && t - yLow > 0.4) pieces.push(cub('a', x0, x1, Math.min(t - 0.4, yLow), t, -zSpan, zSpan));
+      }
+      // The hinge pin at the arc center, nudged 1 mm outboard.
+      pieces.push(cyl('fastener', [1, pinH, 0], [0, 0, 1], 1.6, 2 * zSpan * 0.9));
+      insertAxis = [0, -1, 0];
+      labels.push(`radius = ${fmt(t)} top − ${fmt(fillet)} fillet − ${fmt(pinH)} pin height = ${fmt(r)}; the pin sits AT the arc center, nudged ${fmt(1)} outboard.`);
+      labels.push('Short leaf and barrel mortise into the top; the LONG leaf spans the leaf’s cove. Pin below center binds going down and gaps going up.');
+    } else if (type === 'hw_pivot_pin') {
+      title = 'Pivot-pin door — the edge radius is not optional';
+      const t = 19, inset = t / 2 + 2; // 11.5
+      const half = Math.sqrt(inset * inset - (t / 2) * (t / 2)); // where the arc meets the faces
+      const a0 = Math.atan2(t / 2, -half), a1 = 2 * Math.PI - a0; // sweep around the hinge edge
+      const arc = [];
+      for (let i = 0; i <= 8; i++) {
+        const th = a0 + (a1 - a0) * i / 8;
+        arc.push([Math.round((inset + inset * Math.cos(th)) * 100) / 100, Math.round((t / 2 + inset * Math.sin(th)) * 100) / 100]);
+      }
+      pieces.push({ member: 'a', kind: 'prism', z0: -60, depth: 120, profile: [[120, 0], [120, t], ...arc] });
+      pieces.push(cyl('fastener', [inset, t / 2, 66], [0, 0, 1], 3.5, 16)); // top pin
+      pieces.push(cyl('fastener', [inset, t / 2, -66], [0, 0, 1], 3.5, 16)); // bottom pin
+      pieces.push(cub('b', -50, 110, 0, t, 63, 82)); // case top rail carrying the bore
+      insertAxis = [0, 0, -1];
+      labels.push(`Pin axis ${fmt(inset)} in from the hinge edge (≥ door t/2 + ${fmt(2)}); round the edge to that same radius so it clears in swing.`);
+      labels.push('A square hinge edge with an offset pin jams at 30° — UHMW or brass washer under the bottom pin; the door floats on it.');
+    } else if (type === 'hw_tambour') {
+      title = 'Tambour — track radius ≥ 2.5 × slat width';
+      const slat = 20, minR = 2.5 * slat; // 50
+      // Track path (groove floor shown dark): run, 45° turn, drop.
+      pieces.push(cub('fastener', -90, 10, 96, 100, -2, 2));
+      pieces.push({ member: 'fastener', kind: 'prism', z0: -2, depth: 4,
+        profile: [[10, 100], [10 + minR * 0.7, 100 - minR * 0.7], [10 + minR * 0.7 + 4, 100 - minR * 0.7 + 3], [14, 103]] });
+      pieces.push(cub('fastener', 10 + minR * 0.7, 14 + minR * 0.7, 10, 100 - minR * 0.7 + 3, -2, 2));
+      // Case side the groove lives in.
+      pieces.push(cub('b', -100, 60, 0, 112, 8, 26));
+      // Slats riding the path: flat, one on the turn, two dropping.
+      for (let i = 0; i < 3; i++) pieces.push(cub('a', -85 + i * 26, -85 + i * 26 + slat, 88, 97, -30, -4));
+      pieces.push({ member: 'a', kind: 'prism', z0: -30, depth: 26,
+        profile: [[16, 92], [30, 78], [36, 84], [22, 98]] });
+      for (let i = 0; i < 2; i++) pieces.push(cub('a', 42 + minR * 0.7, 51 + minR * 0.7, 70 - i * 26 - slat, 70 - i * 26, -30, -4));
+      insertAxis = [-1, 0, 0];
+      labels.push(`Slats ~${fmt(9)} × ${fmt(slat)} to ${fmt(40)} on canvas; track ${fmt(11)} deep, routed from ONE template in both sides.`);
+      labels.push(`Minimum track radius ≥ 2.5 × slat width (${fmt(minR)} here) — a curve tighter than the slats can turn is the whole failure mode.`);
+    } else if (type === 'hw_sawtooth') {
+      title = 'Sawtooth supports — gang-cut, period-correct, free';
+      const pitch = 25;
+      pieces.push(cub('b', 0, 16, -90, 90, 0, 19)); // strip body
+      for (let i = 0; i < 6; i++) {
+        const y0 = -75 + i * pitch;
+        pieces.push({ member: 'b', kind: 'prism', z0: 0, depth: 19,
+          profile: [[16, y0], [16 + 10, y0 + pitch / 2], [16, y0 + pitch]] });
+      }
+      // Shelf cleat dropped into one notch + shelf stub.
+      pieces.push({ member: 'a', kind: 'prism', z0: 0, depth: 19,
+        profile: [[16, -25], [26, -12.5], [16, 0], [44, 0], [44, -25]] });
+      pieces.push(cub('a', 26, 110, -8, 0, 0, 19));
+      insertAxis = [0, 1, 0];
+      labels.push(`45° teeth at ${fmt(pitch)} pitch, four strips cut in ONE gang — separate setups never line up and the shelves rock forever.`);
+      labels.push('Shelf-end cleats drop into the teeth; shelf length = opening − 2 × strip thickness.');
+    } else if (type === 'hw_undermount') {
+      title = 'Undermount slides — the box is built to the slide';
+      const boxW = 180, boxH = 70, boxD = 150, sideT = 12, botT = 12, recess = 12.7;
+      pieces.push(cub('b', -boxW / 2 - 30, boxW / 2 + 30, -14, -8, -boxD / 2 - 20, boxD / 2 + 10)); // case floor
+      // Slide rails under the box, tucked inside the recess.
+      for (const s of [-1, 1]) pieces.push(cub('fastener', s * (boxW / 2 - 21) - 6, s * (boxW / 2 - 21) + 6, -8, recess - botT / 2, -boxD / 2, boxD / 2));
+      pieces.push(cub('a', -boxW / 2, -boxW / 2 + sideT, 0, boxH, -boxD / 2, boxD / 2));
+      pieces.push(cub('a', boxW / 2 - sideT, boxW / 2, 0, boxH, -boxD / 2, boxD / 2));
+      pieces.push(cub('a', -boxW / 2 + sideT, boxW / 2 - sideT, 0, boxH, boxD / 2 - sideT, boxD / 2));
+      pieces.push(cub('a', -boxW / 2 + sideT, boxW / 2 - sideT, recess, recess + botT, -boxD / 2, boxD / 2 - sideT)); // recessed captured bottom
+      insertAxis = [0, 0, 1];
+      labels.push(`Box width = opening − ${fmt(27)}; ${fmt(19)} height clearance; ${fmt(botT)} bottom captured and recessed ${fmt(12.7)} so the arms tuck under; depth = slide length EXACTLY.`);
+      labels.push('They forgive nothing — square within 0.5 mm, and notch the back for the hooks. Build the box to the slide, never the reverse.');
+    } else {
+      pieces.push(cub('b', -60, 0, -40, 40, -20, 20));
+      pieces.push(cub('a', 0, 90, -30, 30, -10, 10));
+    }
+    return { pieces, insertAxis, labels, title };
+  }
+
   function buildJoint(type, partA, partB, fmt) {
     fmt = fmt || (v => Math.round(v) + ' mm');
+    if (/^hw_/.test(type)) return buildHardwareView(type, fmt);
     const A = section(partA), B = section(partB);
     const tA = A.t, wA = A.w, tB = B.t, wB = B.w;
     const LA = clamp(tA * 3.5, 90, 170);   // stub of the inserted member

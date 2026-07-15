@@ -34,6 +34,9 @@
    "box": "pocket_screws"
   },
   "finish": "wipe_poly",
+  "hardware": {
+   "pull": "bar_pull"
+  },
   "drawers": null,
   "custom": null
  },
