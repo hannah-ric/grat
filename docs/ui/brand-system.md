@@ -230,6 +230,15 @@ The specimen relies on evergreen-browser CSS (`light-dark()`, `color-mix()`,
 media-query + `data-theme` fallback pattern, so no support regression is
 introduced by the token swap itself.
 
+**Pending Phase 5 work (open PR #10, `DESIGN.md`):** its "visual direction"
+section predates this system — "warm oat + machinist blue kept" is
+superseded by Showroom (blue retires per the bridge above). When that branch
+integrates: its icon set and component styles already ride `currentColor`
+and `var()`, so they inherit Showroom automatically once tokens swap;
+Blueprint Mode's machinist-blue/cyanotype drawing surface is the one place a
+deliberate exception could stay (a *blueprint* is blue) — decide there, not
+in the tokens.
+
 ## 8 · Verification
 
 ```sh
