@@ -1,5 +1,7 @@
 node_modules/
 dist/shots/
+dist/audit-shots/
+dist/diy-audit-log.json
 package-lock.json
 .env
 .env.*
