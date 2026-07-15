@@ -34,6 +34,9 @@
    "box": "pocket_screws"
   },
   "finish": "danish_oil",
+  "hardware": {
+   "pull": "bar_pull"
+  },
   "drawers": null,
   "custom": null
  },
@@ -174,9 +177,9 @@
     "cost": 49.456
    },
    {
-    "label": "Cherry 5/4x4 x 10 ft (1 x 3 1/2 in)",
-    "qty": 3,
-    "cost": 109.362
+    "label": "Cherry 4x4 x 10 ft (3 1/2 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 83.21
    },
    {
     "label": "Cherry 5/4x6 x 8 ft (1 x 5 1/2 in)",
@@ -220,81 +223,27 @@
     ]
    },
    {
-    "nominal": "5/4x4",
+    "nominal": "4x4",
     "stockLen": 3048,
     "offcut": 111.8,
     "cuts": [
      {
-      "name": "Leg (layer 1/3)",
+      "name": "Leg",
       "len": 724.3,
       "offset": 15
      },
      {
-      "name": "Leg (layer 2/3)",
+      "name": "Leg",
       "len": 724.3,
       "offset": 742.3
      },
      {
-      "name": "Leg (layer 3/3)",
+      "name": "Leg",
       "len": 724.3,
       "offset": 1469.6
      },
      {
-      "name": "Leg (layer 1/3)",
-      "len": 724.3,
-      "offset": 2196.9
-     }
-    ]
-   },
-   {
-    "nominal": "5/4x4",
-    "stockLen": 3048,
-    "offcut": 111.8,
-    "cuts": [
-     {
-      "name": "Leg (layer 2/3)",
-      "len": 724.3,
-      "offset": 15
-     },
-     {
-      "name": "Leg (layer 3/3)",
-      "len": 724.3,
-      "offset": 742.3
-     },
-     {
-      "name": "Leg (layer 1/3)",
-      "len": 724.3,
-      "offset": 1469.6
-     },
-     {
-      "name": "Leg (layer 2/3)",
-      "len": 724.3,
-      "offset": 2196.9
-     }
-    ]
-   },
-   {
-    "nominal": "5/4x4",
-    "stockLen": 3048,
-    "offcut": 111.8,
-    "cuts": [
-     {
-      "name": "Leg (layer 3/3)",
-      "len": 724.3,
-      "offset": 15
-     },
-     {
-      "name": "Leg (layer 1/3)",
-      "len": 724.3,
-      "offset": 742.3
-     },
-     {
-      "name": "Leg (layer 2/3)",
-      "len": 724.3,
-      "offset": 1469.6
-     },
-     {
-      "name": "Leg (layer 3/3)",
+      "name": "Leg",
       "len": 724.3,
       "offset": 2196.9
      }
@@ -386,8 +335,8 @@
    }
   ],
   "sheets": [],
-  "totalCost": 503.02,
-  "wasteSolidPct": 31,
+  "totalCost": 476.87,
+  "wasteSolidPct": 34,
   "wasteSheetPct": null
  },
  "bom": {
@@ -406,9 +355,9 @@
    },
    {
     "kind": "lumber",
-    "label": "Cherry 5/4x4 x 10 ft (1 x 3 1/2 in)",
-    "qty": 3,
-    "price": 109.36
+    "label": "Cherry 4x4 x 10 ft (3 1/2 x 3 1/2 in)",
+    "qty": 1,
+    "price": 83.21
    },
    {
     "kind": "lumber",
@@ -424,7 +373,7 @@
    },
    {
     "kind": "lumber",
-    "label": "Waste from purchasable sizes: solid 31%",
+    "label": "Waste from purchasable sizes: solid 34%",
     "qty": 1,
     "price": 0
    },
@@ -441,13 +390,19 @@
     "price": 11.2
    },
    {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
     "kind": "finish",
     "label": "Danish oil",
     "qty": 1,
     "price": 18
    }
   ],
-  "total": 533.83
+  "total": 515.68
  },
  "steps": [
   "s1",

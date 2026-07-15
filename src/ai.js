@@ -51,6 +51,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       'REFINEMENTS: when the user asks for a change, EDIT the current spec — send ONLY the changed wire keys. Do not redesign. STRUCTURAL CRITIQUE: when the message is a structural critique of your last composition, fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
       '--- knowledge digest ---',
       K.knowledgeDigest(),
+      // Hardware style intent only — every count, rating, and bore is code
+      // (BB.HW), so capacities and formulas never spend prompt tokens.
+      BB.HW ? BB.HW.digestLine() : '',
       '--- current spec (wire format) ---',
       JSON.stringify(Codec().encode(spec))
     ].join('\n');
@@ -153,16 +156,31 @@ var BB = globalThis.BB = globalThis.BB || {};
       return { kind: 'question', question: 'Which way should the wood go?', options: ['Walnut — dark and refined', 'Hard maple — pale and crisp', 'Pine — light and budget-friendly'] };
     }
 
-    // Species.
-    for (const s of Object.values(K.WOOD_SPECIES)) {
-      if (s.sheet) continue;
-      const words = s.label.toLowerCase();
-      const last = words.split(' ').pop();
-      if (t.includes(words) || (t.includes(last) && last !== 'oak') || (last === 'oak' && t.includes(words))) {
-        set('wood.species', s.key); notes.push(s.label); break;
+    // Species. Two passes so multi-word labels ("southern yellow pine") beat
+    // last-word collisions ("pine"); `aliases` come from the species table.
+    const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
+    const solid = Object.values(K.WOOD_SPECIES).filter(s => !s.sheet);
+    let picked = null;
+    for (const s of [...solid].sort((x, y) => y.label.length - x.label.length)) {
+      const names = [s.label.toLowerCase(), ...(s.aliases || [])];
+      if (names.some(nm => rxWord(nm).test(t))) { picked = s; break; }
+    }
+    if (!picked) {
+      for (const s of solid) {
+        const last = s.label.toLowerCase().split(' ').pop();
+        if (last !== 'oak' && rxWord(last).test(t)) { picked = s; break; }
       }
     }
+    if (picked) { set('wood.species', picked.key); notes.push(picked.label); }
     if (!patch.wood && /\boak\b/.test(t)) { set('wood.species', /white\s+oak/.test(t) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
+    // Sheet stock (drawer boxes, backs): a named sheet good switches only the
+    // sheet species — solid parts keep their wood.
+    for (const s of Object.values(K.WOOD_SPECIES).filter(x => x.sheet)) {
+      const names = [s.label.toLowerCase(), ...(s.aliases || [])];
+      if (names.some(nm => rxWord(nm).test(t))) {
+        set('wood.sheetSpecies', s.key); notes.push(s.label + ' sheet stock'); break;
+      }
+    }
 
     // Level.
     if (/\bbeginner|first (build|project)|simple joinery\b/.test(t)) { set('meta.level', 'beginner'); notes.push('beginner'); }
@@ -215,7 +233,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (/\binset\b/.test(t)) set('drawers.frontStyle', 'inset');
       if (/\bwood(en)? runners?\b/.test(t)) set('drawers.runner', 'wood_runners');
       if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) set('drawers.runner', 'side_mount_slides');
+      if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
     }
+
+    // Hardware style intent (2026 expansion): the style is the whole ask —
+    // counts, sizes, spacing, and bores are computed by code (BB.HW).
+    if (/push[ -]?to[ -]?open|handleless|no (visible )?(hardware|handles|pulls)/.test(t)) { set('hardware.pull', 'none_touch'); notes.push('push-to-open'); }
+    else if (/turned (wood(en)? )?knobs?|wood(en)? knobs?/.test(t)) { set('hardware.pull', 'knob_turned_wood'); notes.push('turned knobs'); }
+    else if (/\bknobs?\b/.test(t)) { set('hardware.pull', 'knob_round'); notes.push('knobs'); }
+    else if (/\b(cup|bin) pulls?\b/.test(t)) { set('hardware.pull', 'cup_pull'); notes.push('cup pulls'); }
+    else if (/\bleather (strap )?pulls?\b/.test(t)) { set('hardware.pull', 'leather_pull'); notes.push('leather pulls'); }
+    else if (/\bring pulls?\b/.test(t)) { set('hardware.pull', 'ring_pull'); notes.push('ring pulls'); }
+    else if (/\bbar pulls?\b/.test(t)) { set('hardware.pull', 'bar_pull'); notes.push('bar pulls'); }
 
     // Finish.
     for (const f of K.FINISHES) {

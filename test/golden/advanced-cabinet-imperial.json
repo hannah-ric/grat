@@ -34,6 +34,9 @@
    "box": "half_blind_dovetail"
   },
   "finish": "danish_oil",
+  "hardware": {
+   "pull": "bar_pull"
+  },
   "drawers": {
    "count": 2,
    "frontStyle": "overlay",
@@ -250,9 +253,9 @@
     "id": "tip_f2057",
     "status": "advisory",
     "data": {
-     "marginRatio": 1.103,
+     "marginRatio": 1.095,
      "stabilizingNmm": 67872.514,
-     "overturningNmm": 61557.247,
+     "overturningNmm": 62003.425,
      "testKg": 22.7,
      "openFraction": 0.667
     }
@@ -348,12 +351,12 @@
     "cost": 87.499
    },
    {
-    "label": "Baltic birch 1/4 in — full sheet (4 x 8 ft base)",
+    "label": "Baltic Birch Ply 1/4 in — full sheet (4 x 8 ft base)",
     "qty": 1,
     "cost": 40
    },
    {
-    "label": "Baltic birch 1/2 in — full sheet (4 x 8 ft base)",
+    "label": "Baltic Birch Ply 1/2 in — full sheet (4 x 8 ft base)",
     "qty": 1,
     "cost": 62
    }
@@ -655,13 +658,13 @@
    },
    {
     "kind": "sheet",
-    "label": "Baltic birch 1/4 in — full sheet (4 x 8 ft base)",
+    "label": "Baltic Birch Ply 1/4 in — full sheet (4 x 8 ft base)",
     "qty": 1,
     "price": 40
    },
    {
     "kind": "sheet",
-    "label": "Baltic birch 1/2 in — full sheet (4 x 8 ft base)",
+    "label": "Baltic Birch Ply 1/2 in — full sheet (4 x 8 ft base)",
     "qty": 1,
     "price": 62
    },
@@ -690,6 +693,12 @@
     "price": 0.36
    },
    {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
     "kind": "hardware",
     "label": "15 3/4 in side-mount slides (pair)",
     "qty": 1,
@@ -703,7 +712,7 @@
    },
    {
     "kind": "hardware",
-    "label": "Drawer pull",
+    "label": "Bar pull",
     "qty": 1,
     "price": 6
    },
@@ -727,7 +736,7 @@
    },
    {
     "kind": "hardware",
-    "label": "Drawer pull",
+    "label": "Bar pull",
     "qty": 1,
     "price": 6
    },
@@ -756,7 +765,7 @@
     "price": 18
    }
   ],
-  "total": 516.38
+  "total": 524.38
  },
  "steps": [
   "s1",

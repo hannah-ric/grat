@@ -319,7 +319,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function renderCut(root) {
     root.append(el('h3', '', 'Cut list'));
-    root.append(el('p', 'lede', `Lengths include joinery allowances — tap any dimension to see the formula behind it. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + Baltic birch ply.`));
+    root.append(el('p', 'lede', `Lengths include joinery allowances — tap any dimension to see the formula behind it. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
     if (!state.cut.length) {
       emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
@@ -396,7 +396,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('h3', '', 'Cutting diagrams — sheets'));
       plan.sheets.forEach((s, i) => {
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Sheet ${i + 1} — Baltic birch ${fmt(s.thickness)} · buy a ${esc(s.fractionLabel)}</span><span class="offcut">layout ${fmt(s.extent.x)} × ${fmt(s.extent.y)}</span></div>` + Packing.sheetSVG(s, fmt);
+        card.innerHTML = `<div class="sb-title"><span>Sheet ${i + 1} — ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)} ${fmt(s.thickness)} · buy a ${esc(s.fractionLabel)}</span><span class="offcut">layout ${fmt(s.extent.x)} × ${fmt(s.extent.y)}</span></div>` + Packing.sheetSVG(s, fmt);
         root.append(card);
       });
     }
@@ -433,8 +433,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       grid.append(priceInput(`${K.WOOD_SPECIES[species].label} ${nom} ${rateLabel}`, toDisplay(state.prices.dimensional[species][nom]),
         v => { state.prices.dimensional[species][nom] = fromDisplay(v); }));
     }
-    for (const t of K.LUMBER.SHEET.THICKNESSES) {
-      grid.append(priceInput(`Sheet ${fmt(t)} $/full`, state.prices.sheet[t], v => { state.prices.sheet[t] = v; }));
+    for (const sk of K.sheetSpeciesKeys()) {
+      if (!state.prices.sheet[sk]) state.prices.sheet[sk] = Object.assign({}, K.SHEET_BASE_PRICES[sk]);
+      for (const t of K.LUMBER.SHEET.THICKNESSES) {
+        grid.append(priceInput(`${K.WOOD_SPECIES[sk].label} ${fmt(t)} $/full`, state.prices.sheet[sk][t], v => { state.prices.sheet[sk][t] = v; }));
+      }
     }
     grid.append(priceInput(`${K.WOOD_SPECIES[species].label} $/bd ft`, state.prices.bdft[species], v => { state.prices.bdft[species] = v; }));
     details.append(grid);
@@ -472,7 +475,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   const DEMO_MEMBERS = {
     frame: [{ id: 'demo_apron', name: 'Apron' , size: { w: 600, h: 89, d: 19 } }, { id: 'demo_leg', name: 'Leg', size: { w: 60, h: 700, d: 60 } }],
     case: [{ id: 'demo_shelf', name: 'Shelf', size: { w: 800, h: 19, d: 280 } }, { id: 'demo_side', name: 'Case side', size: { w: 18, h: 900, d: 280 } }],
-    box: [{ id: 'demo_side', name: 'Drawer side', size: { w: 400, h: 120, d: 12 } }, { id: 'demo_front', name: 'Drawer front', size: { w: 450, h: 120, d: 19 } }]
+    box: [{ id: 'demo_side', name: 'Drawer side', size: { w: 400, h: 120, d: 12 } }, { id: 'demo_front', name: 'Drawer front', size: { w: 450, h: 120, d: 19 } }],
+    panel: [{ id: 'demo_board_a', name: 'Board A', size: { w: 600, h: 19, d: 140 } }, { id: 'demo_board_b', name: 'Board B', size: { w: 600, h: 19, d: 140 } }]
   };
   function openJointInspector(type, partA, partB) {
     if (!partA || !partB) {
@@ -642,7 +646,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     const tabs = el('div', 'ref-tabs');
     tabs.setAttribute('role', 'tablist');
-    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['lumber', 'Buyable lumber']];
+    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
     for (const [key, label] of refEntries) {
       const b = el('button', 'ref-tab', esc(label));
       b.setAttribute('role', 'tab');
@@ -706,6 +710,46 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td style="font-size:12.5px">${esc(j.bestFor)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.failure)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
+    } else if (state.refTab === 'hardware') {
+      // The hardware repository: when, why, how, where — quantities and
+      // ratings are computed by code (BB.HW rules), the table teaches the
+      // rest. Rows with a 3D button open a dimensioned inspector view.
+      head = '<th>Hardware</th><th></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
+      const HW = BB.HW;
+      const view3d = { euro_cup: 'hw_cup_hinge', drop_leaf: 'hw_rule_joint', rule_joint_ref: 'hw_rule_joint', pivot_pin_hinge: 'hw_pivot_pin', tambour: 'hw_tambour', sawtooth_supports: 'hw_sawtooth', sawtooth: 'hw_sawtooth', undermount_45: 'hw_undermount' };
+      const groups = [
+        ['Hinges', Object.values(HW.HINGES)], ['Pulls', Object.values(HW.PULLS)],
+        ['Slides', Object.values(HW.SLIDES)], ['Lifts & stays', Object.values(HW.LIFTS)],
+        ['Catches', Object.values(HW.CATCHES)], ['Locks', Object.values(HW.LOCKS)],
+        ['Shelf support', Object.values(HW.SHELF_SUPPORT)], ['Table & bed', Object.values(HW.TABLE_BED)],
+        ['Wall hanging', Object.values(HW.WALL_HANG)], ['Feet & pass-throughs', Object.values(HW.FEET_MISC)],
+        ['Traditional (no hardware)', Object.values(HW.TRADITIONAL)]
+      ];
+      const classOf = x => {
+        const bits = [];
+        if (x.capacityKg) bits.push(`${x.capacityKg} kg`);
+        if (x.capacityKgPair) bits.push(`${x.capacityKgPair} kg/pair`);
+        if (x.holdKg) bits.push(`holds ${x.holdKg} kg`);
+        if (x.holdKgEach) bits.push(`${x.holdKgEach} kg each`);
+        if (x.holdKgPair) bits.push(`${x.holdKgPair} kg/pair`);
+        if (x.forceClassesN) bits.push(x.forceClassesN.join('/') + ' N');
+        if (x.torqueClassesNm) bits.push(x.torqueClassesNm.join('/') + ' N·m');
+        if (x.opening) bits.push(`opens ${x.opening}°`);
+        if (x.extension) bits.push(x.extension === 1 ? 'full ext.' : Math.round(x.extension * 100) + '% ext.');
+        if (x.replaces) bits.push('replaces ' + x.replaces);
+        if (x.price) bits.push('~$' + x.price);
+        if (x.price === 0) bits.push('shop-made, $0');
+        return bits.join(' · ');
+      };
+      rows = groups.map(([gLabel, list]) => {
+        const body2 = list.filter(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))).map(x => `<tr>
+          <td><strong>${esc(Units.fmtTemplate(x.label))}</strong><br><span class="kind-tag">${esc(gLabel)}</span></td>
+          <td>${view3d[x.key] ? `<button type="button" class="btn small ghost joint-demo" data-joint="${esc(view3d[x.key])}" title="See it in 3D">${BB.Icons.svg('ruler', 13)} 3D</button>` : ''}</td>
+          <td class="num" style="font-size:12px">${esc(classOf(x))}</td>
+          <td style="font-size:12.5px">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
+          <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
+        return body2;
+      }).join('');
     } else if (state.refTab === 'lumber') {
       head = '<th>Nominal</th><th class="num">Actual (T × W)</th><th class="num">Stock lengths</th>';
       rows = Object.entries(K.LUMBER.NOMINALS).filter(([n]) => hit(n)).map(([n, a]) => `<tr>
@@ -720,9 +764,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td class="num">${x.pilot ? esc(fmtS(x.pilot)) + ' pilot' : (x.price ? '~$' + x.price : '—')}</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
       rows += K.FINISHES.filter(x => hit(x.label, x.blurb)).map(x => `<tr>
-        <td><strong>${esc(x.label)}</strong></td>
+        <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}${x.exterior ? ' <span class="kind-tag">exterior</span>' : ''}</td>
         <td class="num">${x.coats} coats · ${x.recoatHrs} h recoat · ${x.cureDays} d cure</td>
         <td style="font-size:12.5px;color:var(--muted)">${esc(x.blurb)}</td></tr>`).join('');
+      rows += K.GLUES.filter(x => hit(x.label, x.blurb, x.water)).map(x => `<tr>
+        <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}</td>
+        <td class="num">open ${x.openMin} min · clamp ${x.clampMin} min · ${x.cureHrs} h full</td>
+        <td style="font-size:12.5px;color:var(--muted)">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
     }
     if (!rows) {
       body.append(el('div', 'empty-state', `<span class="big">No matches in the reference.</span>Try a different word — “dovetail”, “walnut”, “pilot”…`));
@@ -1030,12 +1078,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(paramSeg('Front style', [['inset', 'Inset'], ['overlay', 'Overlay']], s.drawers.frontStyle,
         v => { merge({ drawers: { frontStyle: v } }, 'manual'); openInspectorById(part.id); }));
       const runnerOpts = [['side_mount_slides', 'Slides']];
-      if (s.meta.level !== 'beginner') runnerOpts.push(['wood_runners', 'Wood runners']);
+      if (s.meta.level !== 'beginner') runnerOpts.push(['undermount_slides', 'Undermount'], ['wood_runners', 'Wood runners']);
       body.append(paramSeg('Runners', runnerOpts, s.drawers.runner,
         v => { merge({ drawers: { runner: v } }, 'manual'); openInspectorById(part.id); }));
+      body.append(paramSelect('Pull style', Object.values(BB.HW.PULLS).map(p => [p.key, p.label]),
+        s.hardware.pull, v => { merge({ hardware: { pull: v } }, 'manual'); openInspectorById(part.id); }));
     }
     body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); openInspectorById(part.id); }));
+    body.append(paramSelect('Sheet stock', Object.values(K.WOOD_SPECIES).filter(x => x.sheet).map(x => [x.key, x.label]),
+      s.wood.sheetSpecies, v => { merge({ wood: { sheetSpecies: v } }, 'manual'); openInspectorById(part.id); }));
     body.append(paramSelect('Finish', K.FINISHES.map(f => [f.key, f.label]), s.finish,
       v => { merge({ finish: v }, 'manual'); openInspectorById(part.id); }));
   }
@@ -1884,7 +1936,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- shell: URL-restorable tabs ----------------
    * The active plan tab (and reference subtab) mirrors into location.hash via
    * replaceState — deep-linkable and reload-safe, with no history spam. */
-  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'lumber'];
+  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'hardware', 'lumber'];
   function syncHash() {
     const h = '#' + state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
     if (location.hash !== h) {

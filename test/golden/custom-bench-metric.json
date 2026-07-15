@@ -34,6 +34,9 @@
    "box": "pocket_screws"
   },
   "finish": "wipe_poly",
+  "hardware": {
+   "pull": "bar_pull"
+  },
   "drawers": null,
   "custom": {
    "parts": [
@@ -230,280 +233,80 @@
   "mode": "dimensional",
   "shopping": [
    {
-    "label": "Red Oak 38 x 38 x 1829 mm (2x2)",
+    "label": "Red Oak 38 x 235 x 1829 mm (2x10)",
     "qty": 1,
-    "cost": 9.877
+    "cost": 42.799
    },
    {
-    "label": "Red Oak 38 x 38 x 3658 mm (2x2)",
-    "qty": 6,
-    "cost": 118.519
+    "label": "Red Oak 38 x 184 x 2438 mm (2x8)",
+    "qty": 1,
+    "cost": 41.251
    }
   ],
   "boards": [
    {
-    "nominal": "2x2",
-    "stockLen": 3658,
-    "offcut": 322,
-    "cuts": [
-     {
-      "name": "Seat (strip 1/11)",
-      "len": 1100,
-      "offset": 15
-     },
-     {
-      "name": "Seat (strip 2/11)",
-      "len": 1100,
-      "offset": 1118
-     },
-     {
-      "name": "Seat (strip 3/11)",
-      "len": 1100,
-      "offset": 2221
-     }
-    ]
-   },
-   {
-    "nominal": "2x2",
-    "stockLen": 3658,
-    "offcut": 322,
-    "cuts": [
-     {
-      "name": "Seat (strip 4/11)",
-      "len": 1100,
-      "offset": 15
-     },
-     {
-      "name": "Seat (strip 5/11)",
-      "len": 1100,
-      "offset": 1118
-     },
-     {
-      "name": "Seat (strip 6/11)",
-      "len": 1100,
-      "offset": 2221
-     }
-    ]
-   },
-   {
-    "nominal": "2x2",
-    "stockLen": 3658,
-    "offcut": 322,
-    "cuts": [
-     {
-      "name": "Seat (strip 7/11)",
-      "len": 1100,
-      "offset": 15
-     },
-     {
-      "name": "Seat (strip 8/11)",
-      "len": 1100,
-      "offset": 1118
-     },
-     {
-      "name": "Seat (strip 9/11)",
-      "len": 1100,
-      "offset": 2221
-     }
-    ]
-   },
-   {
-    "nominal": "2x2",
-    "stockLen": 3658,
-    "offcut": 13,
-    "cuts": [
-     {
-      "name": "Seat (strip 10/11)",
-      "len": 1100,
-      "offset": 15
-     },
-     {
-      "name": "Seat (strip 11/11)",
-      "len": 1100,
-      "offset": 1118
-     },
-     {
-      "name": "Leg panel (strip 1/14)",
-      "len": 350,
-      "offset": 2221
-     },
-     {
-      "name": "Leg panel (strip 2/14)",
-      "len": 350,
-      "offset": 2574
-     },
-     {
-      "name": "Leg panel (strip 3/14)",
-      "len": 350,
-      "offset": 2927
-     },
-     {
-      "name": "Leg panel (strip 4/14)",
-      "len": 350,
-      "offset": 3280
-     }
-    ]
-   },
-   {
-    "nominal": "2x2",
-    "stockLen": 3658,
-    "offcut": 101,
-    "cuts": [
-     {
-      "name": "Leg panel (strip 5/14)",
-      "len": 350,
-      "offset": 15
-     },
-     {
-      "name": "Leg panel (strip 6/14)",
-      "len": 350,
-      "offset": 368
-     },
-     {
-      "name": "Leg panel (strip 7/14)",
-      "len": 350,
-      "offset": 721
-     },
-     {
-      "name": "Leg panel (strip 8/14)",
-      "len": 350,
-      "offset": 1074
-     },
-     {
-      "name": "Leg panel (strip 9/14)",
-      "len": 350,
-      "offset": 1427
-     },
-     {
-      "name": "Leg panel (strip 10/14)",
-      "len": 350,
-      "offset": 1780
-     },
-     {
-      "name": "Leg panel (strip 11/14)",
-      "len": 350,
-      "offset": 2133
-     },
-     {
-      "name": "Leg panel (strip 12/14)",
-      "len": 350,
-      "offset": 2486
-     },
-     {
-      "name": "Leg panel (strip 13/14)",
-      "len": 350,
-      "offset": 2839
-     },
-     {
-      "name": "Leg panel (strip 14/14)",
-      "len": 350,
-      "offset": 3192
-     }
-    ]
-   },
-   {
-    "nominal": "2x2",
-    "stockLen": 3658,
-    "offcut": 101,
-    "cuts": [
-     {
-      "name": "Leg panel (strip 1/14)",
-      "len": 350,
-      "offset": 15
-     },
-     {
-      "name": "Leg panel (strip 2/14)",
-      "len": 350,
-      "offset": 368
-     },
-     {
-      "name": "Leg panel (strip 3/14)",
-      "len": 350,
-      "offset": 721
-     },
-     {
-      "name": "Leg panel (strip 4/14)",
-      "len": 350,
-      "offset": 1074
-     },
-     {
-      "name": "Leg panel (strip 5/14)",
-      "len": 350,
-      "offset": 1427
-     },
-     {
-      "name": "Leg panel (strip 6/14)",
-      "len": 350,
-      "offset": 1780
-     },
-     {
-      "name": "Leg panel (strip 7/14)",
-      "len": 350,
-      "offset": 2133
-     },
-     {
-      "name": "Leg panel (strip 8/14)",
-      "len": 350,
-      "offset": 2486
-     },
-     {
-      "name": "Leg panel (strip 9/14)",
-      "len": 350,
-      "offset": 2839
-     },
-     {
-      "name": "Leg panel (strip 10/14)",
-      "len": 350,
-      "offset": 3192
-     }
-    ]
-   },
-   {
-    "nominal": "2x2",
+    "nominal": "2x10",
     "stockLen": 1829,
     "offcut": 390,
     "cuts": [
      {
-      "name": "Leg panel (strip 11/14)",
+      "name": "Leg panel (strip 1/2)",
       "len": 350,
       "offset": 15
      },
      {
-      "name": "Leg panel (strip 12/14)",
+      "name": "Leg panel (strip 2/2)",
       "len": 350,
       "offset": 368
      },
      {
-      "name": "Leg panel (strip 13/14)",
+      "name": "Leg panel (strip 1/2)",
       "len": 350,
       "offset": 721
      },
      {
-      "name": "Leg panel (strip 14/14)",
+      "name": "Leg panel (strip 2/2)",
       "len": 350,
       "offset": 1074
+     }
+    ]
+   },
+   {
+    "nominal": "2x8",
+    "stockLen": 2438,
+    "offcut": 205,
+    "cuts": [
+     {
+      "name": "Seat (strip 1/2)",
+      "len": 1100,
+      "offset": 15
+     },
+     {
+      "name": "Seat (strip 2/2)",
+      "len": 1100,
+      "offset": 1118
      }
     ]
    }
   ],
   "sheets": [],
-  "totalCost": 128.4,
-  "wasteSolidPct": 24,
+  "totalCost": 84.05,
+  "wasteSolidPct": 22,
   "wasteSheetPct": null
  },
  "bom": {
   "items": [
    {
     "kind": "lumber",
-    "label": "Red Oak 38 x 38 x 1829 mm (2x2)",
+    "label": "Red Oak 38 x 235 x 1829 mm (2x10)",
     "qty": 1,
-    "price": 9.88
+    "price": 42.8
    },
    {
     "kind": "lumber",
-    "label": "Red Oak 38 x 38 x 3658 mm (2x2)",
-    "qty": 6,
-    "price": 118.52
+    "label": "Red Oak 38 x 184 x 2438 mm (2x8)",
+    "qty": 1,
+    "price": 41.25
    },
    {
     "kind": "lumber",
@@ -513,7 +316,7 @@
    },
    {
     "kind": "lumber",
-    "label": "Waste from purchasable sizes: solid 24%",
+    "label": "Waste from purchasable sizes: solid 22%",
     "qty": 1,
     "price": 0
    },
@@ -524,13 +327,19 @@
     "price": 0.36
    },
    {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
     "kind": "finish",
     "label": "Wipe-on polyurethane",
     "qty": 1,
     "price": 18
    }
   ],
-  "total": 146.76
+  "total": 110.41
  },
  "steps": [
   "mill",

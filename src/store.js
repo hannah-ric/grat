@@ -144,13 +144,36 @@ var BB = globalThis.BB = globalThis.BB || {};
     seenHero: false // the one-shot assemble moment on first starter pick
   };
 
+  /* Sheet prices migrated in place (2026 expansion): the legacy flat shape
+   * {6:40,12:62,18:85} implicitly meant Baltic birch — it becomes that
+   * species' row, and other sheet species fill from defaults. User edits are
+   * never lost; per-species deep-fill keeps new thicknesses/species working. */
+  function normalizeSheetPrices(dfltSheet, storedSheet) {
+    const out = {};
+    const legacyFlat = storedSheet && typeof storedSheet === 'object' &&
+      Object.keys(storedSheet).every(k => /^\d+$/.test(k));
+    for (const key of Object.keys(dfltSheet)) {
+      const storedRow = legacyFlat
+        ? (key === 'baltic_birch' ? storedSheet : null)
+        : (storedSheet && typeof storedSheet[key] === 'object' ? storedSheet[key] : null);
+      out[key] = Object.assign({}, dfltSheet[key], storedRow || {});
+    }
+    return out;
+  }
   async function loadPrices() {
     const stored = await get(PRICES_KEY);
     const dflt = BB.K.defaultPrices();
     if (!stored || typeof stored !== 'object') return dflt;
+    // Per-species deep-fill: a stored table from before the expansion gains
+    // the new species and nominals without clobbering edited rows.
+    const dimensional = {};
+    for (const sp of Object.keys(dflt.dimensional)) {
+      dimensional[sp] = Object.assign({}, dflt.dimensional[sp],
+        stored.dimensional && stored.dimensional[sp] ? stored.dimensional[sp] : {});
+    }
     return {
-      dimensional: Object.assign({}, dflt.dimensional, stored.dimensional || {}),
-      sheet: Object.assign({}, dflt.sheet, stored.sheet || {}),
+      dimensional,
+      sheet: normalizeSheetPrices(dflt.sheet, stored.sheet),
       bdft: Object.assign({}, dflt.bdft, stored.bdft || {})
     };
   }

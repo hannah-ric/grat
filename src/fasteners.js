@@ -71,8 +71,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     case_screw: { spec: '#8 × {32} wood screw', pilotMM: 2.8 },
     pocket: { spec: '{32} coarse pocket screw', pilotMM: 9.5 }, // the jig's 3/8 in stepped bit
     front_screw: { spec: '#8 × {25} wood screw', pilotMM: 2.8 },
-    figure8: { spec: 'figure-8 fastener + #8 × {16}', pilotMM: 2.8 }
+    figure8: { spec: 'figure-8 fastener + #8 × {16}', pilotMM: 2.8 },
+    /* 2026 expansion */
+    biscuit: { spec: '#20 biscuit', pilotMM: 0 },
+    loose_tenon: { spec: '{8} × {22} × {50} loose tenon', pilotMM: 8 },
+    kd_bolt: { spec: 'M6 × {50} furniture bolt + barrel nut', pilotMM: 7 }, // 7 mm bolt bore; 10 mm barrel bore
+    spline: { spec: '{6} plywood spline', pilotMM: 0 }
   };
+  const DADO_WIDTHS = [6, 10, 13, 19]; // dado-stack / box-joint finger snap (mm)
   const fmtSpec = c => U().fmtTemplate(c.spec);
 
   /* ---------------- the per-joint layout ---------------- */
@@ -88,7 +94,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const fine = mm => U().fmtSmall(mm);
     const len = mm => U().fmtLength(mm);
 
-    const isTopAttach = (a.role === 'top' || a.role === 'seat') && a.material !== 'baltic_birch' &&
+    const isTopAttach = (a.role === 'top' || a.role === 'seat') &&
+      !(K.WOOD_SPECIES[a.material] && K.WOOD_SPECIES[a.material].sheet) &&
       ['apron', 'side', 'rail'].includes(b.role);
 
     if (isTopAttach) {
@@ -153,6 +160,128 @@ var BB = globalThis.BB = globalThis.BB || {};
         const lap = Math.max(4, Math.round(mateT / 3));
         out.dovetail = { tails, lapMM: lap };
         out.text = `${tails} tails on the ${b.name.toLowerCase()}, half-blind sockets in the ${a.name.toLowerCase()} leaving a ${len(lap)} lap (⅓ of the ${len(mateT)} front) — bevel gauge at 1:8.`;
+        break;
+      }
+
+      /* ---- 2026 expansion: setout rules for the new joints. Every rule
+       * snaps to the same chisel / bit / dado ladders the engine already
+       * uses, and every purchasable item lands in out.fasteners so the BOM
+       * and the drilling instructions can never disagree (audit F-S3-1). */
+      case 'edge_glue': {
+        // Long-grain lamination: no fasteners — the schedule is clamps.
+        const clamps = Math.max(2, Math.ceil(Math.max(0, runMM - 50) / 225) + 1);
+        out.glueup = { clampCount: clamps };
+        out.text = `Edge glue-up along ${len(runMM)}: joint both edges dead square, glue BOTH faces, and set ${clamps} bar clamps at ~${len(225)} centers, alternating over and under. Cauls across the ends keep the panel flat — check with a straightedge before the glue tacks.`;
+        break;
+      }
+      case 'half_lap': case 'cross_lap': {
+        const lapT = Math.round(Math.min(memberT, mateT) / 2 * 10) / 10;
+        const memberW = [a.size.w, a.size.h, a.size.d].sort((x, y) => y - x)[1];
+        out.lap = { depthMM: lapT, widthMM: memberW };
+        // Wide laps creep on their cross-grain glue face — pin them (one
+        // dowel dead center; edge distance is guaranteed at ≥ 2Ø by width).
+        if (memberW >= 75) {
+          out.fasteners.push({ kind: 'dowel', spec: `${U().fmtLength(8)} × ${U().fmtLength(40)} fluted dowel`, pilotMM: 8, diaMM: 8, alongMM: runMM / 2, edgeMM: runMM / 2 });
+        }
+        out.text = (type === 'half_lap'
+          ? `Half lap: ${len(lapT)} deep from each face (half the ${len(Math.min(memberT, mateT))} stock), shoulders knifed square — cut both members from the same reference face.`
+          : `Cross lap: matching ${len(lapT)} notches in each member — sneak up on the notch width with test cuts in offcut stock.`) +
+          (memberW >= 75 ? ` The lap is ${len(memberW)} wide (cross-grain glue): pin it with one ${len(8)} dowel dead center, ${len(8)} bit.` : '');
+        break;
+      }
+      case 'bridle': {
+        const tongue = snapTo(Math.max(6, memberT / 3), CHISELS.filter(c2 => c2 <= Math.max(6, memberT - 8)));
+        const cheek = Math.round((memberT - tongue) / 2 * 10) / 10;
+        const tongueW = [a.size.w, a.size.h, a.size.d].sort((x, y) => y - x)[1];
+        out.tenon = { thicknessMM: tongue, lengthMM: Math.round(mateT), widthMM: Math.round(tongueW), shoulderMM: cheek, open: true };
+        out.text = `Bridle joint: ${len(tongue)} tongue (≈ ⅓ of the ${len(memberT)} stock, chisel size) through an open ${len(mateT)}-deep slot; the ${len(cheek)} outer cheeks split the rest. Clamp ACROSS the cheeks at glue-up, not just along the rail.`;
+        break;
+      }
+      case 'loose_tenon': {
+        const thick = snapTo(Math.max(6, Math.min(memberT, mateT) / 3), CHISELS.filter(c2 => c2 <= Math.max(6, Math.min(memberT, mateT) - 8)));
+        const memberH = [a.size.w, a.size.h, a.size.d].sort((x, y) => y - x)[1];
+        const depthEach = 25; // half of the 50 mm tenon stock per member
+        const nT = memberH >= 140 ? 2 : 1;
+        for (let i = 0; i < nT; i++) {
+          const along = nT === 1 ? runMM / 2 : runMM * (i + 1) / (nT + 1);
+          out.fasteners.push({ kind: 'loose_tenon', spec: fmtSpec(CATALOG.loose_tenon), pilotMM: thick, diaMM: thick, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, runMM - along) });
+        }
+        out.tenon = { thicknessMM: thick, lengthMM: depthEach * 2, widthMM: 22, loose: true };
+        out.text = `${nT} loose tenon${nT > 1 ? 's' : ''}: rout a ${len(thick)} × ${len(22)} mortise ${len(depthEach)} deep in BOTH members (⅓-of-stock bit, same reference face), and mill tenon stock to a firm hand-press fit — never trust an undersized store tenon.`;
+        break;
+      }
+      case 'box_joint': {
+        const finger = snapTo(Math.max(6, Math.min(19, memberT)), DADO_WIDTHS);
+        let n = Math.max(3, Math.round(runMM / finger));
+        if (n % 2 === 0) n += 1; // odd count: both edges land on full fingers
+        out.dovetail = { tails: Math.ceil(n / 2), fingerMM: finger, count: n, box: true };
+        out.text = `Box joint: ${n} fingers × ${len(finger)} (dado-stack width) across the ${len(runMM)} corner — an odd count so both edges finish on full fingers. Cut every finger off ONE indexed jig setting; never re-register mid-run.`;
+        break;
+      }
+      case 'through_dovetail': {
+        const tails = Math.max(2, Math.round(runMM / 50));
+        out.dovetail = { tails, through: true };
+        out.text = `${tails} through tails, 1:8 slope, half-pins at both edges (pins ≥ ${len(6)} at the narrow) — the joint shows on both faces, so knife the ${len(mateT)} baseline deep and chop from both sides.`;
+        break;
+      }
+      case 'sliding_dovetail': {
+        const depth = BB.Plans ? BB.Plans.jointAllowance('sliding_dovetail', mateT) : Math.min(6, Math.floor(mateT / 3));
+        out.dado = { depthMM: depth, widthMM: memberT, dovetail: true };
+        out.text = `Sliding dovetail: ${len(depth)}-deep socket (⅓ of the ${len(mateT)} stock), 1:8 flare, stopped ${len(6)} from the front edge — taper the socket a hair toward the back, wax the pin, drive it fast.`;
+        break;
+      }
+      case 'miter_spline': {
+        const face = Math.round(Math.min(memberT, mateT) * Math.SQRT2 * 10) / 10;
+        const depth = Math.round(face * 2 / 3 * 10) / 10;
+        out.spline = { thicknessMM: 6, depthMM: depth };
+        out.fasteners.push({ kind: 'spline', spec: fmtSpec(CATALOG.spline), pilotMM: 0, alongMM: runMM / 2, edgeMM: runMM / 2 });
+        out.text = `Splined miter: cut both faces at 45°, then a ${len(6)} slot ${len(depth)} into each half (⅔ of the ${len(face)} miter face). Spline grain runs ACROSS the joint — the end-grain miter faces carry nothing on their own.`;
+        break;
+      }
+      case 'staked_tenon': {
+        const dia = memberT >= 38 ? 25 : 19;
+        const ang = BB.Geo && BB.Geo.cutAngles ? (BB.Geo.cutAngles(a.rot) || BB.Geo.cutAngles(b.rot)) : null;
+        out.tenon = { thicknessMM: dia, lengthMM: Math.round(mateT), widthMM: dia, round: true, wedged: true };
+        out.text = `Staked tenon: turn or shave a ${len(dia)} round tenon, bore ${len(dia)} straight through the ${len(mateT)} seat${ang ? ` at the resultant angle (${BB.Geo.angleText(ang)} — sight line first, then the bevel)` : ''}, saw the wedge kerf to ⅔ of the tenon length, and drive a hardwood wedge ACROSS the seat grain — never parallel to it.`;
+        break;
+      }
+      case 'biscuits': {
+        // #20 biscuits: 50 mm edge distance, 150–250 mm spacing.
+        const edge = 50, usable = Math.max(0, runMM - 2 * edge);
+        let nB = Math.max(1, Math.round(usable / 200) + 1);
+        while (nB > 1 && usable / (nB - 1) < 150) nB--;
+        if (runMM < 2 * edge + 10) nB = 1;
+        const c = CATALOG.biscuit;
+        for (let i = 0; i < nB; i++) {
+          const along = nB === 1 ? runMM / 2 : edge + usable * i / (nB - 1);
+          out.fasteners.push({ kind: 'biscuit', spec: fmtSpec(c), pilotMM: 0, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, runMM - along) });
+        }
+        out.text = `${nB} × #20 biscuit${nB > 1 ? 's' : ''} on the centerline: first slot ${len(edge)} from each end, the rest at ${len(150)} to ${len(250)} centers. Biscuits align — the glue line carries the load.`;
+        break;
+      }
+      case 'french_cleat': {
+        // 19 mm ply ripped at 45°; a screw into every stud at ≤ 400 mm centers.
+        const cleatLen = Math.max(300, Math.round(runMM * 2 / 3));
+        const c = CATALOG.butt_screw;
+        const nS = Math.max(2, Math.floor(cleatLen / 400) + 1);
+        for (let i = 0; i < nS; i++) {
+          const along = nS === 1 ? cleatLen / 2 : RULES.edgeMM + (cleatLen - 2 * RULES.edgeMM) * i / (nS - 1);
+          out.fasteners.push({ kind: 'screw', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, cleatLen - along) });
+        }
+        out.cleat = { lengthMM: cleatLen, plyMM: 19 };
+        out.text = `French cleat: rip ${len(19)} ply at 45°; the wall half runs ${len(cleatLen)} (≥ ⅔ of the case) with ${nS} × ${fmtSpec(c)} — one into EVERY stud at ≤ ${len(400)} centers, bevel up and toward the wall. Pilot ${fine(c.pilotMM)}. Never drywall alone.`;
+        break;
+      }
+      case 'kd_bolt': {
+        const c = CATALOG.kd_bolt;
+        const memberH = [a.size.w, a.size.h, a.size.d].sort((x, y) => y - x)[1];
+        const inset = Math.min(32, Math.max(25, Math.round(memberH / 4)));
+        // Two bolts per rail end when the run allows; one, centered, when not.
+        const spots = runMM - inset > inset + 10 ? [inset, runMM - inset] : [Math.max(10, runMM / 2)];
+        for (const along of spots) {
+          out.fasteners.push({ kind: 'kd_bolt', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, runMM - along) });
+        }
+        out.text = `${spots.length} knockdown bolt${spots.length > 1 ? 's' : ''} per joint: ${fine(7)} bolt bore through the ${b.name.toLowerCase()} into the rail end, ${fine(10)} barrel bore ${len(inset)} in from the shoulder — drill BOTH from the same reference face with a jig, then pull up with a hex key.`;
         break;
       }
       default: {
