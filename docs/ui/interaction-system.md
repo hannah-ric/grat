@@ -360,7 +360,20 @@ system during the drag.
 `(hover: hover)` devices only) swaps the hovered part's *edge* material to
 a mid-weight ink — no mesh-material churn, no pool growth — plus
 `cursor: pointer`. Makes pickability legible before commitment. Off during
-drags and playback. **Tier 1.**
+drags; during playback it targets the joint dots instead (9e). **Tier 1.**
+
+**9e · Joint dots are doors.** In step playback the glowing joint markers
+(`showJoints`, `src/engine.js`) become pickable: clicking one opens the
+Joint Inspector on **that** joint's real members, captioned with the step
+("Step 5 — Build the two side frames") and where the joint sits on the
+piece ("front right, at mid-height", derived qualitatively from the joint's
+position vs the model bounds). Hit-testing is screen-space against the
+projected dot centers with a 28 px thumb-sized tolerance — the honest test
+for markers that render depth-free — and the hovered dot swells past its
+pulse so "this one opens" reads before the tap. The step list advertises
+the affordance in its lede. This is the missing link between *watching* a
+step and *knowing the cut*: what to do and exactly where, one tap from the
+dot that marks the spot. **Shipped with Tier 1.**
 
 **9c · Blueprint Mode ink-wash.** The mode toggle is a hard cut today
 (`setDrafting`, `src/engine.js:701-707`). A 200–240 ms CSS ink-wash on the
@@ -419,6 +432,24 @@ Sequencing note: Tier 1 is deliberately all-feel/no-schema — zero spec,
 golden, or physics surface. The first Tier 2 item to build is
 render-on-demand (4d), because every later effect then pays its frame cost
 only while actually animating.
+
+### Status ledger (July 2026 — first implementation pass)
+
+Shipped, smoke-asserted (189 assertions, zero console errors, `stats()`
+still flat): zoom-to-cursor 4a · focus framing + `F` 4b · flick inertia 3a
+(viewport) + the mobile sheet gesture (roadmap #5) · hover pre-highlight
+9b · selection fresnel rim 5b (which also fixed the stale-on-theme-switch
+selection emissive; joint dots and hover ink joined `applyInkColors`) ·
+selection spotlight 6a · blueprint ink-wash 9c (canvas `filter` keyframe —
+overlay-free, so it can never cover controls) · motion micro-polish
+(roadmap #13: welcome-card stagger, splitter-grip grab) · playback stagger
+3b (pulled forward from Tier 2) · **9e joint-dot close-ups** · the law-6
+scratch-vector cleanup. New engine API: `focusPart`, `clearFocus`,
+`jointDotsOnScreen`, and an `onJointPick` callback.
+
+Still open, in build order: render-on-demand 4d → dimension handles 9a →
+scroll-follow 8a → sawdust 7a → cut-face tint 5a → playback drift 4c →
+theme light cross-fade 6b → finish preview (§2) — then Tier 3.
 
 ## Explicitly rejected (kept here so it isn't re-litigated)
 

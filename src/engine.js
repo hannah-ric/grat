@@ -18,7 +18,10 @@
  * through in every mode.
  *
  * Motion: one damped-lerp family drives everything — part positions, scales,
- * drawer travel, explosion, camera. Reduced motion snaps all of it.
+ * drawer travel, explosion, camera (including its target), the selection
+ * light multipliers, and step stagger. Release inertia (flick) feeds the
+ * same goals and decays exponentially. Reduced motion snaps all of it and
+ * zeroes the decorative layers (inertia, stagger).
  */
 var BB = globalThis.BB = globalThis.BB || {};
 
@@ -169,6 +172,34 @@ var BB = globalThis.BB = globalThis.BB || {};
     const quality = { textured: true, shadows: true };
     let curTheme = 'light';
 
+    /* Selection spotlight (interaction design §6a): light intensities ride a
+     * damped multiplier table — never a second timing system. Scene-only, so
+     * page/DOM contrast is untouched; Blueprint mode is unlit and opts out. */
+    const lightMul = { cur: { hemi: 1, sun: 1, fill: 1 }, goal: { hemi: 1, sun: 1, fill: 1 } };
+    function retargetLights() {
+      const focus = !!(E.selected || E.isolated) && !E.drafting;
+      lightMul.goal.hemi = focus ? 0.88 : 1;
+      lightMul.goal.sun = focus ? 1.06 : 1;
+      lightMul.goal.fill = focus ? 0.68 : 1;
+    }
+
+    /* Selection reads as a view-dependent fresnel rim rather than a flat
+     * emissive: it survives dark species in both themes and re-inks on theme
+     * change through this one shared uniform color. If a future three build
+     * renames the chunk, the unmatched replace leaves the material unpatched
+     * — selection still shows via its edge lines, nothing breaks. */
+    const rimColor = new THREE.Color(0x2f7fae);
+    function patchRim(m) {
+      m.onBeforeCompile = shader => {
+        shader.uniforms.uBBRim = { value: rimColor };
+        shader.fragmentShader = 'uniform vec3 uBBRim;\n' + shader.fragmentShader.replace(
+          '#include <emissivemap_fragment>',
+          '#include <emissivemap_fragment>\n' +
+          '\tfloat bbRim = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 3.0);\n' +
+          '\ttotalEmissiveRadiance += uBBRim * bbRim * 0.9;');
+      };
+    }
+
     // Bounded material pool. Textured wood gets the species grain map with a
     // near-white tint (ROLE_SHADE still separates legs/tops/backs); flat mode
     // keeps the original solid species tones.
@@ -192,13 +223,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       if (textured) m.map = BB.Materials.woodTexture(THREE, matKey);
       m.envMapIntensity = matKey === 'hardware' ? 0.9 : 0.5;
-      if (bucket === 'selected') { m.emissive = new THREE.Color(0x2f7fae); m.emissiveIntensity = 0.3; }
+      if (bucket === 'selected') {
+        if (textured) patchRim(m); // fresnel rim; recolored via the shared uniform
+        else { m.emissive = new THREE.Color().copy(rimColor); m.emissiveIntensity = 0.3; }
+      }
       matPool.set(key, m);
       return m;
     }
     const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.28 });
     const edgeMatFaint = new THREE.LineBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.05 });
     const selEdgeMat = new THREE.LineBasicMaterial({ color: 0x2f7fae, transparent: true, opacity: 0.95 });
+    const hoverEdgeMat = new THREE.LineBasicMaterial({ color: 0x2f7fae, transparent: true, opacity: 0.6 });
 
     /* Blueprint mode: flat paper fills — the existing per-mesh edge overlays
      * become the ink lines, at full weight. Pooled per (bucket, theme). */
@@ -235,6 +270,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       explodeT: 0,
       openDrawers: new Set(),
       selected: null, isolated: null,
+      hovered: null, hoverDot: null,
       dimsVisible: false,
       drafting: false,
       playback: null,         // {steps, index}
@@ -243,7 +279,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       needsAnno: false,
       disposed: false
     };
-    let camTarget = new THREE.Vector3(0, 400, 0);
+    /* The camera target is a damped pair like every other value: pan and
+     * dolly write both (1:1 feel under the pointer), part framing writes the
+     * goal only, so it glides. */
+    const tgtCur = new THREE.Vector3(0, 400, 0);
+    const tgtGoal = new THREE.Vector3(0, 400, 0);
     let camCur = { theta: 0.7, phi: 1.15, dist: 3200 };
     let camGoal = { theta: 0.7, phi: 1.15, dist: 3200 };
     const labelTextures = [];
@@ -323,6 +363,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* ---------------- scene (re)build — diff by part id ---------------- */
     function setModel(model, spec, opts2) {
+      const firstModel = !E.model;
       E.model = model; E.spec = spec;
       E.bounds = model.bounds;
       const seen = new Set();
@@ -346,7 +387,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           mesh.add(edge);
           mesh.userData.partId = part.id;
           partsGroup.add(mesh);
-          rec = { mesh, edge, part, bucket: 'solid', cur: null, geoKey };
+          rec = { mesh, edge, part, bucket: 'solid', cur: null, geoKey, delay: 0 };
           E.meshes.set(part.id, rec);
         }
         rec.part = part;
@@ -379,7 +420,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       sc.updateProjectionMatrix();
       sun.shadow.normalBias = Math.max(1, maxDim * 0.002);
       shadowPlane.scale.setScalar(maxDim * 4);
-      camTarget.set(0, model.bounds.h * 0.45, 0);
+      tgtGoal.set(0, model.bounds.h * 0.45, 0);
+      if (firstModel || E.reducedMotion) tgtCur.copy(tgtGoal);
+      focusRestore = null; // a rebuilt design invalidates the stored framing pose
       E.needsAnno = true;
       retargetAll();
     }
@@ -492,23 +535,38 @@ var BB = globalThis.BB = globalThis.BB || {};
     const jointMat = new THREE.MeshBasicMaterial({ color: 0x2f7fae, transparent: true, opacity: 0.55, depthTest: false });
     function showJoints(joints) {
       while (jointGroup.children.length) jointGroup.remove(jointGroup.children[0]);
+      E.hoverDot = null;
       for (const j of joints || []) {
         const s = new THREE.Mesh(jointGeo, jointMat);
         s.position.set(j.pos.x, j.pos.y, j.pos.z);
         s.renderOrder = 9;
         s.userData.base = Math.max(E.bounds.w, E.bounds.h) * 0.016 + 8;
+        s.userData.joint = j; // dots are doors: picked in playback → close-up
         jointGroup.add(s);
       }
     }
 
     /* ---------------- playback ---------------- */
-    function playbackEnter(steps) { E.playback = { steps, index: 0 }; showJoints(steps[0] && steps[0].joints); retargetAll(); }
+    /* Choreographed weight (interaction design §3b): a step's parts leave in
+     * build order, 55 ms apart — sequencing made visible without a solver.
+     * Reduced motion never sets a hold (k = 1 snaps everything anyway). */
+    function staggerStep() {
+      if (!E.playback || E.reducedMotion) return;
+      const step = E.playback.steps[E.playback.index];
+      if (!step) return;
+      step.partIds.forEach((id, i) => {
+        const rec = E.meshes.get(id);
+        if (rec) rec.delay = Math.min(i * 0.055, 0.5);
+      });
+    }
+    function playbackEnter(steps) { E.playback = { steps, index: 0 }; showJoints(steps[0] && steps[0].joints); retargetAll(); staggerStep(); }
     function playbackGoTo(i) {
       if (!E.playback) return;
       E.playback.index = Math.max(0, Math.min(E.playback.steps.length - 1, i));
       const step = E.playback.steps[E.playback.index];
       showJoints(step && step.joints);
       retargetAll();
+      staggerStep();
     }
     function playbackExit() { E.playback = null; showJoints([]); retargetAll(); }
     /* Re-run the current step's fly-in: snap its parts back to their exploded
@@ -524,6 +582,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const off = playbackStart(rec.part, spread);
         rec.cur.pos = { x: rec.part.pos.x + off.x, y: rec.part.pos.y + off.y, z: rec.part.pos.z + off.z };
       }
+      staggerStep();
     }
 
     /* ---------------- camera controls ---------------- */
@@ -532,15 +591,86 @@ var BB = globalThis.BB = globalThis.BB || {};
       const radius = Math.sqrt(b.w * b.w + b.d * b.d + b.h * b.h) / 2;
       camGoal.dist = radius / Math.tan((camera.fov * Math.PI / 180) / 2) * 1.35;
       camGoal.theta = 0.72; camGoal.phi = 1.13;
-      camTarget.set(0, b.h * 0.45, 0);
-      if (E.reducedMotion) Object.assign(camCur, camGoal);
+      tgtGoal.set(0, b.h * 0.45, 0);
+      focusRestore = null; // Home is the escape hatch from part framing
+      if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
+    }
+    /* Part framing (interaction design §4b): double-tap isolate and the F key
+     * glide the target to the part and fit the distance to it; one stored
+     * pose brings the view back when the framing ends. */
+    function focusPart(id) {
+      const rec = E.meshes.get(id);
+      if (!rec) return;
+      if (!focusRestore) focusRestore = { target: tgtGoal.clone(), dist: camGoal.dist };
+      const t = rec.target;
+      const radius = Math.max(60, Math.hypot(t.scale.x, t.scale.y, t.scale.z) / 2);
+      tgtGoal.set(t.pos.x, t.pos.y, t.pos.z);
+      camGoal.dist = Math.max(300, radius / Math.tan((camera.fov * Math.PI / 180) / 2) * 1.55);
+      if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
+    }
+    function clearFocus() {
+      if (!focusRestore) return;
+      tgtGoal.copy(focusRestore.target);
+      camGoal.dist = focusRestore.dist;
+      focusRestore = null;
+      if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
     }
     const pointers = new Map();
     let pinchStart = 0, moved = 0, lastTap = 0, downId = null;
+    const _ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _v1 = new THREE.Vector3();
+    const hoverCapable = typeof matchMedia === 'function' && matchMedia('(hover: hover)').matches;
+    let hoverPt = null; // latest no-button pointer spot; tick raycasts it at most once per frame
+    const flick = { vT: 0, vP: 0, on: false, last: 0 }; // orbit release inertia, rad/s
+    let focusRestore = null; // camera pose to return to when part framing ends
+    /* Dolly-toward-cursor (interaction design §4a): T' = A + (T − A)·f keeps
+     * the world point under the pointer fixed on screen while the distance
+     * damps. Anchor = part under the cursor, else the horizontal plane
+     * through the camera target. The pivot is clamped near the piece. */
+    function dollyShift(cx, cy, f) {
+      if (!isFinite(f) || f === 1) return;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      _ndc.set(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
+      _ray.setFromCamera(_ndc, activeCamera);
+      let anchor = null;
+      const hits = _ray.intersectObjects(partsGroup.children, false);
+      if (hits.length) anchor = hits[0].point;
+      else {
+        const dy = _ray.ray.direction.y;
+        const t = Math.abs(dy) > 1e-6 ? (tgtCur.y - _ray.ray.origin.y) / dy : -1;
+        if (t > 0) anchor = _ray.ray.at(t, _v1);
+      }
+      if (!anchor) return;
+      tgtGoal.lerp(anchor, 1 - f);
+      tgtCur.lerp(anchor, 1 - f);
+      const b = E.bounds, lim = Math.max(b.w, b.d, b.h) * 1.5;
+      for (const v of [tgtGoal, tgtCur]) {
+        v.x = Math.max(-lim, Math.min(lim, v.x));
+        v.z = Math.max(-lim, Math.min(lim, v.z));
+        v.y = Math.max(-lim * 0.2, Math.min(b.h + lim * 0.6, v.y));
+      }
+    }
+    /* Joint-dot picking is screen-space: the dots render depth-free, so the
+     * honest hit test is distance to their projected centers — and the 28 px
+     * tolerance is a thumb-sized target on phones. */
+    function pickDotAt(e) {
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      let best = null, bestD = 28;
+      for (const s of jointGroup.children) {
+        _v1.copy(s.position).project(activeCamera);
+        if (_v1.z > 1) continue; // behind the camera
+        const d = Math.hypot((_v1.x + 1) / 2 * rect.width - px, (1 - _v1.y) / 2 * rect.height - py);
+        if (d < bestD) { bestD = d; best = s; }
+      }
+      return best;
+    }
     canvas.addEventListener('pointerdown', e => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button });
       moved = 0; downId = e.pointerId;
+      flick.on = false; flick.vT = 0; flick.vP = 0; flick.last = performance.now();
       if (pointers.size === 2) {
         const [a, b2] = [...pointers.values()];
         pinchStart = Math.hypot(a.x - b2.x, a.y - b2.y) || 1;
@@ -548,37 +678,48 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     canvas.addEventListener('pointermove', e => {
       const p = pointers.get(e.pointerId);
-      if (!p) return;
+      if (!p) {
+        // No button down: remember the spot; the tick raycasts it once/frame.
+        if (hoverCapable && !pointers.size) hoverPt = { clientX: e.clientX, clientY: e.clientY };
+        return;
+      }
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       moved += Math.abs(dx) + Math.abs(dy);
       if (pointers.size === 2) {
         p.x = e.clientX; p.y = e.clientY;
         const [a, b2] = [...pointers.values()];
         const d = Math.hypot(a.x - b2.x, a.y - b2.y) || 1;
-        camGoal.dist *= pinchStart / d;
-        camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist));
+        const before = camGoal.dist;
+        camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist * (pinchStart / d)));
+        dollyShift((a.x + b2.x) / 2, (a.y + b2.y) / 2, camGoal.dist / before); // pinch pivots on its midpoint
         pinchStart = d;
         return;
       }
       p.x = e.clientX; p.y = e.clientY;
       if (p.b === 2 || e.shiftKey) { // pan
         const scale = camCur.dist * 0.0012;
-        const right = new THREE.Vector3().subVectors(camera.position, camTarget).cross(camera.up).normalize();
-        camTarget.addScaledVector(right, dx * scale);
-        camTarget.y += dy * scale;
+        _v1.subVectors(camera.position, tgtCur).cross(camera.up).normalize();
+        tgtCur.addScaledVector(_v1, dx * scale); tgtGoal.addScaledVector(_v1, dx * scale);
+        tgtCur.y += dy * scale; tgtGoal.y += dy * scale;
       } else {
         camGoal.theta -= dx * 0.0055;
         camGoal.phi = Math.max(0.12, Math.min(1.52, camGoal.phi - dy * 0.0045));
+        // Flick memory: an EMA of the drag's angular velocity, consumed on
+        // release as inertia (interaction design §3a).
+        const now = performance.now();
+        const dts = Math.max(0.008, (now - flick.last) / 1000);
+        flick.last = now;
+        flick.vT = flick.vT * 0.6 + (-dx * 0.0055 / dts) * 0.4;
+        flick.vP = flick.vP * 0.6 + (-dy * 0.0045 / dts) * 0.4;
       }
     });
     function pickAt(e) {
       const rect = canvas.getBoundingClientRect();
-      const ndc = new THREE.Vector2(
+      _ndc.set(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1);
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(ndc, activeCamera);
-      const hits = ray.intersectObjects(partsGroup.children, false);
+      _ray.setFromCamera(_ndc, activeCamera);
+      const hits = _ray.intersectObjects(partsGroup.children, false);
       for (const h of hits) {
         const rec = E.meshes.get(h.object.userData.partId);
         if (rec && rec.bucket !== 'faint' && rec.bucket !== 'hidden') return rec.part;
@@ -586,8 +727,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       return null;
     }
     canvas.addEventListener('pointerup', e => {
+      const p = pointers.get(e.pointerId);
       pointers.delete(e.pointerId);
-      if (e.pointerId !== downId || moved > 8 || E.playback) return;
+      if (e.pointerId !== downId) return;
+      // A real orbit drag still moving at release keeps spinning (inertia).
+      if (moved > 24 && !pointers.size && p && p.b !== 2 && !e.shiftKey && !E.reducedMotion
+          && performance.now() - flick.last < 90) {
+        const cap = 2.2;
+        flick.vT = Math.max(-cap, Math.min(cap, flick.vT));
+        flick.vP = Math.max(-cap, Math.min(cap, flick.vP));
+        if (Math.abs(flick.vT) + Math.abs(flick.vP) > 0.35) flick.on = true;
+      }
+      if (moved > 8) return;
+      if (E.playback) {
+        // Step playback: the glowing joint dots are doors to the close-up.
+        const dot = pickDotAt(e);
+        if (dot && opts.onJointPick) opts.onJointPick(dot.userData.joint);
+        return;
+      }
       const part = pickAt(e);
       const now = performance.now();
       const isDouble = now - lastTap < 350;
@@ -595,9 +752,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (opts.onPick) opts.onPick(part, { double: isDouble });
     });
     canvas.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
+    canvas.addEventListener('pointerleave', () => {
+      hoverPt = null;
+      E.hovered = null; E.hoverDot = null;
+      canvas.style.cursor = '';
+    });
     canvas.addEventListener('wheel', e => {
       e.preventDefault();
+      const before = camGoal.dist;
       camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist * (1 + e.deltaY * 0.0011)));
+      dollyShift(e.clientX, e.clientY, camGoal.dist / before); // zoom pivots on the cursor
     }, { passive: false });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     canvas.addEventListener('keydown', e => {
@@ -609,6 +773,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       else if (e.key === '+' || e.key === '=') { camGoal.dist = Math.max(300, camGoal.dist * 0.88); e.preventDefault(); }
       else if (e.key === '-') { camGoal.dist = Math.min(20000, camGoal.dist * 1.14); e.preventDefault(); }
       else if (e.key === 'Home') { frame(); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // F frames the selected part (keyboard parity with double-tap).
+        if (E.selected) focusPart(E.selected); else frame();
+        e.preventDefault();
+      }
     });
 
     /* ---------------- frame loop ---------------- */
@@ -617,10 +786,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     function lerpN(a, b, k) { return a + (b - a) * k; }
     function placeCamera() {
       camera.position.set(
-        camTarget.x + camCur.dist * Math.sin(camCur.phi) * Math.sin(camCur.theta),
-        camTarget.y + camCur.dist * Math.cos(camCur.phi),
-        camTarget.z + camCur.dist * Math.sin(camCur.phi) * Math.cos(camCur.theta));
-      camera.lookAt(camTarget);
+        tgtCur.x + camCur.dist * Math.sin(camCur.phi) * Math.sin(camCur.theta),
+        tgtCur.y + camCur.dist * Math.cos(camCur.phi),
+        tgtCur.z + camCur.dist * Math.sin(camCur.phi) * Math.cos(camCur.theta));
+      camera.lookAt(tgtCur);
       if (activeCamera === ortho) {
         ortho.position.copy(camera.position);
         ortho.quaternion.copy(camera.quaternion);
@@ -638,7 +807,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
       for (const rec of E.meshes.values()) {
         const c = rec.cur, t = rec.target;
-        for (const ax of ['x', 'y', 'z']) {
+        if (rec.delay > 0) rec.delay -= dt; // staggered departure holds the pose
+        else for (const ax of ['x', 'y', 'z']) {
           c.pos[ax] = lerpN(c.pos[ax], t.pos[ax], k);
           c.scale[ax] = lerpN(c.scale[ax], t.scale[ax], k);
         }
@@ -648,20 +818,57 @@ var BB = globalThis.BB = globalThis.BB || {};
         const want = E.drafting ? draftMaterialFor(bucket) : materialFor(rec.part.material, rec.part.role, bucket);
         if (rec.mesh.material !== want) rec.mesh.material = want;
         const faintEdge = BUCKETS[bucket] !== undefined && BUCKETS[bucket] < 0.2;
+        const hovered = rec.part.id === E.hovered && bucket === 'solid'; // selection wins over hover
         const wantEdge = E.drafting
-          ? (bucket === 'selected' ? draftSelEdge : faintEdge ? draftEdgeFaint : draftEdge)
-          : (bucket === 'selected' ? selEdgeMat : faintEdge ? edgeMatFaint : edgeMat);
+          ? (bucket === 'selected' || hovered ? draftSelEdge : faintEdge ? draftEdgeFaint : draftEdge)
+          : (bucket === 'selected' ? selEdgeMat : hovered ? hoverEdgeMat : faintEdge ? edgeMatFaint : edgeMat);
         if (rec.edge.material !== wantEdge) rec.edge.material = wantEdge;
         rec.mesh.visible = bucket !== 'hidden';
       }
 
+      if (flick.on) { // thrown orbit decays exponentially; any press stops it
+        camGoal.theta += flick.vT * dt;
+        camGoal.phi = Math.max(0.12, Math.min(1.52, camGoal.phi + flick.vP * dt));
+        const decay = Math.exp(-dt * 4);
+        flick.vT *= decay; flick.vP *= decay;
+        if (Math.abs(flick.vT) + Math.abs(flick.vP) < 0.05) flick.on = false;
+      }
       camCur.theta = lerpN(camCur.theta, camGoal.theta, kc);
       camCur.phi = lerpN(camCur.phi, camGoal.phi, kc);
       camCur.dist = lerpN(camCur.dist, camGoal.dist, kc);
+      tgtCur.lerp(tgtGoal, kc);
       placeCamera();
 
+      // Selection spotlight: intensities damp toward the multiplier goals.
+      const thL = THEMES[curTheme];
+      lightMul.cur.hemi = lerpN(lightMul.cur.hemi, lightMul.goal.hemi, kc);
+      lightMul.cur.sun = lerpN(lightMul.cur.sun, lightMul.goal.sun, kc);
+      lightMul.cur.fill = lerpN(lightMul.cur.fill, lightMul.goal.fill, kc);
+      hemi.intensity = thL.hemiI * lightMul.cur.hemi;
+      sun.intensity = thL.sunI * lightMul.cur.sun;
+      fill.intensity = thL.fillI * lightMul.cur.fill;
+
+      if (hoverPt) { // hover pre-highlight: at most one raycast per frame
+        const pt = hoverPt;
+        hoverPt = null;
+        E.hovered = null; E.hoverDot = null;
+        let cursor = '';
+        if (E.playback) {
+          E.hoverDot = pickDotAt(pt);
+          cursor = E.hoverDot ? 'pointer' : '';
+        } else {
+          const part = pickAt(pt);
+          E.hovered = part ? part.id : null;
+          cursor = part ? 'pointer' : '';
+        }
+        canvas.style.cursor = cursor;
+      }
+
       const pulse = 1 + 0.22 * Math.sin(performance.now() * 0.005);
-      for (const j of jointGroup.children) j.scale.setScalar(j.userData.base * (E.reducedMotion ? 1 : pulse));
+      for (const j of jointGroup.children) {
+        // The hovered dot swells past its pulse — "this one opens".
+        j.scale.setScalar(j.userData.base * (E.reducedMotion ? 1 : pulse) * (j === E.hoverDot ? 1.45 : 1));
+      }
 
       if (E.needsAnno) { E.needsAnno = false; rebuildAnnotations(); }
       renderer.render(scene, activeCamera);
@@ -683,6 +890,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       const th = THEMES[curTheme], dr = DRAFT[curTheme];
       edgeMat.color.set(th.edge); edgeMatFaint.color.set(th.edge); selEdgeMat.color.set(th.edgeSel);
       draftEdge.color.set(dr.ink); draftEdgeFaint.color.set(dr.ink); draftSelEdge.color.set(dr.ink);
+      hoverEdgeMat.color.set(th.edgeSel);
+      jointMat.color.set(th.edgeSel);
+      rimColor.set(th.edgeSel); // the rim uniform is shared — every selected material re-inks
+      // Flat-tier selected materials carry a plain emissive; re-ink those too
+      // (textured keys end '|t' and are rim-driven, so endsWith targets flat).
+      for (const [key, m] of matPool) {
+        if (key.endsWith('|selected') && m.emissive) m.emissive.copy(rimColor);
+      }
       const dim = E.drafting ? dr.dim : th.dim;
       dimLineMat.color.set(dim); tickMat.color.set(dim);
     }
@@ -701,6 +916,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     function setDrafting(on) {
       E.drafting = !!on;
       applyInkColors();
+      retargetLights(); // the drawing is unlit — spotlight bows out
       groundGroup.visible = !E.drafting;
       sun.castShadow = E.drafting ? false : quality.shadows;
       E.needsAnno = true;
@@ -735,7 +951,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* ---------------- public API ---------------- */
     const api = {
-      setModel, setGhost, frame, resize,
+      setModel, setGhost, frame, focusPart, clearFocus, resize,
       setTheme,
       setQuality(q) { Object.assign(quality, q || {}); applyQuality(); },
       setDrafting,
@@ -759,24 +975,47 @@ var BB = globalThis.BB = globalThis.BB || {};
         return E.openDrawers.has(i);
       },
       closeDrawers() { E.openDrawers.clear(); retargetAll(); },
-      select(id) { E.selected = id; E.needsAnno = true; },
-      isolate(id) { E.isolated = id; retargetAll(); },
+      select(id) { E.selected = id; E.needsAnno = true; retargetLights(); },
+      isolate(id) { E.isolated = id; retargetAll(); retargetLights(); },
       getIsolated() { return E.isolated; },
       setDims(on) { E.dimsVisible = !!on; E.needsAnno = true; },
       // Display prefs changed (system/dual): relabel annotations next frame.
       unitsChanged() { E.needsAnno = true; },
-      setReducedMotion(v) { E.reducedMotion = !!v; },
+      setReducedMotion(v) {
+        E.reducedMotion = !!v;
+        if (E.reducedMotion) { // decorative layers zero out, not just speed up
+          flick.on = false; flick.vT = 0; flick.vP = 0;
+          for (const rec of E.meshes.values()) rec.delay = 0;
+        }
+      },
       playbackEnter, playbackGoTo, playbackExit, playbackReplay,
       inPlayback() { return !!E.playback; },
+      /* Screen-space anchors for the playback joint dots (CSS px, canvas-
+       * relative), with each dot's joint payload — for DOM affordances that
+       * point at a dot, and for driving the click path in tests. */
+      jointDotsOnScreen() {
+        const rect = canvas.getBoundingClientRect();
+        const out = [];
+        for (const s of jointGroup.children) {
+          _v1.copy(s.position).project(activeCamera);
+          if (_v1.z > 1) continue;
+          out.push({ x: (_v1.x + 1) / 2 * rect.width, y: (1 - _v1.y) / 2 * rect.height, joint: s.userData.joint });
+        }
+        return out;
+      },
       /* One-shot hero: parts start from their fully exploded playback pose
        * and the standing damped lerp flies them home while the camera sweeps
        * in. Reduced motion makes k = 1 in the tick loop, i.e. an instant
        * snap — no special case needed. */
       heroAssemble() {
         const spread = Math.max(E.bounds.w, E.bounds.d, E.bounds.h) * 0.45;
+        let i = 0;
         for (const rec of E.meshes.values()) {
           const off = playbackStart(rec.part, spread);
           rec.cur.pos = { x: rec.part.pos.x + off.x, y: rec.part.pos.y + off.y, z: rec.part.pos.z + off.z };
+          // Build-order cascade: legs land before aprons, aprons before tops.
+          if (!E.reducedMotion) rec.delay = Math.min(i * 0.03, 0.55);
+          i++;
         }
         camCur.theta = camGoal.theta - 0.55;
         camCur.dist = camGoal.dist * 1.3;
@@ -791,10 +1030,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       snapNow() {
         for (const rec of E.meshes.values()) {
           rec.cur = { pos: { ...rec.target.pos }, scale: { ...rec.target.scale } };
+          rec.delay = 0;
           rec.mesh.position.set(rec.cur.pos.x, rec.cur.pos.y, rec.cur.pos.z);
           rec.mesh.scale.set(Math.max(0.001, rec.cur.scale.x), Math.max(0.001, rec.cur.scale.y), Math.max(0.001, rec.cur.scale.z));
         }
         Object.assign(camCur, camGoal);
+        tgtCur.copy(tgtGoal);
         placeCamera();
       },
       dispose() {
@@ -806,7 +1047,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         unitEdges.dispose();
         unitCyl.dispose(); unitCylEdges.dispose();
         discGeo.dispose(); shadowGeo.dispose(); jointGeo.dispose(); tickGeo.dispose();
-        for (const m of [edgeMat, edgeMatFaint, selEdgeMat, draftEdge, draftEdgeFaint, draftSelEdge, dimLineMat, tickMat, discMat, shadowMat, jointMat]) m.dispose();
+        for (const m of [edgeMat, edgeMatFaint, selEdgeMat, hoverEdgeMat, draftEdge, draftEdgeFaint, draftSelEdge, dimLineMat, tickMat, discMat, shadowMat, jointMat]) m.dispose();
         for (const m of draftMats.values()) m.dispose();
         draftMats.clear();
         blobTex.dispose();
@@ -821,6 +1062,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     applyQuality();
     frame();
     Object.assign(camCur, camGoal);
+    tgtCur.copy(tgtGoal);
     resize();
     tick();
     return api;

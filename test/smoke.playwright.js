@@ -187,6 +187,33 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => __bb.state.playbackIndex === 5), 'scrubbing advances build state');
   await page.waitForTimeout(700);
   await page.screenshot({ path: SHOTS + '/07-playback.png' });
+
+  // Interaction system: the glowing joint dots are doors. Jump to a step
+  // that carries joints, click the dot nearest the canvas center → the
+  // Joint Inspector opens on that joint's real members, captioned with the
+  // step and where the joint sits on the piece.
+  const jointStepIdx = await page.evaluate(() => __bb.state.steps.findIndex(s => s.joints && s.joints.length));
+  ok(jointStepIdx >= 0, 'a step carries joint metadata for its dots');
+  await page.evaluate(i => __bb.scrubPlayback(i), jointStepIdx);
+  await page.waitForTimeout(450); // fly-in settles; dot projection is fresh
+  const dot = await page.evaluate(() => {
+    const dots = __bb.state.engine.jointDotsOnScreen();
+    if (!dots.length) return null;
+    const c = document.getElementById('view3d').getBoundingClientRect();
+    dots.sort((a, b) => Math.hypot(a.x - c.width / 2, a.y - c.height / 2) - Math.hypot(b.x - c.width / 2, b.y - c.height / 2));
+    return dots[0];
+  });
+  ok(!!dot && !!dot.joint && !!dot.joint.type, 'playback projects clickable joint-dot anchors');
+  const vb = await (await page.$('#view3d')).boundingBox();
+  await page.mouse.click(vb.x + dot.x, vb.y + dot.y);
+  await page.waitForSelector('#jointScrim.open');
+  ok(await page.evaluate(() => !!BB.JointView._live()), 'clicking a joint dot opens the live 3D close-up');
+  ok(await page.evaluate(() => {
+    const w = document.querySelector('#jointNotes .joint-where');
+    return !!w && /Step \d+/.test(w.textContent) && / sits /.test(w.textContent);
+  }), 'dot close-up says which step and where the joint sits');
+  await page.screenshot({ path: SHOTS + '/07b-joint-dot.png' });
+  await page.click('#jointClose');
   await page.click('#pbExit');
 
   // Drawer micro-interaction.
@@ -201,6 +228,31 @@ const clickMoreCtl = async sel => {
   await page.waitForTimeout(900);
   await page.screenshot({ path: SHOTS + '/09-explode.png' });
   await page.evaluate(() => __bb.state.engine.setExplode(0));
+
+  // Part framing (interaction system §4b): isolate + focus glide the camera
+  // to a part; clearFocus + frame restore. API-level here (the double-click
+  // gesture rides the same calls); the zero-console-errors net backs it.
+  await page.evaluate(() => {
+    const id = __bb.state.model.parts[0].id;
+    __bb.state.engine.isolate(id);
+    __bb.state.engine.focusPart(id);
+  });
+  await page.waitForTimeout(350);
+  ok(await page.evaluate(() => !!__bb.state.engine.getIsolated()), 'isolate + focus framing holds');
+  await page.evaluate(() => { __bb.state.engine.isolate(null); __bb.state.engine.clearFocus(); __bb.state.engine.frame(); });
+  await page.waitForTimeout(300);
+
+  // Hover pre-highlight: a part under a fine pointer sets the pick cursor
+  // (at most one raycast per frame; touch devices skip this entirely).
+  const vb2 = await (await page.$('#view3d')).boundingBox();
+  await page.mouse.move(vb2.x + vb2.width / 2, vb2.y + vb2.height * 0.55);
+  await page.waitForTimeout(150);
+  ok(await page.evaluate(() => document.getElementById('view3d').style.cursor === 'pointer'),
+    'hovering a part shows the pick cursor');
+  await page.mouse.move(vb2.x + 4, vb2.y + 4); // corner: empty paper
+  await page.waitForTimeout(150);
+  ok(await page.evaluate(() => document.getElementById('view3d').style.cursor === ''),
+    'leaving parts clears the pick cursor');
 
   // Exports from the live refined state.
   const daeCheck = await page.evaluate(() => {
@@ -266,7 +318,11 @@ const clickMoreCtl = async sel => {
 
   // Blueprint mode: one toggle → drafting render, orthographic front view, dims on.
   await page.click('#draftToggle');
+  ok(await page.evaluate(() => document.getElementById('viewportWrap').classList.contains('inkwash')),
+    'blueprint flip runs the one-beat ink-wash');
   await page.waitForTimeout(500);
+  ok(await page.evaluate(() => !document.getElementById('viewportWrap').classList.contains('inkwash')),
+    'ink-wash cleans itself up after the beat');
   ok(await page.evaluate(() =>
     document.body.classList.contains('drafting') &&
     __bb.state.engine.getDrafting() &&
