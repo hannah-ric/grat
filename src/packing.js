@@ -109,7 +109,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         // Recompute cut offsets to include the leading end trim.
         let cursor = trim;
         for (const c of b.cuts) { c.offset = cursor; cursor += c.len + kerf; }
-        b.offcut = r1(b.stockLen - trim - b.used - (b.cuts.length - 1) * kerf - trim);
+        // b.used already carries the kerfs between cuts — subtracting them
+        // again reported negative offcuts on full boards (audit F-S2-2).
+        b.offcut = r1(b.stockLen - 2 * trim - b.used);
       }
     }
     return boards;
@@ -243,9 +245,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     // Rough / board-foot math — the primary line in rough mode, a secondary
-    // reference line otherwise.
-    const BF_MM3 = 2359737;
-    const bdftExact = solidVol / BF_MM3;
+    // reference line otherwise. (Constant single-sourced in K — audit F-SYS-1.)
+    const bdftExact = solidVol / K.BF_MM3;
     const bdftRate = (prices.bdft && prices.bdft[species]) !== undefined ? prices.bdft[species] : (K.WOOD_SPECIES[species].pricePerBdFt || 5);
     const bdftWithWaste = Math.ceil(bdftExact * 1.3 * 10) / 10;
     const bdftCost = bdftWithWaste * bdftRate;
@@ -273,7 +274,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const usedVol = solidVol;
     const wasteSolid = !rough && boardVol > 0 ? 1 - usedVol / boardVol : null;
     const wasteSheet = sheetBoughtArea > 0 ? 1 - sheetUsedArea / sheetBoughtArea : null;
-    const bought = (rough ? bdftWithWaste * BF_MM3 : boardVol) + sheetBoughtArea * 18; // sheets ~normalized; report separately instead
+    const bought = (rough ? bdftWithWaste * K.BF_MM3 : boardVol) + sheetBoughtArea * 18; // sheets ~normalized; report separately instead
     void bought;
 
     return {

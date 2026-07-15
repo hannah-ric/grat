@@ -19,10 +19,18 @@ var BB = globalThis.BB = globalThis.BB || {};
   const Geo = BB.Geo;
 
   const GRAV = 9.81;            // m/s²; loads enter as kg, beam math is N·mm·MPa
-  const SAFETY_FACTOR = 4;      // standard for wood in non-engineered service
+  /* SAFETY_FACTOR basis (audit F-S3-7, disclosed via K.DESIGN_BASIS): MOR is a
+   * Wood Handbook small-clear mean; ÷4 absorbs grade variability (knots,
+   * runout — the NDS-style derate) plus load-duration effects on strength.
+   * Deflection under sustained load is handled separately by CREEP_FACTOR. */
+  const SAFETY_FACTOR = 4;
   const SAG_LIMIT_RATIO = 300;  // visible-sag limit: 1 mm per 300 mm of span
   const CANT_LIMIT_RATIO = 150; // cantilever tip equivalent
   const MOVEMENT_LIMIT = 3;     // mm of computed seasonal movement before the advisory
+  /* Wood Handbook ch. 4: creep under long-duration load roughly DOUBLES the
+   * initial elastic deflection of seasoned wood. Sustained load cases (books,
+   * stored weight) report the long-term figure (audit F-S0-2). */
+  const CREEP_FACTOR = 2.0;
 
   const speciesOf = key => K.WOOD_SPECIES[key] || K.WOOD_SPECIES.pine;
   const densityOf = key => speciesOf(key).sg * 1000; // kg/m³ at ~12% MC
@@ -34,13 +42,18 @@ var BB = globalThis.BB = globalThis.BB || {};
   const fmtLen = x => U().fmtLength(x);      // spans / thicknesses: fractional in
   const fmtDeg = x => U().fmtDeg(x);         // angles never convert
 
-  /* ---------------- load presets (user-selectable per surface) ---------------- */
+  /* ---------------- load presets (user-selectable per surface) ----------------
+   * Magnitudes aligned to published functional loads (audit F-S2-4); the
+   * basis ships with each preset and is shown in the UI. `sustained` drives
+   * the creep factor: stored weight lives there for years, people don't. */
   const LOAD_PRESETS = {
-    display: { label: 'Display items', kind: 'udl', kgPerM: 10 },
-    books:   { label: 'Books', kind: 'udl', kgPerM: 55 },
-    heavy:   { label: 'Heavy storage', kind: 'udl', kgPerM: 90 },
-    seating: { label: 'Seated people', kind: 'seat', kgSeat: 120 },
-    worktop: { label: 'Desk / table duty', kind: 'combo', kgDist: 75, kgEdge: 90 }
+    display: { label: 'Display items', kind: 'udl', kgPerM: 10, sustained: true, basis: 'light display duty' },
+    books:   { label: 'Books', kind: 'udl', kgPerM: 60, sustained: true, basis: 'BIFMA X5.9 shelf load, 40 lb/ft' },
+    heavy:   { label: 'Heavy storage', kind: 'udl', kgPerM: 112, sustained: true, basis: 'BIFMA X5.9 high-density file load, 75 lb/ft' },
+    seating: { label: 'Seated people', kind: 'seat', kgSeat: 136, sustained: false, basis: 'BIFMA X5.4 seating functional load, 300 lbf' },
+    // Worktop loads are BIFMA FUNCTIONAL (short-term capability) loads — a
+    // set table or a lean, not weight that sits for years — so no creep.
+    worktop: { label: 'Desk / table duty', kind: 'combo', kgDist: 75, kgEdge: 90, sustained: false, basis: 'BIFMA X5.5 distributed + concentrated functional loads' }
   };
   const PRESET_KEYS = ['display', 'books', 'heavy', 'seating', 'worktop'];
   /* Preset magnitudes rendered in the CURRENT display units (lb/ft · lb
@@ -89,25 +102,31 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const seatsFor = span => Math.max(1, Math.round(span / 550));
 
+  /* Each case carries `creep`: sustained loads report long-term deflection
+   * (elastic × CREEP_FACTOR); transient loads stay elastic. Moments are never
+   * creep-scaled — strength duration effects live inside SAFETY_FACTOR. */
   function loadCasesFor(presetKey, span, model) {
     const p = LOAD_PRESETS[presetKey] || LOAD_PRESETS.display;
     const cases = [];
+    const kSus = CREEP_FACTOR;
     if (p.kind === 'udl') {
       const w = (p.kgPerM * GRAV) / 1000;
-      cases.push(model === 'cant' ? { fn: 'udlCant', mag: w } : { fn: 'udlSS', mag: w });
+      const creep = p.sustained ? kSus : 1;
+      cases.push(model === 'cant' ? { fn: 'udlCant', mag: w, creep } : { fn: 'udlSS', mag: w, creep });
     } else if (p.kind === 'seat') {
       const P = p.kgSeat * GRAV;
-      if (model === 'cant') cases.push({ fn: 'pointCant', mag: P });
+      if (model === 'cant') cases.push({ fn: 'pointCant', mag: P, creep: 1 });
       else {
-        cases.push({ fn: 'pointSS', mag: P });
+        cases.push({ fn: 'pointSS', mag: P, creep: 1 });
         const seats = seatsFor(span);
-        if (seats > 1) cases.push({ fn: 'udlSS', mag: ((seats - 1) * P) / span });
+        if (seats > 1) cases.push({ fn: 'udlSS', mag: ((seats - 1) * P) / span, creep: 1 });
       }
     } else {
       const w = (p.kgDist * GRAV) / span;
       const P = p.kgEdge * GRAV;
-      if (model === 'cant') cases.push({ fn: 'udlCant', mag: w }, { fn: 'pointCant', mag: P });
-      else cases.push({ fn: 'udlSS', mag: w }, { fn: 'pointSS', mag: P });
+      const distCreep = p.sustained === 'dist' || p.sustained === true ? kSus : 1;
+      if (model === 'cant') cases.push({ fn: 'udlCant', mag: w, creep: distCreep }, { fn: 'pointCant', mag: P, creep: 1 });
+      else cases.push({ fn: 'udlSS', mag: w, creep: distCreep }, { fn: 'pointSS', mag: P, creep: 1 });
     }
     return cases;
   }
@@ -118,9 +137,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     return (p.kgDist + p.kgEdge) * GRAV;
   }
   function evalBeam(cases, L, E_MPa, I) {
-    let sag = 0, M = 0;
-    for (const c of cases) { sag += DEFL[c.fn](c.mag, L, E_MPa, I); M += MOM[c.fn](c.mag, L); }
-    return { sag, M };
+    let sag = 0, M = 0, crept = false;
+    for (const c of cases) {
+      sag += DEFL[c.fn](c.mag, L, E_MPa, I) * (c.creep || 1);
+      M += MOM[c.fn](c.mag, L);
+      if ((c.creep || 1) > 1) crept = true;
+    }
+    return { sag, M, crept };
   }
 
   /* ---------------- surface discovery ---------------- */
@@ -145,10 +168,37 @@ var BB = globalThis.BB = globalThis.BB || {};
         const maxLegX = Math.max(...legs.map(l => Math.abs(l.pos.x)));
         const span = Math.max(100, 2 * maxLegX - legT);
         const over = Math.max(0, top.size.w / 2 - maxLegX - legT / 2);
+        /* Frame mechanics (audit F-S2-1): the aprons are the beams — the top
+         * rides on them. Find the governing apron pair (the longer-spanning
+         * parallel pair); the top is then checked as a plate strip spanning
+         * BETWEEN that pair, not leg-to-leg on its own. */
+        const aprons = parts.filter(p => p.role === 'apron');
+        const alongX = aprons.filter(a => a.size.w >= a.size.d);
+        const alongZ = aprons.filter(a => a.size.d > a.size.w);
+        const pick = (list, axis) => {
+          if (list.length < 2) return null;
+          return {
+            id: list[0].id, len: Math.max(...list.map(a => axis === 'x' ? a.size.w : a.size.d)),
+            off: Math.max(...list.map(a => axis === 'x' ? Math.abs(a.pos.z) : Math.abs(a.pos.x))),
+            t: axis === 'x' ? list[0].size.d : list[0].size.w, h: list[0].size.h, axis
+          };
+        };
+        const px = pick(alongX, 'x'), pz = pick(alongZ, 'z');
+        const pair = (px && pz) ? (px.len >= pz.len ? px : pz) : (px || pz);
+        let apron = null, strip = null;
+        if (pair) {
+          apron = { id: pair.id, span: Math.max(100, pair.len), b: pair.t, h: pair.h };
+          const stripSpan = Math.max(50, 2 * pair.off - pair.t);
+          const topAlong = pair.axis === 'x' ? top.size.w : top.size.d;
+          // Plate strip under a point load: effective width ≈ half the span
+          // plus a hand-sized contact patch, never wider than the panel.
+          strip = { span: stripSpan, bEff: Math.min(topAlong, 0.5 * stripSpan + 100) };
+        }
         push({
           id: top.id, part: top, label: t === 'bench' ? 'Seat' : 'Top', model: 'ss',
           kind: t === 'bench' ? 'seat' : (t === 'table' || t === 'desk') ? 'top' : 'shelf',
-          span, b: top.size.d, h: top.size.h, over: over >= 50 ? over : 0
+          span, b: top.size.d, h: top.size.h, over: over >= 50 ? over : 0,
+          apron, strip
         });
       }
       const shelf = parts.find(p => p.role === 'shelf');
@@ -329,22 +379,34 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
-    /* ---- beam checks per load-bearing surface: sag (MOE), strength (MOR/SF4) ---- */
+    /* ---- beam checks per load-bearing surface: sag (MOE), strength (MOR/SF4) ----
+     * Frame surfaces (table/desk/bench/nightstand tops) run the honest model
+     * from the audit (F-S2-1): the APRONS are the beams over the leg-to-leg
+     * span; the TOP is a plate strip spanning between the aprons. Everything
+     * else stays a plain single-span (or cantilever) beam. */
     let worstSagRatio = 0, worstSag = null;
+    const allow = sp.mor / SAFETY_FACTOR;
+    const sagStatus = r => r <= 1 ? 'pass' : r <= 1.5 ? 'advisory' : 'fail';
+    const strengthCheck = (id, label, M, h, I, preset, fixes) => {
+      const stress = I > 0 ? (M * (h / 2)) / I : Infinity;
+      const margin = stress > 0 ? allow / stress : Infinity;
+      checks.push({
+        id, title: `Strength — ${label}`,
+        status: margin >= 1.25 ? 'pass' : margin >= 1 ? 'advisory' : 'fail',
+        value: `bending stress ${stress.toFixed(1)} MPa · margin ${margin === Infinity ? '∞' : margin.toFixed(1) + '×'}`,
+        threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} MPa ÷ safety factor ${SAFETY_FACTOR})`,
+        explain: margin >= 1 ? `Comfortably below the breaking stress of ${sp.label} with the standard ×${SAFETY_FACTOR} wood safety factor.`
+          : `The “${preset.label}” load brings this part too close to breaking stress.`,
+        fixes: margin < 1.25 ? fixes : []
+      });
+    };
     for (const s of surfaces) {
-      const I = I_rect(s.b, s.h);
-      const cases = loadCasesFor(s.presetKey, s.span, s.model);
-      const { sag, M } = evalBeam(cases, s.span, E, I);
-      const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
-      const ratio = sag / limit;
-      if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
       const preset = LOAD_PRESETS[s.presetKey];
-
       const fixes = [];
       const up = nextSolidUp(s.h);
       if (!custom && up) {
         if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${fmtLen(up)}`, patch: { structure: { topThickness: up } } });
-        else if (s.part.material !== 'baltic_birch') fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
+        else if (s.part.material !== 'baltic_birch' && !s.apron) fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
       }
       if (custom && up && s.part.material !== 'baltic_birch') {
         const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: up } } : p);
@@ -354,33 +416,86 @@ var BB = globalThis.BB = globalThis.BB || {};
         fixes.push({ id: 'maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } });
       }
 
-      checks.push({
-        id: 'sag:' + s.id, title: `Sag — ${s.label}`,
-        status: ratio <= 1 ? 'pass' : ratio <= 1.5 ? 'advisory' : 'fail',
-        value: `predicted sag ${fmtFine(sag)} over a ${fmtLen(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}`,
-        threshold: `≤ ${fmtFine(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
-        explain: `${sp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}). Stiffness comes from MOE (${sp.moe} GPa) and thickness cubed.`,
-        fixes: ratio > 1 ? fixes : [],
-        data: { sagMM: sag, limitMM: limit, spanMM: s.span },
-        prov: { rule: `sag = Σ load cases (5wL⁴/384EI and friends) with E = ${sp.moe} GPa, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, L = ${Math.round(s.span)} mm` }
-      });
+      if (s.apron) {
+        /* (a) Apron beam over the leg-to-leg span. Each of the pair carries
+         * half the spread load. The point load's worst position is directly
+         * above one apron; the top (fastened along both aprons) redistributes
+         * at least a quarter of it to the partner, so one apron carries 3/4 —
+         * still conservative against true composite action. */
+        const POINT_SHARE = 0.75;
+        const cases = loadCasesFor(s.presetKey, s.apron.span, 'ss')
+          .map(c => ({ ...c, mag: c.fn.startsWith('udl') ? c.mag * 0.5 : c.mag * POINT_SHARE }));
+        const Ia = I_rect(s.apron.b, s.apron.h);
+        const { sag, M } = evalBeam(cases, s.apron.span, E, Ia);
+        const limit = s.apron.span / SAG_LIMIT_RATIO;
+        const ratio = sag / limit;
+        if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.apron.span }; }
+        const apFixes = [...fixes];
+        if (spec.structure.apronHeight < 160) apFixes.unshift({ id: 'tall-apron', label: `Deepen aprons to ${fmtLen(Math.min(160, spec.structure.apronHeight + 30))}`, patch: { structure: { apronHeight: Math.min(160, spec.structure.apronHeight + 30) } } });
+        checks.push({
+          id: 'sag:apron:' + s.id, title: `Sag — aprons under ${s.label.toLowerCase()}`,
+          status: sagStatus(ratio),
+          value: `predicted sag ${fmtFine(sag)} over the ${fmtLen(s.apron.span)} apron span`,
+          threshold: `≤ ${fmtFine(limit)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
+          explain: `The aprons are the beams: each ${fmtLen(s.apron.b)} × ${fmtLen(s.apron.h)} apron carries half the spread load and, worst case, ¾ of the point load (the attached top shares the rest across). Sustained loads include ×${CREEP_FACTOR} creep.`,
+          fixes: ratio > 1 ? apFixes : [],
+          data: { sagMM: sag, limitMM: limit, spanMM: s.apron.span },
+          prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(s.apron.span)} mm, half the spread load per apron` }
+        });
+        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset, apFixes);
 
-      const stress = I > 0 ? (M * (s.h / 2)) / I : Infinity;
-      const allow = sp.mor / SAFETY_FACTOR;
-      const margin = stress > 0 ? allow / stress : Infinity;
-      checks.push({
-        id: 'str:' + s.id, title: `Strength — ${s.label}`,
-        status: margin >= 1.25 ? 'pass' : margin >= 1 ? 'advisory' : 'fail',
-        value: `bending stress ${stress.toFixed(1)} MPa · margin ${margin === Infinity ? '∞' : margin.toFixed(1) + '×'}`,
-        threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} MPa ÷ safety factor ${SAFETY_FACTOR})`,
-        explain: margin >= 1 ? `Comfortably below the breaking stress of ${sp.label} with the standard ×${SAFETY_FACTOR} wood safety factor.`
-          : `The “${preset.label}” load brings this part too close to breaking stress.`,
-        fixes: margin < 1.25 ? fixes : []
-      });
+        /* (b) Top as a plate strip between the aprons. Point loads act at the
+         * strip midspan; spread loads contribute their tributary share. */
+        const rawCases = loadCasesFor(s.presetKey, s.apron.span, 'ss');
+        const stripCases = [];
+        for (const c of rawCases) {
+          if (c.fn === 'pointSS') stripCases.push({ ...c });
+          else if (c.fn === 'udlSS') {
+            const totalN = c.mag * s.apron.span;                     // N over the whole top
+            const tributary = totalN * (s.strip.bEff / s.apron.span); // strip's share
+            stripCases.push({ ...c, mag: tributary / s.strip.span });
+          }
+        }
+        const Is = I_rect(s.strip.bEff, s.h);
+        const { sag: sagS, M: MS } = evalBeam(stripCases, s.strip.span, E, Is);
+        const limS = s.strip.span / SAG_LIMIT_RATIO;
+        const rS = sagS / limS;
+        if (rS > worstSagRatio) { worstSagRatio = rS; worstSag = { id: s.id, sag: sagS, limit: limS, span: s.strip.span }; }
+        checks.push({
+          id: 'sag:' + s.id, title: `Sag — ${s.label} between aprons`,
+          status: sagStatus(rS),
+          value: `predicted sag ${fmtFine(sagS)} across the ${fmtLen(s.strip.span)} between aprons`,
+          threshold: `≤ ${fmtFine(limS)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
+          explain: `${sp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}), checked as a ${fmtLen(s.strip.bEff)}-wide strip spanning between the aprons.`,
+          fixes: rS > 1 ? fixes : [],
+          data: { sagMM: sagS, limitMM: limS, spanMM: s.strip.span },
+          prov: { rule: `plate strip: span ${Math.round(s.strip.span)} mm between apron faces, effective width min(top, span/2 + 100) = ${Math.round(s.strip.bEff)} mm, I = ${Math.round(Is).toLocaleString()} mm⁴` }
+        });
+        strengthCheck('str:' + s.id, s.label, MS, s.h, Is, preset, fixes);
+      } else {
+        const I = I_rect(s.b, s.h);
+        const cases = loadCasesFor(s.presetKey, s.span, s.model);
+        const { sag, M, crept } = evalBeam(cases, s.span, E, I);
+        const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
+        const ratio = sag / limit;
+        if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
+        checks.push({
+          id: 'sag:' + s.id, title: `Sag — ${s.label}`,
+          status: sagStatus(ratio),
+          value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}`,
+          threshold: `≤ ${fmtFine(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
+          explain: `${sp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}). Stiffness comes from MOE (${sp.moe} GPa) and thickness cubed.${crept ? ` Sustained load: includes ×${CREEP_FACTOR} creep (Wood Handbook ch. 4).` : ''}`,
+          fixes: ratio > 1 ? fixes : [],
+          data: { sagMM: sag, limitMM: limit, spanMM: s.span },
+          prov: { rule: `sag = Σ load cases (5wL⁴/384EI and friends${crept ? `, sustained cases ×${CREEP_FACTOR} creep` : ''}) with E = ${sp.moe} GPa, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, L = ${Math.round(s.span)} mm` }
+        });
+        strengthCheck('str:' + s.id, s.label, M, s.h, I, preset, fixes);
+      }
 
       if (s.over > 0 && s.kind === 'top') {
         const P = LOAD_PRESETS.worktop.kgEdge * GRAV;
-        const sagO = DEFL.pointCant(P, s.over, E, I);
+        const IO = I_rect(s.b, s.h); // the top itself cantilevers past the frame
+        const sagO = DEFL.pointCant(P, s.over, E, IO);
         const limO = s.over / CANT_LIMIT_RATIO;
         const rO = sagO / limO;
         checks.push({
@@ -451,6 +566,86 @@ var BB = globalThis.BB = globalThis.BB || {};
             : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
           fixes: []
         });
+      }
+    }
+
+    /* ---- open-drawer tipping (ASTM F2057 / STURDY intent — audit F-S0-1) ----
+     * Empty unit, every drawer open to 2/3 travel, 22.7 kg (50 lb) applied at
+     * the front of the highest open drawer. Moment balance about the front
+     * feet line. This is the scenario that puts dressers on top of children;
+     * clothing-storage-height pieces (≥ 686 mm) FAIL below margin 1. */
+    if (model.drawers && model.drawers.length) {
+      const TEST_KG = 22.7, OPEN_FRACTION = 2 / 3;
+      const drawerOf = new Map();
+      model.drawers.forEach(d => d.partIds.forEach(id => drawerOf.set(id, d)));
+      const feet = custom ? parts.filter(p => grounded.has(p.id)) : parts.filter(p => p.pos.y - p.size.h / 2 < 95);
+      let zF = -Infinity;
+      for (const f of feet) for (const c of Geo.obbCorners(Geo.partOBB(f))) if (c[1] < 130) zF = Math.max(zF, c[2]);
+      if (isFinite(zF)) {
+        let stab = 0, over = 0;
+        for (const p of parts) {
+          const dens = p.material === 'baltic_birch' ? densityOf('baltic_birch') : p.material === 'hardware' ? 3000 : densityOf(spec.wood.species);
+          const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
+          const m = p.size.w * p.size.h * p.size.d * 1e-9 * dens * volFactor;
+          const dr = drawerOf.get(p.id);
+          const z = p.pos.z + (dr ? dr.travel * OPEN_FRACTION : 0);
+          const moment = m * GRAV * (zF - z); // + stabilizes, − overturns
+          if (moment >= 0) stab += moment; else over += -moment;
+        }
+        // 22.7 kg on the front face of the highest open drawer.
+        const top = model.drawers.reduce((a, b) => (a.opening.yTop > b.opening.yTop ? a : b));
+        const frontPart = parts.find(p => p.id === top.partIds.find(id => /front$/.test(id) && !/boxfront/.test(id))) || parts.find(p => p.id === top.partIds[0]);
+        const zLoad = (frontPart ? frontPart.pos.z + frontPart.size.d / 2 : zF) + top.travel * OPEN_FRACTION;
+        over += TEST_KG * GRAV * Math.max(0, zLoad - zF);
+        const margin = over > 0 ? stab / over : Infinity;
+        const inScope = spec.overall.height >= 686; // F2057 covers clothing storage ≥ 27 in
+        const status = margin >= 1.5 ? 'pass' : margin >= 1 ? 'advisory' : (inScope ? 'fail' : 'advisory');
+        // Anchor mandatory when it actually tips, or when a clothing-storage-
+        // height piece runs a thin margin (the regulated scenario).
+        if (margin < 1 || (inScope && margin < 1.5)) antiTip = true;
+        checks.push({
+          id: 'tip_f2057', title: 'Tipping — drawers open (F2057)',
+          status,
+          value: `margin ${margin === Infinity ? '∞' : margin.toFixed(2) + '×'} with all drawers open ⅔ and ${U().fmtPointLoad(TEST_KG)} on the top drawer front`,
+          threshold: `≥ 1× to stand, ≥ 1.5× to skip the anchor — aligned with ASTM F2057 / STURDY (${U().fmtPointLoad(TEST_KG)} on an open drawer)`,
+          explain: margin >= 1.5
+            ? 'Even with every drawer open and a child-weight pull on the top one, the piece stays planted.'
+            : margin >= 1
+              ? `It stands, but the margin is thin${inScope ? ' at clothing-storage height (F2057 territory) — the anti-tip wall anchor is added and required' : ' — anchor it if children are around'}.`
+              : 'With drawers open and weight on the top front, this piece TIPS. The wall anchor is mandatory — and this check follows the same scenario regulators test dressers against.',
+          fixes: [],
+          data: { marginRatio: margin, stabilizingNmm: stab, overturningNmm: over, testKg: TEST_KG, openFraction: OPEN_FRACTION }
+        });
+      }
+
+      /* ---- slide capacity vs drawer size (audit F-S3-6) ---- */
+      const slideRow = (K.FASTENERS.hardware || []).find(h => h.key === 'slide_pair');
+      const capKg = slideRow && slideRow.capacityKg;
+      if (capKg) {
+        const DENSITY_KG_PER_L = 0.24; // general household storage; paper runs ~0.72
+        let worst = null;
+        for (const d of model.drawers) {
+          if (d.runner !== 'side_mount_slides') continue;
+          const volL = Math.max(0, (d.box.w - 2 * d.box.t) * (d.box.h - d.box.t) * (d.box.d - d.box.t)) * 1e-6;
+          const estKg = volL * DENSITY_KG_PER_L;
+          if (!worst || estKg > worst.estKg) worst = { d, volL, estKg };
+        }
+        if (worst) {
+          const fileKg = worst.volL * 0.72;
+          const overCap = worst.estKg > capKg;
+          checks.push({
+            id: 'slide:dr' + worst.d.index, title: 'Drawer slide capacity',
+            status: overCap ? 'advisory' : 'pass',
+            value: `largest drawer ≈ ${U().fmtPointLoad(worst.estKg)} loaded vs ${U().fmtPointLoad(capKg)} slide rating (pair)`,
+            threshold: `≤ ${U().fmtPointLoad(capKg)} per pair (75 lb-class ball-bearing slides)`,
+            explain: (overCap
+              ? 'Packed full, this drawer would exceed its slide rating — specify 100 lb slides or split the storage.'
+              : 'Everyday storage sits inside the slide rating.') +
+              (fileKg > capKg ? ` Loaded with paper or files (~0.72 kg/L) it would reach ${U().fmtPointLoad(fileKg)} — beyond the rating; use file-rated slides for that duty.` : ''),
+            fixes: [],
+            data: { estKg: worst.estKg, capKg, volumeL: worst.volL }
+          });
+        }
       }
     }
 
@@ -538,17 +733,29 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
-    /* ---- joint adequacy: load per joint vs SG-scaled capacity ---- */
+    /* ---- joint adequacy: load per joint vs SG-scaled capacity ----
+     * Custom screw joints bearing on END GRAIN carry only 0.67 of their
+     * side-grain capacity (NDS end-grain factor; audit F-S2-7). */
     {
       let weakest = null;
+      const specParts = custom ? new Map(((spec.custom && spec.custom.parts) || []).map(p => [p.id, p])) : null;
       for (const s of surfaces) {
         const N = totalLoadN(s.presetKey, s.span);
-        let joint = null, count = 2, where = '', slot = null;
+        let joint = null, count = 2, where = '', slot = null, endGrain = false;
         if (custom) {
           const conns = ((spec.custom && spec.custom.connections) || []).filter(c => c.a === s.id || c.b === s.id);
           if (!conns.length) continue;
           count = conns.length;
-          joint = conns.reduce((min, c) => ((JOINT_RATING[c.joint] || JOINT_RATING.butt_screws).capN < (JOINT_RATING[min.joint] || JOINT_RATING.butt_screws).capN ? c : min), conns[0]).joint;
+          let minCap = Infinity;
+          for (const c of conns) {
+            const rating0 = JOINT_RATING[c.joint] || JOINT_RATING.butt_screws;
+            let capC = rating0.capN;
+            const pa = specParts.get(c.a), pb = specParts.get(c.b);
+            const screwed = c.joint === 'butt_screws' || c.joint === 'pocket_screws';
+            const eg = screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa));
+            if (eg) capC *= 0.67;
+            if (capC < minCap) { minCap = capC; joint = c.joint; endGrain = !!eg; }
+          }
           where = s.id;
         } else if (TABLE_LIKE.includes(t)) {
           if (s.part.role === 'top') { joint = spec.joinery.frame; count = 8; where = 'apron–leg'; slot = 'frame'; }
@@ -557,10 +764,10 @@ var BB = globalThis.BB = globalThis.BB || {};
           joint = spec.joinery.case; count = 2; where = `${s.part.role}–side`; slot = 'case';
         }
         const rating = JOINT_RATING[joint] || JOINT_RATING.butt_screws;
-        const cap = rating.capN * sgF;
+        const cap = rating.capN * sgF * (endGrain ? 0.67 : 1);
         const per = N / count;
         const margin = cap / per;
-        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot };
+        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain };
       }
       if (weakest) {
         const jLabel = k => K.JOINERY[k] ? K.JOINERY[k].label.toLowerCase() : k;
@@ -574,10 +781,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         checks.push({
           id: 'joints', title: 'Joint adequacy',
           status: weakest.margin >= 1.5 ? 'pass' : weakest.margin >= 1 ? 'advisory' : 'fail',
-          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
+          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where}${weakest.endGrain ? ' (end grain, ×0.67)' : ''} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
           threshold: '≥ 1.5× capacity margin (SG-scaled joint ratings)',
-          explain: weakest.margin >= 1.5 ? 'Every joint carries its share of the load path with room to spare.'
-            : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`,
+          explain: (weakest.margin >= 1.5 ? 'Every joint carries its share of the load path with room to spare.'
+            : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`) +
+            (weakest.endGrain ? ' Screws at this joint bear on end grain, which holds about a third less (derated ×0.67) — a dowel, tenon, or cleat would restore full capacity.' : ''),
           fixes
         });
       }
@@ -610,22 +818,51 @@ var BB = globalThis.BB = globalThis.BB || {};
           continue;
         }
         const mv = K.movementMM(crossW, spec.wood.species, 'tangential', dMC);
-        const constrained = true; // tops screw to aprons/cases; shelves are housed — all cross-grain constrained here
-        const over = mv > MOVEMENT_LIMIT && constrained;
-        const fixText = p.role === 'top' || p.role === 'seat'
-          ? 'Fix: fasten with tabletop buttons or figure-8s and elongate the outer screw holes across the grain; never glue the panel down. Breadboard ends must float on elongated pins.'
-          : 'Fix: elongate the screw holes across the grain (or house the panel in a groove without glue) so it can move.';
-        const cupNote = (sp.movement === 'high' && (p.role === 'top' || p.role === 'seat'))
+        /* Attachment context (audit F-S2-3): the advisory must agree with how
+         * THIS plan actually holds the panel.
+         *  floated   — table-like tops/seats: the plan itself specifies
+         *              figure-8s/buttons, so the movement is absorbed.
+         *  captured  — cross-grain fixed to something that does not move the
+         *              same way (solid side against a plywood back; a shelf
+         *              notched around legs): the genuine split risk.
+         *  compatible— solid panels housed in solid sides that move across
+         *              the same axis at the same rate.
+         *  custom    — attachment unknown: warn with the fix, as before. */
+        let ctx = 'custom';
+        if (!custom) {
+          if ((p.role === 'top' || p.role === 'seat') && TABLE_LIKE.includes(t)) ctx = 'floated';
+          else if (p.role === 'side') ctx = spec.structure.backPanel ? 'captured' : 'compatible';
+          else if (p.role === 'shelf' && TABLE_LIKE.includes(t)) ctx = 'captured'; // notched around the legs
+          else if (['top', 'bottom', 'shelf', 'seat'].includes(p.role)) ctx = 'compatible';
+        }
+        const formula = `${fmtLen(crossW)} × ${sp.ct} (tangential coefficient) × ${dMC}% ΔMC = ${fmtFine(mv)}.`;
+        const cupNote = (sp.movement === 'high' && (p.role === 'top' || p.role === 'seat') && crossW >= K.WIDE_TOP_MM)
           ? ' Flat-sawn ' + sp.label.toLowerCase() + ' this wide also wants to cup — alternate growth rings or use quartersawn stock.' : '';
+        let status, explain;
+        if (ctx === 'floated') {
+          status = cupNote ? 'advisory' : 'pass';
+          explain = `${formula} The plan already floats this panel on figure-8s/buttons (see the BOM and assembly), so the movement is absorbed — never glue it down.${cupNote}`;
+        } else if (ctx === 'compatible') {
+          status = 'pass';
+          explain = `${formula} The panel and the solid parts it joins move across the grain in the same direction at the same rate — they travel together, so nothing captures anything.`;
+        } else if (ctx === 'captured') {
+          const over = mv > MOVEMENT_LIMIT;
+          status = over ? 'advisory' : 'pass';
+          const what = p.role === 'side' ? 'The plywood back does not move, but this solid panel does' : 'This panel is captured across the grain';
+          explain = `${formula}${over ? ` ${what} — elongate the screw holes across the grain (slot, don't just drill) so the panel can travel, or it will split at the fasteners.` : ' Within tolerance for a captured panel.'}`;
+        } else {
+          const over = mv > MOVEMENT_LIMIT;
+          status = over ? 'advisory' : 'pass';
+          explain = `${formula}${over ? ' Attachment is design-specific on a novel piece: let this panel move — elongated screw holes across the grain, buttons/figure-8s for tops, and never a cross-grain glue line.' : ' Within tolerance.'}${cupNote}`;
+        }
         checks.push({
           id: 'move:' + p.id, title: `Movement — ${p.name}`,
-          status: over ? 'advisory' : 'pass',
+          status,
           value: `${fmtFine(mv)} seasonal movement across ${fmtLen(crossW)}`,
-          threshold: `≤ ${fmtFine(MOVEMENT_LIMIT)} on a cross-grain constrained panel`,
-          explain: `${fmtLen(crossW)} × ${sp.ct} (tangential coefficient) × ${dMC}% ΔMC = ${fmtFine(mv)}.` +
-            (over ? ` This panel is fastened across the grain — restrained movement splits panels or breaks joints. ${fixText}${cupNote}` : ` Within tolerance for a constrained panel.${cupNote}`),
+          threshold: `≤ ${fmtFine(MOVEMENT_LIMIT)} where cross-grain captured`,
+          explain,
           fixes: [],
-          data: { movementMM: mv, crossWidthMM: crossW },
+          data: { movementMM: mv, crossWidthMM: crossW, context: ctx },
           prov: { rule: `movement = width × coefficient × ΔMC = ${Math.round(crossW)} × ${sp.ct} × ${dMC}` }
         });
       }
@@ -661,6 +898,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Structural = {
     LOAD_PRESETS, PRESET_KEYS, presetDetail, JOINT_RATING, SAFETY_FACTOR,
     SAG_LIMIT_RATIO, CANT_LIMIT_RATIO, MOVEMENT_LIMIT, GRAV,
+    CREEP_FACTOR,
     I_rect, DEFL, MOM, loadCasesFor, totalLoadN, evalBeam,
     surfacesOf, computeIntegrity, integrityDiff, defaultPresetFor, nextSolidUp
   };

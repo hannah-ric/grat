@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Blueprint Buddy — semantic HTML5 viewport skeleton. Every node is a native landmark or content element; zero generic containers.">
+<meta name="color-scheme" content="light dark">
+<title>Blueprint Buddy — semantic shell</title>
+<!--
+  STRUCTURAL CONTRACT — zero generic containers (no div, no span), in markup and in script.
+  body ──┬─ header      command bar   (brand · readiness · search · actions)
+         ├─ main ──┬─ section#composer  design conversation (transcript + form)
+         │         ├─ section#stage     3D viewport (figure > svg + figcaption)
+         │         └─ aside#plans       tabbed plans (cut list · integrity · BOM · steps)
+         ├─ footer      status bar    (autosave · spec version · provenance)
+         ├─ dialog#projects-dialog · dialog#share-dialog · menu#export-menu[popover]
+         └─ script      progressive enhancement only (tabs, drawer, invoker fallback)
+  Full map + rationale: docs/ui/semantic-skeleton.md
+-->
+<style>
+/* ============ tokens ============ */
+:root {
+  color-scheme: light dark;
+  --paper:        light-dark(#faf7f1, #14110d);
+  --paper-raised: light-dark(#ffffff, #1c1813);
+  --paper-sunken: light-dark(#f0ebe1, #0e0c09);
+  --ink:          light-dark(#181310, #f3ede1);
+  --ink-soft:     light-dark(#5b5348, #b0a595);
+  --hairline: color-mix(in oklab, var(--ink) 22%, transparent);
+  --grid-line: color-mix(in oklab, var(--ink) 9%, transparent);
+  --accent:       light-dark(#9c3f00, #eda44a);
+  --on-accent:    light-dark(#fff8ef, #1a1000);
+  --ok:           light-dark(#0c6b3d, #57cf92);
+  --warn:         light-dark(#7a4a00, #e0aa45);
+  --sans: ui-sans-serif, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --radius: 4px;
+  --header-h: 3.5rem;
+}
+@media (prefers-contrast: more) {
+  :root { --hairline: var(--ink); --ink-soft: var(--ink); }
+}
+
+/* ============ reset-adjacent ============ */
+* { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; }
+::selection { background: var(--ink); color: var(--paper); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* utility: visually hidden, still read by AT */
+.vh {
+  position: absolute !important; width: 1px; height: 1px;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+
+/* small-caps label voice, used across the shell */
+.label, legend, caption, th, summary, menu[role="tablist"] button {
+  font: 600 0.68rem/1.2 var(--sans);
+  letter-spacing: 0.09em; text-transform: uppercase;
+}
+
+/* ============ application frame ============ */
+body {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--paper); color: var(--ink);
+  font: 400 15px/1.55 var(--sans);
+}
+a.skip {
+  position: absolute; inset-block-start: -3rem; inset-inline-start: 1rem;
+  z-index: 100; padding: 0.5rem 1rem;
+  background: var(--ink); color: var(--paper); text-decoration: none;
+  transition: inset-block-start 120ms;
+}
+a.skip:focus-visible { inset-block-start: 0.5rem; }
+
+/* ============ header · command bar ============ */
+body > header {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 1.25rem; align-items: center;
+  min-height: var(--header-h); padding-inline: 1rem;
+  border-block-end: 1px solid var(--hairline);
+  background: var(--paper-raised);
+}
+body > header hgroup { display: grid; line-height: 1.2; }
+body > header h1 { font: 700 1rem/1.2 var(--sans); letter-spacing: 0.02em; }
+body > header hgroup p {
+  font: 500 0.68rem/1.2 var(--mono); color: var(--ink-soft);
+  letter-spacing: 0.06em;
+}
+
+/* readiness: Design → Validate → Plans → Build */
+nav[aria-label="Readiness"] { justify-self: center; }
+nav[aria-label="Readiness"] ol {
+  display: flex; gap: 1.5rem; list-style: none; padding: 0;
+  counter-reset: step;
+}
+nav[aria-label="Readiness"] li {
+  counter-increment: step;
+  display: flex; align-items: center; gap: 0.45rem;
+  font: 600 0.7rem/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-soft);
+  position: relative;
+}
+nav[aria-label="Readiness"] li + li::before {
+  content: ""; position: absolute; inset-inline-start: -1.1rem;
+  inline-size: 0.7rem; block-size: 1px; background: var(--hairline);
+}
+nav[aria-label="Readiness"] a {
+  display: flex; align-items: center; gap: 0.45rem;
+  color: inherit; text-decoration: none;
+}
+nav[aria-label="Readiness"] a::before {
+  content: counter(step);
+  display: grid; place-items: center;
+  inline-size: 1.25rem; block-size: 1.25rem;
+  border: 1px solid currentColor; border-radius: 50%;
+  font: 700 0.62rem/1 var(--mono);
+}
+nav[aria-label="Readiness"] li[data-state="done"] { color: var(--ok); }
+nav[aria-label="Readiness"] li[data-state="done"] a::before { content: "✓"; }
+nav[aria-label="Readiness"] li:has(a[aria-current="step"]) { color: var(--ink); }
+nav[aria-label="Readiness"] a[aria-current="step"]::before {
+  background: var(--ink); color: var(--paper); border-color: var(--ink);
+}
+
+/* search */
+body > header search input {
+  font: 400 0.8rem/1 var(--mono);
+  padding: 0.45rem 0.7rem; inline-size: 11rem;
+  color: var(--ink); background: var(--paper-sunken);
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+}
+body > header search input::placeholder { color: var(--ink-soft); }
+
+/* global actions */
+menu.actions { display: flex; gap: 0.4rem; list-style: none; padding: 0; }
+button {
+  font: 600 0.7rem/1 var(--sans); letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--ink); background: transparent;
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  padding: 0.5rem 0.8rem; cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+button:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+button.primary:hover { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+button.quiet { border-color: transparent; }
+button.quiet:hover { border-color: var(--ink); }
+
+/* ============ main · workspace ============ */
+main {
+  display: grid;
+  grid-template-columns: 21rem minmax(0, 1fr) 24rem;
+  min-block-size: 0;
+}
+
+/* -- composer rail ------------------------------------------------ */
+#composer {
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  min-block-size: 0;
+  border-inline-end: 1px solid var(--hairline);
+  background: var(--paper);
+}
+#composer > header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.7rem 1rem; border-block-end: 1px solid var(--hairline);
+}
+#composer > header h2 { font: inherit; }
+#composer > header h2, #plans h2 { font: 600 0.68rem/1.2 var(--sans); letter-spacing: 0.09em; text-transform: uppercase; }
+#transcript {
+  list-style: none; padding: 1rem; margin: 0;
+  overflow-y: auto; scrollbar-width: thin;
+  display: grid; gap: 1rem; align-content: start;
+}
+#transcript article {
+  display: grid; gap: 0.35rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  background: var(--paper-raised);
+  font-size: 0.85rem;
+}
+#transcript article[data-role="user"] {
+  background: var(--paper-sunken); border-inline-start: 3px solid var(--ink);
+}
+#transcript article[data-role="assistant"] { border-inline-start: 3px solid var(--accent); }
+#transcript article > header {
+  display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline;
+}
+#transcript article > header strong {
+  font: 700 0.62rem/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase;
+}
+#transcript time { font: 400 0.62rem/1 var(--mono); color: var(--ink-soft); }
+#transcript article > footer ul {
+  display: flex; flex-wrap: wrap; gap: 0.3rem; list-style: none; padding: 0;
+}
+#transcript article > footer data {
+  font: 500 0.62rem/1 var(--mono);
+  padding: 0.22rem 0.45rem;
+  border: 1px solid var(--hairline); border-radius: 999px;
+  color: var(--ink-soft); white-space: nowrap;
+}
+#composer form { padding: 0.8rem; border-block-start: 1px solid var(--hairline); }
+#composer fieldset { border: 0; padding: 0; display: grid; gap: 0.5rem; }
+#composer textarea {
+  font: 400 0.85rem/1.5 var(--sans); color: var(--ink);
+  background: var(--paper-sunken);
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  padding: 0.6rem 0.7rem; min-block-size: 4.2rem; resize: vertical;
+}
+#composer menu { display: flex; gap: 0.4rem; justify-content: end; list-style: none; padding: 0; }
+
+/* -- stage --------------------------------------------------------- */
+#stage { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-block-size: 0; position: relative; }
+#stage figure {
+  position: relative; min-block-size: 0; overflow: hidden;
+  display: grid; place-items: center;
+  background:
+    repeating-linear-gradient(0deg,   var(--grid-line) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(90deg,  var(--grid-line) 0 1px, transparent 1px 48px),
+    var(--paper);
+}
+#stage figure svg { inline-size: min(72%, 34rem); block-size: auto; color: var(--ink); }
+#stage figcaption {
+  position: absolute; inset-block-start: 0.9rem; inset-inline-start: 1rem;
+  font: 500 0.7rem/1.4 var(--mono); letter-spacing: 0.05em; color: var(--ink-soft);
+}
+#stage figcaption strong { color: var(--ink); font-weight: 700; }
+#stage > menu {
+  position: absolute; inset-block-start: 0.75rem; inset-inline-end: 1rem;
+  display: flex; gap: 0.3rem; list-style: none; padding: 0;
+}
+#stage > menu button { background: var(--paper-raised); }
+#stage > menu button[aria-pressed="true"] {
+  background: var(--ink); color: var(--paper); border-color: var(--ink);
+}
+#stage > footer {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  padding: 0.55rem 1rem; border-block-start: 1px solid var(--hairline);
+  font: 500 0.72rem/1.4 var(--mono);
+  background: var(--paper-raised);
+}
+#stage > footer output[data-state="pass"] { color: var(--ok); }
+#stage > footer output[data-state="fail"] { color: var(--warn); }
+
+/* -- plans panel ---------------------------------------------------- */
+#plans {
+  display: grid; grid-template-rows: auto minmax(0, 1fr); min-block-size: 0;
+  border-inline-start: 1px solid var(--hairline);
+  background: var(--paper);
+}
+#plans menu[role="tablist"] {
+  display: flex; list-style: none; padding: 0;
+  border-block-end: 1px solid var(--hairline); background: var(--paper-raised);
+}
+#plans menu[role="tablist"] li { flex: 1; display: grid; }
+#plans menu[role="tablist"] button {
+  border: 0; border-radius: 0; padding: 0.8rem 0.25rem;
+  border-block-end: 2px solid transparent; color: var(--ink-soft);
+}
+#plans menu[role="tablist"] button:hover { background: var(--paper-sunken); color: var(--ink); }
+#plans menu[role="tablist"] button[aria-selected="true"] {
+  color: var(--ink); border-block-end-color: var(--accent); background: transparent;
+}
+#plans section[role="tabpanel"] {
+  overflow-y: auto; scrollbar-width: thin; padding: 1rem;
+  display: grid; gap: 1rem; align-content: start;
+}
+
+table { border-collapse: collapse; inline-size: 100%; font-size: 0.8rem; }
+caption { text-align: start; padding-block-end: 0.6rem; color: var(--ink-soft); }
+th, td { text-align: start; padding: 0.45rem 0.5rem; border-block-end: 1px solid var(--hairline); }
+th { color: var(--ink-soft); }
+td data, td:last-child { font: 500 0.75rem/1.4 var(--mono); }
+td[data-num], th[data-num] { text-align: end; }
+tfoot td { border-block-end: 0; padding-block-start: 0.7rem; }
+tfoot output { font: 700 0.8rem/1.4 var(--mono); }
+
+ul.gauges { list-style: none; padding: 0; display: grid; gap: 0.9rem; }
+ul.gauges li { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.6rem; align-items: baseline; }
+ul.gauges strong { font: 600 0.78rem/1.3 var(--sans); }
+ul.gauges data { font: 700 0.78rem/1.3 var(--mono); }
+ul.gauges li > p { grid-column: 1 / -1; font-size: 0.72rem; color: var(--ink-soft); }
+meter { grid-column: 1 / -1; inline-size: 100%; block-size: 0.5rem; }
+
+details.advisories {
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  background: var(--paper-raised);
+}
+details.advisories summary {
+  padding: 0.7rem 0.85rem; cursor: pointer; color: var(--warn);
+  list-style-position: inside;
+}
+details.advisories ul { padding: 0 0.85rem 0.85rem 1.6rem; display: grid; gap: 0.6rem; font-size: 0.8rem; }
+ol.steps { padding-inline-start: 1.2rem; display: grid; gap: 0.55rem; font-size: 0.85rem; }
+ol.steps li::marker { font: 700 0.75rem/1 var(--mono); color: var(--ink-soft); }
+ol.steps summary { cursor: pointer; }
+ol.steps summary h3 { display: inline; font: 600 0.85rem/1.4 var(--sans); letter-spacing: 0; text-transform: none; }
+ol.steps details p { padding: 0.5rem 0 0.3rem 0; color: var(--ink-soft); font-size: 0.8rem; }
+ol.steps strong.hazard { color: var(--warn); }
+
+/* ============ footer · status bar ============ */
+body > footer {
+  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+  padding: 0.45rem 1rem calc(0.45rem + env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--hairline);
+  background: var(--paper-raised);
+  font: 500 0.68rem/1.4 var(--mono); color: var(--ink-soft);
+}
+body > footer output[data-state="saved"] { color: var(--ok); }
+body > footer small { font-size: inherit; text-align: end; }
+
+/* ============ overlays ============ */
+dialog {
+  margin: auto; inline-size: min(30rem, calc(100vw - 2rem));
+  border: 1px solid var(--ink); border-radius: var(--radius);
+  background: var(--paper); color: var(--ink);
+  padding: 0; box-shadow: 0 24px 64px color-mix(in oklab, var(--ink) 35%, transparent);
+}
+dialog::backdrop { background: color-mix(in oklab, var(--ink) 45%, transparent); backdrop-filter: blur(2px); }
+dialog > header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.9rem 1.1rem; border-block-end: 1px solid var(--hairline);
+}
+dialog h2 { font: 700 0.85rem/1.2 var(--sans); letter-spacing: 0.06em; text-transform: uppercase; }
+dialog > p, dialog > output, dialog > ul, dialog > footer, dialog > form:last-child { margin: 1.1rem; }
+dialog ul.projects { list-style: none; padding: 0; display: grid; gap: 0.6rem; }
+dialog ul.projects article {
+  display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 0.8rem; align-items: center;
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  padding: 0.7rem 0.85rem; background: var(--paper-raised);
+}
+dialog ul.projects h3 { font: 600 0.85rem/1.3 var(--sans); }
+dialog ul.projects p { font: 400 0.68rem/1.4 var(--mono); color: var(--ink-soft); }
+dialog ul.projects menu { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 0.3rem; list-style: none; padding: 0; }
+output.code {
+  display: block; font: 500 0.78rem/1.6 var(--mono);
+  padding: 0.8rem; border: 1px dashed var(--ink); border-radius: var(--radius);
+  background: var(--paper-sunken); overflow-wrap: anywhere; user-select: all;
+}
+dialog small { color: var(--ink-soft); }
+
+menu[popover] {
+  position: fixed; inset: auto;
+  inset-block-start: calc(var(--header-h) + 0.35rem); inset-inline-end: 0.9rem;
+  min-inline-size: 13rem; padding: 0.35rem; margin: 0;
+  list-style: none;
+  border: 1px solid var(--ink); border-radius: var(--radius);
+  background: var(--paper); box-shadow: 0 16px 40px color-mix(in oklab, var(--ink) 30%, transparent);
+}
+menu[popover] li { display: grid; }
+menu[popover] button {
+  border: 0; border-radius: 2px; text-align: start; padding: 0.6rem 0.7rem;
+  text-transform: none; letter-spacing: 0.02em; font-size: 0.8rem; font-weight: 500;
+}
+menu[popover] button kbd {
+  float: inline-end; font: 500 0.65rem/1.4 var(--mono); color: var(--ink-soft);
+}
+menu[popover] button:hover kbd { color: inherit; }
+
+/* ============ responsive states ============ */
+li.drawer-ctl { display: none; }
+#composer > header button { display: none; }
+
+@media (max-width: 1300px) {
+  nav[aria-label="Readiness"] a { gap: 0; }
+  nav[aria-label="Readiness"] a em { display: none; }
+}
+@media (max-width: 1180px) {
+  main { grid-template-columns: minmax(0, 1fr) 23rem; }
+  li.drawer-ctl { display: grid; }
+  #composer > header button { display: inline-block; }
+  body > header { grid-template-columns: auto 1fr auto; }
+  body > header search { display: none; }
+  body > header hgroup p { display: none; }
+  #composer {
+    position: fixed; z-index: 40;
+    inset-block: 0 0; inset-inline-start: 0;
+    inline-size: min(24rem, 92vw);
+    border-inline-end: 1px solid var(--ink);
+    box-shadow: 24px 0 64px color-mix(in oklab, var(--ink) 25%, transparent);
+    translate: -105% 0; transition: translate 200ms ease;
+    visibility: hidden;
+  }
+  body:has(#chat-toggle[aria-expanded="true"]) #composer { translate: 0 0; visibility: visible; }
+}
+@media (max-width: 480px) {
+  menu.actions button { font-size: 0.6rem; padding: 0.42rem 0.5rem; letter-spacing: 0.05em; }
+}
+@media (max-width: 760px) {
+  main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44dvh minmax(0, 1fr); }
+  #plans { border-inline-start: 0; border-block-start: 1px solid var(--hairline); }
+  #stage figure svg { inline-size: min(88%, 24rem); }
+  #stage figcaption { font-size: 0.62rem; inset-inline-end: 12.5rem; }
+  /* command bar reflows to two rows: brand + actions, then the readiness rail */
+  body > header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding-block: 0.5rem; }
+  body > header hgroup { margin-inline-end: auto; }
+  body > header hgroup p { display: none; }
+  nav[aria-label="Readiness"] { order: 3; flex-basis: 100%; display: flex; justify-content: center; }
+  nav[aria-label="Readiness"] ol { gap: 1.1rem; }
+  nav[aria-label="Readiness"] li + li::before { inset-inline-start: -0.85rem; inline-size: 0.55rem; }
+  menu.actions { flex-wrap: wrap; justify-content: flex-end; min-inline-size: 0; }
+  menu.actions li.secondary { display: none; }
+  button { padding: 0.45rem 0.55rem; }
+  body > footer small { display: none; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#stage">Skip to the viewport</a>
+
+<!-- ═══════════ COMMAND BAR ═══════════ -->
+<header>
+  <hgroup>
+    <h1>Blueprint&nbsp;Buddy</h1>
+    <p>Shaker Nightstand · rev 20</p>
+  </hgroup>
+
+  <nav aria-label="Readiness">
+    <ol>
+      <li data-state="done"><a href="#composer"><em>Design</em></a></li>
+      <li data-state="done"><a href="#stage"><em>Validate</em></a></li>
+      <li><a href="#plans" aria-current="step"><em>Plans</em></a></li>
+      <li><a href="#plans"><em>Build</em></a></li>
+    </ol>
+  </nav>
+
+  <search>
+    <form data-stub>
+      <label class="vh" for="finder">Find a project or species</label>
+      <input id="finder" type="search" placeholder="Find project / species…">
+    </form>
+  </search>
+
+  <menu class="actions" aria-label="Global actions">
+    <li class="drawer-ctl"><button type="button" id="chat-toggle" aria-controls="composer" aria-expanded="false">Chat</button></li>
+    <li><button type="button" id="new-design">New</button></li>
+    <li><button type="button" commandfor="projects-dialog" command="show-modal">Projects</button></li>
+    <li class="secondary"><button type="button" commandfor="share-dialog" command="show-modal">Share</button></li>
+    <li><button type="button" class="primary" popovertarget="export-menu">Export ▾</button></li>
+    <li><button type="button" id="theme-toggle" aria-label="Color theme: automatic">Theme</button></li>
+  </menu>
+</header>
+
+<!-- ═══════════ WORKSPACE ═══════════ -->
+<main>
+
+  <!-- ── DESIGN CONVERSATION ─────────── -->
+  <section id="composer" aria-label="Design conversation">
+    <header>
+      <h2>Design chat</h2>
+      <button type="button" id="chat-close" aria-controls="composer">Close</button>
+    </header>
+
+    <ol id="transcript" aria-label="Conversation transcript">
+      <li>
+        <article data-role="user">
+          <header><strong>You</strong> <time datetime="2026-07-14T14:22">14:22</time></header>
+          <p>A Shaker nightstand in white oak — 26&nbsp;inches tall, one drawer.</p>
+        </article>
+      </li>
+      <li>
+        <article data-role="assistant">
+          <header><strong>Buddy</strong> <time datetime="2026-07-14T14:22">14:22</time></header>
+          <p>Proposed a 20 × 17 × 26&nbsp;in nightstand on 1¾&nbsp;in tapered legs, mortise-and-tenon aprons. Structure passes: sag margin 8.4×, tipping holds with the drawer open. Two advisories are waiting in the integrity tab.</p>
+          <footer>
+            <ul aria-label="Changes applied">
+              <li><data value="h:660">height 26 in</data></li>
+              <li><data value="species:white-oak">white oak</data></li>
+              <li><data value="drawers:1">drawer ×1</data></li>
+            </ul>
+          </footer>
+        </article>
+      </li>
+      <li>
+        <article data-role="user">
+          <header><strong>You</strong> <time datetime="2026-07-14T14:31">14:31</time></header>
+          <p>Make the top an inch deeper.</p>
+        </article>
+      </li>
+      <li>
+        <article data-role="assistant">
+          <header><strong>Buddy</strong> <time datetime="2026-07-14T14:31">14:31</time></header>
+          <p>Top is now 18&nbsp;in deep. Seasonal movement rechecked — the figure-8 fasteners still let it float.</p>
+          <footer>
+            <ul aria-label="Changes applied">
+              <li><data value="d:457">depth 18 in</data></li>
+            </ul>
+          </footer>
+        </article>
+      </li>
+    </ol>
+
+    <form id="prompt-form" data-stub>
+      <fieldset>
+        <legend class="vh">Describe a change</legend>
+        <label class="vh" for="prompt">Describe the piece or a refinement</label>
+        <textarea id="prompt" name="prompt" placeholder="Describe a piece, or refine this one — “tapered legs”, “an inch shorter”…"></textarea>
+        <menu>
+          <li><button type="button" class="quiet">Photo</button></li>
+          <li><button type="submit" class="primary">Propose</button></li>
+        </menu>
+      </fieldset>
+    </form>
+  </section>
+
+  <!-- ── 3D STAGE ────────────────────── -->
+  <section id="stage" aria-label="3D viewport">
+    <figure>
+      <svg viewBox="0 0 480 400" role="img" aria-labelledby="iso-title" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+        <title id="iso-title">Isometric wireframe of the Shaker nightstand with overall dimensions</title>
+        <!-- ground footprint (hidden edges) -->
+        <path d="M240 230 363.2 301.1 258.4 361.6 135.2 290.5Z" stroke-dasharray="4 5" opacity="0.5"/>
+        <!-- top slab -->
+        <path d="M240 45.2 363.2 116.3 258.4 176.8 135.2 105.7Z"/>
+        <path d="M240 50.5 363.2 121.6M363.2 121.6 258.4 182.1"/>
+        <path d="M240 45.2V50.5M363.2 116.3V121.6M258.4 176.8V182.1M135.2 105.7V111"/>
+        <!-- legs -->
+        <path d="M240 230V50.5M363.2 301.1V121.6M258.4 361.6V182.1"/>
+        <path d="M135.2 290.5V111" stroke-dasharray="4 5" opacity="0.5"/>
+        <path d="M250.7 236.2V83.3M229.3 236.2V83.3M352.5 295V142.1M352.5 307.3V154.4" opacity="0.65"/>
+        <!-- aprons -->
+        <path d="M250.7 83.3 352.5 142.1M352.5 154.4 269.1 202.5"/>
+        <!-- drawer front + knob -->
+        <path d="M254.6 59.2 348.6 113.5 348.6 130.3 254.6 76Z"/>
+        <circle cx="301.6" cy="94.8" r="2.6" fill="currentColor" stroke="none"/>
+        <!-- dimension: width 20 in -->
+        <g opacity="0.75">
+          <path d="M240 230l-11 19M363.2 301.1l-11 19M229 249l123.2 71.1" stroke-width="0.9"/>
+          <circle cx="229" cy="249" r="1.6" fill="currentColor" stroke="none"/>
+          <circle cx="352.2" cy="320.1" r="1.6" fill="currentColor" stroke="none"/>
+          <text x="272" y="302" font-size="12" fill="currentColor" stroke="none" font-family="ui-monospace,monospace">20″</text>
+        </g>
+        <!-- dimension: depth 18 in -->
+        <g opacity="0.75">
+          <path d="M363.2 301.1l11 19M258.4 361.6l11 19M374.2 320.1 269.4 380.6" stroke-width="0.9"/>
+          <circle cx="374.2" cy="320.1" r="1.6" fill="currentColor" stroke="none"/>
+          <circle cx="269.4" cy="380.6" r="1.6" fill="currentColor" stroke="none"/>
+          <text x="334" y="366" font-size="12" fill="currentColor" stroke="none" font-family="ui-monospace,monospace">18″</text>
+        </g>
+        <!-- dimension: height 26 in -->
+        <g opacity="0.75">
+          <path d="M135.2 290.5h-23.2M135.2 111h-23.2M112 290.5V111" stroke-width="0.9"/>
+          <circle cx="112" cy="290.5" r="1.6" fill="currentColor" stroke="none"/>
+          <circle cx="112" cy="111" r="1.6" fill="currentColor" stroke="none"/>
+          <text x="78" y="205" font-size="12" fill="currentColor" stroke="none" font-family="ui-monospace,monospace">26″</text>
+        </g>
+      </svg>
+      <figcaption><strong>Shaker nightstand</strong> — white oak · isometric</figcaption>
+    </figure>
+
+    <menu aria-label="Viewport controls">
+      <li><button type="button" aria-pressed="false">Front</button></li>
+      <li><button type="button" aria-pressed="true">Iso</button></li>
+      <li><button type="button" aria-pressed="false">Top</button></li>
+    </menu>
+
+    <footer>
+      <data value="508x457x660mm">20 in × 18 in × 26 in</data>
+      <output data-state="pass" aria-live="polite">Integrity PASS · sag margin 8.4× · tipping OK, drawer open</output>
+    </footer>
+  </section>
+
+  <!-- ── PLANS PANEL ─────────────────── -->
+  <aside id="plans" aria-label="Plans and integrity">
+    <h2 class="vh">Plans and integrity</h2>
+
+    <menu role="tablist" aria-label="Plan views">
+      <li role="presentation"><button type="button" role="tab" id="tab-cut" aria-controls="panel-cut" aria-selected="true">Cut list</button></li>
+      <li role="presentation"><button type="button" role="tab" id="tab-integrity" aria-controls="panel-integrity" aria-selected="false" tabindex="-1">Integrity</button></li>
+      <li role="presentation"><button type="button" role="tab" id="tab-bom" aria-controls="panel-bom" aria-selected="false" tabindex="-1">BOM</button></li>
+      <li role="presentation"><button type="button" role="tab" id="tab-steps" aria-controls="panel-steps" aria-selected="false" tabindex="-1">Steps</button></li>
+    </menu>
+
+    <section role="tabpanel" id="panel-cut" aria-labelledby="tab-cut">
+      <table>
+        <caption>Parts in white oak — joinery allowances included</caption>
+        <thead>
+          <tr><th scope="col">Part</th><th scope="col" data-num>Qty</th><th scope="col" data-num>Final size</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Top <em>(clear stock)</em></td><td data-num>1</td><td data-num><data value="508×457×19">20 × 18 × ¾ in</data></td></tr>
+          <tr><td>Leg, tapered</td><td data-num>4</td><td data-num><data value="44×44×641">1¾ × 1¾ × 25¼ in</data></td></tr>
+          <tr><td>Apron, side</td><td data-num>2</td><td data-num><data value="19×114×362">¾ × 4½ × 14¼ in</data></td></tr>
+          <tr><td>Apron, back</td><td data-num>1</td><td data-num><data value="19×114×419">¾ × 4½ × 16½ in</data></td></tr>
+          <tr><td>Drawer rail</td><td data-num>2</td><td data-num><data value="19×38×419">¾ × 1½ × 16½ in</data></td></tr>
+          <tr><td>Drawer front</td><td data-num>1</td><td data-num><data value="19×95×403">¾ × 3¾ × 15⅞ in</data></td></tr>
+        </tbody>
+      </table>
+      <p><small>Tenon lengths are capped by the mortised member; tap any dimension in the app for its formula.</small></p>
+    </section>
+
+    <section role="tabpanel" id="panel-integrity" aria-labelledby="tab-integrity" hidden>
+      <ul class="gauges">
+        <li>
+          <strong>Sag margin, top strip</strong> <data value="8.4">8.4×</data>
+          <meter min="0" max="10" low="1.5" optimum="9" value="8.4">8.4× against the 1.0× requirement</meter>
+          <p>25 lb sustained load, ×2 creep applied (Wood Handbook ch. 4).</p>
+        </li>
+        <li>
+          <strong>Tipping, drawer open</strong> <data value="2.6">2.6×</data>
+          <meter min="0" max="4" low="1.2" optimum="3.5" value="2.6">2.6× moment balance</meter>
+          <p>Moment balance per ASTM F2057-aligned check; empty and loaded cases pass.</p>
+        </li>
+        <li>
+          <strong>Racking score</strong> <data value="78">78 / 100</data>
+          <meter min="0" max="100" low="50" optimum="90" value="78">78 of 100</meter>
+          <p>Aprons glued and pinned; score assumes the base glues up square.</p>
+        </li>
+        <li>
+          <strong>Worst joint capacity</strong> <data value="3.1">3.1×</data>
+          <meter min="0" max="5" low="1.5" optimum="4" value="3.1">3.1× demand at safety factor 4</meter>
+          <p>Side-apron tenon governs; end-grain screw connections derated ×0.67.</p>
+        </li>
+      </ul>
+
+      <details class="advisories">
+        <summary>2 advisories</summary>
+        <ul>
+          <li>Seasonal movement: the 18&nbsp;in solid top moves ≈&nbsp;<data value="4.4mm">³⁄₁₆ in</data> across the grain over a 6–12% MC swing. Figure-8 fasteners are specified so the top floats.</li>
+          <li>Drawer-slide capacity is rated for <data value="34kg">75 lb</data>; the loaded-drawer tipping case assumes no more than that.</li>
+        </ul>
+      </details>
+
+      <p><small>Design values are small-clear specimen means; the ×4 safety factor absorbs grade variation. Full basis on the print sheet.</small></p>
+    </section>
+
+    <section role="tabpanel" id="panel-bom" aria-labelledby="tab-bom" hidden>
+      <table>
+        <caption>Buy list — priced from your saved price table</caption>
+        <thead>
+          <tr><th scope="col">Item</th><th scope="col" data-num>Qty</th><th scope="col" data-num>Line</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1×6 × 8 ft white oak</td><td data-num>2</td><td data-num>$62.40</td></tr>
+          <tr><td>1×8 × 4 ft white oak</td><td data-num>1</td><td data-num>$20.80</td></tr>
+          <tr><td>Figure-8 fasteners</td><td data-num>8</td><td data-num>$2.80</td></tr>
+          <tr><td>#8 × 1¼ in screws</td><td data-num>12</td><td data-num>$1.44</td></tr>
+          <tr><td>Danish oil, 8 oz</td><td data-num>1</td><td data-num>$9.96</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td colspan="2">Estimated total · waste 18.2%</td><td data-num><output>$97.40</output></td></tr>
+        </tfoot>
+      </table>
+      <p><small>First-fit-decreasing packing, 3&nbsp;mm kerf, 15&nbsp;mm end trim. Board feet stay a reference line.</small></p>
+    </section>
+
+    <section role="tabpanel" id="panel-steps" aria-labelledby="tab-steps" hidden>
+      <ol class="steps">
+        <li><details open><summary><h3>Mill the legs</h3></summary>
+          <p>Rough, rest, then S4S to 1¾&nbsp;in square. Mark tapers from the apron line down; taper the two inside faces only.</p>
+        </details></li>
+        <li><details><summary><h3>Mortise and tenon the aprons</h3></summary>
+          <p>Setout is snapped to a ¼&nbsp;in chisel; blind tenon depth is capped by the leg. Drilling positions match the joinery-detail table exactly.</p>
+        </details></li>
+        <li><details><summary><h3>Glue up the base</h3></summary>
+          <p>Check both diagonals before the glue sets — the racking score assumes a square base.</p>
+        </details></li>
+        <li><details><summary><h3>Fit the drawer</h3></summary>
+          <p>Half-blind dovetails at the front, <data value="1.6mm">¹⁄₁₆ in</data> reveal per side. Wax the runners after finishing.</p>
+        </details></li>
+        <li><details><summary><h3>Finish</h3></summary>
+          <p>Grit ladder 120 → 180 → 220, then three coats of Danish oil. <strong class="hazard">Lay oil-soaked rags flat to dry — piled rags can self-ignite.</strong></p>
+        </details></li>
+      </ol>
+    </section>
+  </aside>
+</main>
+
+<!-- ═══════════ STATUS BAR ═══════════ -->
+<footer>
+  <output data-state="saved" aria-live="polite">Saved · rev 20 · <time datetime="2026-07-14T14:31">14:31</time></output>
+  <data value="4">spec v4</data>
+  <small>Internal math is millimetres; imperial is display-only. Numbers show their work — tap any dimension.</small>
+</footer>
+
+<!-- ═══════════ OVERLAYS ═══════════ -->
+<dialog id="projects-dialog" aria-labelledby="projects-title">
+  <header>
+    <h2 id="projects-title">My projects</h2>
+    <form method="dialog"><button class="quiet">Close</button></form>
+  </header>
+  <ul class="projects">
+    <li>
+      <article aria-current="true">
+        <h3>Shaker Nightstand</h3>
+        <menu><li><button type="button">Open</button></li><li><button type="button" class="quiet">Duplicate</button></li></menu>
+        <p>white oak · rev 20 · saved <time datetime="2026-07-14T14:31">2 min ago</time></p>
+      </article>
+    </li>
+    <li>
+      <article>
+        <h3>Trestle Desk</h3>
+        <menu><li><button type="button">Open</button></li><li><button type="button" class="quiet">Duplicate</button></li></menu>
+        <p>ash · rev 7 · saved <time datetime="2026-07-13T09:04">yesterday</time></p>
+      </article>
+    </li>
+    <li>
+      <article>
+        <h3>Hall Bench</h3>
+        <menu><li><button type="button">Open</button></li><li><button type="button" class="quiet">Duplicate</button></li></menu>
+        <p>maple · rev 3 · saved <time datetime="2026-07-07T16:40">last week</time></p>
+      </article>
+    </li>
+  </ul>
+  <footer><p><small>Autosave keeps the last 20 revisions per project, on-device.</small></p></footer>
+</dialog>
+
+<dialog id="share-dialog" aria-labelledby="share-title">
+  <header>
+    <h2 id="share-title">Share this design</h2>
+    <form method="dialog"><button class="quiet">Close</button></form>
+  </header>
+  <p>Anyone can paste this code into Blueprint&nbsp;Buddy to open an exact copy.</p>
+  <output class="code" id="share-code">BB4:eyJ0IjoxLCJ3Ijo1MDgsImQiOjQ1NywiaCI6NjYwLCJzIjoid2hpdGUtb2FrIn0</output>
+  <form data-stub>
+    <menu class="actions">
+      <li><button type="submit" class="primary" id="copy-code">Copy code</button></li>
+    </menu>
+  </form>
+  <p><small>Codes are validated, migrated, and revalidated on import — a stale code never opens broken.</small></p>
+</dialog>
+
+<menu id="export-menu" popover aria-label="Export">
+  <li><button type="button">SketchUp <kbd>.dae</kbd></button></li>
+  <li><button type="button">Print sheet <kbd>⌘P</kbd></button></li>
+  <li><button type="button" commandfor="share-dialog" command="show-modal">Share code…</button></li>
+</menu>
+
+<script>
+/* Progressive enhancement only — the document above is complete without it. */
+(() => {
+  "use strict";
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  /* Invoker-commands fallback (command/commandfor) for engines without native support */
+  if (!("commandForElement" in HTMLButtonElement.prototype)) {
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[commandfor]");
+      if (!btn) return;
+      const target = document.getElementById(btn.getAttribute("commandfor"));
+      if (target?.tagName === "DIALOG" && btn.getAttribute("command") === "show-modal") {
+        btn.closest("menu[popover]")?.hidePopover?.();
+        target.showModal();
+      }
+    });
+  }
+
+  /* Tabs — roving focus, arrow keys, panel switching */
+  const tabs = $$('#plans [role="tab"]');
+  const select = (tab) => {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute("aria-selected", on);
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+    tab.focus();
+  };
+  tabs.forEach((tab, i) => {
+    tab.addEventListener("click", () => select(tab));
+    tab.addEventListener("keydown", (e) => {
+      const move = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (move === undefined) return;
+      e.preventDefault();
+      select(tabs[(move + tabs.length) % tabs.length]);
+    });
+  });
+
+  /* Chat drawer (≤1180px) — one source of truth: #chat-toggle's aria-expanded */
+  const chatToggle = $("#chat-toggle");
+  const setDrawer = (open) => chatToggle.setAttribute("aria-expanded", open);
+  chatToggle.addEventListener("click", () => setDrawer(chatToggle.getAttribute("aria-expanded") !== "true"));
+  $("#chat-close").addEventListener("click", () => setDrawer(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && chatToggle.getAttribute("aria-expanded") === "true") setDrawer(false);
+  });
+
+  /* Theme — cycles auto → dark → light via color-scheme; light-dark() does the rest */
+  const themes = ["light dark", "dark", "light"], names = ["automatic", "dark", "light"];
+  let mode = 0;
+  $("#theme-toggle").addEventListener("click", (e) => {
+    mode = (mode + 1) % 3;
+    document.documentElement.style.colorScheme = themes[mode];
+    e.currentTarget.setAttribute("aria-label", `Color theme: ${names[mode]}`);
+  });
+
+  /* New — a stub that just starts the conversation over */
+  $("#new-design").addEventListener("click", () => { setDrawer(true); $("#prompt").focus(); });
+
+  /* Stub forms never navigate */
+  $$("form[data-stub]").forEach((f) => f.addEventListener("submit", (e) => e.preventDefault()));
+
+  /* Composer — append the user turn and an offline-parser acknowledgement */
+  $("#prompt-form").addEventListener("submit", () => {
+    const prompt = $("#prompt");
+    const text = prompt.value.trim();
+    if (!text) return;
+    const stamp = new Date();
+    const add = (role, who, body) => {
+      const li = document.createElement("li");
+      const article = document.createElement("article");
+      article.dataset.role = role;
+      const head = document.createElement("header");
+      const strong = document.createElement("strong");
+      strong.textContent = who;
+      const time = document.createElement("time");
+      time.dateTime = stamp.toISOString();
+      time.textContent = stamp.toTimeString().slice(0, 5);
+      const p = document.createElement("p");
+      p.textContent = body;
+      head.append(strong, time);
+      article.append(head, p);
+      li.append(article);
+      $("#transcript").append(li);
+      li.scrollIntoView({ block: "end", behavior: "smooth" });
+    };
+    add("user", "You", text);
+    setTimeout(() => add("assistant", "Buddy", "Intent parsed offline — the parametric layer owns the numbers. (This skeleton stops at the shell.)"), 450);
+    prompt.value = "";
+  });
+
+  /* Share — copy the code */
+  $("#copy-code").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    try { await navigator.clipboard.writeText($("#share-code").textContent.trim()); } catch { /* selection stays available */ }
+    btn.textContent = "Copied ✓";
+    setTimeout(() => (btn.textContent = "Copy code"), 1400);
+  });
+})();
+</script>
+</body>
+</html>

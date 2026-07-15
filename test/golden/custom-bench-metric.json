@@ -1,0 +1,543 @@
+{
+ "spec": {
+  "specVersion": 4,
+  "meta": {
+   "name": "Custom Bench",
+   "template": "custom",
+   "level": "beginner",
+   "units": "mm"
+  },
+  "overall": {
+   "width": 1100,
+   "depth": 350,
+   "height": 468
+  },
+  "wood": {
+   "species": "red_oak",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 25,
+   "legThickness": 70,
+   "apronHeight": 90,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false
+  },
+  "joinery": {
+   "frame": "pocket_screws",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "wipe_poly",
+  "drawers": null,
+  "custom": {
+   "parts": [
+    {
+     "id": "p1",
+     "role": "seat",
+     "primitive": "slab",
+     "dim": {
+      "l": 1100,
+      "w": 350,
+      "t": 38
+     },
+     "pos": {
+      "x": 0,
+      "y": 449,
+      "z": 0
+     },
+     "rot": null,
+     "grain": "length",
+     "stock": "solid",
+     "loadBearing": false,
+     "surface": "seating"
+    },
+    {
+     "id": "p2",
+     "role": "leg_panel",
+     "primitive": "panel",
+     "dim": {
+      "l": 350,
+      "w": 430,
+      "t": 38
+     },
+     "pos": {
+      "x": -475,
+      "y": 215,
+      "z": 0
+     },
+     "rot": {
+      "x": 0,
+      "y": 90,
+      "z": 0
+     },
+     "grain": "length",
+     "stock": "solid",
+     "loadBearing": true,
+     "surface": "none"
+    },
+    {
+     "id": "p3",
+     "role": "leg_panel",
+     "primitive": "panel",
+     "dim": {
+      "l": 350,
+      "w": 430,
+      "t": 38
+     },
+     "pos": {
+      "x": 475,
+      "y": 215,
+      "z": 0
+     },
+     "rot": {
+      "x": 0,
+      "y": 90,
+      "z": 0
+     },
+     "grain": "length",
+     "stock": "solid",
+     "loadBearing": true,
+     "surface": "none"
+    }
+   ],
+   "connections": [
+    {
+     "a": "p2",
+     "b": "p1",
+     "joint": "butt_screws"
+    },
+    {
+     "a": "p3",
+     "b": "p1",
+     "joint": "butt_screws"
+    }
+   ]
+  }
+ },
+ "validation": {
+  "errors": [],
+  "advisories": [
+   "endgrain_p2_p1",
+   "endgrain_p3_p1"
+  ]
+ },
+ "cutList": [
+  {
+   "name": "Seat",
+   "qty": 1,
+   "L": 1100,
+   "W": 350,
+   "T": 38,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Leg panel",
+   "qty": 2,
+   "L": 350,
+   "W": 430,
+   "T": 38,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "rackScore": 7,
+  "tip": {
+   "angEmpty": 26.808,
+   "angLoaded": 26.808,
+   "ratio": 1.337
+  },
+  "checks": [
+   {
+    "id": "conn",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "stand",
+    "status": "pass",
+    "data": {
+     "cogMarginMM": 175
+    }
+   },
+   {
+    "id": "collide",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:p1",
+    "status": "pass",
+    "data": {
+     "sagMM": 1.936,
+     "limitMM": 3.167,
+     "spanMM": 950
+    }
+   },
+   {
+    "id": "str:p1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "advisory",
+    "data": null
+   },
+   {
+    "id": "joints",
+    "status": "fail",
+    "data": null
+   },
+   {
+    "id": "move:p1",
+    "status": "advisory",
+    "data": {
+     "movementMM": 5.166,
+     "crossWidthMM": 350,
+     "context": "custom"
+    }
+   },
+   {
+    "id": "move:p2",
+    "status": "advisory",
+    "data": {
+     "movementMM": 6.347,
+     "crossWidthMM": 430,
+     "context": "custom"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Red Oak 38 x 38 x 1829 mm (2x2)",
+    "qty": 1,
+    "cost": 9.877
+   },
+   {
+    "label": "Red Oak 38 x 38 x 3658 mm (2x2)",
+    "qty": 6,
+    "cost": 118.519
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "2x2",
+    "stockLen": 3658,
+    "offcut": 322,
+    "cuts": [
+     {
+      "name": "Seat (strip 1/11)",
+      "len": 1100,
+      "offset": 15
+     },
+     {
+      "name": "Seat (strip 2/11)",
+      "len": 1100,
+      "offset": 1118
+     },
+     {
+      "name": "Seat (strip 3/11)",
+      "len": 1100,
+      "offset": 2221
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 3658,
+    "offcut": 322,
+    "cuts": [
+     {
+      "name": "Seat (strip 4/11)",
+      "len": 1100,
+      "offset": 15
+     },
+     {
+      "name": "Seat (strip 5/11)",
+      "len": 1100,
+      "offset": 1118
+     },
+     {
+      "name": "Seat (strip 6/11)",
+      "len": 1100,
+      "offset": 2221
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 3658,
+    "offcut": 322,
+    "cuts": [
+     {
+      "name": "Seat (strip 7/11)",
+      "len": 1100,
+      "offset": 15
+     },
+     {
+      "name": "Seat (strip 8/11)",
+      "len": 1100,
+      "offset": 1118
+     },
+     {
+      "name": "Seat (strip 9/11)",
+      "len": 1100,
+      "offset": 2221
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 3658,
+    "offcut": 13,
+    "cuts": [
+     {
+      "name": "Seat (strip 10/11)",
+      "len": 1100,
+      "offset": 15
+     },
+     {
+      "name": "Seat (strip 11/11)",
+      "len": 1100,
+      "offset": 1118
+     },
+     {
+      "name": "Leg panel (strip 1/14)",
+      "len": 350,
+      "offset": 2221
+     },
+     {
+      "name": "Leg panel (strip 2/14)",
+      "len": 350,
+      "offset": 2574
+     },
+     {
+      "name": "Leg panel (strip 3/14)",
+      "len": 350,
+      "offset": 2927
+     },
+     {
+      "name": "Leg panel (strip 4/14)",
+      "len": 350,
+      "offset": 3280
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 3658,
+    "offcut": 101,
+    "cuts": [
+     {
+      "name": "Leg panel (strip 5/14)",
+      "len": 350,
+      "offset": 15
+     },
+     {
+      "name": "Leg panel (strip 6/14)",
+      "len": 350,
+      "offset": 368
+     },
+     {
+      "name": "Leg panel (strip 7/14)",
+      "len": 350,
+      "offset": 721
+     },
+     {
+      "name": "Leg panel (strip 8/14)",
+      "len": 350,
+      "offset": 1074
+     },
+     {
+      "name": "Leg panel (strip 9/14)",
+      "len": 350,
+      "offset": 1427
+     },
+     {
+      "name": "Leg panel (strip 10/14)",
+      "len": 350,
+      "offset": 1780
+     },
+     {
+      "name": "Leg panel (strip 11/14)",
+      "len": 350,
+      "offset": 2133
+     },
+     {
+      "name": "Leg panel (strip 12/14)",
+      "len": 350,
+      "offset": 2486
+     },
+     {
+      "name": "Leg panel (strip 13/14)",
+      "len": 350,
+      "offset": 2839
+     },
+     {
+      "name": "Leg panel (strip 14/14)",
+      "len": 350,
+      "offset": 3192
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 3658,
+    "offcut": 101,
+    "cuts": [
+     {
+      "name": "Leg panel (strip 1/14)",
+      "len": 350,
+      "offset": 15
+     },
+     {
+      "name": "Leg panel (strip 2/14)",
+      "len": 350,
+      "offset": 368
+     },
+     {
+      "name": "Leg panel (strip 3/14)",
+      "len": 350,
+      "offset": 721
+     },
+     {
+      "name": "Leg panel (strip 4/14)",
+      "len": 350,
+      "offset": 1074
+     },
+     {
+      "name": "Leg panel (strip 5/14)",
+      "len": 350,
+      "offset": 1427
+     },
+     {
+      "name": "Leg panel (strip 6/14)",
+      "len": 350,
+      "offset": 1780
+     },
+     {
+      "name": "Leg panel (strip 7/14)",
+      "len": 350,
+      "offset": 2133
+     },
+     {
+      "name": "Leg panel (strip 8/14)",
+      "len": 350,
+      "offset": 2486
+     },
+     {
+      "name": "Leg panel (strip 9/14)",
+      "len": 350,
+      "offset": 2839
+     },
+     {
+      "name": "Leg panel (strip 10/14)",
+      "len": 350,
+      "offset": 3192
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 1829,
+    "offcut": 390,
+    "cuts": [
+     {
+      "name": "Leg panel (strip 11/14)",
+      "len": 350,
+      "offset": 15
+     },
+     {
+      "name": "Leg panel (strip 12/14)",
+      "len": 350,
+      "offset": 368
+     },
+     {
+      "name": "Leg panel (strip 13/14)",
+      "len": 350,
+      "offset": 721
+     },
+     {
+      "name": "Leg panel (strip 14/14)",
+      "len": 350,
+      "offset": 1074
+     }
+    ]
+   }
+  ],
+  "sheets": [],
+  "totalCost": 128.4,
+  "wasteSolidPct": 24,
+  "wasteSheetPct": null
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Red Oak 38 x 38 x 1829 mm (2x2)",
+    "qty": 1,
+    "price": 9.88
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 38 x 38 x 3658 mm (2x2)",
+    "qty": 6,
+    "price": 118.52
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 14.4 bd ft (0.03 m³)",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 24%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 50 mm wood screw (pilot 3.2 mm)",
+    "qty": 6,
+    "price": 0.36
+   },
+   {
+    "kind": "finish",
+    "label": "Wipe-on polyurethane",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 146.76
+ },
+ "steps": [
+  "mill",
+  "c1",
+  "c2",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

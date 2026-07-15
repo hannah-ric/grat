@@ -45,7 +45,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       'All wire dimensions are millimetres. The app pre-normalizes dimension strings in user messages to explicit millimetres before you see them — NEVER convert units yourself.',
       Codec().SCHEMA_DOC,
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes).',
-      'LEVEL MATRIX (code enforces this regardless): beginner={butt_screws,pocket_screws}; intermediate adds {dowels,dado,rabbet,locking_rabbet}; advanced adds {mortise_tenon,half_blind_dovetail}.',
+      // Generated from the joinery table — never hand-copied (audit F-S3-8).
+      K.levelMatrixLine() + ' (code enforces this regardless).',
       'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
       'REFINEMENTS: when the user asks for a change, EDIT the current spec — send ONLY the changed wire keys. Do not redesign. STRUCTURAL CRITIQUE: when the message is a structural critique of your last composition, fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
       '--- knowledge digest ---',
@@ -427,9 +428,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     return `Structural validation of your composition FAILED. Problems:\n${lines.join('\n')}\nFix ONLY these problems — keep the design intent and everything that already works. Reply {"N":{corrected FULL wire spec}} as minified JSON, nothing else.`;
   }
 
-  /* ---------------- photo-to-design (Phase 4 item 4) ---------------- */
+  /* ---------------- photo-to-design (Phase 4 item 4) ----------------
+   * Ergonomic anchor ranges are GENERATED from K.ERGONOMICS (audit F-S3-8). */
   const VISION_PROMPT = [
-    'The image is a furniture photo. Identify the furniture type and estimate overall proportions, anchored to standard ergonomic heights from the knowledge digest (table 730-760, desk 720-750, seat 430-480, nightstand 550-700, counter 860-940 mm).',
+    'The image is a furniture photo. Identify the furniture type and estimate overall proportions, anchored to standard ergonomic heights from the knowledge digest (' + K.visionRangesLine() + ').',
     'Reply {"N":{full wire spec}} — use a known template (t 0-5) whenever one fits; use t=6 (custom, parts + connections) only if none does.',
     'Estimate wood species from color/grain (m). If drawers are visible on a nightstand/cabinet, set "d". Minified JSON only.'
   ].join(' ');

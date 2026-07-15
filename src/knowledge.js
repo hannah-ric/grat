@@ -91,7 +91,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       blurb: 'Light, forgiving, and knotty — dents if you look at it hard, but nothing is friendlier to learn on.'
     },
     baltic_birch: {
-      // Effective MOE/MOR reduced ~20% vs solid birch: half the plies run cross-grain.
+      // Effective values, NOT solid birch: cross-grain plies carry little
+      // bending, so MOE ≈ 0.7× and MOR ≈ 0.5× solid birch (13.9 GPa / 114 MPa).
       // ct/cr ≈ 0: cross-laminated plies cancel seasonal movement — plywood is exempt.
       key: 'baltic_birch', label: 'Baltic Birch Ply', janka: 1260, workability: 4,
       movement: 'low', outdoor: false, costTier: 2, pricePerBdFt: 6, sheet: true,
@@ -105,6 +106,26 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* Movement advisory threshold: a wide solid top in a high-movement
    * species needs to be allowed to move (buttons/figure-8s, no glue). */
   const WIDE_TOP_MM = 500;
+
+  /* One board foot, in mm³ — THE shared constant (plans, packing, units all
+   * derive from this; never re-type it). 1 bd ft = 144 in³ × 16387.064 mm³/in³. */
+  const BF_MM3 = 2359737;
+
+  /* ---------------- design-value basis (audit F-S3-7) ----------------
+   * Disclosed in the Integrity footer and the print sheet. This is what the
+   * safety factor is silently absorbing, made explicit.
+   */
+  const DESIGN_BASIS =
+    'Material values are Wood Handbook (FPL-GTR-282) means from small, clear, ' +
+    'straight-grained specimens at 12% MC. Lumber you buy has knots, grain ' +
+    'runout, and grade variability that formal design (NDS) derates for; here ' +
+    'the safety factor of 4 on modulus of rupture absorbs grade variability ' +
+    'plus load-duration effects on strength, and sustained-load deflection is ' +
+    'separately doubled for creep (Wood Handbook ch. 4). Load presets follow ' +
+    'BIFMA X5.4/X5.5/X5.9 functional loads; drawer-unit tipping follows the ' +
+    'intent of ASTM F2057 (STURDY). For every load-bearing part, select ' +
+    'straight-grained stock free of knots. Estimates for hobby woodworking — ' +
+    'not certified structural engineering.';
 
   /* ---------------- 3b. Ergonomics ----------------
    * All mm. axis: which overall dimension the range constrains.
@@ -135,56 +156,56 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   const JOINERY = {
     butt_screws: {
-      key: 'butt_screws', label: 'Butt joint + screws', strength: 1, difficulty: 1, level: 'beginner',
+      key: 'butt_screws', label: 'Butt joint + screws', plural: 'butt joints with screws', strength: 1, difficulty: 1, level: 'beginner',
       kinds: ['frame', 'case', 'box'],
       tools: ['drill/driver', 'countersink bit'],
       bestFor: 'Quick utility builds, shop furniture, painted work.',
       failure: 'Screws into end grain strip out — always drill pilot holes and don’t over-torque.'
     },
     pocket_screws: {
-      key: 'pocket_screws', label: 'Pocket screws', strength: 2, difficulty: 1, level: 'beginner',
+      key: 'pocket_screws', label: 'Pocket screws', plural: 'pocket screws', strength: 2, difficulty: 1, level: 'beginner',
       kinds: ['frame', 'case', 'box'],
       tools: ['pocket-hole jig', 'drill/driver'],
       bestFor: 'Face frames, aprons, and drawer boxes hidden from view.',
       failure: 'Joints creep under racking if unglued — add glue on every long-grain face.'
     },
     dowels: {
-      key: 'dowels', label: 'Dowel joint', strength: 3, difficulty: 2, level: 'intermediate',
+      key: 'dowels', label: 'Dowel joint', plural: 'dowel joints', strength: 3, difficulty: 2, level: 'intermediate',
       kinds: ['frame', 'case', 'box'],
       tools: ['doweling jig', 'drill', 'clamps'],
       bestFor: 'Aprons, carcass butt-ups, and alignment-critical panels.',
       failure: 'Misaligned holes lock the assembly out of square — drill both parts from the same reference face.'
     },
     dado: {
-      key: 'dado', label: 'Dado / housing', strength: 3, difficulty: 2, level: 'intermediate',
+      key: 'dado', label: 'Dado / housing', plural: 'dados', strength: 3, difficulty: 2, level: 'intermediate',
       kinds: ['case'],
       tools: ['router or table saw', 'straightedge'],
       bestFor: 'Fixed shelves carrying real weight in case sides.',
       failure: 'A dado sized to nominal plywood is loose on actual plywood — cut to the measured thickness.'
     },
     rabbet: {
-      key: 'rabbet', label: 'Rabbet', strength: 2, difficulty: 2, level: 'intermediate',
+      key: 'rabbet', label: 'Rabbet', plural: 'rabbets', strength: 2, difficulty: 2, level: 'intermediate',
       kinds: ['case'],
       tools: ['router or table saw'],
       bestFor: 'Back panels and case tops/bottoms.',
       failure: 'Thin rabbet walls split when screwed — keep the wall at least half the stock thickness.'
     },
     locking_rabbet: {
-      key: 'locking_rabbet', label: 'Locking rabbet', strength: 3, difficulty: 3, level: 'intermediate',
+      key: 'locking_rabbet', label: 'Locking rabbet', plural: 'locking rabbets', strength: 3, difficulty: 3, level: 'intermediate',
       kinds: ['box'],
       tools: ['table saw or router table', 'dado stack or straight bit'],
       bestFor: 'Machine-cut drawer boxes — mechanical interlock plus glue area.',
       failure: 'The short tongue snaps if the fit needs a mallet — sneak up on a hand-pressed fit.'
     },
     mortise_tenon: {
-      key: 'mortise_tenon', label: 'Mortise & tenon', strength: 5, difficulty: 4, level: 'advanced',
+      key: 'mortise_tenon', label: 'Mortise & tenon', plural: 'mortise-and-tenon joints', strength: 5, difficulty: 4, level: 'advanced',
       kinds: ['frame'],
       tools: ['mortiser or router', 'tenon saw', 'chisels'],
       bestFor: 'Legs to aprons and rails — the reference joint for frames.',
       failure: 'A too-tight tenon splits the mortise cheek on glue-up — aim for a firm hand-press fit.'
     },
     half_blind_dovetail: {
-      key: 'half_blind_dovetail', label: 'Half-blind dovetail', strength: 5, difficulty: 5, level: 'advanced',
+      key: 'half_blind_dovetail', label: 'Half-blind dovetail', plural: 'half-blind dovetails', strength: 5, difficulty: 5, level: 'advanced',
       kinds: ['box'],
       tools: ['dovetail saw', 'chisels', 'marking gauge'],
       bestFor: 'Drawer fronts that show no joinery from the front and never pull apart.',
@@ -229,22 +250,31 @@ var BB = globalThis.BB = globalThis.BB || {};
       { key: 'dowel_10', label: '{10} × {50} fluted dowel', pilot: 10, use: 'Legs and thick frames' }
     ],
     hardware: [
-      { key: 'slide_pair', label: 'Side-mount ball-bearing slides (pair)', use: 'Drawer runners, {250} to {500}', price: 14 },
+      // capacityKg: rated load per PAIR for the common 75 lb class of
+      // side-mount ball-bearing slides — drives the slide-capacity check.
+      { key: 'slide_pair', label: 'Side-mount ball-bearing slides (pair)', use: 'Drawer runners, {250} to {500}', price: 14, capacityKg: 34 },
       { key: 'pull', label: 'Drawer pull', use: 'One per drawer', price: 6 },
       { key: 'shelf_pin', label: '5 mm shelf pin', use: 'Adjustable shelves — 4 per shelf', price: 0.25 },
       { key: 'figure8', label: 'Figure-8 fastener', use: 'Solid top attachment allowing movement', price: 0.8 }
     ]
   };
 
+  /* prep: sanding grit ladder before the first coat; betweenGrit: abrasive
+   * between coats; raiseGrain: damp the surface and knock back the fuzz
+   * before finishing; flammableRags: oil-soaked rags self-heat — the safety
+   * step must say so (audit F-S3-3/F-S3-4). */
   const FINISHES = [
-    { key: 'wipe_poly', label: 'Wipe-on polyurethane', coats: 3, recoatHrs: 4, cureDays: 3, sheen: 'satin', blurb: 'Foolproof rag-on protection; sand at 320 between coats.' },
-    { key: 'danish_oil', label: 'Danish oil', coats: 2, recoatHrs: 8, cureDays: 7, sheen: 'natural', blurb: 'In-the-wood look and feel; easiest repair story — just re-oil.' },
-    { key: 'water_poly', label: 'Water-based poly', coats: 3, recoatHrs: 2, dryFast: true, cureDays: 2, sheen: 'clear', blurb: 'Crystal clear, low odor, fast recoat; raises grain — pre-dampen and sand first.' },
-    { key: 'hardwax_oil', label: 'Hardwax oil', coats: 2, recoatHrs: 12, cureDays: 5, sheen: 'matte', blurb: 'Modern matte with a velvet hand; buff on, buff off.' }
+    { key: 'wipe_poly', label: 'Wipe-on polyurethane', coats: 3, recoatHrs: 4, cureDays: 3, sheen: 'satin', prep: { grits: [120, 180], betweenGrit: 320 }, flammableRags: true, blurb: 'Foolproof rag-on protection; sand at 320 between coats.' },
+    { key: 'danish_oil', label: 'Danish oil', coats: 2, recoatHrs: 8, cureDays: 7, sheen: 'natural', prep: { grits: [120, 180, 220], betweenGrit: 320 }, flammableRags: true, blurb: 'In-the-wood look and feel; easiest repair story — just re-oil.' },
+    { key: 'water_poly', label: 'Water-based poly', coats: 3, recoatHrs: 2, dryFast: true, cureDays: 2, sheen: 'clear', prep: { grits: [120, 180, 220], betweenGrit: 320, raiseGrain: true }, blurb: 'Crystal clear, low odor, fast recoat; raises grain — pre-dampen and sand first.' },
+    { key: 'hardwax_oil', label: 'Hardwax oil', coats: 2, recoatHrs: 12, cureDays: 5, sheen: 'matte', prep: { grits: [120, 150, 180] }, flammableRags: true, blurb: 'Modern matte with a velvet hand; buff on, buff off.' }
   ];
 
   /* Standard slide lengths (mm), used by drawer-box math. */
   const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500];
+  /* Side-mount ball-bearing slides need exactly 1/2 in (12.7 mm) per side —
+   * total box-to-opening clearance. 12.5 binds the slide (audit F-S1-4). */
+  const SLIDE_SPACE_MM = 25.4;
 
   /* ---------------- 3e. Buyable lumber catalog (Phase 4) ----------------
    * Code-owned: what a lumberyard actually sells. Nominal names map to ACTUAL
@@ -277,8 +307,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* Default price list — user-editable in the Stock tab, persisted to storage.
    * Dimensional lumber: $ per lineal metre per nominal, scaled by species cost
-   * tier. Sheets: $ per FULL 1220×2440 sheet per thickness (fractions pro-rata
-   * + 15% cutting premium). Rough hardwood stays priced per board foot
+   * tier. Sheets: $ per FULL 1220×2440 sheet per thickness; fractions are
+   * priced exactly pro-rata. Rough hardwood stays priced per board foot
    * (species pricePerBdFt) when the user prefers rough stock.
    */
   const BASE_PRICE_PER_M = {
@@ -312,12 +342,36 @@ var BB = globalThis.BB = globalThis.BB || {};
     return widthMM * coef * (dMC === undefined ? CLIMATE_DMC.temperate : dMC);
   }
 
-  /* Stock thickness snapping tables (mm). */
+  /* Stock thickness snapping tables (mm). POST_THICKNESS extends the solid
+   * table for custom-grammar posts/legs: the packer laminates anything over
+   * 45, exactly as templates already allow 100 mm legs (audit F-S2-6). */
   const SOLID_THICKNESS = [12, 15, 19, 20, 25, 32, 38, 45];
+  const POST_THICKNESS = [...SOLID_THICKNESS, 60, 70, 80, 90, 100];
   const SHEET_THICKNESS = [6, 12, 18];
 
+  /* Ergonomics row lookup — validation reads thresholds from here instead of
+   * re-typing 80/750/1100 (audit F-SYS-3). */
+  function ergoRow(key) {
+    return ERGONOMICS.find(r => r.key === key) || null;
+  }
+
   /* ---------------- Digests for the AI system prompt ----------------
-   * Compact, lossy on purpose: enough for good proposals; validation re-checks. */
+   * Compact, lossy on purpose: enough for good proposals; validation re-checks.
+   * EVERY line is GENERATED from the tables above — never hand-copied — and
+   * the self-test suite asserts the generation, so a table edit can never
+   * leave the AI proposing from stale norms (audit F-S3-8). */
+  function levelMatrixLine() {
+    const parts = LEVELS.map((lvl, i) => {
+      const own = Object.values(JOINERY).filter(j => j.level === lvl).map(j => j.key);
+      return `${lvl}=${i ? '+' : ''}{${own.join(',')}}`;
+    });
+    return 'LEVEL MATRIX: ' + parts.join(' ');
+  }
+  /* Ergonomic anchor ranges for the photo-estimation prompt, generated. */
+  function visionRangesLine() {
+    const keys = ['dining_height', 'desk_height', 'bench_seat', 'nightstand_height', 'counter_height'];
+    return keys.map(k => { const r = ergoRow(k); return `${r.label.toLowerCase().replace(/ height| seat/g, '')} ${r.min}-${r.max}`; }).join(', ') + ' mm';
+  }
   function knowledgeDigest() {
     const w = Object.values(WOOD_SPECIES).map(s =>
       `${s.key}(janka ${s.janka},move ${s.movement},$${'●'.repeat(s.costTier)})`).join(' ');
@@ -327,15 +381,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       'WOOD: ' + w,
       'ERGONOMICS(mm): ' + e,
       'JOINERY: ' + j,
-      'LEVEL MATRIX: beginner={butt_screws,pocket_screws} intermediate=+{dowels,dado,rabbet,locking_rabbet} advanced=+{mortise_tenon,half_blind_dovetail}',
+      levelMatrixLine(),
       'SLIDES(mm): ' + SLIDE_LENGTHS.join(',')
     ].join('\n');
   }
 
   BB.K = {
     WOOD_SPECIES, ERGONOMICS, JOINERY, FASTENERS, FINISHES,
-    LEVELS, SLIDE_LENGTHS, SOLID_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM,
+    LEVELS, SLIDE_LENGTHS, SLIDE_SPACE_MM, SOLID_THICKNESS, POST_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM,
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
+    levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM
   };
 })();

@@ -66,18 +66,28 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => __bb.state.spec.meta.units === 'in' && BB.Units.get().system === 'imperial'),
     'fresh session defaults to imperial display');
 
-  // Gallery on first load; load the nightstand starter through the pipeline.
-  ok(await page.isVisible('#galleryScrim.open'), 'starter gallery shows on first load');
+  // First run: a non-blocking welcome card offers the three entry paths while
+  // the bench behind it stays fully live. The starter gallery opens on demand.
+  ok(await page.isVisible('#welcomeOverlay'), 'welcome paths show on first run');
+  ok(!(await page.isVisible('#galleryScrim.open')), 'no modal blocks the bench on boot');
+  ok(await page.$$eval('#welcomeOverlay .welcome-card', b => b.length) === 3, 'welcome offers three entry paths');
+  await page.click('#tab-stock');
+  ok(await page.evaluate(() => __bb.state.tab === 'stock'), 'bench interactive behind the welcome card');
+  await page.click('#tab-cut');
+  await page.screenshot({ path: SHOTS + '/01-gallery.png' });
+  await page.click('#welcomeStarter');
+  await page.waitForSelector('#galleryScrim.open');
+  ok(true, 'starter gallery opens from the welcome path');
   // Idle pass swaps the emoji cards for real rendered thumbnails.
   const thumbs = await page.waitForSelector('.gallery-card .g-thumb', { timeout: 10000 }).then(() => true).catch(() => false);
   ok(thumbs, 'gallery cards gain rendered 3D thumbnails after idle');
   ok(await page.evaluate(() => [...document.querySelectorAll('.gallery-card .g-thumb')].every(i => i.src.startsWith('data:image/jpeg'))),
     'every starter thumbnail rendered to a data URL');
-  await page.screenshot({ path: SHOTS + '/01-gallery.png' });
   // First starter pick fires the one-shot hero assemble (fresh prefs).
   const heroBefore = await page.evaluate(() => !!__bb.state.prefs4.seenHero);
   await page.click('.gallery-card:nth-child(5)');
   await page.waitForFunction(() => __bb.state.spec.meta.template === 'nightstand');
+  ok(await page.evaluate(() => document.getElementById('welcomeOverlay').hidden), 'welcome dismisses once a design is chosen');
   const ns = await page.evaluate(() => ({
     drawers: __bb.state.model.drawers.length,
     rails: __bb.state.model.parts.filter(p => p.role === 'rail').length,
@@ -89,7 +99,7 @@ const clickMoreCtl = async sel => {
   ok(ns.drawers === 2 && ns.rails === 3, `nightstand starter: 2 drawers, 3 rails (got ${ns.drawers}/${ns.rails})`);
   ok(!heroBefore && await page.evaluate(() => __bb.state.prefs4.seenHero === true),
     'first starter pick marks the one-shot hero as seen');
-  ok(ns.boxW === ns.openW - 25, 'box width = opening − 25 in live app');
+  ok(Math.abs(ns.boxW - (ns.openW - 25.4)) < 0.01, 'box width = opening − 25.4 in live app');
   ok([250, 300, 350, 400, 450, 500].includes(ns.slide), 'standard slide length in live app');
   ok(ns.bomSlides === 2, 'slide pairs in BOM');
   ok(await page.evaluate(() => document.getElementById('hintPrompts').children.length === 0),
@@ -464,6 +474,7 @@ const clickMoreCtl = async sel => {
   await page.reload();
   await page.waitForFunction(() => globalThis.__bb && __bb.state.model, null, { timeout: 15000 });
   ok(!(await page.isVisible('#galleryScrim.open')), 'returning user: no gallery on boot');
+  ok(!(await page.isVisible('#welcomeOverlay')), 'returning user: no welcome overlay either');
   ok(await page.evaluate(() => !!__bb.state.project), 'returning user: latest project auto-loaded into the studio');
   await page.evaluate(id => __bb.loadProjectIntoApp(id), projId);
   await page.waitForFunction(() => __bb.state.project, null, { timeout: 5000 });
@@ -754,10 +765,12 @@ const clickMoreCtl = async sel => {
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
   await page.click('#tab-integrity');
   await page.waitForSelector('.fix-row .btn', { timeout: 5000 });
-  const beforeFix = await page.evaluate(() => ({ t: __bb.state.spec.structure.topThickness, sp: __bb.state.spec.wood.species, fails: __bb.state.integrity.summary.fails }));
+  const fixSnap = () => page.evaluate(() => ({ t: __bb.state.spec.structure.topThickness, a: __bb.state.spec.structure.apronHeight, sp: __bb.state.spec.wood.species, fails: __bb.state.integrity.summary.fails }));
+  const beforeFix = await fixSnap();
   await page.click('.fix-row .btn');
-  const afterFix = await page.evaluate(() => ({ t: __bb.state.spec.structure.topThickness, sp: __bb.state.spec.wood.species, fails: __bb.state.integrity.summary.fails }));
-  ok(afterFix.t !== beforeFix.t || afterFix.sp !== beforeFix.sp, `integrity fix patched the spec (${beforeFix.t}mm/${beforeFix.sp} → ${afterFix.t}mm/${afterFix.sp})`);
+  const afterFix = await fixSnap();
+  ok(afterFix.t !== beforeFix.t || afterFix.a !== beforeFix.a || afterFix.sp !== beforeFix.sp,
+    `integrity fix patched the spec (top ${beforeFix.t}→${afterFix.t}, apron ${beforeFix.a}→${afterFix.a}, ${beforeFix.sp}→${afterFix.sp})`);
   ok(afterFix.fails <= beforeFix.fails, `fix did not make things worse (${beforeFix.fails} → ${afterFix.fails} fails)`);
 
   // Projects: rename, duplicate, delete round-trip through storage.
@@ -892,6 +905,136 @@ const clickMoreCtl = async sel => {
     return rb1 === rb2 && dae1 === dae2;
   });
   ok(exportsStable, 'SketchUp exports identical regardless of display mode');
+
+  /* ================= Phase E: shell redesign ================= */
+
+  // Compact header: one row on desktop.
+  ok(await page.evaluate(() => document.querySelector('.topbar').getBoundingClientRect().height <= 58),
+    'desktop header is one compact row');
+
+  // Collapsible chat: fold to the rail, bench width goes to the stage;
+  // unread replies light the rail dot; expanding restores and focuses chat.
+  const stageW0 = await page.evaluate(() => document.getElementById('viewportWrap').getBoundingClientRect().width);
+  await page.click('#chatCollapse');
+  await page.waitForTimeout(350); // width transition
+  const collapsed = await page.evaluate(() => ({
+    cls: document.getElementById('chatPanel').classList.contains('collapsed'),
+    pref: __bb.state.prefs4.ui.chatCollapsed,
+    stageW: document.getElementById('viewportWrap').getBoundingClientRect().width,
+    railVisible: !document.getElementById('chatRail').hidden
+  }));
+  ok(collapsed.cls && collapsed.pref && collapsed.railVisible, 'chat folds to a rail and persists the choice');
+  ok(collapsed.stageW > stageW0 + 200, `stage gains the chat width (${Math.round(stageW0)} → ${Math.round(collapsed.stageW)})`);
+  await page.evaluate(async () => {
+    BB.AI.setTransport(async () => ({ text: JSON.stringify({ q: 'Which?', a: ['A'] }), stopReason: 'end_turn' }));
+    await __bb.sendMessage('ping while folded');
+    BB.AI.setTransport(null);
+  });
+  ok(await page.evaluate(() => !document.getElementById('chatRailDot').hidden), 'reply while folded lights the rail dot');
+  await page.click('#chatRail');
+  ok(await page.evaluate(() =>
+    !document.getElementById('chatPanel').classList.contains('collapsed') &&
+    document.getElementById('chatRailDot').hidden &&
+    document.activeElement.id === 'chatText'),
+    'rail expands the chat, clears the dot, focuses the input');
+
+  // Viewport splitter: keyboard-operable separator with live ARIA value,
+  // pointer drag, both persisted to prefs.
+  const vpH0 = await page.evaluate(() => document.getElementById('viewportWrap').getBoundingClientRect().height);
+  await page.focus('#vpSplitter');
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowUp');
+  // Poll rather than racing the software renderer's layout flush.
+  await page.waitForFunction(h0 =>
+    document.getElementById('viewportWrap').getBoundingClientRect().height < h0 - 60, vpH0, { timeout: 5000 });
+  const splitKb = await page.evaluate(() => ({
+    h: document.getElementById('viewportWrap').getBoundingClientRect().height,
+    now: +document.getElementById('vpSplitter').getAttribute('aria-valuenow'),
+    pref: __bb.state.prefs4.ui.split
+  }));
+  ok(splitKb.h < vpH0 - 60, `arrow keys shrink the viewport (${Math.round(vpH0)} → ${Math.round(splitKb.h)})`);
+  ok(splitKb.now === splitKb.pref && splitKb.now === 46, `separator reports aria-valuenow ${splitKb.now}, persisted`);
+  await page.keyboard.press('End');
+  ok(await page.evaluate(() => +document.getElementById('vpSplitter').getAttribute('aria-valuenow') === 78), 'End rides the separator to its max');
+  await page.keyboard.press('Enter');
+  ok(await page.evaluate(() => +document.getElementById('vpSplitter').getAttribute('aria-valuenow') === 58), 'Enter resets the split');
+  const spBox = await page.locator('#vpSplitter').boundingBox();
+  await page.mouse.move(spBox.x + spBox.width / 2, spBox.y + spBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(spBox.x + spBox.width / 2, spBox.y - 90, { steps: 4 });
+  await page.mouse.up();
+  const splitDrag = await page.evaluate(() => __bb.state.prefs4.ui.split);
+  ok(splitDrag < 58, `pointer drag moves the split and persists (${splitDrag}%)`);
+  await page.evaluate(() => __bb.setSplit(58));
+
+  // Readiness strip: four derived steps, clickable, tracking live state.
+  const ready = await page.evaluate(() => [...document.querySelectorAll('.ready-step')].map(b => b.dataset.step + ':' + b.dataset.state));
+  ok(ready.length === 4 && ready[0] === 'design:done', `readiness strip derives four steps (${ready.join(' ')})`);
+  await page.click('.ready-step[data-step="validate"]');
+  ok(await page.evaluate(() => __bb.state.tab === 'integrity'), 'Validate step jumps to the integrity report');
+  await page.click('.ready-step[data-step="plans"]');
+  ok(await page.evaluate(() => __bb.state.tab === 'cut'), 'Plans step jumps to the cut list');
+  const readyBuild = await page.evaluate(() => {
+    __bb.enterBuildMode();
+    document.querySelector('.bm-check[aria-pressed="false"]').click();
+    __bb.exitBuildMode();
+    return document.querySelector('.ready-step[data-step="build"]').dataset.state;
+  });
+  ok(readyBuild === 'active', 'Build step turns active once shop progress lands');
+
+  // URL-restorable tabs: hash mirrors the tab, external hash edits apply,
+  // and a deep link survives reload — reference subtab included.
+  await page.click('#tab-stock');
+  ok(await page.evaluate(() => location.hash === '#stock'), 'selecting a tab mirrors into the URL hash');
+  await page.evaluate(() => { location.hash = '#assembly'; });
+  await page.waitForFunction(() => __bb.state.tab === 'assembly');
+  ok(true, 'editing the hash switches tabs');
+  await page.evaluate(() => { location.hash = '#reference/joinery'; });
+  await page.waitForFunction(() => __bb.state.tab === 'reference' && __bb.state.refTab === 'joinery');
+  await page.reload();
+  await page.waitForFunction(() => globalThis.__bb && __bb.state.model, null, { timeout: 15000 });
+  ok(await page.evaluate(() => __bb.state.tab === 'reference' && __bb.state.refTab === 'joinery'),
+    'deep-linked tab and reference subtab survive reload');
+  ok(await page.evaluate(() => __bb.state.prefs4.ui.split === 58 && !__bb.state.prefs4.ui.chatCollapsed),
+    'shell prefs round-trip through storage');
+
+  // Panel labelled by its tab; skip link is the first tab stop.
+  ok(await page.evaluate(() => document.getElementById('panel-main').getAttribute('aria-labelledby') === 'tab-reference'),
+    'tab panel is labelled by the active tab');
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press('Tab');
+  ok(await page.evaluate(() => document.activeElement.classList.contains('skip-link')), 'skip link is the first tab stop');
+
+  // Viewport help popover: opens from the toolbar, Escape closes and restores.
+  await page.click('#vpHelpBtn');
+  ok(await page.isVisible('#vpHelp'), 'viewport help opens');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() => document.getElementById('vpHelp').hidden && document.activeElement.id === 'vpHelpBtn'),
+    'Escape closes viewport help and restores focus');
+
+  // Autosave feedback: pending → saved, with an explanatory title.
+  const saveFlow = await page.evaluate(async () => {
+    __bb.merge({ overall: { height: __bb.state.spec.overall.height + 5 } }, 'manual');
+    const pending = document.getElementById('saveState').textContent;
+    await new Promise(r => setTimeout(r, 1200));
+    return { pending, settled: document.getElementById('saveState').textContent, title: document.getElementById('saveState').title };
+  });
+  ok(saveFlow.pending === 'saving…' && saveFlow.settled === 'saved', `autosave reports saving… then saved`);
+  ok(/Projects/.test(saveFlow.title), 'save state explains where autosaves live');
+
+  // Mobile shell: single-row header, one-row viewport toolbar, welcome fits.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(400);
+  const mobileShell = await page.evaluate(() => ({
+    topbarH: document.querySelector('.topbar').getBoundingClientRect().height,
+    toolbarH: document.querySelector('.viewport-toolbar').getBoundingClientRect().height,
+    brandHidden: getComputedStyle(document.querySelector('.brand-name')).display === 'none',
+    shortCta: getComputedStyle(document.querySelector('.build-cta .cta-short')).display !== 'none'
+  }));
+  ok(mobileShell.topbarH <= 56, `mobile header stays one row (${Math.round(mobileShell.topbarH)}px)`);
+  ok(mobileShell.toolbarH <= 48, `mobile viewport toolbar stays one row (${Math.round(mobileShell.toolbarH)}px)`);
+  ok(mobileShell.brandHidden && mobileShell.shortCta, 'wordmark yields and Build CTA shortens on phones');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(300);
 
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });

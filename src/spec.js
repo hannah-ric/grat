@@ -105,6 +105,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (t === 'bookshelf') {
       Object.assign(base.overall, { width: 914.4, depth: 304.8, height: 1828.8 });
       base.structure.shelfCount = 4;
+      // 36 in of fully-loaded books over 3/4 in stock sags visibly once creep
+      // has its years (audit F-S0-2) — the default case ships 1 in shelves.
+      base.structure.shelfThickness = 25;
     }
     if (t === 'nightstand') {
       Object.assign(base.overall, { width: 508, depth: 406.4, height: 609.6 });
@@ -245,14 +248,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       const stock = p.stock === 'sheet' ? 'sheet' : 'solid';
       const l = r1(clamp(num(d.l !== undefined ? d.l : d.length, 100), 10, 3000));
       const w = r1(clamp(num(d.w !== undefined ? d.w : d.width, 50), 5, 1500));
+      // Solid parts snap to POST_THICKNESS (up to 100 mm): the stock planner
+      // laminates anything over 45, so thick legs survive (audit F-S2-6).
       let t = primitive === 'cylinder' ? w
-        : snap(clamp(num(d.t !== undefined ? d.t : d.thickness, 19), 3, 200), stock === 'sheet' ? K.SHEET_THICKNESS : K.SOLID_THICKNESS);
+        : snap(clamp(num(d.t !== undefined ? d.t : d.thickness, 19), 3, 200), stock === 'sheet' ? K.SHEET_THICKNESS : K.POST_THICKNESS);
       const pos = p.pos || p.position || {};
       let rot = null;
       const rr = p.rot || p.rotation;
       if (rr && typeof rr === 'object') {
         rot = { x: 0, y: 0, z: 0 };
-        for (const k of ['x', 'y', 'z']) rot[k] = r1(clamp(num(rr[k], 0), -360, 360));
+        for (const k of ['x', 'y', 'z']) {
+          let v = r1(clamp(num(rr[k], 0), -360, 360));
+          // Snap near-square rotations: a part 1–2° off axis is a sloppy
+          // proposal, not design intent — left alone it reads as a rogue
+          // diagonal board. Deliberate angles (> 2.5° off square) survive.
+          const sq = Math.round(v / 90) * 90;
+          if (Math.abs(v - sq) <= 2.5) v = Math.abs(sq) === 360 ? 0 : sq;
+          rot[k] = v;
+        }
         if (!rot.x && !rot.y && !rot.z) rot = null;
       }
       const id = 'p' + (parts.length + 1);
@@ -302,6 +315,36 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
     return { parts, connections: conns };
+  }
+
+  /* World grain axis + grain-run length for a custom part (audit F-S2-7).
+   * Primitive local axes follow customPartSize: post/cylinder length is local
+   * Y, rail/panel/slab length is local X; 'width' grain swaps to the width
+   * dimension's axis. */
+  function customGrainInfo(p) {
+    const d = p.dim;
+    let axisLocal, len;
+    if (p.primitive === 'post' || p.primitive === 'cylinder') {
+      if (p.grain === 'width') { axisLocal = [1, 0, 0]; len = d.w; }
+      else { axisLocal = [0, 1, 0]; len = d.l; }
+    } else if (p.primitive === 'slab') {
+      if (p.grain === 'width') { axisLocal = [0, 0, 1]; len = d.w; }
+      else { axisLocal = [1, 0, 0]; len = d.l; }
+    } else { // rail, panel
+      if (p.grain === 'width') { axisLocal = [0, 1, 0]; len = d.w; }
+      else { axisLocal = [1, 0, 0]; len = d.l; }
+    }
+    const r = p.rot || { x: 0, y: 0, z: 0 };
+    const R = Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
+    return { axis: Geo.mulMV(R, axisLocal), len };
+  }
+  /* True when the connection to `mate` bears on p's END GRAIN: the mate sits
+   * at or beyond the outer quarter of p's grain run. */
+  function endGrainBearing(p, mate) {
+    const g = customGrainInfo(p);
+    if (!g.len) return false;
+    const d = [mate.pos.x - p.pos.x, mate.pos.y - p.pos.y, mate.pos.z - p.pos.z];
+    return Math.abs(Geo.dot3(d, g.axis)) > 0.75 * (g.len / 2);
   }
 
   function customExtents(parts) {
@@ -377,6 +420,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (template === 'nightstand' && !s.drawers) s.drawers = { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' };
 
+    // Reduce shelf count until every shelf clears its neighbors by at least
+    // a usable gap — overlapping shelves are rogue geometry, and correction
+    // owns geometry. (Runs after drawers: the bank shrinks the shelf zone.)
+    while (st.shelfCount > 0 && BB.Parametric && BB.Parametric.shelfSpacingFor(s) < st.shelfThickness + 20) st.shelfCount--;
+
     // Custom composition: sanitize the grammar, then derive overall from the
     // piece's true oriented extents (code owns the numbers, as always).
     if (template === 'custom') {
@@ -387,6 +435,139 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.custom = null;
     }
     return s;
+  }
+
+  /* ---------------- geometric buildability audit ----------------
+   * Hard, template-agnostic invariants over the BUILT model. Every design —
+   * template, custom, share-code import, photo estimate — must clear these
+   * before it can be adopted: nothing below the floor, nothing floating in
+   * the air, nothing outside the declared envelope, no rogue overlap between
+   * unjointed parts, every declared joint physically touching, and a floor
+   * footprint the center of gravity actually sits inside. Failures are
+   * validate() ERRORS, so commit() refuses them on every path (chat, photo,
+   * share code, sliders) and the last valid design stays untouched.
+   */
+  const AUDIT = {
+    BELOW_EPS: 0.5,      // mm a part may dip below the floor plane
+    FLOOR_EPS: 2,        // mm the lowest part may hover above the floor
+    ENVELOPE_EPS: 2,     // mm of tolerance on the overall bounding envelope
+    FRONT_PROUD_MAX: 60, // mm pulls / applied fronts may stand proud (+z)
+    PEN_EPS: 2,          // mm unjointed parts may interpenetrate
+    CONTACT_GAP: 5,      // mm within which jointed parts must touch
+    FOOT_Y: 5,           // a part grounds if its lowest corner is under this
+    FOOT_PT_Y: 30        // corners under this height count as floor contact
+  };
+  const PROUD_ROLES = { pull: true, drawer_front: true }; // stand proud of the case front by design
+
+  function auditModel(spec, model) {
+    const errors = [];
+    if (!model || !Array.isArray(model.parts) || !model.parts.length) return errors;
+    const parts = model.parts;
+    const b = model.bounds || spec.overall && { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
+    if (!b) return errors;
+    if (parts.some(p => p.size.w <= 0 || p.size.h <= 0 || p.size.d <= 0)) return errors; // degenerate sizes already reported
+    const fine = mm => U().fmtSmall(mm);
+
+    const boxes = new Map(), corners = new Map(), minY = new Map();
+    for (const p of parts) {
+      const obb = Geo.partOBB(p);
+      boxes.set(p.id, obb);
+      const cs = Geo.obbCorners(obb);
+      corners.set(p.id, cs);
+      minY.set(p.id, Math.min(...cs.map(c => c[1])));
+    }
+
+    // 1. The floor plane is real: nothing passes through it, something rests on it.
+    let globalMinY = Infinity;
+    for (const p of parts) {
+      const my = minY.get(p.id);
+      globalMinY = Math.min(globalMinY, my);
+      if (my < -AUDIT.BELOW_EPS) {
+        errors.push({ id: 'geom_below:' + p.id, text: `“${p.name}” (${p.id}) extends ${fine(-my)} below the floor — wood can’t pass through the ground.` });
+      }
+    }
+    if (globalMinY > AUDIT.FLOOR_EPS) {
+      errors.push({ id: 'geom_floats', text: `Nothing touches the floor — the whole piece hovers ${fine(globalMinY)} in the air.` });
+    }
+
+    // 2. Envelope: every part stays inside the declared overall size. Pulls
+    // and applied drawer fronts legitimately stand proud of the front (+z).
+    for (const p of parts) {
+      const proud = PROUD_ROLES[p.role] ? AUDIT.FRONT_PROUD_MAX : 0;
+      let out = 0;
+      for (const c of corners.get(p.id)) {
+        out = Math.max(out,
+          Math.abs(c[0]) - (b.w / 2 + AUDIT.ENVELOPE_EPS),
+          c[1] - (b.h + AUDIT.ENVELOPE_EPS),
+          -c[2] - (b.d / 2 + AUDIT.ENVELOPE_EPS),
+          c[2] - (b.d / 2 + AUDIT.ENVELOPE_EPS + proud));
+      }
+      if (out > 0) {
+        errors.push({ id: 'geom_out:' + p.id, text: `“${p.name}” (${p.id}) sticks ${fine(out)} outside the piece’s stated ${U().fmtLength(b.w)} × ${U().fmtLength(b.d)} × ${U().fmtLength(b.h)} envelope — rogue geometry.` });
+      }
+    }
+
+    // 3. Joints reference real parts; jointed parts touch; unjointed parts
+    // keep out of each other's space. Same-drawer internals (grooved bottoms,
+    // captured backs) are validated by their own derivation math instead.
+    const idSet = new Set(parts.map(p => p.id));
+    const jointed = new Set();
+    for (const j of model.joints || []) {
+      if (!idSet.has(j.a) || !idSet.has(j.b)) {
+        errors.push({ id: 'geom_jref:' + j.a + '|' + j.b, text: `A ${j.type} joint references a part that doesn’t exist (${!idSet.has(j.a) ? j.a : j.b}).` });
+        continue;
+      }
+      jointed.add(j.a < j.b ? j.a + '|' + j.b : j.b + '|' + j.a);
+    }
+    const sameDrawer = (p, q) => p.group === q.group && p.group !== 'frame';
+    for (let i = 0; i < parts.length; i++) {
+      for (let k = i + 1; k < parts.length; k++) {
+        const p = parts[i], q = parts[k];
+        const key = p.id < q.id ? p.id + '|' + q.id : q.id + '|' + p.id;
+        if (jointed.has(key)) {
+          if (Geo.obbPenetration(boxes.get(p.id), boxes.get(q.id)) == null) {
+            const grown = Geo.partOBB(p);
+            grown.e = grown.e.map(e => e + AUDIT.CONTACT_GAP);
+            if (Geo.obbPenetration(grown, boxes.get(q.id)) == null) {
+              errors.push({ id: 'geom_gap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) are joined on paper but never touch — that joint can’t be built.` });
+            }
+          }
+        } else if (!sameDrawer(p, q)) {
+          const pen = Geo.obbPenetration(boxes.get(p.id), boxes.get(q.id));
+          if (pen != null && pen > AUDIT.PEN_EPS) {
+            errors.push({ id: 'geom_overlap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) occupy the same space (${fine(pen)} deep) with no joint between them.` });
+          }
+        }
+      }
+    }
+
+    // 4. It must be able to stand: the volume-weighted center of gravity has
+    // to fall inside the hull of the floor contact points. (The structural
+    // engine reports stability MARGINS; this is the hard impossibility gate.)
+    const footPts = [];
+    for (const p of parts) {
+      if (minY.get(p.id) < AUDIT.FOOT_Y) {
+        for (const c of corners.get(p.id)) if (c[1] < AUDIT.FOOT_PT_Y) footPts.push([c[0], c[2]]);
+      }
+    }
+    let mass = 0, mx = 0, mz = 0;
+    for (const p of parts) {
+      if (p.role === 'pull') continue;
+      const m = p.size.w * p.size.h * p.size.d; // uniform density is enough for a hard gate
+      mass += m; mx += m * p.pos.x; mz += m * p.pos.z;
+    }
+    const hull = Geo.convexHull2D(footPts);
+    if (globalMinY <= AUDIT.FLOOR_EPS) { // otherwise geom_floats already covers it
+      if (hull.length < 3) {
+        errors.push({ id: 'geom_footprint', text: footPts.length ? 'The floor contact points are collinear — the piece falls over sideways.' : 'No part offers a floor footprint to stand on.' });
+      } else if (mass > 0) {
+        const inDist = Geo.polyInsideDistance(hull, [mx / mass, mz / mass]);
+        if (inDist < 0) {
+          errors.push({ id: 'geom_footprint', text: `The center of gravity falls ${fine(-inDist)} outside the floor footprint — the piece tips over as built.` });
+        }
+      }
+    }
+    return errors;
   }
 
   /* ---------------- validation ----------------
@@ -423,15 +604,32 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     }
 
-    // Drawer geometry from the built model.
+    // Drawer geometry from the built model. Thresholds come from the
+    // ergonomics table — one source of truth (audit F-SYS-3).
+    const drMinH = K.ergoRow('drawer_min_height').min;
+    const drMaxW = K.ergoRow('drawer_max_width').max;
+    const pullMax = K.ergoRow('drawer_pull_height').max;
     if (model && model.openings) {
       for (const op of model.openings) {
-        if (op.h < 80) errors.push({ id: 'op_h_' + op.index, text: `Drawer opening ${op.index + 1} is only ${fmt(op.h)} tall — the minimum workable opening is ${fmt(80)}. Reduce the drawer count or grow the piece.` });
-        if (op.w > 750) advisories.push({ id: 'op_w_' + op.index, text: `A ${fmt(op.w)} drawer is wider than the ${fmt(750)} a single slide pair handles well. Consider two banks side by side.` });
+        if (op.h < drMinH) errors.push({ id: 'op_h_' + op.index, text: `Drawer opening ${op.index + 1} is only ${fmt(op.h)} tall — the minimum workable opening is ${fmt(drMinH)}. Reduce the drawer count or grow the piece.` });
+        if (op.w > drMaxW) advisories.push({ id: 'op_w_' + op.index, text: `A ${fmt(op.w)} drawer is wider than the ${fmt(drMaxW)} a single slide pair handles well. Consider two banks side by side.` });
       }
       if (spec.drawers && model.openings.length) {
         const topOp = model.openings[0];
-        if (t === 'cabinet' && topOp.zTop > 1100) advisories.push({ id: 'pull_height', text: `The top drawer sits above comfortable pull height (${fmt(600)} to ${fmt(1100)}). Fine for occasional storage.` });
+        if (t === 'cabinet' && topOp.zTop > pullMax) advisories.push({ id: 'pull_height', text: `The top drawer sits above comfortable pull height (${fmt(K.ergoRow('drawer_pull_height').min)} to ${fmt(pullMax)}). Fine for occasional storage.` });
+      }
+    }
+    if (model && model.drawers) {
+      for (const d of model.drawers) {
+        if (d.runner === 'side_mount_slides' && !d.slideLen) {
+          errors.push({ id: 'dr_slide_' + d.index, text: `Drawer ${d.index + 1}'s interior is too shallow for the shortest ${fmt(250)} slide. Deepen the piece or switch to wood runners.` });
+        } else if (d.box.d < 120) {
+          errors.push({ id: 'dr_depth_' + d.index, text: `Drawer ${d.index + 1} would only be ${fmt(d.box.d)} deep — the interior doesn't leave a workable drawer. Deepen the piece or remove the drawers.` });
+        }
+        // A 6 mm bottom over a wide box drums and sags (audit F-S3-5).
+        if (d.box.w - 2 * d.box.t > 600) {
+          advisories.push({ id: 'dr_bottom_' + d.index, text: `Drawer ${d.index + 1}'s bottom spans ${fmt(d.box.w - 2 * d.box.t)} — over ${fmt(600)}, a ${fmt(6)} bottom drums and sags. Use ${fmt(12)} ply or add a center muntin.` });
+        }
       }
     }
 
@@ -446,6 +644,47 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const p of c.parts) {
         if (!connected.has(p.id)) errors.push({ id: 'float_' + p.id, text: `Part “${p.role}” (${p.id}) appears in no connection — free-floating geometry is invalid.` });
       }
+      // End-grain reality (audit F-S2-7): screws barely hold in end grain and
+      // glue holds almost nothing there — name every screw-only end-grain joint.
+      const byPid = new Map(c.parts.map(p => [p.id, p]));
+      for (const cn of c.connections) {
+        if (cn.joint !== 'butt_screws' && cn.joint !== 'pocket_screws') continue;
+        const a = byPid.get(cn.a), b = byPid.get(cn.b);
+        if (!a || !b) continue;
+        if (endGrainBearing(a, b) || endGrainBearing(b, a)) {
+          advisories.push({
+            id: 'endgrain_' + cn.a + '_' + cn.b,
+            text: `“${a.role}” (${cn.a}) meets “${b.role}” (${cn.b}) on end grain with screws only — screws hold about a third less in end grain and glue there holds almost nothing. Prefer dowels, a tenon, or a cleat at this joint.`
+          });
+        }
+      }
+      // Pocket screws need meat to bite (audit F-S3-5): the jig itself bottoms
+      // out under ~12 mm of stock.
+      for (const cn of c.connections) {
+        if (cn.joint !== 'pocket_screws') continue;
+        const a = byPid.get(cn.a), b = byPid.get(cn.b);
+        for (const p of [a, b]) {
+          if (p && p.dim.t < 12) {
+            errors.push({ id: 'pocket_thin_' + p.id, text: `Pocket screws into “${p.role}” (${p.id}) at ${fmt(p.dim.t)} thick — a pocket-hole jig needs at least ${fmt(12)} of stock. Use a thicker part or a different joint.` });
+          }
+        }
+      }
+      // One piece, not several: the connection graph must be a single component.
+      if (c.parts.length >= 2 && c.connections.length) {
+        const adj = new Map(c.parts.map(p => [p.id, []]));
+        for (const cn of c.connections) {
+          if (adj.has(cn.a) && adj.has(cn.b)) { adj.get(cn.a).push(cn.b); adj.get(cn.b).push(cn.a); }
+        }
+        const reach = new Set([c.parts[0].id]);
+        const stack = [c.parts[0].id];
+        while (stack.length) {
+          const id = stack.pop();
+          for (const n of adj.get(id) || []) if (!reach.has(n)) { reach.add(n); stack.push(n); }
+        }
+        if (reach.size < c.parts.length) {
+          errors.push({ id: 'custom_split', text: 'The composition splits into disconnected sub-assemblies — every part must reach every other part through declared joints.' });
+        }
+      }
     }
 
     // Hard geometric errors.
@@ -455,6 +694,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           errors.push({ id: 'geom_' + p.id, text: `“${p.name}” computes to a non-positive dimension. The current sizes don’t leave room for it.` });
         }
       }
+      errors.push(...auditModel(spec, model));
     } else if (!model) {
       errors.push({ id: 'no_model', text: 'The parametric layer could not build this spec.' });
     }
@@ -472,7 +712,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
-    correctSpec, validate, fmtValue, PATH_LABELS,
-    customPartSize, customExtents
+    correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
+    customPartSize, customExtents, customGrainInfo, endGrainBearing
   };
 })();

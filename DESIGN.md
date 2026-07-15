@@ -27,6 +27,15 @@ product *looks* like the blueprint it produces.
 
 ## Visual direction — evolve, don't replace
 
+> **Superseded note (July 2026):** the palette described below (warm oat +
+> machinist blue) predates the brand token system in
+> [`docs/ui/brand-system.md`](docs/ui/brand-system.md) — "Showroom": five
+> mid-century brand constants, `light-dark()` scheme, fluid `clamp()` type.
+> The structural ideas in this section stand; when tokens swap, everything
+> below inherits Showroom automatically because it rides `var()` and
+> `currentColor`. Blueprint Mode's cyanotype ink is the one candidate for a
+> deliberate blue exception — a blueprint is blue; decide there.
+
 The token system (warm oat + machinist blue, Bitter slab serif, 8pt scale,
 one easing family) is kept. Phase 5 added, in order of leverage:
 

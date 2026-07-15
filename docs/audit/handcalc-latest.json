@@ -1,0 +1,100 @@
+[
+  {
+    "name": "UDL shelf sag 5wL⁴/384EI (mm)",
+    "hand": 4.269690568702977,
+    "engine": 4.269690568702977,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "shelf bending stress Mc/I (MPa)",
+    "hand": 3.260196470122675,
+    "engine": 3.3,
+    "errPct": 1.2208935946681454,
+    "pass": true
+  },
+  {
+    "name": "apron beam sag: ¾·PL³/48EI + ½·5wL⁴/384EI (mm)",
+    "hand": 3.2441107968750007,
+    "engine": 3.2441107968750007,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "seat strip sag between aprons (mm)",
+    "hand": 0.08564937993395459,
+    "engine": 0.08564937993395459,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "cantilever wL⁴/8EI + PL³/3EI (mm)",
+    "hand": 1.845,
+    "engine": 1.845,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "empty tipping angle atan2(edge, cogY) (°)",
+    "hand": 7.886155158102318,
+    "engine": 7.886155158102318,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "movement 900×0.00369×4 (mm)",
+    "hand": 13.284,
+    "engine": 13.284,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "creep/load-duration factor present",
+    "hand": 1,
+    "engine": 1,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "Shaker apron beam sag (mm)",
+    "hand": 4.609562038546349,
+    "engine": 4.609562038546349,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "Shaker top strip sag between aprons (mm)",
+    "hand": 1.542222493760603,
+    "engine": 1.542222493760603,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "Shaker starter passes sag as built (craft expectation)",
+    "hand": 1,
+    "engine": 1,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "F2057 margin = stabilizing / overturning",
+    "hand": 1.1829595323631126,
+    "engine": 1.1829595323631126,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "drawer volume estimate (kg at 0.24 kg/L)",
+    "hand": 8.379209856,
+    "engine": 8.379209856,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "board offcut hand recompute (mm)",
+    "hand": 2,
+    "engine": 2,
+    "errPct": 0,
+    "pass": true
+  }
+]

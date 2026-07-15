@@ -213,13 +213,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* ============ beam check (±1% vs hand calculation) ============ */
     {
       // Bookshelf 900×300×1800, sides 18 → span 864; shelf 280 × 19 section;
-      // books preset 55 kg/m; red oak MOE 12.5 GPa.
-      // Hand: I = 280·19³/12 = 160043.33; w = 0.53955 N/mm;
-      //       sag = 5wL⁴/384EI = 1.9569 mm.
-      const HAND_SAG = 1.9569415106555312;
+      // books preset 60 kg/m (BIFMA X5.9 40 lb/ft); red oak MOE 12.5 GPa.
+      // Hand: I = 280·19³/12 = 160043.33; w = 60×9.81/1000 = 0.5886 N/mm;
+      //       elastic = 5wL⁴/384EI = 2.13485 mm; books are a SUSTAINED load,
+      //       so the reported figure carries ×2 creep (Wood Handbook ch. 4):
+      //       sag = 4.26970 mm.
+      const HAND_ELASTIC = 2.1348497758;
+      const HAND_SAG = HAND_ELASTIC * 2.0;
       const cases = Structural.loadCasesFor('books', 864, 'ss');
       const { sag } = Structural.evalBeam(cases, 864, 12500, Structural.I_rect(280, 19));
-      test('beam', 'shelf deflection matches hand calculation within 1%', Math.abs(sag - HAND_SAG) / HAND_SAG < 0.01, sag.toFixed(4) + ' mm', HAND_SAG.toFixed(4) + ' mm');
+      test('beam', 'shelf deflection matches hand calculation within 1% (incl. creep)', Math.abs(sag - HAND_SAG) / HAND_SAG < 0.01, sag.toFixed(4) + ' mm', HAND_SAG.toFixed(4) + ' mm');
 
       const { spec, model } = pipeline({
         meta: { name: 'Beam Case', template: 'bookshelf', level: 'beginner' },
@@ -231,6 +234,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Raw numbers ride check.data — display text is unit-dependent and never parsed.
       const got = shelfSag && shelfSag.data && shelfSag.data.sagMM;
       test('beam', 'integrity panel reports the same computed sag', got && Math.abs(got - HAND_SAG) < 0.06, got && got.toFixed(4) + ' mm', HAND_SAG.toFixed(4) + ' mm');
+    }
+
+    /* ============ digest integrity (audit F-S3-8) ============
+     * The AI proposes from these digests; every generated line must equal a
+     * fresh regeneration from its source table, so a table edit that forgets
+     * the digest turns this red instead of silently wasting critique rounds. */
+    {
+      const line = K.levelMatrixLine();
+      const expectLine = 'LEVEL MATRIX: ' + K.LEVELS.map((lvl, i) =>
+        `${lvl}=${i ? '+' : ''}{${Object.values(K.JOINERY).filter(j => j.level === lvl).map(j => j.key).join(',')}}`).join(' ');
+      test('digest', 'level-matrix digest equals a fresh regeneration from JOINERY', line === expectLine, line, expectLine);
+      test('digest', 'knowledgeDigest embeds the generated level matrix', K.knowledgeDigest().includes(line), 'embedded', 'embedded');
+      const sys = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('table')));
+      test('digest', 'system prompt carries the generated matrix, not a hand copy', sys.includes(line), 'generated line present', 'generated line present');
+      const vis = K.visionRangesLine();
+      const nightR = K.ergoRow('nightstand_height');
+      test('digest', 'vision-prompt ranges regenerate from ERGONOMICS', BB.AI.VISION_PROMPT.includes(vis) && vis.includes(`${nightR.min}-${nightR.max}`), vis, `contains ${nightR.min}-${nightR.max}`);
+      const wLine = K.knowledgeDigest().split('\n')[0];
+      const wOk = Object.values(K.WOOD_SPECIES).every(s => wLine.includes(`${s.key}(janka ${s.janka}`));
+      test('digest', 'wood digest line carries every species from the table', wOk, wOk ? 'all present' : 'missing species', 'all present');
     }
 
     /* ============ structural: movement / tipping / racking (fixed values) ============ */
@@ -252,7 +275,9 @@ var BB = globalThis.BB = globalThis.BB || {};
 
       const seed = pipeline({ meta: { name: 'Rack Case', template: 'table', level: 'beginner' } });
       const seedInteg = Structural.computeIntegrity(seed.spec, seed.model, {});
-      test('structural', 'seed table racking score matches hand calculation (39)', seedInteg.racking.score === 39, seedInteg.racking.score, 39);
+      // Hand calc: 8 pocket-screw frame joints × 3.0 + 2 top butt joints × 2.0,
+      // × SG factor (red oak) × 1.2 apron multiplier → 42.
+      test('structural', 'seed table racking score matches hand calculation (42)', seedInteg.racking.score === 42, seedInteg.racking.score, 42);
 
       const movementCheck = integ.checks.find(c => c.id.startsWith('move:side'));
       test('structural', 'movement advisory names a concrete fix', !movementCheck || movementCheck.status !== 'advisory' || /elongate|button|breadboard/i.test(movementCheck.explain), movementCheck ? movementCheck.explain.slice(0, 60) + '…' : 'n/a', 'fix named');
@@ -272,6 +297,64 @@ var BB = globalThis.BB = globalThis.BB || {};
       const plyInteg = Structural.computeIntegrity(ply.spec, ply.model, {});
       const plyMove = plyInteg.checks.find(c => c.id.startsWith('move:'));
       test('structural', 'plywood panel is movement-exempt and says why', plyMove && plyMove.status === 'pass' && /plywood|plies/i.test(plyMove.explain), plyMove ? plyMove.explain.slice(0, 60) + '…' : 'no movement check', 'exempt, cross-laminated plies explanation');
+    }
+
+    /* ============ geometric buildability (the rogue-board net) ============ */
+    {
+      // A stray diagonal board dipping through the floor must be BLOCKED by
+      // validation — never presented as a blueprint.
+      const rogue = pipeline({
+        specVersion: 4,
+        meta: { name: 'Rogue Board Case', template: 'custom', level: 'beginner' },
+        custom: {
+          parts: [
+            { id: 'p1', role: 'top_slab', primitive: 'slab', dim: { l: 900, w: 500, t: 18 }, pos: { x: 0, y: 409, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: false, surface: 'worktop' },
+            { id: 'p2', role: 'leg_panel', primitive: 'panel', dim: { l: 500, w: 400, t: 18 }, pos: { x: -350, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+            { id: 'p3', role: 'leg_panel', primitive: 'panel', dim: { l: 500, w: 400, t: 18 }, pos: { x: 350, y: 200, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'sheet', loadBearing: true, surface: 'none' },
+            { id: 'p4', role: 'stray_board', primitive: 'rail', dim: { l: 700, w: 60, t: 20 }, pos: { x: 150, y: 40, z: 260 }, rot: { x: 0, y: 20, z: 40 }, grain: 'length', stock: 'solid', loadBearing: false, surface: 'none' }
+          ],
+          connections: [
+            { a: 'p2', b: 'p1', joint: 'butt_screws' }, { a: 'p3', b: 'p1', joint: 'butt_screws' },
+            { a: 'p4', b: 'p2', joint: 'butt_screws' }
+          ]
+        }
+      });
+      test('buildability', 'stray diagonal board is blocked by the geometric audit',
+        rogue.report.errors.some(e => /^geom_/.test(e.id)),
+        rogue.report.errors.map(e => e.id).join(', ') || 'no errors', 'geom_* error(s)');
+
+      // Every declared joint must be physically touchable; unjointed parts
+      // must not share space; the toe-kick case must stand on its sides.
+      const tk = pipeline({
+        meta: { name: 'TK Case', template: 'cabinet', level: 'intermediate' },
+        overall: { width: 800, depth: 450, height: 900 },
+        structure: { shelfCount: 1, toeKick: true, backPanel: true },
+        drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }
+      });
+      const tkSide = tk.model.parts.find(p => p.id === 'side_1');
+      test('buildability', 'toe-kick cabinet is audit-clean and stands on its sides',
+        tk.report.errors.length === 0 && Math.abs(tkSide.pos.y - tkSide.size.h / 2) < 0.11,
+        `${tk.report.errors.length} errors, side base at ${(tkSide.pos.y - tkSide.size.h / 2).toFixed(1)}`, '0 errors, side base at 0.0');
+      const tkPairs = new Set(tk.model.joints.map(j => [j.a, j.b].sort().join('|')));
+      test('buildability', 'toe board and back panel are jointed into the case',
+        tkPairs.has('plinth_1|side_1') && tkPairs.has('plinth_1|side_2') && tkPairs.has('back_1|side_1') && tkPairs.has('back_1|side_2'),
+        [...tkPairs].filter(k => /plinth|back/.test(k)).join(', '), 'plinth + back joints present');
+
+      // Near-square rotations snap; deliberate angles survive.
+      const snap = Spec.correctSpec({
+        specVersion: 4,
+        meta: { name: 'Snap Case', template: 'custom', level: 'beginner' },
+        custom: {
+          parts: [
+            { id: 'a', role: 'seat', primitive: 'slab', dim: { l: 900, w: 400, t: 19 }, pos: { x: 0, y: 400, z: 0 }, rot: { x: 1.5, y: 88, z: -359 }, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' },
+            { id: 'b', role: 'brace', primitive: 'rail', dim: { l: 600, w: 60, t: 20 }, pos: { x: 0, y: 200, z: 0 }, rot: { x: 30, y: 0, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+          ],
+          connections: [{ a: 'a', b: 'b', joint: 'butt_screws' }]
+        }
+      });
+      test('buildability', 'near-square rotations snap to square; deliberate angles survive',
+        deepEqual(snap.custom.parts[0].rot, { x: 0, y: 90, z: 0 }) && snap.custom.parts[1].rot.x === 30,
+        JSON.stringify(snap.custom.parts[0].rot) + ' / ' + snap.custom.parts[1].rot.x, '{"x":0,"y":90,"z":0} / 30');
     }
 
     /* ============ packing invariants ============ */
