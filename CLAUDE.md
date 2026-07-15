@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Blueprint Buddy — an AI-guided parametric furniture design studio and workshop companion. Vanilla JS, **zero runtime dependencies**, no framework, no bundler. The deliverable is one self-contained file, `dist/index.html` (fonts and Three.js inlined as data URIs), built from `src/` by `node build.js`, plus one serverless function (`api/chat.js`). `blueprint-buddy.jsx` is the earlier React-artifact incarnation (Phase 3) — reference only, not part of the build.
+Blueprint Buddy — an AI-guided parametric furniture design studio and workshop companion. Vanilla JS, **zero runtime dependencies**, no framework, no bundler. The deliverable is one self-contained file, `dist/index.html` (fonts and Three.js inlined as data URIs), built from `src/` by `node build.js`, plus a small zero-dep serverless `api/` (chat proxy, optional auth + cloud store). `blueprint-buddy.jsx` is the earlier React-artifact incarnation (Phase 3) — reference only, not part of the build.
 
 ## The founding rule
 
@@ -54,14 +54,15 @@ No ES modules. Each `src/*.js` is an IIFE attaching one namespace to the global 
 
 - `build.js` (a `{{JS_*}}` replace, in dependency order)
 - `src/index.template.html` (the matching placeholder)
-- the `SRC` array at the top of each headless test file (`test/unit.test.js`, `audit.test.js`, `golden.test.js`, `battery.js`, `handcalc.js`) — they load modules via `vm.runInThisContext`. Only browser-independent modules belong there (`engine.js`, `ui.js`, `jointview.js`, `provenance.js` are excluded because they need DOM/Three).
+- the `SRC` array at the top of each headless test file (`test/unit.test.js`, `audit.test.js`, `golden.test.js`, `battery.js`, `handcalc.js`, `benchmark-shaker.js`) — they load modules via `vm.runInThisContext`. Only browser-independent modules belong there (`engine.js`, `ui.js`, `jointview.js`, `provenance.js` are excluded because they need DOM/Three).
 
 Other load-bearing locations:
 
-- `src/knowledge.js` — every physical constant (wood species, ergonomics, fasteners, finishes) has exactly one source here; `docs/audit/02-constants-reference.md` maps them. The AI system-prompt digests are **generated from these tables and self-tested — never hand-edit a digest string**.
+- `src/knowledge.js` — every physical constant (wood species, sheet goods, joinery, glues, finishes, ergonomics, fasteners, climate/movement coefficients, default prices) has exactly one source here; `docs/audit/02-constants-reference.md` maps them. The AI system-prompt digests are **generated from these tables and self-tested — never hand-edit a digest string**. Every BOM price routes through one user-editable, persisted price table (single-sourced defaults, per-key user overrides).
+- `src/hardware.js` (`BB.HW`) — the hardware repository, founding rule extended one layer: the AI proposes hardware *style* intent only ("bar pulls", "undermount slides"); code selects every rating, count, position, and bore as a pure function of the corrected spec. Three honestly separated strata: **LIVE** (consumed by today's geometry — drawer slides, pulls, shelf pins, wooden runners), **READY** (tested selection rules awaiting the doors/lids workstream — their wire enums are deliberately not minted until a consumer exists), **REFERENCE** (the Shop Reference teaching layer). Metal hardware renders in the 3D scene but never enters the cut list, packing, or mass; wooden runners are honest lumber that joins all three.
 - `src/ui.js` — all DOM wiring; every design change (AI edit, inspector edit, integrity fix, history restore) flows through `commit()` so there is one spec and one history stack.
 - `src/spec.js` — every corrected spec carries `specVersion` and loads through a migration registry: a saved design must never fail to open; add a migration rather than changing the schema in place.
-- `api/` — all server code, CommonJS, zero deps, mounted identically by `serve.js` locally and auto-detected by Vercel (see `DEPLOYMENT.md`): `chat.js` (same-origin Anthropic proxy holding `ANTHROPIC_API_KEY`; owns model choice — default `claude-sonnet-5` — and the token ceiling), `auth.js` (optional OAuth logins → stateless HMAC session cookies; `_session.js` is the shared signer, not an endpoint), `store.js` (optional per-user JSON document store on Upstash/Vercel KV REST, or `.data/kv.json` in dev). Everything auth/storage is optional and degrades: no env vars → the client persists to `localStorage`, no login UI appears.
+- `api/` — all server code, CommonJS, zero deps, mounted identically by `serve.js` locally and auto-detected by Vercel (see `DEPLOYMENT.md`): `chat.js` (same-origin Anthropic proxy holding `ANTHROPIC_API_KEY`; owns model choice — `ANTHROPIC_MODEL`, default `claude-sonnet-5` — and the token ceiling), `auth.js` (optional OAuth logins → stateless HMAC session cookies; `_session.js` is the shared signer, not an endpoint), `store.js` (optional per-user JSON document store on Upstash/Vercel KV REST, or `.data/kv.json` in dev). Everything auth/storage is optional and degrades: no env vars → the client persists to `localStorage`, no login UI appears.
 - `vendor/` — Three.js + Bitter fonts, committed, inlined at build time.
 - `src/selftest.js` — the in-app diagnostics suite (long-press the logo); it ships in the product as a permanent regression net, so keep it in sync with behavior changes.
 
@@ -72,6 +73,7 @@ The 2026 audit (`docs/audit/`, start at `00-final-report.md`) established the re
 - `test/audit.test.js` must stay green — one section per findings-register entry, written failing-test-first.
 - Six reference designs are frozen with complete outputs in `test/golden/`; behavior changes diff against them (0.05 mm tolerance) instead of re-litigating correctness. Refreeze deliberately with `--update` and review the diff.
 - `test/handcalc.js` computes every physics number twice — explicit hand arithmetic vs the engine — and must stay 14/14.
+- `test/benchmark-shaker.js` (run manually, not part of `npm test`) diffs the generated nightstand cut list line by line against the published Shaker plan canon; every divergence is classified OURS-BETTER / EQUIVALENT / TRADITIONAL (`docs/audit/06-benchmark-shaker-nightstand.md`).
 - `ash-bookshelf-metric` is a frozen *honest-fail* case (19 mm shelves sag under books + creep); don't "fix" it.
 
 ## Conventions
@@ -83,3 +85,4 @@ The 2026 audit (`docs/audit/`, start at `00-final-report.md`) established the re
 - Boot stays untouched: thumbnails, the hero moment, and other extras ride idle time and degrade silently on failure. Storage is a driver chain (artifact → cloud → device → memory, `src/store.js`) — every rung degrades to the next, ending at a fully working session-only app; the auth probe races a short timeout so first paint never waits on the network.
 - UI system of record: `docs/ui/brand-system.md` ("Showroom" tokens — pending adoption into `src/styles.css`), `docs/ui/semantic-skeleton.md` (structural target for shell markup), `docs/ui/phase2-roadmap.md` (evidence-based UI backlog). Verdicts (`PASS`/`ADVISORY`/`FAIL`) always ship as stamps with text, never color alone.
 - Product/creative direction and the built-vs-roadmap line for Phase 5: `DESIGN.md`.
+- `AGENTS.md` is the condensed cross-tool mirror of this guide — keep it in sync when commands or conventions change here.
