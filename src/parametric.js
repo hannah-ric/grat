@@ -126,9 +126,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         boxD = slideLen || Math.max(10, Math.floor(maxLen / 10) * 10);
       } else if (under) {
         // Undermount regime (2026 hardware expansion): the box is BUILT TO
-        // THE SLIDE — width = opening − 27, 19 mm height clearance, depth
-        // exactly the slide length, captured bottom recessed 12.7.
-        boxW = op.w - 27;
+        // THE SLIDE — Blum-class spec: INSIDE width = opening − 42 (the
+        // locking devices register on the box interior, so outside = that
+        // plus two box sides), 19 mm height clearance, depth exactly the
+        // slide length, captured bottom recessed 12.7. The constant lives
+        // in the hardware knowledge (audit FE-H8).
+        const uc = (BB.HW && BB.HW.SLIDES.undermount_45.clearances) || { insideWidthMinus: 42 };
+        boxW = op.w - uc.insideWidthMinus + 2 * boxT;
         boxH = op.h - 19;
         const maxLen = op.interiorDepth - 25;
         slideLen = null;

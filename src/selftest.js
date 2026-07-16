@@ -357,9 +357,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         drawers: { count: 1, frontStyle: 'inset', runner: 'undermount_slides' }
       });
       const d0 = um.model.drawers[0];
-      test('hardware', 'undermount box: width = opening − 27, height − 19, depth = slide length exactly',
-        d0.opening.w - d0.box.w === 27 && d0.opening.h - d0.box.h === 19 && d0.box.d === d0.slideLen,
-        `−${d0.opening.w - d0.box.w}/−${(d0.opening.h - d0.box.h)}/${d0.box.d}=${d0.slideLen}`, '−27/−19/depth=slideLen');
+      test('hardware', 'undermount box: INSIDE width = opening − 42 (Blum-class), height − 19, depth = slide length exactly',
+        d0.opening.w - (d0.box.w - 2 * d0.box.t) === 42 && d0.opening.h - d0.box.h === 19 && d0.box.d === d0.slideLen,
+        `inside −${d0.opening.w - (d0.box.w - 2 * d0.box.t)}/−${(d0.opening.h - d0.box.h)}/${d0.box.d}=${d0.slideLen}`, 'inside −42/−19/depth=slideLen');
       // kidSafe gate data is ready for the lids workstream, with the cord
       // stop explicitly refused.
       test('hardware', 'kidSafe gate: torsion/soft stays required, cord stop refused, ventilation specified',

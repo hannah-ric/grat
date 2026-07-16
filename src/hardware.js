@@ -198,9 +198,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     },
     undermount_45: {
       key: 'undermount_45', label: 'Undermount soft-close slides (pair)', price: 30, capacityKg: 45, extension: 1.0, softClose: true,
-      clearances: { widthTotal: 27, heightMin: 19, bottomRecess: 12.7, bottomT: 12, backNotch: true },
+      /* Blum-class spec sheet (TANDEM et al.): the locking devices register
+       * on the box INTERIOR — inside drawer width = opening − 42, whatever
+       * the side thickness (≤ 16). Outside width = that + two box sides. */
+      clearances: { insideWidthMinus: 42, heightMin: 19, bottomRecess: 12.7, bottomT: 12, backNotch: true },
       bestFor: 'Invisible running gear and full interior width — the fine-furniture and kitchen standard. The app builds the box to the slide.',
-      failure: 'They forgive nothing: box width = opening − {27}, depth = slide length exactly, square within 0.5 mm.'
+      failure: 'They forgive nothing: box INSIDE width = opening − {42}, depth = slide length exactly, square within 0.5 mm.'
     },
     heavy_duty_100: {
       key: 'heavy_duty_100', label: 'Heavy-duty locking slides (pair)', price: 45, capacityKg: 100, extension: 1.0, softClose: false, sideClearMM: 12.7,

@@ -667,7 +667,9 @@ section('KB-5 hardware is a pure function of the corrected spec');
     drawers: { count: 2, frontStyle: 'inset', runner: 'undermount_slides' }
   });
   for (const d of um.model.drawers) {
-    eq(d.opening.w - d.box.w, 27, `drawer ${d.index + 1}: box width = opening − 27`);
+    // Blum-class spec sheet (audit FE-H8): the locking devices register on
+    // the box INTERIOR — inside width = opening − 42, whatever the sides.
+    eq(d.opening.w - (d.box.w - 2 * d.box.t), 42, `drawer ${d.index + 1}: INSIDE width = opening − 42 (Blum-class)`);
     eq(d.opening.h - d.box.h, 19, `drawer ${d.index + 1}: 19 mm height clearance`);
     eq(d.box.d, d.slideLen, `drawer ${d.index + 1}: box depth = slide length exactly`);
     const bot = um.model.parts.find(p => p.id === `dr${d.index + 1}_bottom`);
