@@ -248,12 +248,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mode-nav {
   display: flex; align-items: center; gap: 2px; flex: none;
   border: 1px solid var(--line-2); border-radius: var(--radius-pill);
-  padding: 3px; background: var(--panel);
+  padding: 2px; background: var(--panel);
 }
 .mode-btn {
   display: inline-flex; align-items: center; gap: 7px;
   border: 0; background: none; cursor: pointer; border-radius: var(--radius-pill);
-  padding: 7px 14px; min-height: 38px; font-size: var(--text-s); font-weight: 600; color: var(--muted);
+  padding: 7px 14px; min-height: 44px; font-size: var(--text-s); font-weight: 600; color: var(--muted);
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
   white-space: nowrap;
 }
@@ -320,7 +320,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .menu > button .hint, .menu-group > button .hint { color: var(--ink-2); font-size: var(--text-s); margin-left: auto; }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
 .menu-group-label {
-  font: 650 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase;
+  font: 650 var(--text-s) var(--body); letter-spacing: .08em; text-transform: uppercase;
   color: var(--muted); padding: 6px 12px 2px;
 }
 /* inline control rows inside a menu (units, precision, theme) */
@@ -491,6 +491,15 @@ body.drafting .viewport-wrap {
     var(--blueprint-field);
 }
 .view-seg button { min-width: 34px; }
+.view-menu { min-width: 250px; }
+.view-menu input[type="range"] { width: 130px; accent-color: var(--accent); }
+.menu-help {
+  display: flex; width: 100%; text-align: left; background: none; border: 0;
+  border-radius: 8px; padding: 11px 12px; min-height: var(--tap); cursor: pointer;
+  font-size: var(--text-s); color: var(--ink-2);
+  transition: background var(--t-fast) var(--ease);
+}
+.menu-help:hover { background: var(--panel-2); }
 
 /* Blueprint toggle: a one-beat ink-wash develop on the canvas — the flip
    reads as turning to the drawing. Filter-only (no overlay), so it can never
@@ -844,11 +853,6 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .param-label { display: flex; justify-content: space-between; font-size: var(--text-s); color: var(--ink-2); font-weight: 550; }
 .param-label output { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
 .param input[type="range"] { width: 100%; accent-color: var(--accent); }
-.param .stepper { display: flex; gap: var(--s1); align-items: center; }
-.stepper input[type="number"] {
-  width: 84px; border: 1px solid var(--line-2); background: var(--paper); border-radius: 8px; padding: 6px 8px;
-  font-family: var(--mono); font-size: var(--text-m);
-}
 .param select {
   border: 1px solid var(--line-2); background: var(--paper); border-radius: 8px; padding: var(--s2) var(--s2); cursor: pointer; font-size: var(--text-m); min-height: var(--tap);
 }
@@ -1037,18 +1041,15 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   }
   .stage-controls { flex-direction: column; }
   .control-card { padding: 6px 10px; }
-  .control-card input[type="range"] { width: 64px; }
-  .viewport-toolbar label { display: none; }
-  /* Phone toolbar: larger touch targets; explode range stays usable */
+  /* Phone toolbar: four controls, all ≥40px; the View popover holds the rest */
   .viewport-toolbar { gap: 6px; flex-wrap: wrap; }
-  .viewport-toolbar .vt-sep, .viewport-toolbar #vpHelpBtn { display: none; }
+  .viewport-toolbar .vt-sep { display: none; }
   .viewport-toolbar .vt-long { display: none; }
   .viewport-toolbar .vt-short { display: inline; }
   .viewport-toolbar .toggle { font-size: var(--text-s); min-height: 40px; padding: 8px 10px; }
-  .viewport-toolbar #frameBtn span { display: none; }
-  .viewport-toolbar #frameBtn { min-height: 40px; }
+  .viewport-toolbar #frameBtn, .viewport-toolbar #viewBtn { min-height: 40px; }
   .view-seg button { min-width: 36px; min-height: 40px; padding: 8px 10px; font-size: var(--text-s); }
-  .control-card input[type="range"] { width: 88px; min-height: 40px; }
+  .view-menu input[type="range"] { width: 120px; min-height: 40px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,
@@ -1060,7 +1061,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .topbar .btn { padding: 8px 9px; font-size: var(--text-s); min-height: 40px; }
   .topbar .btn.icon { min-width: 40px; }
   .mode-nav { padding: 2px; }
-  .mode-btn { padding: 6px 9px; min-height: 36px; }
+  .mode-btn { padding: 6px 9px; min-height: 44px; }
   /* phones: dots carry Design/Plan; Build alone keeps its word */
   .mode-btn:not(.build-cta) .mode-label { display: none; }
   .mode-btn.build-cta .mode-label { display: inline; }
@@ -1499,7 +1500,7 @@ body.bm-playback .playback-bar { display: none !important; }
    The UA repaints everything; only opt out where color IS the content
    (state dots, rating dots, movement grades, verdict stamps). */
 @media (forced-colors: active) {
-  .ready-step .dot, .integrity-dot, .diag-dot, .chat-rail-dot,
+  .mode-btn .dot, .ai-badge .dot, .integrity-dot, .diag-dot, .chat-rail-dot,
   .dots, .movement-low, .movement-medium, .movement-high,
   .stamp, .save-state { forced-color-adjust: none; }
   .btn, .tab, .toggle .track { border: 1px solid ButtonText; }
@@ -1509,7 +1510,9 @@ body.bm-playback .playback-bar { display: none !important; }
 </head>
 <body>
 
-<a class="skip-link" href="#panel-main">Skip to plans</a>
+<a class="skip-link" href="#chatText">Skip to chat</a>
+<a class="skip-link" href="#view3d">Skip to the 3D model</a>
+<a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
 
 <div id="app">
   <header class="topbar">
@@ -1679,24 +1682,35 @@ body.bm-playback .playback-bar { display: none !important; }
         </div>
 
         <div class="stage-controls">
+          <!-- Always visible: Dimensions, Blueprint, Fit, View. Camera
+               presets, explode, and help live inside the View popover. -->
           <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
-            <label for="explodeRange">Explode</label>
-            <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
-            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
-            <div class="seg view-seg" role="group" aria-label="Camera view">
-              <button id="viewFront" title="Front elevation (orthographic)">F</button>
-              <button id="viewSide" title="Side elevation (orthographic)">S</button>
-              <button id="viewTop" title="Plan view (orthographic)">T</button>
-              <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
-            </div>
-            <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">Fit</button>
             <span class="vt-sep" aria-hidden="true"></span>
-            <button class="btn small ghost" id="vpHelpBtn" aria-label="Viewport controls help" aria-haspopup="dialog" aria-expanded="false">?</button>
+            <div class="menu-wrap">
+              <button class="btn small ghost" id="viewBtn" aria-haspopup="true" aria-expanded="false">View</button>
+              <div class="menu view-menu" id="viewMenu" role="group" aria-label="View controls" inert>
+                <div class="menu-row">
+                  <span class="menu-row-label">Camera</span>
+                  <div class="seg view-seg" role="group" aria-label="Camera view">
+                    <button id="viewFront" title="Front elevation (orthographic)">F</button>
+                    <button id="viewSide" title="Side elevation (orthographic)">S</button>
+                    <button id="viewTop" title="Plan view (orthographic)">T</button>
+                    <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+                  </div>
+                </div>
+                <div class="menu-row">
+                  <label class="menu-row-label" for="explodeRange">Explode</label>
+                  <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
+                </div>
+                <div class="menu-sep"></div>
+                <button class="menu-help" id="vpHelpBtn" aria-haspopup="dialog" aria-expanded="false">Keyboard &amp; pointer help</button>
+              </div>
+            </div>
           </div>
           <div class="vp-help" id="vpHelp" role="dialog" aria-label="Keyboard and pointer help" hidden>
             <h3>Viewport</h3>
@@ -11831,7 +11845,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sun = new THREE.DirectionalLight(0xffffff, 1.3);
     sun.position.set(300, 500, 400);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.4);
+    const fill = new THREE.DirectionalLight(0xf0e6d2, 0.4);
     fill.position.set(-400, 200, -300);
     scene.add(fill);
 
@@ -12069,7 +12083,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.45);
+    // Warm parchment fill — the cool studio-blue fill retired with the
+    // machinist palette; only Blueprint Mode keeps blue.
+    const fill = new THREE.DirectionalLight(0xf0e6d2, 0.45);
     fill.position.set(-1600, 800, -1200);
     scene.add(fill);
 
@@ -16076,6 +16092,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     // One menu owns everything quiet: dialogs, export, reference, settings.
     // Share and Build stay out as the only strong actions (with the mode nav).
     const moreMenu = bindMenu('moreBtn', 'moreMenu');
+    /* View popover: camera presets, explode, and help live one press away */
+    const viewMenu = bindMenu('viewBtn', 'viewMenu');
     // Picking a dialog from More closes the menu; the units row stays open
     // so the seg gives instant feedback.
     moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
@@ -16089,6 +16107,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* mode navigation */
     $('mode-design').onclick = () => setMode('design');
     $('mode-plan').onclick = () => setMode('plan');
+    $('skipToPlans').addEventListener('click', () => { if (state.mode !== 'plan') setMode('plan'); });
     /* "Learn why" links anywhere in the app open the reference on the right
      * shelf — the Shop Reference relocated from peer tab to contextual door. */
     document.addEventListener('click', e => {
@@ -16279,6 +16298,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const prov = $('provPop');
         if (prov && !prov.hidden) { hideProv(); return; }
         if (!$('vpHelp').hidden) { setVpHelp(false); $('vpHelpBtn').focus(); return; }
+        if (viewMenu.classList.contains('open')) { closeMenu('viewBtn', viewMenu); return; }
         if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
         const scrims = [...document.querySelectorAll('.scrim.open')];
         if (scrims.length) { closeScrim(scrims[scrims.length - 1]); return; }

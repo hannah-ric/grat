@@ -3026,6 +3026,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     // One menu owns everything quiet: dialogs, export, reference, settings.
     // Share and Build stay out as the only strong actions (with the mode nav).
     const moreMenu = bindMenu('moreBtn', 'moreMenu');
+    /* View popover: camera presets, explode, and help live one press away */
+    const viewMenu = bindMenu('viewBtn', 'viewMenu');
     // Picking a dialog from More closes the menu; the units row stays open
     // so the seg gives instant feedback.
     moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
@@ -3039,6 +3041,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* mode navigation */
     $('mode-design').onclick = () => setMode('design');
     $('mode-plan').onclick = () => setMode('plan');
+    $('skipToPlans').addEventListener('click', () => { if (state.mode !== 'plan') setMode('plan'); });
     /* "Learn why" links anywhere in the app open the reference on the right
      * shelf — the Shop Reference relocated from peer tab to contextual door. */
     document.addEventListener('click', e => {
@@ -3229,6 +3232,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const prov = $('provPop');
         if (prov && !prov.hidden) { hideProv(); return; }
         if (!$('vpHelp').hidden) { setVpHelp(false); $('vpHelpBtn').focus(); return; }
+        if (viewMenu.classList.contains('open')) { closeMenu('viewBtn', viewMenu); return; }
         if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
         const scrims = [...document.querySelectorAll('.scrim.open')];
         if (scrims.length) { closeScrim(scrims[scrims.length - 1]); return; }

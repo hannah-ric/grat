@@ -825,9 +825,16 @@ const clickMoreCtl = async sel => {
   // Viewport controls live in ONE toolbar.
   ok(await page.evaluate(() => {
     const cards = document.querySelectorAll('.stage-controls .control-card');
-    return cards.length === 1 && !!cards[0].querySelector('#explodeRange') &&
-      !!cards[0].querySelector('#dimsToggle') && !!cards[0].querySelector('#frameBtn');
-  }), 'viewport controls merged into a single toolbar');
+    return cards.length === 1 && !!cards[0].querySelector('#dimsToggle') &&
+      !!cards[0].querySelector('#frameBtn') && !!cards[0].querySelector('#viewBtn') &&
+      !!cards[0].querySelector('#viewMenu #explodeRange');
+  }), 'toolbar keeps Dims/Blueprint/Fit/View; explode and presets ride the View popover');
+  await page.click('#viewBtn');
+  ok(await page.isVisible('#viewMenu #explodeRange') && await page.isVisible('#viewMenu #viewFront'),
+    'View popover opens with explode and camera presets');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() => !document.getElementById('viewMenu').classList.contains('open')),
+    'Escape closes the View popover');
 
   // Menu-button keyboard pattern: ArrowDown opens + enters, arrows cycle.
   // (Export lives inside More now - one quiet menu, per the shell redesign.)
@@ -1163,9 +1170,10 @@ const clickMoreCtl = async sel => {
   await page.keyboard.press('Tab');
   ok(await page.evaluate(() => document.activeElement.classList.contains('skip-link')), 'skip link is the first tab stop');
 
-  // Viewport help popover: opens from the toolbar, Escape closes and restores.
+  // Viewport help: now inside the View popover; Escape closes and restores.
+  await page.click('#viewBtn');
   await page.click('#vpHelpBtn');
-  ok(await page.isVisible('#vpHelp'), 'viewport help opens');
+  ok(await page.isVisible('#vpHelp'), 'viewport help opens from the View popover');
   await page.keyboard.press('Escape');
   ok(await page.evaluate(() => document.getElementById('vpHelp').hidden && document.activeElement.id === 'vpHelpBtn'),
     'Escape closes viewport help and restores focus');

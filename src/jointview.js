@@ -65,7 +65,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sun = new THREE.DirectionalLight(0xffffff, 1.3);
     sun.position.set(300, 500, 400);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.4);
+    const fill = new THREE.DirectionalLight(0xf0e6d2, 0.4);
     fill.position.set(-400, 200, -300);
     scene.add(fill);
 

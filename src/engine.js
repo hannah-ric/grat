@@ -95,7 +95,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.45);
+    // Warm parchment fill — the cool studio-blue fill retired with the
+    // machinist palette; only Blueprint Mode keeps blue.
+    const fill = new THREE.DirectionalLight(0xf0e6d2, 0.45);
     fill.position.set(-1600, 800, -1200);
     scene.add(fill);
 

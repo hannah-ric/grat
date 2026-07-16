@@ -12,7 +12,9 @@
 </head>
 <body>
 
-<a class="skip-link" href="#panel-main">Skip to plans</a>
+<a class="skip-link" href="#chatText">Skip to chat</a>
+<a class="skip-link" href="#view3d">Skip to the 3D model</a>
+<a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
 
 <div id="app">
   <header class="topbar">
@@ -182,24 +184,35 @@
         </div>
 
         <div class="stage-controls">
+          <!-- Always visible: Dimensions, Blueprint, Fit, View. Camera
+               presets, explode, and help live inside the View popover. -->
           <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
-            <label for="explodeRange">Explode</label>
-            <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
-            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
-            <div class="seg view-seg" role="group" aria-label="Camera view">
-              <button id="viewFront" title="Front elevation (orthographic)">F</button>
-              <button id="viewSide" title="Side elevation (orthographic)">S</button>
-              <button id="viewTop" title="Plan view (orthographic)">T</button>
-              <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
-            </div>
-            <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">Fit</button>
             <span class="vt-sep" aria-hidden="true"></span>
-            <button class="btn small ghost" id="vpHelpBtn" aria-label="Viewport controls help" aria-haspopup="dialog" aria-expanded="false">?</button>
+            <div class="menu-wrap">
+              <button class="btn small ghost" id="viewBtn" aria-haspopup="true" aria-expanded="false">View</button>
+              <div class="menu view-menu" id="viewMenu" role="group" aria-label="View controls" inert>
+                <div class="menu-row">
+                  <span class="menu-row-label">Camera</span>
+                  <div class="seg view-seg" role="group" aria-label="Camera view">
+                    <button id="viewFront" title="Front elevation (orthographic)">F</button>
+                    <button id="viewSide" title="Side elevation (orthographic)">S</button>
+                    <button id="viewTop" title="Plan view (orthographic)">T</button>
+                    <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+                  </div>
+                </div>
+                <div class="menu-row">
+                  <label class="menu-row-label" for="explodeRange">Explode</label>
+                  <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
+                </div>
+                <div class="menu-sep"></div>
+                <button class="menu-help" id="vpHelpBtn" aria-haspopup="dialog" aria-expanded="false">Keyboard &amp; pointer help</button>
+              </div>
+            </div>
           </div>
           <div class="vp-help" id="vpHelp" role="dialog" aria-label="Keyboard and pointer help" hidden>
             <h3>Viewport</h3>

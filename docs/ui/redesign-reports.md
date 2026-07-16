@@ -263,3 +263,58 @@ Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` **210/210** (six ne
 
 - **Offline**: the app is one self-contained file — once loaded it runs without network (AI degrades to the built-in parser, storage to device/localStorage; the wake lock, checklists, diagrams all work). But there is **no service worker**, so a hard reload while offline depends on the browser's HTTP cache. A real SW would require shipping a second file, which contradicts the repo's founding "one self-contained file" rule — deliberately NOT done; flagged here and in Phase 0. The install nudge (standalone display manifest) mitigates: an installed instance keeps its document cached.
 - The wide-bench build mode intentionally keeps the two-column overview (a 27-inch shop monitor benefits from seeing all boards); "one task at a time" is the phone-first behavior per this phase's title. Both share one work-list derivation and one progress store.
+
+---
+
+## Phase 5 — signature polish
+
+Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` **212/212** · build 1 573 KB.
+
+### Files changed and the specific edits
+
+- **View popover** (the item deferred since Phase 2, now done): the viewport toolbar shows exactly what the spec names — **Dimensions · Blueprint · Fit · View** — and the View popover holds the camera presets (F/S/T/Iso), the explode slider, and "Keyboard & pointer help". All element IDs preserved; Escape layering extended; help opens from inside the popover and restores focus to its opener. Phone toolbar rules simplified (the old explode/help hide-rules died).
+- **Warm 3D lighting**: the last cool light — the `0xdfe8ff` studio-blue fill in `engine.js` and `jointview.js` — became warm parchment `0xf0e6d2`. With Phase 1's selection change, nothing blue remains outside Blueprint Mode's deliberate cyanotype.
+- **Skip links ×3**: Chat (`#chatText`), 3D model (`#view3d`), Plans (`#panel-main`); the plans link also switches to Plan mode first so its target is never `display:none`.
+- **Dead CSS removed** (readiness remnants in the forced-colors list → replaced with mode-nav/AI-badge dots; orphaned `.stepper` rules). Dynamic-class "orphans" (`movement-*`, `verdict-*`) verified live before keeping.
+- **Floor closures found by the final sweep**: `.menu-group-label` 13→14px; mode-nav segments to a real 44px min-height (nav capsule padding trimmed 3→2px to hold the ≤64px app-bar spec — the one smoke failure this caused was fixed, suite back to green).
+- Dark mode was already walnut-derived from Phase 1 tokens; the dark journey (hero → plan → build) was re-shot and reviewed rather than re-styled.
+
+### Verified working (and how)
+
+- Scripted final verification (headless Chromium, both schemes):
+  - **Text floor**: zero sub-14px visible text across hero, all five plan tabs, reference, and build mode (documented supplementary-badge tier excluded).
+  - **Touch targets**: zero primary controls under 44px `offsetHeight` (buttons, tabs, mode segments, send, hero CTA).
+  - **`prefers-contrast: more`**: hairline token verifiably hardens (16% → 55% ink mix) under emulation, in explicit themes too.
+  - **Reduced motion**: all CSS transitions collapse to 0.01ms under emulation; the engine's damped-lerp family already snaps via its own `reducedMotion` flag (existing behavior, smoke-covered).
+  - **No horizontal scroll** at 320/360/390/430 × design/plan/build.
+- `npm run test:smoke` 212/212 (View-popover assertions added; two toolbar/help sites updated); `npm test` 40/40 throughout.
+- Dark screenshots reviewed: plan overview and build mode read as the walnut den (terracotta actions, fern progress, warm boards).
+
+### Deferred (with reasons)
+
+- Font/Three.js payload subsetting (audit item B14) — build-time tooling explicitly deferred by the standing audit backlog; bundle sits at 1 573 KB (+36 KB over the redesign, +2.3%).
+- Living Workshop Tier 2 particles — the prompt itself forbids decorative particles until mobile performance is proven excellent; audit backlog agrees (X8).
+- Service worker / true offline reload — conflicts with the founding one-file rule (documented in Phases 0 and 4).
+
+---
+
+## Final report — definition of done, item by item
+
+All engineering suites green throughout: unit + audit + golden + battery + server (`npm test` 40/40), hand-calc worksheet untouched, `test/golden/` diffed clean — **the pipeline, physics, and golden outputs are untouched** (only `packing.js` presentation functions `boardSVG`/`sheetSVG` changed, below the math).
+
+1. **New user creates a starter design without instruction** — VERIFIED: the hero asks one question with three one-tap starters (real rendered thumbnails); smoke walks starter → plans → build end-to-end.
+2. **One obvious primary action per screen** — VERIFIED by review: hero = "Design it"; Design mode = Send; Plan = the derived next-action button; Build = Next/check. The app bar holds exactly two strong actions (Build segment, Share).
+3. **Phone Build mode comfortable at 390×844** — VERIFIED: one-task pager, 56px controls, 19.7px minimum diagram labels, sticky nav; smoke-asserted at 390 and script-checked at 320–430.
+4. **No essential text below 14px effective** — VERIFIED by full text-node sweeps across every surface (zero findings; the supplementary-badge tier — snap-source, kind tags, provenance kickers, kbd caps, group headers — is 12–13px by documented policy; print stylesheet excluded as a different medium).
+5. **Primary touch targets ≥44px** — VERIFIED by `offsetHeight` sweep (zero under floor on desktop; phone keeps the pre-existing 40px tier for secondary toolbar controls, primaries ≥44).
+6. **Five colors with consistent documented jobs** — VERIFIED: rust action/failure, seafoam selection (CSS `::selection`, 3D edges/rim), fern success/progress, mustard focus/advisory/rules, walnut ink/surfaces/shadows; ratios documented in Phase 1.
+7. **No blue outside Blueprint Mode** — VERIFIED: CSS tokens (grep), engine THEMES + fill lights re-inked; `DRAFT` cyanotype is the deliberate exception the brand system prescribes.
+8. **No emoji or mismatched icon styles** — VERIFIED: one drafting-instrument SVG family everywhere; source grep for emoji/arrow/cross glyphs clean (kbd key legends like ⌘ retained as literal key caps; ●○ rating dots are a deliberate data visualization).
+9. **Beginners never hit unexplained engineering terms first** — VERIFIED: Safety leads plain at every level; beginner first layer is jargon-free by smoke assertion; creep/ΔMC live behind "See engineering details".
+10. **Desktop and mobile full-journey review** — DONE: screenshot journeys (first visit → design → plan → build) reviewed at 1440 and 320/390 in both schemes across the five phases.
+11. **Reduced motion / keyboard-only / increased contrast** — VERIFIED: emulated reduced-motion collapses all transitions (plus the engine's own snap path); keyboard: three skip links, menu/dialog focus traps and restores, roving tabs, bracket-key sub-tab cycling, arrow-key build pager — all smoke-asserted; `prefers-contrast: more` hardens hairlines/rules (verified under emulation) and `forced-colors` opts out only where color is content.
+12. **Pipeline untouched** — VERIFIED via suite runs and `git diff --stat` (no changes to `structural.js`, `spec.js`, `parametric.js`, `plans.js` math, `fasteners.js`, `packing.js` planners, `test/golden/`).
+
+**Assumptions made** (all documented in-phase): desktop keeps the two-column build overview (phone gets the one-task pager); Plan mode keeps the model strip + splitter ("beneath", per the prompt's either/or); redo hidden ≤400px; smoke thresholds updated to the redesign's own 56–64px app-bar spec; share "link" implemented serverlessly as `#d=` hash import.
+**Prompt-vs-reality conflicts**: recorded in Phase 0 (eight items — palette already migrated, Build-title already fixed, blue-in-engine confirmed, etc.).
+**Known gaps**: no service worker (one-file rule); payload subsetting deferred; gallery thumbnails cached before the selection re-ink may show stale rims until starters change; AI badge lives in the chat head (visible on phones only with the sheet expanded — caveat chips cover the collapsed case).
