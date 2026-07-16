@@ -231,7 +231,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- render: top bar ---------------- */
+  function updateChatPlaceholder() {
+    const designed = !!state.project || (state.history && state.history.snapshots.length > 1);
+    const t = $('chatText');
+    if (t) t.placeholder = designed ? 'Ask for a change…' : 'Describe your piece…';
+  }
   function renderTopbar() {
+    updateChatPlaceholder();
     $('designName').value = state.spec.meta.name;
     const imperial = state.spec.meta.units !== 'mm';
     $('unitsIn').setAttribute('aria-pressed', String(imperial));
@@ -356,8 +362,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.append(inner);
     if (state.tab === 'overview') renderOverview(inner);
     else if (state.tab === 'cut') renderCut(inner);
-    else if (state.tab === 'stock') renderStock(inner);
-    else if (state.tab === 'bom') renderBom(inner);
+    else if (state.tab === 'stock') { renderStock(inner); renderBom(inner); }
     else if (state.tab === 'assembly') renderAssembly(inner);
     else if (state.tab === 'integrity') renderIntegrity(inner);
     else renderReference(inner);
@@ -386,7 +391,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const cards = [
       { label: 'Parts to cut', value: String(partCount), go: 'cut', aria: 'Open the cut list' },
       { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : String(boards), go: 'stock', aria: 'Open the buying plan' },
-      { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'bom', aria: 'Open materials and pricing' },
+      { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'stock', aria: 'Open buying and pricing' },
       { label: 'Safety', value: verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
     ];
     const grid = el('div', 'overview-grid');
@@ -408,7 +413,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       : pct > 0 && pct < 100
         ? { label: `Keep building — ${pct}% done`, go: enterBuildMode }
         : pct >= 100
-          ? { label: 'Build complete — review or share it', go: () => { openShare(); } }
+          ? { label: 'Build complete — review or share it', go: () => { openShareSheet(); } }
           : { label: 'Check the cut list, then head to the shop', go: () => selectTab('cut') };
     const row = el('div', 'overview-next');
     const nb = el('button', 'btn primary', esc(next.label));
@@ -516,17 +521,35 @@ var BB = globalThis.BB = globalThis.BB || {};
       emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
     }
-    const scroll = el('div', 'table-scroll');
     const dim = (r, v, i, what) => `<button type="button" class="prov-btn num" data-prov="${i}" aria-label="${esc(r.name)} ${what} ${esc(fmt(v))} — show the formula">${fmt(v)}</button>`;
+    const wireProv = box => box.querySelectorAll('.prov-btn').forEach(b => {
+      b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
+    });
+    if (mobileAdvisoryMq.matches) {
+      // Phones read cards, not seven-column tables: name, qty, dimensions,
+      // material — and "Why this length?" opens the same provenance dialog.
+      const list = el('div', 'cut-cards');
+      list.innerHTML = state.cut.map((r, i) => `<div class="cut-card">
+        <div class="cut-card-head"><span class="cc-name">${esc(r.name)}</span><span class="cc-qty">× ${r.qty}</span></div>
+        <div class="cc-dims">${dim(r, r.L, i, 'length')} × ${dim(r, r.W, i, 'width')} × ${dim(r, r.T, i, 'thickness')}</div>
+        <div class="cc-meta">${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}${r.note ? ' · ' + esc(r.note) : ''}</div>
+        <button type="button" class="learn-link cc-why" data-prov="${i}">Why this length?</button>
+      </div>`).join('');
+      wireProv(list);
+      list.querySelectorAll('.cc-why').forEach(b => {
+        b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
+      });
+      root.append(list);
+      return;
+    }
+    const scroll = el('div', 'table-scroll');
     const rows = state.cut.map((r, i) => `<tr>
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
       <td style="color:var(--muted);font-size:var(--text-s)">${esc(r.note || '')}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
-    scroll.querySelectorAll('.prov-btn').forEach(b => {
-      b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
-    });
+    wireProv(scroll);
     root.append(scroll);
   }
 
@@ -660,7 +683,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function renderBom(root) {
-    root.append(el('h3', '', 'Bill of materials'));
+    root.append(el('h3', '', 'Materials & cost'));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
     if (!state.bomData.items.length) {
       emptyState(root, 'Nothing to buy yet.', 'Describe a piece and the shopping list prices itself.');
@@ -788,31 +811,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- Integrity tab (structural engine + Phase 4 movement) ---------------- */
+  /* ---------------- Safety tab (structural engine + movement) ----------------
+   * Plain language leads for everyone: one sentence, one stamp. Anything that
+   * FAILS surfaces immediately with its fixes in plain terms. The full
+   * engineering report (creep factors, ΔMC, load presets, every passing
+   * check) lives behind "See engineering details" — open by default for
+   * intermediate/advanced, closed for beginners so jargon is never the
+   * first layer while fixes stay one glance away. */
   function renderIntegrity(root) {
     const integ = state.integrity;
     const overall = integ.summary.fails ? 'fail' : integ.summary.advisories ? 'advisory' : 'pass';
     const beginner = state.spec.meta.level === 'beginner';
-    root.append(el('h3', '', 'Structural integrity'));
+    root.append(el('h3', '', 'Safety'));
     const summary = el('div', 'integrity-summary');
     summary.innerHTML = `<span class="stamp ${overall}">${overall}</span>
-      <span style="font-size:var(--text-s);color:var(--muted)">${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory</span>`;
-    root.append(summary);
-    let target = root;
-    if (beginner) {
-      const plain = overall === 'pass'
-        ? 'Your piece looks structurally sound.'
+      <span class="integrity-plain">${overall === 'pass'
+        ? 'This design passes the required strength checks.'
         : overall === 'advisory'
-          ? 'A few things to double-check before you build.'
-          : 'This design needs a fix before it is safe to build.';
-      root.append(el('p', 'lede integrity-beginner', plain));
-      const details = document.createElement('details');
-      details.className = 'integrity-details';
-      details.innerHTML = '<summary>Full structural report</summary>';
-      details.open = true; // after innerHTML — start open so checks/fixes stay reachable
-      root.append(details);
-      target = details;
+          ? 'This design passes the required strength checks, with notes worth reading below.'
+          : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
+    root.append(summary);
+    // Failing checks never hide: plain card + one-tap fixes, above the fold.
+    for (const c of integ.checks.filter(x => x.status === 'fail')) {
+      root.append(checkCard(c, { full: !beginner }));
     }
+    const details = document.createElement('details');
+    details.className = 'integrity-details';
+    details.innerHTML = '<summary>See engineering details</summary>';
+    details.open = !beginner;
+    root.append(details);
+    const target = details;
+    target.append(el('p', 'lede', `${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory — exact numbers, thresholds, and the design basis.`));
 
     // climate preference drives ΔMC in the movement math
     const climate = el('div', 'climate-row');
@@ -850,34 +879,45 @@ var BB = globalThis.BB = globalThis.BB || {};
       target.append(el('div', '', '&nbsp;'));
     }
 
-    for (const c of integ.checks) {
-      const card = el('div', 'check-card' + (c.status === 'fail' ? ' fail' : ''));
-      card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>
-        <div class="check-value">${esc(c.value)}</div>
-        <div class="check-threshold">threshold: ${esc(c.threshold)}</div>
-        <p class="check-explain">${esc(c.explain)}</p>` +
-        (c.factors ? `<div class="check-factors">${c.factors.map(f => `<div><span>${esc(f.label)}</span><span>${f.mult ? '× ' + f.mult : '+' + f.pts}</span></div>`).join('')}</div>` : '');
-      if (c.fixes && c.fixes.length) {
-        const row = el('div', 'fix-row');
-        for (const f of c.fixes) {
-          const b = el('button', 'btn small primary', esc(f.label));
-          b.onclick = () => {
-            const before = state.integrity;
-            if (merge(f.patch, 'fix', [f.label])) {
-              const chips = Structural.integrityDiff(before, state.integrity);
-              botSay(`Applied fix: ${f.label}.`, chips, { noChange: !chips.length });
-              selectTab('integrity'); focusPanelHeading();
-            }
-          };
-          row.append(b);
-        }
-        card.append(row);
-      }
-      target.append(card);
-    }
+    for (const c of integ.checks) target.append(checkCard(c, { full: true }));
     // Design-value basis disclosed in full (audit F-S3-7): what the numbers
     // rest on, what the safety factor absorbs, and the clear-stock rule.
     target.append(el('p', 'integrity-disclaimer', esc(K.DESIGN_BASIS)));
+  }
+
+  /* One check, two depths: plain (title + what it means + fixes) for the
+   * surfaced beginner card; full adds the exact value, threshold, and creep/
+   * duty factors. The fix buttons are identical in both. */
+  function checkCard(c, opts) {
+    const full = !opts || opts.full !== false;
+    const card = el('div', 'check-card' + (c.status === 'fail' ? ' fail' : ''));
+    // The plain tier speaks builder, not engineer: what went wrong and that a
+    // one-tap fix exists. The engine's full explanation (creep factors, exact
+    // values, thresholds) stays one fold away in "See engineering details".
+    const plainLine = 'This part would not safely carry its expected load as designed. '
+      + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.');
+    card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
+      (full ? `<div class="check-value">${esc(c.value)}</div>
+        <div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
+      `<p class="check-explain">${full ? esc(c.explain) : esc(plainLine)}</p>` +
+      (full && c.factors ? `<div class="check-factors">${c.factors.map(f => `<div><span>${esc(f.label)}</span><span>${f.mult ? '× ' + f.mult : '+' + f.pts}</span></div>`).join('')}</div>` : '');
+    if (c.fixes && c.fixes.length) {
+      const row = el('div', 'fix-row');
+      for (const f of c.fixes) {
+        const b = el('button', 'btn small primary', esc(f.label));
+        b.onclick = () => {
+          const before = state.integrity;
+          if (merge(f.patch, 'fix', [f.label])) {
+            const chips = Structural.integrityDiff(before, state.integrity);
+            botSay(`Applied fix: ${f.label}.`, chips, { noChange: !chips.length });
+            selectTab('integrity'); focusPanelHeading();
+          }
+        };
+        row.append(b);
+      }
+      card.append(row);
+    }
+    return card;
   }
 
   /* ---------------- shop reference ---------------- */
@@ -1099,8 +1139,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     m.innerHTML = html;
     log.append(m);
     log.scrollTop = log.scrollHeight;
-    // The collapsed mobile sheet shows the tail of the conversation.
-    const peekText = m.textContent.trim();
+    // The collapsed mobile sheet shows the tail of the conversation —
+    // the sentence only, never the diff-card ledger squeezed into one line.
+    const bubble = m.querySelector('.bubble');
+    const peekText = (bubble ? bubble.textContent : m.textContent).trim();
     setChatPeek(peekText, kind);
     // A reply landing while the desktop chat is folded lights the rail dot.
     if (kind === 'bot' && state.prefs4.ui.chatCollapsed) $('chatRailDot').hidden = false;
@@ -1162,7 +1204,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (opts.noChange && !opts.caveat) chipHTML.push(`<span class="chip neutral">no dimensional change</span>`);
     }
     if (opts.caveat) chipHTML.push(`<span class="chip caveat">${esc(opts.caveat)}</span>`);
-    if (chipHTML.length) html += `<div class="chips">${chipHTML.join('')}</div>`;
+    const hasDiff = (chips || []).length > 0;
+    if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title">Changed</span>' : ''}${chipHTML.join('')}</div>`;
     return chatMsg('bot', html);
   }
   function askQuestion(q) {
@@ -1292,8 +1335,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
-        const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Integrity tab.` : '';
+        const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Safety tab.` : '';
         botSay((out.explain || 'Updated.') + integLine, chips, { noChange: !chips.length, caveat });
+        // Offline and nothing changed: offer the edits the built-in parser is
+        // actually good at, instead of leaving a dead end.
+        if (out.local && !chips.length) {
+          const m = chatMsg('bot', '<div class="bubble">Offline, I follow sizes, drawers, and wood species best. Try one:</div>');
+          const row = el('div', 'answer-row');
+          for (const sp of ['walnut', 'white_oak', 'cherry', 'pine']) {
+            const b = el('button', 'btn small', esc(K.WOOD_SPECIES[sp].label));
+            b.onclick = () => { row.remove(); sendMessage('make it ' + K.WOOD_SPECIES[sp].label.toLowerCase()); };
+            row.append(b);
+          }
+          m.append(row);
+        }
       }
     } catch (err) {
       typing.remove();
@@ -1903,6 +1958,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- share codes (Phase 4 item 2) ---------------- */
+  function openShareSheet() {
+    const link = shareLink();
+    const row = $('shareLinkRow');
+    if (row) {
+      row.hidden = !link;
+      if (link) $('shareLinkText').value = link;
+      $('shareLinkNote').hidden = !!link;
+    }
+    openShare();
+  }
   function openShare() {
     const code = Codec.toShareCode(state.spec);
     $('shareCode').value = code;
@@ -1920,17 +1985,29 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('copyShare').textContent = ok ? 'Copied ✓' : 'Copy manually (selected)';
     setTimeout(() => { $('copyShare').textContent = 'Copy code'; }, 1600);
   }
-  function importShare() {
-    const res = Codec.fromShareCode($('importCode').value);
-    if (res.error) { $('importMsg').textContent = res.error; return; }
+  function importCodeText(text, sourceLabel) {
+    const res = Codec.fromShareCode(text);
+    if (res.error) return { error: res.error };
     state.project = null; // imported design becomes a fresh project
     state.turns = [];
     state.dismissed.clear();
-    const ok = commit(res.spec, 'import', ['imported from share code']);
-    if (!ok) { $('importMsg').textContent = 'That design decoded but won’t build.'; return; }
+    const ok = commit(res.spec, 'import', ['imported from ' + (sourceLabel || 'share code')]);
+    if (!ok) return { error: 'That design decoded but won’t build.' };
     state.engine.frame();
+    botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+    return { ok: true };
+  }
+  function importShare() {
+    const res = importCodeText($('importCode').value);
+    if (res.error) { $('importMsg').textContent = res.error; return; }
     closeScrim('shareScrim');
-    botSay(`Imported “${state.spec.meta.name}” from a share code — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+  }
+  /* The share LINK is the same self-contained code riding the URL hash —
+   * no server, works wherever the app is hosted. */
+  function shareLink() {
+    return location.origin && location.origin !== 'null'
+      ? location.origin + location.pathname + '#d=' + encodeURIComponent(Codec.toShareCode(state.spec))
+      : null; // file:// has no shareable origin — the sheet says so honestly
   }
 
   /* ---------------- species comparison (stretch) ---------------- */
@@ -2366,10 +2443,24 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function applyHash() {
     const raw = (location.hash || '').replace(/^#/, '');
+    if (raw.startsWith('d=')) {
+      // A share link: the design itself rides the hash. Import through the
+      // exact same gate as a pasted code, then hand the hash back to the app.
+      const res = importCodeText(decodeURIComponent(raw.slice(2)), 'share link');
+      if (res.error) botSay('That share link didn\u2019t decode: ' + res.error, []);
+      else state.importedFromLink = true;
+      syncHash();
+      return true;
+    }
     const bits = raw.split(';');
     const parts = (bits.shift() || '').split('/');
     if (parts[0] === 'design') {
       setMode('design', { silent: true });
+    } else if (parts[0] === 'bom') {
+      // Materials merged into Buy — old links keep working
+      state.mode = 'plan';
+      document.body.dataset.mode = 'plan';
+      state.tab = 'stock';
     } else if (TABS.includes(parts[0])) {
       state.mode = 'plan';
       document.body.dataset.mode = 'plan';
@@ -2394,7 +2485,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- tabs (Plan sub-navigation) ----------------
    * Reference is deliberately not a peer destination: its tab stays hidden
    * until a "Learn why" link or the More menu opens it. */
-  const TABS = ['overview', 'cut', 'stock', 'bom', 'assembly', 'integrity', 'reference'];
+  const TABS = ['overview', 'cut', 'stock', 'assembly', 'integrity', 'reference'];
   function selectTab(t) {
     state.tab = t;
     if (state.mode !== 'plan') setMode('plan');
@@ -2467,7 +2558,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt)), 'image/svg+xml');
       botSay('Exported the drawing sheet — front, side, and plan elevations with dimensions, plus a title block. Opens in any browser or vector editor.', []);
     } else if (kind === 'share') {
-      openShare();
+      openShareSheet();
     } else if (kind === 'print') {
       $('printRoot').innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan);
       window.print();
@@ -2551,6 +2642,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     });
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
+    mobileAdvisoryMq.addEventListener('change', () => {
+      renderAdvisories(state.report);
+      if (state.mode === 'plan') renderPanel(); // cut cards <-> table swap
+    });
     // In auto theme, the 3D scene follows the OS the same way the CSS does.
     darkMq.addEventListener('change', () => {
       if ((state.prefs4.theme || 'auto') === 'auto') applyTheme('auto');
@@ -2608,11 +2703,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Returning users land in the studio with their latest project. First
     // runs get a welcome card with the three ways in — floating over a live,
     // fully working bench: nothing blocks, everything behind it responds.
-    let opened = false, projectCount = 0;
+    let opened = !!state.importedFromLink, projectCount = 0;
     try {
       const idx = await Store.loadIndex();
       projectCount = idx.length;
-      if (idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
+      if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
       showWelcome(projectCount > 0);
@@ -2705,9 +2800,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('welcomeResume').onclick = () => {
       hideWelcome();
       if ($('welcomeOverlay').dataset.mode === 'projects') openProjects();
-      else { openShare(); $('importCode').focus(); }
+      else { openShareSheet(); $('importCode').focus(); }
     };
-    $('shareBtn').onclick = openShare;
+    $('shareBtn').onclick = openShareSheet;
+    $('copyShareLink').onclick = async () => {
+      const ta = $('shareLinkText');
+      ta.select();
+      let done = false;
+      try { await navigator.clipboard.writeText(ta.value); done = true; }
+      catch (e) { try { done = document.execCommand('copy'); } catch (e2) { /* stays selected */ } }
+      $('copyShareLink').textContent = done ? 'Copied' : 'Copy manually';
+      setTimeout(() => { $('copyShareLink').textContent = 'Copy link'; }, 1600);
+    };
+    $('shareGlb').onclick = () => doExport('glb');
+    $('sharePrint').onclick = () => doExport('print');
     $('shareClose').onclick = () => closeScrim('shareScrim');
     $('copyShare').onclick = copyShare;
     $('importShare').onclick = importShare;

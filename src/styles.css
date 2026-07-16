@@ -396,7 +396,25 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
   padding: var(--s2) 14px; border-radius: 14px; font-size: var(--text-m); line-height: 1.5;
 }
 .msg.user .bubble { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
-.msg.bot .bubble { background: var(--panel-2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+/* Bot replies read as workshop notes pinned to the bench, not chat bubbles:
+ * paper card, mustard spine, drafting-crisp corners. */
+.msg.bot .bubble {
+  background: var(--paper); border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-s) var(--radius-m) var(--radius-m) var(--radius-s);
+}
+/* Diff card: what changed, as one note — each chip is a ledger row */
+.msg .chips.diff-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  border: 1px solid var(--line); border-radius: var(--radius-m);
+  background: var(--panel); padding: var(--s2) var(--s2) var(--s2);
+}
+.diff-title {
+  font: 650 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.chips.diff-card .chip { border-radius: var(--radius-s); align-self: stretch; }
+.chips.diff-card .chip.caveat { align-self: flex-start; }
 .msg .chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .chip {
   display: inline-flex; align-items: center; gap: var(--s1);
@@ -791,14 +809,16 @@ table.data tbody tr:hover { background: var(--panel-2); }
   padding: 2px 8px; border-radius: var(--radius-s); background: var(--panel-2); color: var(--muted); border: 1px solid var(--line);
 }
 
-/* ---------------- inspector ---------------- */
+/* ---------------- inspector ----------------
+   A contextual right drawer: appears only after a part is selected, slides
+   in beneath the viewport toolbar, never a permanent control wall. */
 .inspector {
-  position: absolute; top: var(--s3); left: var(--s3); width: 280px; z-index: 15;
+  position: absolute; top: calc(var(--s3) + 60px); right: var(--s3); left: auto; width: 300px; z-index: 15;
   background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(10px);
-  border: 1px solid var(--line-2); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
-  opacity: 0; transform: translateX(-12px); pointer-events: none;
+  border: 1px solid var(--line-2); border-radius: var(--radius-l); box-shadow: var(--shadow-lg);
+  opacity: 0; transform: translateX(16px); pointer-events: none;
   transition: opacity var(--t-med) var(--ease), transform var(--t-med) var(--ease);
-  max-height: calc(100% - var(--s5)); overflow-y: auto;
+  max-height: calc(100% - var(--s5) - 60px); overflow-y: auto; overscroll-behavior: contain;
 }
 .inspector.open { opacity: 1; transform: none; pointer-events: auto; }
 .inspector-head { display: flex; align-items: center; padding: var(--s3) var(--s3) var(--s2); gap: var(--s2); }
@@ -1099,6 +1119,22 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 /* integrity tab dot */
 .integrity-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); vertical-align: 2px; margin-left: 2px; }
 .integrity-dot.fail { background: var(--brick); }
+
+/* ---------------- mobile cut cards ----------------
+   Phones read cards, not seven-column tables. Dimensions stay mono/tabular;
+   "Why this length?" opens the same provenance dialog as the desktop table. */
+.cut-cards { display: flex; flex-direction: column; gap: var(--s2); }
+.cut-card {
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--paper);
+  padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: 4px;
+}
+.cut-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
+.cut-card .cc-name { font-weight: 650; font-size: var(--text-m); }
+.cut-card .cc-qty { font: 600 var(--text-s) var(--mono); color: var(--ink-2); flex: none; }
+.cut-card .cc-dims { font: 600 var(--text-m) var(--mono); font-variant-numeric: tabular-nums; }
+.cut-card .cc-dims .prov-btn { font: inherit; }
+.cut-card .cc-meta { font-size: var(--text-s); color: var(--muted); }
+.cut-card .cc-why { align-self: flex-start; margin-top: 2px; }
 
 /* ---------------- plan overview ---------------- */
 .overview-grid {

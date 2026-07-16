@@ -76,6 +76,8 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => document.body.dataset.mode === 'design'), 'first run opens in Design mode - the model is the hero');
   ok(await page.isVisible('#heroText'), 'hero leads with a real prompt field');
   ok(await page.$$eval('#heroStarters .hero-starter', b => b.length) === 3, 'hero offers three ready starters');
+  ok(await page.evaluate(() => document.getElementById('chatText').placeholder.startsWith('Describe your piece')),
+    'chat placeholder invites a first description');
   await page.click('#mode-plan');
   await page.click('#tab-stock');
   ok(await page.evaluate(() => __bb.state.tab === 'stock'), 'bench interactive behind the welcome card');
@@ -110,6 +112,8 @@ const clickMoreCtl = async sel => {
   ok(ns.bomSlides === 2, 'slide pairs in BOM');
   ok(await page.evaluate(() => document.getElementById('hintPrompts').children.length === 0),
     'hint prompts hide once a gallery design loads');
+  ok(await page.evaluate(() => document.getElementById('chatText').placeholder.startsWith('Ask for a change')),
+    'chat placeholder flips to refinement once a design exists');
   await page.waitForTimeout(900);
   await page.screenshot({ path: SHOTS + '/02-nightstand.png' });
 
@@ -882,6 +886,26 @@ const clickMoreCtl = async sel => {
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
   await page.click('#tab-integrity');
   await page.waitForSelector('.fix-row .btn', { timeout: 5000 });
+
+  // Beginner-first Safety: plain sentence leads, engineering details fold
+  // closed, failing checks + their fixes stay surfaced above the fold.
+  await page.evaluate(() => __bb.merge({ meta: { level: 'beginner' } }, 'manual'));
+  await page.click('#tab-integrity');
+  const safetyShape = await page.evaluate(() => ({
+    plain: !!document.querySelector('.integrity-plain'),
+    detailsOpen: document.querySelector('.integrity-details').open,
+    surfacedFail: !!document.querySelector('.panel-inner > .check-card.fail'),
+    fixReachable: !!document.querySelector('.panel-inner > .check-card.fail .fix-row .btn'),
+    jargonFree: !/\u0394MC|creep/i.test([...document.querySelectorAll('.panel-inner > .check-card.fail')].map(x => x.textContent).join(''))
+  }));
+  ok(safetyShape.plain && !safetyShape.detailsOpen, 'Safety leads plain for beginners; details fold closed');
+  ok(safetyShape.surfacedFail && safetyShape.fixReachable, 'failing checks and fixes stay above the fold');
+  ok(safetyShape.jargonFree, 'no creep/\u0394MC jargon in the beginner first layer');
+  await page.evaluate(() => __bb.merge({ meta: { level: 'intermediate' } }, 'manual'));
+  await page.click('#tab-integrity');
+  ok(await page.evaluate(() => document.querySelector('.integrity-details').open),
+    'intermediate level opens the engineering details by default');
+
   const fixSnap = () => page.evaluate(() => ({ t: __bb.state.spec.structure.topThickness, a: __bb.state.spec.structure.apronHeight, sp: __bb.state.spec.wood.species, fails: __bb.state.integrity.summary.fails }));
   const beforeFix = await fixSnap();
   await page.click('.fix-row .btn');
@@ -991,13 +1015,13 @@ const clickMoreCtl = async sel => {
       }
       return out;
     };
-    return grab(['cut', 'stock', 'bom', 'assembly', 'integrity'], /\d\s?mm\b/);
+    return grab(['cut', 'stock', 'assembly', 'integrity'], /\d\s?mm\b/);
   });
   ok(Object.keys(sweep).length === 0, 'imperial sweep finds zero stale mm: ' + JSON.stringify(sweep));
   await clickMoreCtl('#unitsMm');
   const sweepMet = await page.evaluate(() => {
     const out = {};
-    for (const tab of ['cut', 'stock', 'bom', 'assembly', 'integrity']) {
+    for (const tab of ['cut', 'stock', 'assembly', 'integrity']) {
       document.getElementById('tab-' + tab).click();
       const text = document.getElementById('panel-main').textContent;
       const m = text.match(/\d\s?in\b|\d+\/\d+\s?in\b|\d\s?ft\b|\d\s?lb\b/);
@@ -1122,6 +1146,16 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => __bb.state.prefs4.ui.split === 58 && !__bb.state.prefs4.ui.chatCollapsed),
     'shell prefs round-trip through storage');
 
+  // Share links: the design itself rides the URL hash through the same
+  // import gate as a pasted code, then the app takes the hash back.
+  await page.evaluate(() => {
+    const spec = JSON.parse(JSON.stringify(__bb.state.spec));
+    spec.meta.name = 'Linked Bench';
+    location.hash = '#d=' + encodeURIComponent(BB.Codec.toShareCode(spec));
+  });
+  await page.waitForFunction(() => __bb.state.spec.meta.name === 'Linked Bench', null, { timeout: 5000 });
+  ok(await page.evaluate(() => !/^#d=/.test(location.hash)), 'share-link hash imports the design and returns the URL to the app');
+
   // Panel labelled by its tab; skip link is the first tab stop.
   ok(await page.evaluate(() => document.getElementById('panel-main').getAttribute('aria-labelledby') === 'tab-reference'),
     'tab panel is labelled by the active tab');
@@ -1160,6 +1194,17 @@ const clickMoreCtl = async sel => {
   // that is preferred over unreadably small controls at the bench.
   ok(mobileShell.toolbarH <= 120, `mobile viewport toolbar stays compact (${Math.round(mobileShell.toolbarH)}px)`);
   ok(mobileShell.brandHidden && mobileShell.shortCta, 'wordmark yields and Build keeps its word on phones');
+  await page.evaluate(() => __bb.selectTab('cut'));
+  await page.waitForSelector('.cut-card');
+  ok(await page.evaluate(() => !document.querySelector('#panel-main table.data') && document.querySelectorAll('.cut-card').length >= 3),
+    'phone cut list reads as cards, not a seven-column table');
+  const whyOpens = await page.evaluate(() => {
+    document.querySelector('.cut-card .cc-why').click();
+    const open = !document.getElementById('provPop').hidden;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    return open;
+  });
+  ok(whyOpens, '"Why this length?" opens the provenance dialog on a phone');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 

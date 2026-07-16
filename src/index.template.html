@@ -247,7 +247,6 @@
         <button class="tab" role="tab" id="tab-overview" aria-controls="panel-main" aria-selected="true">Overview</button>
         <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="false">Cut</button>
         <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Buy</button>
-        <button class="tab" role="tab" id="tab-bom" aria-controls="panel-main" aria-selected="false">Materials</button>
         <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assemble</button>
         <button class="tab" role="tab" id="tab-integrity" aria-controls="panel-main" aria-selected="false">Safety <span class="integrity-dot" id="integrityDot" hidden></span></button>
         <!-- Shop reference is no longer a peer destination: it opens from
@@ -374,6 +373,22 @@
         <div class="share-row">
           <span class="share-meta" id="shareMeta"></span>
           <button class="btn primary" id="copyShare">Copy code</button>
+        </div>
+      </div>
+      <div class="share-block" id="shareLinkRow" hidden>
+        <label class="share-label" for="shareLinkText">Link</label>
+        <textarea id="shareLinkText" class="share-code" rows="2" readonly spellcheck="false" aria-label="Share link for this design"></textarea>
+        <div class="share-row">
+          <span class="share-meta">The whole design rides the URL — no account, no server.</span>
+          <button class="btn" id="copyShareLink">Copy link</button>
+        </div>
+      </div>
+      <p class="share-meta" id="shareLinkNote" hidden>Share links need a hosted copy — from a local file, the code above travels anywhere.</p>
+      <div class="share-block">
+        <label class="share-label" id="shareActionsLabel">Take it further</label>
+        <div class="share-row share-actions" role="group" aria-labelledby="shareActionsLabel">
+          <button class="btn" id="shareGlb">3D model / AR (.glb)</button>
+          <button class="btn" id="sharePrint">Print plans</button>
         </div>
       </div>
       <div class="share-block">

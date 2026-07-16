@@ -197,3 +197,37 @@ Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` **195/195** (189 be
 
 - "Move camera presets, explode, and secondary controls into a single View popover" is listed under the 3D viewport section — deliberately deferred to Phase 3/5 (the toolbar was already consolidated to one control card and passes the compactness assertions; a View popover is a further step, tracked).
 - The smoke suite encoded the old shell throughout (six-tab peer nav, top-level Export, readiness strip); those blocks were rewritten to the new IA rather than deleted, keeping equivalent coverage — this is the "update tests honestly" path, all documented above.
+
+---
+
+## Phase 3 — core surfaces
+
+Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` **204/204** (nine net-new assertions) · build 1 561 KB.
+
+### Files changed and the specific edits
+
+- **Chat (`src/ui.js`, `src/styles.css`)**
+  - Dynamic placeholder, derived not stored: "Describe your piece…" until a design exists, "Ask for a change…" after (`updateChatPlaceholder()` rides `renderTopbar`).
+  - Diff presentation: change chips now render inside a **diff card** — a bordered note headed "Changed" with each computed chip as a ledger row (chip markup and text untouched, so the code-computed diff strings and their tests are unchanged).
+  - Bot replies restyled as **workshop notes**: paper card, mustard spine, drafting-crisp corner — no more generic gray bubbles.
+  - **Offline material chips**: when the built-in parser handles a message but nothing changed, the reply offers four tappable species buttons ("Offline, I follow sizes, drawers, and wood species best") instead of a dead end. Honest failure states ("couldn't apply", "unbuildable") were already present and stay.
+  - Mobile chat peek shows only the reply sentence, never the diff ledger squeezed into one line.
+- **Safety (`renderIntegrity` → beginner-first)**
+  - Every level now leads with the stamp + one plain sentence ("This design passes the required strength checks." / "…does not yet pass — fix it before you build.").
+  - **Failing checks surface above the fold for everyone**, with their one-tap fixes. For beginners the surfaced card speaks builder ("This part would not safely carry its expected load…"), with **zero creep/ΔMC jargon — enforced by a smoke assertion**; the engine's full explanation, exact values, thresholds, and factors live in "See engineering details" (closed by default for beginners, open for intermediate/advanced). This replaces the audit-B7 arrangement where the full report opened by default so fixes stayed reachable — fixes now live above the fold instead. (First cut of this phase still leaked "×2 creep" into the beginner card via the engine explain text; caught in the screenshot review, fixed, and the smoke check that had computed-but-not-asserted jargon-freedom now asserts it.)
+- **Materials merged into Buy** (relocated, not deleted): the Buy tab renders the stock plan and then the full bill of materials ("Materials & cost"), same renderers; `#tab-bom` removed; `#bom` deep links map to Buy; the Overview cost card points at Buy; unit-sweep tests updated to the five-tab list. Species compare, price editor, and every BOM behavior ride along unchanged (price-edit tests still pass untouched).
+- **Mobile cut-list cards**: ≤880px the Cut tab renders cards (name, ×qty, L×W×T in mono, material · note) with **"Why this length?"** opening the same provenance dialog as the desktop table's tappable dimensions. Desktop keeps the table. Breakpoint crossings re-render the panel live.
+- **Contextual part inspector**: now a right-side drawer under the viewport toolbar (was a top-left card), slide-in on selection only — CSS repositioning, all behavior intact.
+- **Share sheet** (`index.template.html`, `ui.js`): one sheet now carries **code + link + exports** — the BB4 code block; a **share link** (`#d=<code>` — the whole design rides the URL, no server, imported through the exact same validation gate as a pasted code, after which the app takes the hash back); honest fallback copy when running from `file://` (no shareable origin); and quick actions for the two most shop-relevant exports (3D/AR `.glb`, Print). Only formats the app actually supports appear; the full list stays in More → Export.
+- Legacy hash `#bom` and all previous deep links keep working.
+
+### Verified working (and how)
+
+- `npm test` 40/40 · **`npm run test:smoke` 204/204**, including nine new end-to-end assertions: placeholder before/after design, beginner Safety shape (plain lead + closed details + surfaced fixes + jargon-free first layer), intermediate details-open default, share-link hash import round-trip, phone cut-cards replacing the table, and phone provenance via "Why this length?".
+- Screenshots reviewed: beginner Safety (FAIL stamp + plain sentence + surfaced fix capsules), chat diff card, share sheet, phone cut cards at 390px.
+
+### Deferred / notes
+
+- "View popover" for camera presets remains deferred (tracked since Phase 2; the toolbar already passes its compactness assertions).
+- Share "link" required inventing nothing server-side: it reuses the existing codec through the existing import gate; from `file://` the sheet says links don't apply rather than minting a dead URL.
+- BOM's separate renderer function remains (called by Buy) — deliberate, so golden/behavior surfaces stay byte-comparable.
