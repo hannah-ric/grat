@@ -28,6 +28,10 @@
 const crypto = require('crypto');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
+const Env = require('./_env-check.js');
+
+// Audit env vars once at cold start so missing keys surface immediately in logs.
+Env.audit();
 
 const PROVIDERS = {
   google: {
