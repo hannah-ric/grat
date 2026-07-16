@@ -42,13 +42,13 @@ vercel env add ANTHROPIC_API_KEY development
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | For AI features | Server-side only (`api/chat.js`) | Auth for the Anthropic API. The browser never sees it — the client calls the same-origin `/api/chat` proxy. Without it, the app degrades gracefully to its built-in offline intent parser. |
 | `ANTHROPIC_MODEL` | No | Server-side only | Override the model (default `claude-sonnet-5`). |
-| `AUTH_SECRET` | For accounts | Server-side only (`api/auth.js`, `api/store.js`) | Signs stateless session cookies (`openssl rand -hex 32`). |
+| `AUTH_SECRET` | Required for accounts & subscriptions | Server-side only (`api/auth.js`, `api/store.js`) | Signs stateless session cookies (`openssl rand -hex 32`). **Stored as a sensitive (encrypted) var on Vercel — not written by `vercel env pull`.** |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | No | Server-side only | Enables "Sign in with Google". |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | No | Server-side only | Enables "Sign in with GitHub". |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | For cloud sync **and** subscriptions | Server-side only (`api/store.js`, `api/_entitlements.js`) | Upstash Redis REST endpoint — auto-injected by the Vercel Marketplace integration. Upstash-native names (`UPSTASH_REDIS_REST_URL`/`_TOKEN`) also work. Entitlements + AI usage counters live here too. |
 | `STRIPE_SECRET_KEY` | For subscriptions | Server-side only (`api/billing.js`, `api/stripe-webhook.js`) | Stripe secret key. Enables the Free→Pro upgrade flow. Absent → billing endpoints return 503 and the app stays fully usable on Free. |
 | `STRIPE_PRO_MONTHLY_PRICE_ID` / `STRIPE_PRO_YEARLY_PRICE_ID` | For subscriptions | Server-side only | The recurring Price IDs for Blueprint Buddy Pro (create one monthly, one yearly). |
-| `STRIPE_WEBHOOK_SECRET` | For subscriptions | Server-side only (`api/stripe-webhook.js`) | Signing secret (`whsec_…`) for the webhook endpoint — without it, paid upgrades never activate. See the Subscriptions section below. |
+| `STRIPE_WEBHOOK_SECRET` | For subscriptions | Server-side only (`api/stripe-webhook.js`) | Signing secret (`whsec_…`) for the webhook endpoint — without it, paid upgrades never activate. **Stored as a sensitive (encrypted) var on Vercel.** See the Subscriptions section below. |
 | `APP_ORIGIN` | **Recommended in production** | Server-side only | Canonical origin (e.g. `https://your-app.com`) for OAuth redirect URIs and Stripe success/cancel URLs. When unset these are derived from the `Host`/`X-Forwarded-Host` header; **set `APP_ORIGIN` in production** so a spoofed header can never influence a redirect target. |
 
 ## Accounts & cloud persistence (optional)
@@ -105,7 +105,7 @@ Implementation notes — all zero-dependency, in keeping with the repo rule:
 Local development: `cp .env.example .env`, add your key, `npm run dev` —
 `serve.js` reads `.env` itself (no dotenv dependency). `.env` is gitignored.
 
-## Subscriptions & billing (optional)
+## Subscriptions & billing
 
 Blueprint Buddy ships a Free/Pro model (`api/_entitlements.js` is the authority:
 Free = 3 saved projects + 25 AI messages/mo + core drawing and cut-list exports;
@@ -133,6 +133,43 @@ and everyone is on Free. To enable upgrades:
    stored is success; a `raw_body_unavailable` 400 means the platform pre-parsed
    the body (the handler surfaces that distinctly, on purpose, so a misconfigured
    runtime is obvious instead of failing every upgrade silently).
+
+### Current production state (as of 2026-07-16)
+
+All the above steps have been completed for `https://hannah-ric-grat.vercel.app`:
+
+| Item | Status | Value |
+|---|---|---|
+| Stripe Product | Created | "Blueprint Buddy Pro" |
+| Monthly Price | Created & set | `price_1Ttv6QDmAsGr64ouadZUalOQ` — $15.00/mo |
+| Yearly Price | Created & set | `price_1Ttv6QDmAsGr64ouvKGZa3wR` — $144.00/yr |
+| Webhook endpoint | Registered | `https://hannah-ric-grat.vercel.app/api/stripe-webhook` |
+| Webhook events | Subscribed | `customer.subscription.created/updated/deleted` |
+| `STRIPE_WEBHOOK_SECRET` | Set on Vercel (encrypted) | confirmed via `.vercel-env-manifest.json` |
+| `AUTH_SECRET` | Set on Vercel (encrypted) | confirmed via `.vercel-env-manifest.json` |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Set on Vercel | Upstash Redis (all environments) |
+| `APP_ORIGIN` | Set on Vercel (production) | `https://hannah-ric-grat.vercel.app` |
+
+Run the production-readiness check at any time:
+
+```bash
+node --env-file-if-exists=/vercel/share/.env.project scripts/verify-production.js
+# or simply:
+npm run verify
+```
+
+This checks every integration end-to-end (Stripe key, price IDs, webhook
+registration, KV connectivity) and exits 0 only when all pass. Update
+`.vercel-env-manifest.json` whenever you rotate or add a sensitive env var.
+
+### Go-live with real payments
+
+The project currently uses **live Stripe keys** (`sk_live_...`) and **live prices**.
+To accept real payments:
+- Ensure your Stripe account is fully activated (bank account, business details).
+- Verify the webhook end-to-end: `stripe trigger customer.subscription.created`.
+- Optionally restrict the API key to the minimum permissions (Customers: write,
+  Checkout Sessions: write, Billing Portal: write, Webhook Endpoints: read).
 
 Zero-dependency, in keeping with the repo rule: `api/_stripe.js` hand-rolls the
 four Stripe REST calls used (customer create, checkout session, billing-portal

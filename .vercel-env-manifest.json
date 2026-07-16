@@ -1,0 +1,15 @@
+{
+  "_comment": "Tracks which encrypted/sensitive env vars are confirmed set on the Vercel project. Update this file after running `vercel env add`. Values are never stored here — only key names.",
+  "confirmed_production": [
+    "AUTH_SECRET",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_PRO_MONTHLY_PRICE_ID",
+    "STRIPE_PRO_YEARLY_PRICE_ID",
+    "STRIPE_WEBHOOK_SECRET",
+    "KV_REST_API_URL",
+    "KV_REST_API_TOKEN",
+    "APP_ORIGIN"
+  ],
+  "last_verified": "2026-07-16",
+  "verified_by": "v0 production-readiness workflow"
+}
