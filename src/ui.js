@@ -154,6 +154,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       keys.steps.filter(k => state.project.progress.steps[k]).length;
     return Math.min(100, Math.round(100 * done / total));
   }
+  function paintSavePulse(kind) {
+    const dot = $('saveDot');
+    if (dot) {
+      dot.hidden = false;
+      dot.classList.toggle('on', kind === 'on' || kind === 'pending');
+      dot.classList.toggle('pending', kind === 'pending');
+      dot.classList.toggle('err', kind === 'err');
+    }
+  }
   function scheduleAutosave() {
     clearTimeout(saveTimer);
     // Honest feedback across the debounce: "saving…" until the write lands.
@@ -162,6 +171,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     elS.textContent = 'saving…';
     elS.classList.remove('err');
     elS.classList.add('on', 'pending');
+    paintSavePulse('pending');
     saveTimer = setTimeout(doAutosave, 700);
   }
   async function doAutosave() {
@@ -194,8 +204,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     elS.classList.toggle('err', !persistent);
     elS.classList.remove('pending');
     elS.classList.add('on');
+    paintSavePulse(!persistent ? 'err' : 'on');
     clearTimeout(saveFlashTimer);
-    saveFlashTimer = setTimeout(() => elS.classList.remove('on'), 1600);
+    saveFlashTimer = setTimeout(() => {
+      elS.classList.remove('on');
+      const dot = $('saveDot');
+      if (dot) { dot.classList.remove('on', 'pending', 'err'); dot.hidden = true; }
+    }, 1600);
   }
 
   /* ---------------- account (optional cloud persistence) ----------------
@@ -1168,18 +1183,33 @@ var BB = globalThis.BB = globalThis.BB || {};
    * means unconfigured), the presence of window.claude, or the observed
    * outcome of a real send. Never an optimistic guess. */
   function setAIState(mode, detail) {
-    const badge = $('aiBadge');
-    if (!badge) return;
-    badge.dataset.state = mode;
     const label = mode === 'online' ? 'AI online'
       : mode === 'offline' ? 'Offline · basic edits'
         : 'AI · checking…';
-    $('aiBadgeLabel').textContent = label;
-    badge.title = detail || (mode === 'online'
+    const barLabel = mode === 'online' ? 'Online'
+      : mode === 'offline' ? 'Offline'
+        : '…';
+    const title = detail || (mode === 'online'
       ? 'Connected to the design service — full natural-language design and photo input.'
       : mode === 'offline'
         ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
         : 'Checking the design service…');
+    const badge = $('aiBadge');
+    if (badge) {
+      badge.dataset.state = mode;
+      badge.title = title;
+      badge.hidden = false;
+      const lab = $('aiBadgeLabel');
+      if (lab) lab.textContent = label;
+    }
+    const bar = $('aiBadgeBar');
+    if (bar) {
+      bar.dataset.state = mode;
+      bar.title = title;
+      bar.hidden = state.buildMode;
+      const blab = $('aiBadgeBarLabel');
+      if (blab) blab.textContent = barLabel;
+    }
   }
   async function probeAI() {
     setAIState('checking');

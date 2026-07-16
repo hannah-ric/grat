@@ -177,6 +177,13 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+html {
+  height: 100%;
+  color-scheme: light dark;
+  accent-color: var(--accent);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--paper); color: var(--ink);
@@ -185,6 +192,10 @@ body {
   line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+}
+::selection {
+  background: var(--seafoam);
+  color: var(--on-brand);
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus { outline: none; }
@@ -204,7 +215,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .skip-link:focus-visible { top: 0; outline-offset: -3px; }
 
-#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow-x: clip; }
 
 /* ---------------- top bar ----------------
    One compact row at every width: the design name yields first, then the
@@ -369,6 +380,20 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .ai-badge[data-state="offline"] { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
 @keyframes badgePulse { 50% { opacity: .35; } }
 .ai-badge[data-state="checking"] .dot { animation: badgePulse 1.2s infinite var(--ease); }
+/* phones: the chat sheet hides this badge when collapsed — mirror it in the bar */
+.ai-badge-bar { display: none; }
+@media (max-width: 880px) {
+  .ai-badge-bar {
+    display: inline-flex;
+    font-size: var(--text-xs);
+    padding: 2px 7px;
+    max-width: 4.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chat.expanded .ai-badge-bar { display: none; }
+  #app:has(.build-mode) .ai-badge-bar { display: none !important; }
+}
 
 .level-select {
   border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px;
@@ -1079,6 +1104,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 }
 @media (max-width: 560px) {
   .save-state { display: none; }
+  .save-dot:not([hidden]) { display: inline-block; }
   .brand-short { display: none; }
   .design-name { min-width: 72px; flex-basis: 72px; }
   #redoBtn { display: inline-flex; }
@@ -1129,6 +1155,16 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .save-state.on { opacity: .85; }
 .save-state.err { color: var(--amber-ink); opacity: 1; }
 .save-state.pending { color: var(--muted); opacity: .7; }
+/* when the word is hidden on narrow phones, a dot still pulses trust */
+.save-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex: none;
+  background: var(--green); opacity: 0;
+  transition: opacity var(--t-med) var(--ease), transform var(--t-fast) var(--ease);
+}
+.save-dot.on { opacity: .9; }
+.save-dot.pending { background: var(--muted); opacity: .75; animation: badgePulse 1.2s infinite var(--ease); }
+.save-dot.err { background: var(--amber); opacity: 1; }
+@media (min-width: 561px) { .save-dot { display: none !important; } }
 
 .brand { cursor: default; user-select: none; -webkit-user-select: none; }
 
@@ -1527,6 +1563,10 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
     <span class="save-state" id="saveState" aria-live="polite"></span>
+    <span class="save-dot" id="saveDot" hidden aria-hidden="true"></span>
+    <span class="ai-badge ai-badge-bar" id="aiBadgeBar" role="status" data-state="checking" hidden>
+      <span class="dot" aria-hidden="true"></span><span id="aiBadgeBarLabel">AI…</span>
+    </span>
     <div class="topbar-spacer"></div>
     <!-- The journey is the navigation: Design → Plan → Build, each segment
          carrying a derived state dot (never stored, never stale). -->
@@ -13220,6 +13260,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       keys.steps.filter(k => state.project.progress.steps[k]).length;
     return Math.min(100, Math.round(100 * done / total));
   }
+  function paintSavePulse(kind) {
+    const dot = $('saveDot');
+    if (dot) {
+      dot.hidden = false;
+      dot.classList.toggle('on', kind === 'on' || kind === 'pending');
+      dot.classList.toggle('pending', kind === 'pending');
+      dot.classList.toggle('err', kind === 'err');
+    }
+  }
   function scheduleAutosave() {
     clearTimeout(saveTimer);
     // Honest feedback across the debounce: "saving…" until the write lands.
@@ -13228,6 +13277,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     elS.textContent = 'saving…';
     elS.classList.remove('err');
     elS.classList.add('on', 'pending');
+    paintSavePulse('pending');
     saveTimer = setTimeout(doAutosave, 700);
   }
   async function doAutosave() {
@@ -13260,8 +13310,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     elS.classList.toggle('err', !persistent);
     elS.classList.remove('pending');
     elS.classList.add('on');
+    paintSavePulse(!persistent ? 'err' : 'on');
     clearTimeout(saveFlashTimer);
-    saveFlashTimer = setTimeout(() => elS.classList.remove('on'), 1600);
+    saveFlashTimer = setTimeout(() => {
+      elS.classList.remove('on');
+      const dot = $('saveDot');
+      if (dot) { dot.classList.remove('on', 'pending', 'err'); dot.hidden = true; }
+    }, 1600);
   }
 
   /* ---------------- account (optional cloud persistence) ----------------
@@ -14234,18 +14289,33 @@ var BB = globalThis.BB = globalThis.BB || {};
    * means unconfigured), the presence of window.claude, or the observed
    * outcome of a real send. Never an optimistic guess. */
   function setAIState(mode, detail) {
-    const badge = $('aiBadge');
-    if (!badge) return;
-    badge.dataset.state = mode;
     const label = mode === 'online' ? 'AI online'
       : mode === 'offline' ? 'Offline · basic edits'
         : 'AI · checking…';
-    $('aiBadgeLabel').textContent = label;
-    badge.title = detail || (mode === 'online'
+    const barLabel = mode === 'online' ? 'Online'
+      : mode === 'offline' ? 'Offline'
+        : '…';
+    const title = detail || (mode === 'online'
       ? 'Connected to the design service — full natural-language design and photo input.'
       : mode === 'offline'
         ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
         : 'Checking the design service…');
+    const badge = $('aiBadge');
+    if (badge) {
+      badge.dataset.state = mode;
+      badge.title = title;
+      badge.hidden = false;
+      const lab = $('aiBadgeLabel');
+      if (lab) lab.textContent = label;
+    }
+    const bar = $('aiBadgeBar');
+    if (bar) {
+      bar.dataset.state = mode;
+      bar.title = title;
+      bar.hidden = state.buildMode;
+      const blab = $('aiBadgeBarLabel');
+      if (blab) blab.textContent = barLabel;
+    }
   }
   async function probeAI() {
     setAIState('checking');
