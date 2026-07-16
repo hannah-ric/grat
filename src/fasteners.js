@@ -80,8 +80,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       const ov = Math.min(ca[i] + A[i] / 2, cb[i] + B[i] / 2) - Math.max(ca[i] - A[i] / 2, cb[i] - B[i] / 2);
       if (ov < minOv) { minOv = ov; axis = i; }
     }
-    if (minOv > 2) return { pathA: minDim(a), pathB: 1000, housed: true };
-    return { pathA: A[axis], pathB: B[axis], housed: false };
+    if (minOv > 2) return { pathA: minDim(a), pathB: 1000, housed: true, axis };
+    return { pathA: A[axis], pathB: B[axis], housed: false, axis };
   }
 
   /* One decision for every plain wood screw: which member it enters through,
@@ -150,9 +150,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const fine = mm => U().fmtSmall(mm);
     const len = mm => U().fmtLength(mm);
 
+    /* Floating hardware is only for tops that SIT ON their base (vertical
+     * contact — aprons, rails, side top edges). A top CAPTURED between case
+     * sides (horizontal contact) is fixed casework: it takes the case
+     * joinery like the bottom, and it moves with the sides (audit FE-H1). */
     const isTopAttach = (a.role === 'top' || a.role === 'seat') &&
       !(K.WOOD_SPECIES[a.material] && K.WOOD_SPECIES[a.material].sheet) &&
-      ['apron', 'side', 'rail'].includes(b.role);
+      ['apron', 'side', 'rail'].includes(b.role) &&
+      contactPaths(a, b).axis === 1;
 
     if (isTopAttach) {
       // Solid tops are floated: figure-8s roughly every 300 mm of run.

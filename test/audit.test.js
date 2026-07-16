@@ -798,5 +798,45 @@ section('FE-C2 screw length never exceeds the wood it crosses');
   ok(/through side into shelf/i.test(slay.text), 'setout names the true through-member (side, not shelf)');
 }
 
+/* ================= FE-H1 (2026-07 front-end audit): figure-8s only where a top can float ================= */
+section('FE-H1 captured tops keep case joinery; overhanging tops float');
+{
+  // Bookshelf: the top is CAPTURED between the sides (contact on a horizontal
+  // axis). It must be fastened like the bottom — case screws — not given
+  // figure-8s the steps never install.
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const counts = Fasteners.countFor(bs.spec, bs.model);
+  ok(!counts.some(c => c.kind === 'figure8'), 'bookshelf BOM carries no figure-8s');
+  const tj = bs.model.joints.find(j => j.a === 'top_1' && /^side/.test(j.b));
+  const tlay = Fasteners.layoutForJoint(bs.spec, bs.model, tj);
+  ok(tlay.fasteners.length && tlay.fasteners.every(f => f.kind === 'screw'),
+    'captured bookshelf top is screwed like the bottom');
+  ok(/through side into top/i.test(tlay.text), 'top setout screws through the side into the top');
+
+  // Overhanging solid tops still float: nightstand top on aprons, cabinet
+  // top over the sides — both sit ON their mates (vertical contact).
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const naj = ns.model.joints.find(j => j.a === 'top_1');
+  ok(Fasteners.layoutForJoint(ns.spec, ns.model, naj).fasteners.every(f => f.kind === 'figure8'),
+    'nightstand top still floats on figure-8s');
+  const cab = pipeline({
+    meta: { name: 'CAB', template: 'cabinet', level: 'advanced', units: 'mm' },
+    overall: { width: 762, depth: 457.2, height: 914.4 },
+    structure: { toeKick: true, backPanel: true, shelfCount: 1 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const cj = cab.model.joints.find(j => j.a === 'top_1' && /^side/.test(j.b));
+  ok(cj && Fasteners.layoutForJoint(cab.spec, cab.model, cj).fasteners.every(f => f.kind === 'figure8'),
+    'cabinet top (solid, overhanging sheet sides) still floats on figure-8s');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
