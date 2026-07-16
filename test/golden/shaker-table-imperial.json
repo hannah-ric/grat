@@ -406,6 +406,7 @@
  },
  "steps": [
   "glueup1",
+  "thickness",
   "s1",
   "s2",
   "s3",

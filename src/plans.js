@@ -405,6 +405,32 @@ var BB = globalThis.BB = globalThis.BB || {};
       'Square one end of each part, then cut to the exact cut-list length from that end. Let the wood rest a day after milling if it came in wet or tense.', []));
   }
 
+  /* Purchased-vs-plan thickness (audit FE-H9): dimensional mode buys the
+   * nearest nominal AT OR OVER a part — 5/4 (25 mm) stock for a 20 mm apron
+   * — and "rip and crosscut" alone leaves parts 5 mm over plan. Any gap
+   * beyond 0.5 mm earns an explicit thicknessing step and the planer in the
+   * tool wall. (Rough mode already mills; laminations already plane.) */
+  function thicknessingNeeded(stockPlan, cut) {
+    if (!stockPlan || stockPlan.mode === 'rough') return [];
+    const tByName = new Map(cut.map(r => [r.name, r.T]));
+    const jobs = new Map();
+    const add = (nom, partName, toT) => {
+      const n = K.LUMBER.NOMINALS[nom];
+      // ≤ 1.5 mm is a clean-up skim any glue-up gets anyway; a real gap
+      // (25 → 20 aprons, 89 → 70 legs) is a milling operation to call out.
+      if (!n || !isFinite(toT) || n.t - toT <= 1.5) return;
+      const key = `${n.t}|${toT}`;
+      if (!jobs.has(key)) jobs.set(key, { fromT: n.t, toT, names: new Set() });
+      jobs.get(key).names.add(partName);
+    };
+    for (const g of stockPlan.glueups || []) add(g.nominal, g.name, g.T);
+    for (const b of stockPlan.boards || []) {
+      if (!b.stockLen) continue;
+      for (const c of b.cuts || []) add(b.nominal, c.name, tByName.get(c.name));
+    }
+    return [...jobs.values()];
+  }
+
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -447,6 +473,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         out.push(step('lam' + (i + 1), `Laminate: ${l.name.toLowerCase()}${l.qty > 1 ? ` (× ${l.qty})` : ''}`,
           `Face-laminate ${l.qty > 1 ? `${l.qty} blanks, each ` : ''}${l.n} × ${l.nominal} layers with the crowns opposed, clamp from the center outward on both faces, and plane to ${fmtL(l.T)} once cured — equal passes off both faces so it stays straight.`, []));
       });
+      const thick = thicknessingNeeded(opts.stockPlan, cutList(spec, model));
+      if (thick.length) {
+        const names = tj => [...tj.names].slice(0, 4).join(', ') + (tj.names.size > 4 ? ', …' : '');
+        out.push(step('thickness', 'Bring stock to plan thickness',
+          `The buy list is the nearest nominal OVER some parts: mill ${thick.map(tj => `${fmtL(tj.fromT)} stock down to ${fmtL(tj.toT)} (${names(tj)})`).join('; ')} — rip close, then plane or drum-sand with equal passes off both faces so nothing cups. Panels after their glue-up, sticks before any joinery.`, []));
+      }
     }
 
     if (t === 'custom') {
@@ -563,6 +595,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (stockPlan && ((stockPlan.glueups || []).length || (stockPlan.laminations || []).length)) {
       tools.add('Glue + cauls (panel glue-up)');
       if ((stockPlan.laminations || []).length) tools.add('Hand plane or thickness planer (laminations)');
+    }
+    if (stockPlan && thicknessingNeeded(stockPlan, cutList(spec, model)).length) {
+      tools.add('Thickness planer or drum sander (stock bought over plan thickness)');
     }
     if (model.drawers && model.drawers.length) tools.add('Shims + spacers (drawer fitting)');
     const fin = K.FINISHES.find(f => f.key === spec.finish);

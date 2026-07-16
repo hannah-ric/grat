@@ -951,5 +951,45 @@ section('FE-H6 fastening notes belong to the step that makes the joint');
   ok(!dup, 'no joint is claimed by two steps');
 }
 
+/* ================= FE-H9 (2026-07 front-end audit): over-thick purchases get a thicknessing step ================= */
+section('FE-H9 bought thickness reaches plan thickness on the bench');
+{
+  // Nightstand aprons/rails are 20 mm; the optimizer correctly buys 5/4
+  // (25 mm actual) — the plan must say "plane to 20" and list the planer.
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const cut = Plans.cutList(ns.spec, ns.model);
+  const stock = Packing.planStock(ns.spec, ns.model, cut, {});
+  const buysOverThick = (stock.glueups || []).some(g => K.LUMBER.NOMINALS[g.nominal] && K.LUMBER.NOMINALS[g.nominal].t > g.T + 1.5)
+    || (stock.boards || []).some(b => b.stockLen && (b.cuts || []).some(c => {
+      const row = cut.find(r => r.name === c.name);
+      return row && K.LUMBER.NOMINALS[b.nominal] && K.LUMBER.NOMINALS[b.nominal].t > row.T + 1.5;
+    }));
+  ok(buysOverThick, 'fixture really buys thicker stock than the plan (else this test is vacuous)');
+  const steps = Plans.assembly(ns.spec, ns.model, null, { stockPlan: stock });
+  const th = steps.find(s => s.id === 'thickness');
+  ok(th, 'a bring-to-thickness step exists');
+  ok(th && /25 mm/.test(th.text) && /20 mm/.test(th.text), 'it names the real from/to thicknesses');
+  const s1i = steps.findIndex(s => s.id === 's1');
+  ok(th && steps.indexOf(th) < s1i, 'thicknessing happens before joinery/assembly');
+  const tools = Plans.toolList(ns.spec, ns.model, stock);
+  ok(tools.some(t => /planer|drum sander/i.test(t)), 'tool list gains the planer/drum sander');
+
+  // Control: a bookshelf whose parts land on exact nominals gets NO step.
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const bcut = Plans.cutList(bs.spec, bs.model);
+  const bstock = Packing.planStock(bs.spec, bs.model, bcut, {});
+  const bsteps = Plans.assembly(bs.spec, bs.model, null, { stockPlan: bstock });
+  ok(!bsteps.some(s => s.id === 'thickness'), 'exact-nominal buys add no thicknessing step');
+  ok(!Plans.toolList(bs.spec, bs.model, bstock).some(t => /planer|drum sander/i.test(t)), 'and no planer in tools');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
