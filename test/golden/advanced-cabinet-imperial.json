@@ -748,12 +748,6 @@
    },
    {
     "kind": "hardware",
-    "label": "5 mm shelf pins",
-    "qty": 4,
-    "price": 1
-   },
-   {
-    "kind": "hardware",
     "label": "Anti-tip wall anchor kit (strap + wall screws) — REQUIRED",
     "qty": 1,
     "price": 7
@@ -765,7 +759,7 @@
     "price": 18
    }
   ],
-  "total": 524.38
+  "total": 523.38
  },
  "steps": [
   "glueup1",
@@ -777,7 +771,6 @@
   "s3",
   "s4",
   "s5",
-  "s6",
   "dr1_box",
   "dr1_runners",
   "dr1_hang",

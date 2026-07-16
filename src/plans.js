@@ -249,11 +249,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${fine(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
-    const shelfParts = model.parts.filter(p => p.role === 'shelf');
-    if (shelfParts.length && ['bookshelf', 'cabinet'].includes(spec.meta.template)) {
-      // "5 mm shelf pin" IS the trade name in every market — stays literal.
-      items.push({ kind: 'hardware', label: '5 mm shelf pins', qty: shelfParts.length * 4, detail: '4 per adjustable shelf', price: Math.ceil(shelfParts.length * 4 * hp('shelf_pin', 0.25) * 100) / 100 });
-    }
+    // No shelf-pin line: every template shelf is JOINED to the sides (the
+    // model, cut list, and structural engine all treat it as fixed), so pins
+    // would be phantom hardware nothing installs (audit FE-C1/H-02). Pins
+    // return when a genuinely adjustable-shelf option exists in the model.
 
     // Mandatory anti-tip hardware when the stability check demands it — a
     // line item, not a suggestion.
@@ -479,15 +478,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (shelves.length) out.push(step('s2', 'Add the shelves', `Fit each shelf with ${caP}, working bottom to top.`, shelves));
       if (has('back_1')) out.push(step('s3', 'Fit the back', 'Square the case to the back panel and fasten it — the back is what keeps everything square.', ['back_1']));
     } else if (t === 'cabinet') {
-      out.push(step('s1', 'Build the carcass', `Join the bottom between the sides with ${caP}.`, ids('side_1', 'side_2', 'bottom_1')));
+      /* One carcass glue-up: with mortise-&-tenon (or doweled) rails the
+       * sides cannot spread to seat the rails once the bottom is glued —
+       * bottom, sides, and every front rail go together (audit FE-H3). */
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
-      if (rails.length) out.push(step('s2', 'Install the drawer rails', `Join each ${U().fmtLength(20)} × ${U().fmtLength(60)} rail into the sides with ${frP}, spaced for the drawer openings.`, rails));
+      out.push(step('s1', 'Build the carcass — one glue-up',
+        `Dry-fit the bottom AND all ${rails.length} drawer rails between the sides first — once the sides are glued they cannot spread to seat the rails. Then glue it all in one clamp-up: bottom to sides with ${caP}, each ${U().fmtLength(20)} × ${U().fmtLength(60)} rail into the sides with ${frP}, spaced for the drawer openings. Check the diagonals before the glue sets.`,
+        ids('side_1', 'side_2', 'bottom_1').concat(rails)));
+      const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
+      const housedShelf = ['dado', 'sliding_dovetail', 'rabbet'].includes(spec.joinery.case);
+      if (shelves.length) out.push(step('s2', 'Fit the shelves',
+        `Fit each shelf with ${caP} now, while the back is open${housedShelf ? ' — a housed shelf slides in from the back and CANNOT go in after the back panel is on' : ''}.`, shelves));
       if (has('back_1')) out.push(step('s3', 'Fit the back', 'Fasten the back panel — square the carcass to it first.', ['back_1']));
       if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
-      const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
-      if (shelves.length) out.push(step('s6', 'Add the shelves',
-        `Drill the 32 mm system for the pins: rows of ${U().fmtSmall(5)} holes, ${U().fmtLength(9)} deep, at ${U().fmtLength(32)} pitch, ${U().fmtLength(37)} in from each edge — one drilled story stick indexes every row off the case bottom so the shelves can never rock. Set the shelves on their pins.`, shelves));
       drawerSteps(spec, model, out, opts);
     } else if (t === 'nightstand') {
       out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));

@@ -873,5 +873,45 @@ section('FE-H7 pocket screws match the stock they join');
   ok(/32 mm coarse pocket screw/.test(lay19.text), '19 mm stock keeps the 32 mm pocket screw');
 }
 
+/* ================= FE-C1/H2/H3/H4 (2026-07 front-end audit): one shelf system, one carcass glue-up ================= */
+section('FE-C1 shelves have one story: model, steps, and BOM agree');
+{
+  const cab = pipeline({
+    meta: { name: 'CAB', template: 'cabinet', level: 'advanced', units: 'mm' },
+    overall: { width: 762, depth: 457.2, height: 914.4 },
+    structure: { toeKick: true, backPanel: true, shelfCount: 1 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const bom = Plans.bom(cab.spec, cab.model, {});
+  ok(!bom.items.some(i => /shelf pin/i.test(i.label)), 'cabinet BOM buys no pins for a shelf the model joins with dados (C-01)');
+  const steps = Plans.assembly(cab.spec, cab.model, null, {});
+  ok(!steps.some(s => /pins|32 mm system/i.test(s.text)), 'no pin-drilling step for a fixed shelf (C-01/H-04)');
+  // H-03: with mortise-&-tenon rails, the rails must be part of the single
+  // carcass glue-up — they cannot be seated once the sides are glued.
+  const s1 = steps.find(s => s.id === 's1');
+  const railIds = cab.model.parts.filter(p => p.role === 'rail').map(p => p.id);
+  ok(railIds.every(id => s1.partIds.includes(id)), 'drawer rails glue up WITH the carcass (H-03)');
+  ok(/dry-fit/i.test(s1.text), 'carcass step demands the dry-fit first');
+  ok(!steps.some(s => /Install the drawer rails/.test(s.title)), 'no separate post-glue rail step remains');
+  // C-01 fit math: the shelf's cut length minus its two dado depths must
+  // exactly equal the interior width — it fits ITS OWN joinery.
+  const shelfRow = Plans.cutList(cab.spec, cab.model).find(r => r.name === 'Shelf');
+  const interior = cab.spec.overall.width - 2 * cab.spec.structure.sideThickness;
+  near(shelfRow.L - shelfRow.allowance, interior, 0.11, 'shelf length = interior + dado allowance (fits its dados)');
+  // H-04: the shelf goes in while the back is still open.
+  const shelfIdx = steps.findIndex(s => (s.partIds || []).some(id => /^shelf/.test(id)));
+  const backIdx = steps.findIndex(s => (s.partIds || []).includes('back_1'));
+  ok(shelfIdx > -1 && backIdx > -1 && shelfIdx < backIdx, 'shelf step comes before the back closes the case');
+
+  // H-02: bookshelf — fixed, screwed shelves must not buy phantom pins.
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const bbom = Plans.bom(bs.spec, bs.model, {});
+  ok(!bbom.items.some(i => /shelf pin/i.test(i.label)), 'bookshelf BOM buys no pins for butt-screwed shelves (H-02)');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

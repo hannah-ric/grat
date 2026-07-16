@@ -460,12 +460,6 @@
    },
    {
     "kind": "hardware",
-    "label": "5 mm shelf pins",
-    "qty": 16,
-    "price": 4
-   },
-   {
-    "kind": "hardware",
     "label": "Anti-tip wall anchor kit (strap + wall screws) — REQUIRED",
     "qty": 1,
     "price": 7
@@ -477,7 +471,7 @@
     "price": 18
    }
   ],
-  "total": 291.84
+  "total": 287.84
  },
  "steps": [
   "glueup1",
