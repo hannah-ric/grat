@@ -171,25 +171,45 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Strip "instead of <species>" so "make it oak instead of walnut" picks oak.
     const speciesText = t.replace(/\binstead of\s+[\w\s-]{2,40}(?=\s|$|,|\.|!|;)/g, ' ');
     const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
+    /* Negation guard (audit FE-H11): "no ash please" is a REJECTION of ash,
+     * not a request for it. A species mention within a few words of a
+     * negation (in the same clause) is skipped; if nothing else was asked,
+     * the reply asks which wood instead — never a wrong ack. */
+    let negatedSpecies = null;
+    const negated = (src, rx) => {
+      const m = rx.exec(src);
+      if (!m) return false;
+      const clause = src.slice(0, m.index).split(/[,.;:!?()]|\s[—–-]\s/).pop();
+      return /(?:^|\s)(?:no|not|never|without|avoid|don'?t|do not|hate)(?:\s+[\w']+){0,2}\s*$/.test(clause);
+    };
     const solid = Object.values(K.WOOD_SPECIES).filter(s => !s.sheet);
     let picked = null;
     for (const s of [...solid].sort((x, y) => y.label.length - x.label.length)) {
       const names = [s.label.toLowerCase(), ...(s.aliases || [])];
-      if (names.some(nm => rxWord(nm).test(speciesText))) { picked = s; break; }
+      const hit = names.find(nm => rxWord(nm).test(speciesText));
+      if (!hit) continue;
+      if (negated(speciesText, rxWord(hit))) { negatedSpecies = negatedSpecies || s.label; continue; }
+      picked = s; break;
     }
     if (!picked) {
       for (const s of solid) {
         const last = s.label.toLowerCase().split(' ').pop();
-        if (last !== 'oak' && rxWord(last).test(speciesText)) { picked = s; break; }
+        if (last === 'oak' || !rxWord(last).test(speciesText)) continue;
+        if (negated(speciesText, rxWord(last))) { negatedSpecies = negatedSpecies || s.label; continue; }
+        picked = s; break;
       }
     }
     if (picked) { set('wood.species', picked.key); notes.push(picked.label); }
-    if (!patch.wood && /\boak\b/.test(speciesText)) { set('wood.species', /white\s+oak/.test(speciesText) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
+    if (!patch.wood && /\boak\b/.test(speciesText)) {
+      if (negated(speciesText, /\boak\b/)) negatedSpecies = negatedSpecies || 'oak';
+      else { set('wood.species', /white\s+oak/.test(speciesText) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
+    }
     // Sheet stock (drawer boxes, backs): a named sheet good switches only the
     // sheet species — solid parts keep their wood.
     for (const s of Object.values(K.WOOD_SPECIES).filter(x => x.sheet)) {
       const names = [s.label.toLowerCase(), ...(s.aliases || [])];
-      if (names.some(nm => rxWord(nm).test(t))) {
+      const hit = names.find(nm => rxWord(nm).test(t));
+      if (hit && !negated(t, rxWord(hit))) {
         set('wood.sheetSpecies', s.key); notes.push(s.label + ' sheet stock'); break;
       }
     }
@@ -229,23 +249,36 @@ var BB = globalThis.BB = globalThis.BB || {};
       set('structure.shelfCount', spec.structure.shelfCount + 1); notes.push('shelf');
     }
 
-    // Drawers.
+    // Drawers. Honesty first (audit FE-H10): the code strips drawers from
+    // templates without openings, so the parser must never ack one there.
     const canDrawer = w => ['nightstand', 'cabinet'].includes(w || spec.meta.template);
+    let dm = null;
     if (/\b(no|remove|without)\b.*\bdrawers?\b/.test(t) && spec.meta.template !== 'nightstand') { patch.drawers = null; notes.push('no drawers'); }
     else {
-      let dm = t.match(/(\d+|one|two|three|four)\s+drawers?/);
+      dm = t.match(/(\d+|one|two|three|four)\s+drawers?/);
       if (!dm && /\badd (a |another )?drawer\b/.test(t)) dm = [null, String((spec.drawers ? spec.drawers.count : 0) + 1)];
-      if (dm && canDrawer(wantTemplate)) {
+      if (dm && !canDrawer(wantTemplate) && !creating) {
+        if (!Object.keys(patch).length) {
+          return {
+            kind: 'question',
+            question: `Drawers need a case with openings — a ${spec.meta.template} can't take them yet, but a nightstand or cabinet can.`,
+            options: ['Make it a nightstand', 'Make it a cabinet']
+          };
+        }
+        notes.push(`drawers skipped — not available on a ${spec.meta.template}`);
+      } else if (dm && canDrawer(wantTemplate)) {
         const count = WORD_NUMS[dm[1]] || parseInt(dm[1], 10) || 1;
         set('drawers.count', Math.min(4, Math.max(1, count)));
         if (!spec.drawers) { set('drawers.frontStyle', 'inset'); set('drawers.runner', 'side_mount_slides'); }
         notes.push(count + ' drawer(s)');
       }
-      if (/\boverlay\b/.test(t)) set('drawers.frontStyle', 'overlay');
-      if (/\binset\b/.test(t)) set('drawers.frontStyle', 'inset');
-      if (/\bwood(en)? runners?\b/.test(t)) set('drawers.runner', 'wood_runners');
-      if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) set('drawers.runner', 'side_mount_slides');
-      if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
+      if (canDrawer(wantTemplate)) {
+        if (/\boverlay\b/.test(t)) set('drawers.frontStyle', 'overlay');
+        if (/\binset\b/.test(t)) set('drawers.frontStyle', 'inset');
+        if (/\bwood(en)? runners?\b/.test(t)) { set('drawers.runner', 'wood_runners'); notes.push('wood runners'); }
+        if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) { set('drawers.runner', 'side_mount_slides'); notes.push('side-mount slides'); }
+        if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
+      }
     }
 
     // Hardware style intent (2026 expansion): the style is the whole ask —
@@ -270,17 +303,27 @@ var BB = globalThis.BB = globalThis.BB || {};
       merged.meta.template = wantTemplate;
       merged.meta.name = text.length < 40 ? text.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || wantTemplate : 'New ' + wantTemplate;
       merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
-      return { kind: 'new', spec: merged, explain: `Roughed out a ${wantTemplate} to standard proportions — refine away.` };
+      const drawerNote = dm && !canDrawer(wantTemplate) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
+      return { kind: 'new', spec: merged, explain: `Roughed out a ${wantTemplate} to standard proportions${drawerNote} — refine away.` };
+    }
+
+    // A rejected species with nothing else asked: say so and ask which wood
+    // instead — never a wrong ack (audit FE-H11).
+    if (!Object.keys(patch).length && negatedSpecies) {
+      const alts = ['Walnut', 'Hard maple', 'Cherry', 'White oak']
+        .filter(x => !negatedSpecies.toLowerCase().includes(x.toLowerCase().split(' ').pop())).slice(0, 3);
+      return { kind: 'question', question: `Understood — not ${negatedSpecies.toLowerCase()}. Which wood should it be instead?`, options: alts };
     }
 
     if (!Object.keys(patch).length) {
       return {
         kind: 'question',
         question: 'I didn’t catch a change I can make there. Try a dimension, species, joinery level, drawers, or finish — what should move?',
-        options: ['Make it walnut', `Lower it by ${BB.Units.fmtLength(spec.meta.units === 'mm' ? 50 : 50.8)}`, 'Add a drawer']
+        options: ['Make it walnut', `Lower it by ${BB.Units.fmtLength(spec.meta.units === 'mm' ? 50 : 50.8)}`,
+          canDrawer(null) ? 'Add a drawer' : 'Make it wider']
       };
     }
-    return { kind: 'diff', patch, explain: 'Adjusted ' + notes.slice(0, 4).join(', ') + '.' };
+    return { kind: 'diff', patch, explain: 'Adjusted ' + (notes.filter(Boolean).slice(0, 4).join(', ') || 'the design') + '.' };
   }
 
   /* ---------------- transports ---------------- */

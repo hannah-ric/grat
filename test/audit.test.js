@@ -993,5 +993,33 @@ section('FE-H9 bought thickness reaches plan thickness on the bench');
   ok(!Plans.toolList(bs.spec, bs.model, bstock).some(t => /planer|drum sander/i.test(t)), 'and no planer in tools');
 }
 
+/* ================= FE-H10/H11 (2026-07 front-end audit): offline parser honesty ================= */
+section('FE-H10/H11 offline parser: negation and drawer honesty');
+{
+  const ns = Spec.correctSpec({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' } });
+  // H-11: "no ash please" switched the build TO White Ash. A negated species
+  // is a rejection — ask, never ack.
+  const neg = AI.localModel('no ash please', ns);
+  ok(neg.kind === 'question', '"no ash please" asks instead of acking');
+  ok(!(neg.patch && neg.patch.wood), 'no species patch rides a negated mention');
+  ok(/not\s+(white\s+)?ash/i.test(neg.question || ''), 'the refusal names the rejected wood');
+  ok(AI.localModel("don't use oak", ns).kind === 'question', 'negated oak asks too');
+  const pos = AI.localModel('make it oak instead of walnut', ns);
+  ok(pos.kind === 'diff' && pos.patch.wood.species === 'red_oak', 'positive species requests still work');
+  const mixed = AI.localModel('no ash, use walnut', ns);
+  ok(mixed.kind === 'diff' && mixed.patch.wood && mixed.patch.wood.species === 'walnut',
+    'rejection plus request applies the request');
+
+  // H-10: drawers on a drawerless template — honest refusal, and the clarify
+  // chips never offer an action the template cannot take.
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table', level: 'beginner', units: 'mm' } });
+  const dr = AI.localModel('add a drawer', table);
+  ok(dr.kind === 'question' && /nightstand|cabinet/i.test(dr.question || ''), 'drawer ask on a table is refused honestly');
+  const fb = AI.localModel('do something nice', table);
+  ok(fb.kind === 'question' && !(fb.options || []).some(o => /drawer/i.test(o)), 'clarify chips drop "Add a drawer" on a table');
+  const fbNs = AI.localModel('do something nice', ns);
+  ok((fbNs.options || []).some(o => /drawer/i.test(o)), 'nightstand keeps the drawer chip');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
