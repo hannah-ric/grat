@@ -45,6 +45,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
   const darkMq = matchMedia('(prefers-color-scheme: dark)');
+  const mobileAdvisoryMq = matchMedia('(max-width: 880px)');
+  const DEFAULT_CHAT_PEEK = 'Ask to change wood, size, or drawers...';
 
   // ALL displayed lengths go through BB.Units — the single mm→text boundary.
   const fmt = mm => Units.fmtLength(mm);
@@ -276,6 +278,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const a of report.advisories) {
       if (!state.dismissed.has(a.id)) items.push({ error: false, text: a.text, id: a.id });
     }
+    if (mobileAdvisoryMq.matches && items.length && !state.advisoriesExpanded) {
+      const pill = el('button', 'advisory-more advisory-pill', `${items.some(it => it.error) ? '🛑' : '⚠️'} ${items.length}`);
+      pill.setAttribute('aria-expanded', 'false');
+      pill.setAttribute('aria-label', `Show ${items.length} advisory message${items.length === 1 ? '' : 's'}`);
+      pill.onclick = () => { state.advisoriesExpanded = true; renderAdvisories(report); };
+      wrap.append(pill);
+      return;
+    }
     const visible = state.advisoriesExpanded ? items : items.slice(0, ADVISORY_CAP);
     for (const it of visible) {
       const chip = el('div', 'advisory' + (it.error ? ' error' : ''));
@@ -289,7 +299,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       wrap.append(chip);
     }
-    if (items.length > ADVISORY_CAP) {
+    if (mobileAdvisoryMq.matches && items.length) {
+      const less = el('button', 'advisory-more', 'Show fewer');
+      less.setAttribute('aria-expanded', 'true');
+      less.onclick = () => { state.advisoriesExpanded = false; renderAdvisories(report); };
+      wrap.append(less);
+    } else if (items.length > ADVISORY_CAP) {
       const more = el('button', 'advisory-more',
         state.advisoriesExpanded ? 'Show fewer' : `+${items.length - ADVISORY_CAP} more`);
       more.setAttribute('aria-expanded', String(!!state.advisoriesExpanded));
@@ -299,6 +314,38 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- render: panels ---------------- */
+  function syncScrollableTable(box) {
+    if (!box) return;
+    box.classList.toggle('scrollable', box.scrollWidth > box.clientWidth + 1);
+  }
+  const tableScrollObserver = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      const box = entry.target.classList && entry.target.classList.contains('table-scroll')
+        ? entry.target
+        : entry.target.closest && entry.target.closest('.table-scroll');
+      if (box) syncScrollableTable(box);
+    }
+  });
+  function wireScrollableTables(root) {
+    root.querySelectorAll('.table-scroll').forEach(box => {
+      syncScrollableTable(box);
+      if (!box.dataset.scrollObserved) {
+        box.dataset.scrollObserved = '1';
+        tableScrollObserver.observe(box);
+      }
+      const table = box.querySelector('table');
+      if (table && !table.dataset.scrollObserved) {
+        table.dataset.scrollObserved = '1';
+        tableScrollObserver.observe(table);
+      }
+    });
+  }
+  function focusPanelHeading() {
+    const heading = $('panel-main').querySelector('h1, h2, h3');
+    if (!heading) return;
+    heading.setAttribute('tabindex', '-1');
+    heading.focus();
+  }
   function renderPanel() {
     hideProv();
     const p = $('panel-main');
@@ -311,6 +358,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (state.tab === 'assembly') renderAssembly(inner);
     else if (state.tab === 'integrity') renderIntegrity(inner);
     else renderReference(inner);
+    wireScrollableTables(inner);
   }
 
   /* ---------------- provenance dialog (stretch: number provenance) ---------------- */
@@ -354,9 +402,60 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(box);
   }
 
+  function ensureDiagramScrim() {
+    let scrim = $('diagramScrim');
+    if (scrim) return scrim;
+    scrim = el('div', 'scrim');
+    scrim.id = 'diagramScrim';
+    scrim.inert = true;
+    scrim.setAttribute('role', 'dialog');
+    scrim.setAttribute('aria-modal', 'true');
+    scrim.setAttribute('aria-labelledby', 'diagramTitle');
+    scrim.innerHTML = `<div class="modal modal-wide">
+      <div class="drawer-head" style="margin-bottom:var(--s3)">
+        <h2 id="diagramTitle">Cutting diagram</h2>
+        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">✕</button>
+      </div>
+      <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
+      <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
+    </div>`;
+    document.body.append(scrim);
+    const close = scrim.querySelector('#diagramClose');
+    if (close) close.onclick = () => closeScrim(scrim);
+    scrim.addEventListener('click', e => { if (e.target === scrim) closeScrim(scrim); });
+    return scrim;
+  }
+  function openDiagramZoom(svgHtml, title) {
+    const scrim = ensureDiagramScrim();
+    scrim.querySelector('#diagramTitle').textContent = title || 'Cutting diagram';
+    const body = scrim.querySelector('#diagramZoomBody');
+    body.innerHTML = svgHtml;
+    body.scrollTop = 0;
+    body.scrollLeft = 0;
+    openScrim(scrim.id);
+  }
+  function wireDiagramZoom(container, getLargeSvg) {
+    if (!container || container.dataset.zoomWired) return;
+    container.dataset.zoomWired = '1';
+    container.classList.add('diagram-zoom-trigger');
+    container.tabIndex = 0;
+    container.setAttribute('role', 'button');
+    container.setAttribute('aria-label', 'Enlarge diagram');
+    container.style.cursor = 'zoom-in';
+    container.style.touchAction = 'manipulation';
+    const open = () => openDiagramZoom(getLargeSvg(), container.dataset.diagramTitle || 'Cutting diagram');
+    container.addEventListener('click', open);
+    container.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+  }
+
   function renderCut(root) {
     root.append(el('h3', '', 'Cut list'));
-    root.append(el('p', 'lede', `Lengths include joinery allowances — tap any dimension to see the formula behind it. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
+    root.append(el('p', 'lede', `Every part, ready for the saw. Tap a dimension to see where it comes from. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
     if (!state.cut.length) {
       emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
@@ -380,7 +479,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const plan = state.stockPlan;
     const species = state.spec.wood.species;
     root.append(el('h3', '', 'Stock — what to buy, and how to break it down'));
-    root.append(el('p', 'lede', `Deterministic packing of the cut list onto buyable lumber: ${fmtS(K.LUMBER.KERF)} kerf per cut, ${fmt(K.LUMBER.END_TRIM)} end trim per board end, grain honored on sheets. Offcuts are hatched.`));
+    root.append(el('p', 'lede', 'Here is what to buy at the lumber yard, and how to break each board down. Kerf and end trim are already included.'));
 
     const controls = el('div', 'stock-controls');
     const modeSel = document.createElement('select');
@@ -425,7 +524,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       plan.boards.forEach((b, i) => {
         if (!b.stockLen) return;
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Board ${i + 1} — ${esc(K.WOOD_SPECIES[species].label)} ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}</span><span class="offcut">offcut ${fmt(Math.max(0, b.offcut))}</span></div>` + Packing.boardSVG(b, fmt);
+        const title = `Board ${i + 1} — ${K.WOOD_SPECIES[species].label} ${Units.fmtNominal(b.nominal, b.actual, b.stockLen)}`;
+        card.innerHTML = `<div class="sb-title"><span>${esc(title)}</span><span class="offcut">offcut ${fmt(Math.max(0, b.offcut))}</span></div>`;
+        const diagram = el('div', 'cut-diagram-wrap');
+        diagram.dataset.diagramTitle = title;
+        diagram.innerHTML = Packing.boardSVG(b, fmt);
+        wireDiagramZoom(diagram, () => Packing.boardSVG(b, fmt, { large: true }));
+        card.append(diagram);
         root.append(card);
       });
     }
@@ -433,7 +538,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('h3', '', 'Cutting diagrams — sheets'));
       plan.sheets.forEach((s, i) => {
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Sheet ${i + 1} — ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)} ${fmt(s.thickness)} · buy a ${esc(s.fractionLabel)}</span><span class="offcut">layout ${fmt(s.extent.x)} × ${fmt(s.extent.y)}</span></div>` + Packing.sheetSVG(s, fmt);
+        const title = `Sheet ${i + 1} — ${(K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label} ${fmt(s.thickness)} · buy a ${s.fractionLabel}`;
+        card.innerHTML = `<div class="sb-title"><span>${esc(title)}</span><span class="offcut">layout ${fmt(s.extent.x)} × ${fmt(s.extent.y)}</span></div>`;
+        const diagram = el('div', 'cut-diagram-wrap');
+        diagram.dataset.diagramTitle = title;
+        diagram.innerHTML = Packing.sheetSVG(s, fmt);
+        wireDiagramZoom(diagram, () => Packing.sheetSVG(s, fmt, { large: true }));
+        card.append(diagram);
         root.append(card);
       });
     }
@@ -444,7 +555,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // editable, persisted price table
     const details = document.createElement('details');
     details.className = 'price-editor';
-    details.innerHTML = `<summary>Price table (editable — saved to your device)</summary>`;
+    details.innerHTML = `<summary>Edit lumber &amp; hardware prices (optional)</summary><p class="sub price-editor-note">Saved on this device and used only for your cost estimates.</p>`;
     const grid = el('div', 'price-grid');
     const priceInput = (labelText, value, onChange) => {
       const lab = el('label', '', `<span>${esc(labelText)}</span>`);
@@ -624,11 +735,26 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderIntegrity(root) {
     const integ = state.integrity;
     const overall = integ.summary.fails ? 'fail' : integ.summary.advisories ? 'advisory' : 'pass';
+    const beginner = state.spec.meta.level === 'beginner';
     root.append(el('h3', '', 'Structural integrity'));
     const summary = el('div', 'integrity-summary');
     summary.innerHTML = `<span class="stamp ${overall}">${overall}</span>
       <span style="font-size:13px;color:var(--muted)">${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory</span>`;
     root.append(summary);
+    let target = root;
+    if (beginner) {
+      const plain = overall === 'pass'
+        ? 'Your piece looks structurally sound.'
+        : overall === 'advisory'
+          ? 'A few things to double-check before you build.'
+          : 'This design needs a fix before it is safe to build.';
+      root.append(el('p', 'lede integrity-beginner', plain));
+      const details = document.createElement('details');
+      details.className = 'integrity-details';
+      details.innerHTML = '<summary>Full structural report</summary>';
+      root.append(details);
+      target = details;
+    }
 
     // climate preference drives ΔMC in the movement math
     const climate = el('div', 'climate-row');
@@ -638,10 +764,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     sel.value = state.prefs4.climate;
     sel.onchange = () => { state.prefs4.climate = sel.value; Store.savePrefs(state.prefs4); recompute(); };
     climate.append(el('span', '', 'Seasonal movement assumes'), sel);
-    root.append(climate);
+    target.append(climate);
 
     if (integ.surfaces.length) {
-      root.append(el('h3', '', 'Load presets (per surface)'));
+      target.append(el('h3', '', 'Load presets (per surface)'));
       for (const s of integ.surfaces) {
         const row = el('div', 'load-row');
         const label = el('span', '', `${esc(s.label)}<span class="span-note">${fmt(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}</span>`);
@@ -656,9 +782,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
         ls.onchange = () => { state.loadChoices[s.id] = ls.value; recompute(); };
         row.append(label, ls);
-        root.append(row);
+        target.append(row);
       }
-      root.append(el('div', '', '&nbsp;'));
+      target.append(el('div', '', '&nbsp;'));
     }
 
     for (const c of integ.checks) {
@@ -677,45 +803,95 @@ var BB = globalThis.BB = globalThis.BB || {};
             if (merge(f.patch, 'fix', [f.label])) {
               const chips = Structural.integrityDiff(before, state.integrity);
               botSay(`Applied fix: ${f.label}.`, chips, { noChange: !chips.length });
-              state.tab = 'integrity'; renderTabs(); renderPanel();
+              state.tab = 'integrity'; renderTabs(); renderPanel(); focusPanelHeading();
             }
           };
           row.append(b);
         }
         card.append(row);
       }
-      root.append(card);
+      target.append(card);
     }
     // Design-value basis disclosed in full (audit F-S3-7): what the numbers
     // rest on, what the safety factor absorbs, and the clear-stock rule.
-    root.append(el('p', 'integrity-disclaimer', esc(K.DESIGN_BASIS)));
+    target.append(el('p', 'integrity-disclaimer', esc(K.DESIGN_BASIS)));
   }
 
   /* ---------------- shop reference ---------------- */
+  function referenceHit(q, ...xs) {
+    return !q || xs.join(' ').toLowerCase().includes(q);
+  }
+  function referenceTabHasHits(tab, q) {
+    q = (q || '').trim().toLowerCase();
+    const hit = (...xs) => referenceHit(q, ...xs);
+    if (tab === 'wood') {
+      return Object.values(K.WOOD_SPECIES).some(s => hit(s.label, s.blurb, s.movement));
+    } else if (tab === 'ergo') {
+      return K.ERGONOMICS.some(r => hit(r.label, r.note));
+    } else if (tab === 'joinery') {
+      return Object.values(K.JOINERY).some(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' ')));
+    } else if (tab === 'hardware') {
+      const HW = BB.HW;
+      const groups = [
+        Object.values(HW.HINGES), Object.values(HW.PULLS), Object.values(HW.SLIDES), Object.values(HW.LIFTS),
+        Object.values(HW.CATCHES), Object.values(HW.LOCKS), Object.values(HW.SHELF_SUPPORT), Object.values(HW.TABLE_BED),
+        Object.values(HW.WALL_HANG), Object.values(HW.FEET_MISC), Object.values(HW.TRADITIONAL)
+      ];
+      return groups.some(list => list.some(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))));
+    } else if (tab === 'lumber') {
+      return Object.entries(K.LUMBER.NOMINALS).some(([n]) => hit(n)) || hit('sheet goods');
+    }
+    const f = K.FASTENERS;
+    return [...f.screws, ...f.dowels, ...f.hardware].some(x => hit(x.label, x.use)) ||
+      K.FINISHES.some(x => hit(x.label, x.blurb)) ||
+      K.GLUES.some(x => hit(x.label, x.blurb, x.water));
+  }
+  function syncReferenceTabForQuery() {
+    const q = state.refQuery.trim().toLowerCase();
+    if (!q || referenceTabHasHits(state.refTab, q)) return false;
+    const next = REF_TABS.find(tab => referenceTabHasHits(tab, q));
+    if (!next || next === state.refTab) return false;
+    state.refTab = next;
+    return true;
+  }
   function renderReference(root) {
+    syncReferenceTabForQuery();
     root.append(el('h3', '', 'Shop reference'));
     const search = el('input', 'ref-search');
     search.type = 'search';
     search.placeholder = 'Search species, joints, screws, finishes…';
     search.value = state.refQuery;
     search.setAttribute('aria-label', 'Search reference tables');
-    search.oninput = () => { state.refQuery = search.value; renderRefBody(body); };
+    const body = el('div');
+    const tabs = el('div', 'ref-tabs');
+    const syncTabButtons = () => {
+      tabs.querySelectorAll('.ref-tab').forEach((b, i) => {
+        const key = REF_ENTRIES[i][0];
+        b.setAttribute('aria-selected', String(state.refTab === key));
+        b.tabIndex = state.refTab === key ? 0 : -1;
+      });
+    };
+    search.oninput = () => {
+      state.refQuery = search.value;
+      syncReferenceTabForQuery();
+      syncTabButtons();
+      syncHash();
+      renderRefBody(body);
+    };
     root.append(search);
 
-    const tabs = el('div', 'ref-tabs');
     tabs.setAttribute('role', 'tablist');
-    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
-    for (const [key, label] of refEntries) {
+    for (const [key, label] of REF_ENTRIES) {
       const b = el('button', 'ref-tab', esc(label));
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', state.refTab === key);
       b.tabIndex = state.refTab === key ? 0 : -1; // roving tabindex
-      b.onclick = () => { state.refTab = key; renderPanel(); };
+      b.onclick = () => { state.refTab = key; syncHash(); renderPanel(); };
       tabs.append(b);
     }
     // Same arrow-key pattern as the main plan tabs.
     tabs.addEventListener('keydown', e => {
-      const order = refEntries.map(x => x[0]);
+      const order = REF_TABS;
       const i = order.indexOf(state.refTab);
       let next = null;
       if (e.key === 'ArrowRight') next = order[(i + 1) % order.length];
@@ -725,13 +901,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (next) {
         e.preventDefault();
         state.refTab = next;
+        syncHash();
         renderPanel(); // rebuilds the tablist — refocus the selected tab
         const nb = document.querySelectorAll('.ref-tab')[order.indexOf(next)];
         if (nb) nb.focus();
       }
     });
     root.append(tabs);
-    const body = el('div');
+    syncTabButtons();
     root.append(body);
     renderRefBody(body);
   }
@@ -739,7 +916,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderRefBody(body) {
     body.textContent = '';
     const q = state.refQuery.trim().toLowerCase();
-    const hit = (...xs) => !q || xs.join(' ').toLowerCase().includes(q);
+    const hit = (...xs) => referenceHit(q, ...xs);
     const scroll = el('div', 'table-scroll');
     let rows = '', head = '';
     if (state.refTab === 'wood') {
@@ -861,10 +1038,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     log.scrollTop = log.scrollHeight;
     // The collapsed mobile sheet shows the tail of the conversation.
     const peekText = m.textContent.trim();
-    if (peekText) $('chatPeek').textContent = (kind === 'user' ? 'You: ' : '') + peekText;
+    setChatPeek(peekText, kind);
     // A reply landing while the desktop chat is folded lights the rail dot.
     if (kind === 'bot' && state.prefs4.ui.chatCollapsed) $('chatRailDot').hidden = false;
     return m;
+  }
+  function setChatPeek(text, kind) {
+    const raw = (text || '').trim();
+    let next = DEFAULT_CHAT_PEEK;
+    if (kind === 'user' && raw) next = 'You: ' + raw;
+    else if (raw && !/^Welcome to the shop\./i.test(raw) && !/^Updated\.?$/i.test(raw) &&
+      !/^Loaded .+ plans ready\./i.test(raw) && !/^Opened “.+”/i.test(raw) && !/^Imported “.+”/i.test(raw)) {
+      next = raw;
+    }
+    $('chatPeek').textContent = next;
   }
   function botSay(text, chips, opts) {
     opts = opts || {};
@@ -960,7 +1147,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain };
+    return { final, failReport, explain, local: !!res.local };
   }
 
   async function sendMessage(text, image) {
@@ -993,7 +1180,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = Spec.describeDiff(realDiffs);
-      const caveat = image ? 'Proportions estimated from photo. Verify dimensions.' : null;
+      const caveat = [
+        image ? 'Proportions estimated from photo. Verify dimensions.' : null,
+        out.local ? 'Working offline - plain-language edits still work.' : null
+      ].filter(Boolean).join(' ') || null;
       if (out.failReport) {
         botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Integrity tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
         state.tab = 'integrity'; renderTabs(); renderPanel();
@@ -1407,6 +1597,11 @@ var BB = globalThis.BB = globalThis.BB || {};
           state.engine.heroAssemble();
         }
         botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
+        if (!state.prefs4.seenCoach) {
+          state.prefs4.seenCoach = true;
+          Store.savePrefs(state.prefs4);
+          botSay('First build tips: 1) Check the Stock tab before you buy. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Integrity tab shows red, fix that before you build.', []);
+        }
       };
       grid.append(card);
       galleryCards.push({ card, model: r.model, spec: r.spec });
@@ -1768,18 +1963,21 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Cuts grouped by stock board, straight from the optimizer diagrams —
     // the user works board by board.
-    const diagram = svg => {
+    const diagram = (title, svg, getLargeSvg) => {
       const d = el('div', 'bm-diagram');
+      d.dataset.diagramTitle = title;
       d.innerHTML = svg;
+      wireDiagramZoom(d, getLargeSvg);
       return d;
     };
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
-      group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}`));
+      const title = `Board ${bi + 1} — ${Units.fmtNominal(b.nominal, b.actual, b.stockLen)}`;
+      group.append(el('div', 'bm-board-title', esc(title)));
       // The same drafting diagram as the Stock tab, at the saw: which piece
       // comes out of which end of this exact board.
-      group.append(diagram(Packing.boardSVG(b, fmt)));
+      group.append(diagram(title, Packing.boardSVG(b, fmt), () => Packing.boardSVG(b, fmt, { large: true })));
       b.cuts.forEach((c, ci) => {
         const key = cutKey('b', bi, ci, c.name, c.len);
         group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -1788,8 +1986,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     plan.sheets.forEach((s, si) => {
       const group = el('div', 'bm-board');
-      group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${esc(fmt(s.thickness))} (${esc(s.fractionLabel)})`));
-      group.append(diagram(Packing.sheetSVG(s, fmt)));
+      const title = `Sheet ${si + 1} — ${fmt(s.thickness)} (${s.fractionLabel})`;
+      group.append(el('div', 'bm-board-title', esc(title)));
+      group.append(diagram(title, Packing.sheetSVG(s, fmt), () => Packing.sheetSVG(s, fmt, { large: true })));
       s.placements.forEach((p, pi) => {
         const key = cutKey('s', si, pi, p.name, Math.round(p.w));
         group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -1861,7 +2060,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('chatRail').hidden = !on;
     $('chatCollapse').setAttribute('aria-expanded', String(!on));
     if (!on) $('chatRailDot').hidden = true;
-    if (!opts || opts.persist !== false) Store.savePrefs(state.prefs4);
+    if (!opts || opts.persist !== false) {
+      Store.savePrefs(state.prefs4);
+      if (state.spec) syncHash();
+    }
   }
   /* Bring the chat input into reach whatever the layout: unfold the desktop
    * rail or raise the mobile sheet, then focus the box. */
@@ -1889,27 +2091,47 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sp = $('vpSplitter');
     sp.setAttribute('aria-valuenow', String(pct));
     sp.setAttribute('aria-valuetext', `3D viewport ${pct}% of the stage`);
-    if (!opts || opts.persist !== false) Store.savePrefs(state.prefs4);
+    if (!opts || opts.persist !== false) {
+      Store.savePrefs(state.prefs4);
+      if (state.spec) syncHash();
+    }
   }
   function bindSplitter() {
     const sp = $('vpSplitter'), stage = $('stage');
     let dragging = false;
+    let moved = false;
+    let lastTouchTapAt = 0;
+    let dragStartY = 0;
     sp.addEventListener('pointerdown', e => {
       dragging = true;
+      moved = false;
+      dragStartY = e.clientY;
       sp.classList.add('dragging');
       sp.setPointerCapture(e.pointerId);
       e.preventDefault();
     });
     sp.addEventListener('pointermove', e => {
       if (!dragging) return;
+      if (Math.abs(e.clientY - dragStartY) > 3) moved = true;
       const r = stage.getBoundingClientRect();
       if (r.height > 0) setSplit(((e.clientY - r.top) / r.height) * 100, { persist: false });
     });
-    const endDrag = () => {
+    const endDrag = e => {
+      const touchTap = e && e.pointerType === 'touch' && !moved;
       if (!dragging) return;
       dragging = false;
       sp.classList.remove('dragging');
       Store.savePrefs(state.prefs4);
+      syncHash();
+      if (touchTap) {
+        const now = performance.now();
+        if (now - lastTouchTapAt <= 300) {
+          lastTouchTapAt = 0;
+          setSplit(SPLIT_DEFAULT);
+        } else {
+          lastTouchTapAt = now;
+        }
+      }
     };
     sp.addEventListener('pointerup', endDrag);
     sp.addEventListener('pointercancel', endDrag);
@@ -1966,27 +2188,29 @@ var BB = globalThis.BB = globalThis.BB || {};
     ];
   }
   function renderReadiness() {
-    const nav = $('readiness');
-    nav.textContent = '';
+    const navs = [$('readiness'), $('readinessMobile')].filter(Boolean);
+    navs.forEach(nav => { nav.textContent = ''; });
     if (!state.integrity) return;
     const steps = readinessSteps();
     const complete = st => st === 'done' || st === 'attn';
-    let currentSet = false;
-    steps.forEach((s, i) => {
-      if (i) nav.append(el('span', 'ready-sep', '›'));
-      const b = el('button', 'ready-step');
-      b.type = 'button';
-      b.dataset.state = s.state;
-      b.dataset.step = s.label.toLowerCase();
-      b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
-      b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
-      b.title = s.aria;
-      if (!currentSet && !complete(s.state)) {
-        b.setAttribute('aria-current', 'step');
-        currentSet = true;
-      }
-      b.onclick = s.go;
-      nav.append(b);
+    navs.forEach(nav => {
+      let currentSet = false;
+      steps.forEach((s, i) => {
+        if (i) nav.append(el('span', 'ready-sep', '›'));
+        const b = el('button', 'ready-step');
+        b.type = 'button';
+        b.dataset.state = s.state;
+        b.dataset.step = s.label.toLowerCase();
+        b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
+        b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
+        b.title = s.aria;
+        if (!currentSet && !complete(s.state)) {
+          b.setAttribute('aria-current', 'step');
+          currentSet = true;
+        }
+        b.onclick = s.go;
+        nav.append(b);
+      });
     });
   }
 
@@ -2006,18 +2230,34 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- shell: URL-restorable tabs ----------------
    * The active plan tab (and reference subtab) mirrors into location.hash via
    * replaceState — deep-linkable and reload-safe, with no history spam. */
-  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'hardware', 'lumber'];
+  const REF_ENTRIES = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
+  const REF_TABS = REF_ENTRIES.map(x => x[0]);
   function syncHash() {
-    const h = '#' + state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    const path = state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    const h = '#' + path + `;split=${state.prefs4.ui.split};chat=${state.prefs4.ui.chatCollapsed ? 1 : 0}`;
     if (location.hash !== h) {
       try { history.replaceState(null, '', h); } catch (e) { /* sandboxed frame: tabs still work, hash doesn't */ }
     }
   }
   function applyHash() {
-    const parts = (location.hash || '').replace(/^#/, '').split('/');
+    const raw = (location.hash || '').replace(/^#/, '');
+    const bits = raw.split(';');
+    const parts = (bits.shift() || '').split('/');
     if (!TABS.includes(parts[0])) return false;
     state.tab = parts[0];
     if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    bits.forEach(bit => {
+      const eq = bit.indexOf('=');
+      if (eq < 0) return;
+      const key = bit.slice(0, eq);
+      const value = bit.slice(eq + 1);
+      if (key === 'split') {
+        const pct = +value;
+        if (isFinite(pct)) setSplit(pct, { persist: false });
+      } else if (key === 'chat' && (value === '0' || value === '1')) {
+        setChatCollapsed(value === '1', { persist: false });
+      }
+    });
     return true;
   }
 
@@ -2126,6 +2366,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('inspClose', 'close', undefined);
     set('historyClose', 'close', undefined);
     set('jointClose', 'close', undefined);
+    set('diagramClose', 'close', undefined);
     set('frameBtn', 'fit', 'Fit');
     set('pbPrev', 'prev');
     set('pbNext', 'next');
@@ -2220,6 +2461,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderAll();
     renderHints();
     renderGallery();
+    setChatPeek();
 
     // Returning users land in the studio with their latest project. First
     // runs get a welcome card with the three ways in — floating over a live,
@@ -2317,6 +2559,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('copyShare').onclick = copyShare;
     $('importShare').onclick = importShare;
     $('speciesClose').onclick = () => closeScrim('speciesScrim');
+    if ($('diagramClose')) $('diagramClose').onclick = () => closeScrim('diagramScrim');
     $('diagClose').onclick = () => closeScrim('diagScrim');
     $('jointClose').onclick = () => { closeScrim('jointScrim'); BB.JointView.close(); };
     $('jointExplode').addEventListener('input', e => BB.JointView.setExplode(e.target.value / 100));
@@ -2373,6 +2616,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     const menu = bindMenu('exportBtn', 'exportMenu');
     const moreMenu = bindMenu('moreBtn', 'moreMenu');
+    const moreExportMirror = $('moreExportMirror');
+    if (moreExportMirror) {
+      moreExportMirror.textContent = '';
+      menu.querySelectorAll('[data-export]').forEach(b => moreExportMirror.append(b.cloneNode(true)));
+      moreExportMirror.hidden = !moreExportMirror.children.length;
+      if ($('moreExportSep')) $('moreExportSep').hidden = !moreExportMirror.children.length;
+    }
     menu.querySelectorAll('[data-export]').forEach(b => {
       b.addEventListener('click', () => {
         closeMenu('exportBtn', menu);
@@ -2385,6 +2635,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
       b.addEventListener('click', () => {
         closeMenu('moreBtn', moreMenu);
+        if (b.dataset.export) { doExport(b.dataset.export); return; }
         if (!trapStack.length) $('moreBtn').focus(); // unless a dialog already took focus
       });
     });

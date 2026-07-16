@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#F5F2E9">
+<link rel="manifest" href='data:application/manifest+json,%7B%22name%22%3A%22Blueprint%20Buddy%22%2C%22short_name%22%3A%22BB%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F5F2E9%22%2C%22theme_color%22%3A%22%23F5F2E9%22%7D'>
 <title>Blueprint Buddy</title>
 <style>
 {{CSS}}
@@ -20,6 +22,7 @@
         <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
         <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
       </svg>
+      <span class="brand-short" aria-hidden="true">BB</span>
       <h1 class="brand-name">Blueprint<span>Buddy</span></h1>
     </div>
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
@@ -39,6 +42,8 @@
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
+          <div class="menu-sep mobile-export-only" id="moreExportSep"></div>
+          <div class="menu-group mobile-export-only" id="moreExportMirror" hidden></div>
           <div class="menu-sep" id="accountSep" hidden></div>
           <div id="accountArea" hidden></div>
           <div class="menu-sep"></div>
@@ -76,17 +81,17 @@
         </div>
       </div>
       <div class="menu-wrap">
-        <button id="exportBtn" class="btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <button id="exportBtn" class="btn mobile-export-hide" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
         <div id="exportMenu" class="menu" role="menu" inert>
-          <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
-          <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
-          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
-          <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
-          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
-          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
-          <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
-          <div class="menu-sep"></div>
           <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
+          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+          <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
+          <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+          <div class="menu-sep"></div>
+          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
+          <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+          <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
         </div>
@@ -106,6 +111,7 @@
       </button>
       <div class="chat-head">
         <h2><span class="chat-head-long">Design </span>chat</h2>
+        <nav class="readiness readiness-mobile" id="readinessMobile" aria-label="Design readiness"></nav>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
           <option value="beginner">Beginner</option>
           <option value="intermediate">Intermediate</option>
@@ -142,17 +148,17 @@
           </div>
           <div class="welcome-paths">
             <button class="welcome-card" id="welcomeDescribe">
-              <span class="w-emoji" aria-hidden="true">💬</span>
+              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 5.5h14a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 16.5h-7l-4.5 3v-3H4A2.5 2.5 0 0 1 1.5 14V8A2.5 2.5 0 0 1 4 5.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
               <span class="w-name">Describe it</span>
               <span class="w-caption">Type a piece in plain words — or drop in a photo — and full plans appear.</span>
             </button>
             <button class="welcome-card" id="welcomeStarter">
-              <span class="w-emoji" aria-hidden="true">📐</span>
+              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 17h12M6 15.5 12.5 5 17 15.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
               <span class="w-name">Pick a starter</span>
               <span class="w-caption">Six proven designs, plans ready instantly. Refine any of them in chat.</span>
             </button>
             <button class="welcome-card" id="welcomeResume">
-              <span class="w-emoji" aria-hidden="true">🗂</span>
+              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M14 4.5h4v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 13.5 18 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 12v4a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16V8A2.5 2.5 0 0 1 6.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span class="w-name" id="welcomeResumeName">Import a design</span>
               <span class="w-caption" id="welcomeResumeCaption">Paste a BB4: share code to pick up a design from anywhere.</span>
             </button>
@@ -261,7 +267,19 @@
 
   <div class="scrim" inert id="helpScrim" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <div class="modal">
-      <h2 id="helpTitle">Getting your design into SketchUp</h2>
+      <h2 id="helpTitle">Export &amp; integration help</h2>
+      <div class="help-block">
+        <h3>Integrations: SketchUp connector in Claude</h3>
+        <p>Working inside Claude with the Trimble SketchUp connector? Export your <strong>DesignSpec (.json)</strong>, paste it into the conversation, and ask Claude to build the piece directly in your live SketchUp model. The spec carries every dimension, so nothing is lost in translation.</p>
+      </div>
+      <div class="help-block">
+        <h3>3D model / AR (.glb)</h3>
+        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer (or the three.js editor) reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter to get an AR Quick Look file. Geometry is exact millimetres, rotations included.</p>
+      </div>
+      <div class="help-block">
+        <h3>Build script (.rb) — the parametric way</h3>
+        <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter. (Or drop the file into your Plugins folder.) Serious users want this one — components stay editable.</p>
+      </div>
       <div class="help-block">
         <h3>Mesh import (.dae)</h3>
         <ol class="help-steps">
@@ -270,22 +288,21 @@
           <li>Select the downloaded file and click <strong>Import</strong> — parts arrive named, at exact size, right side up.</li>
         </ol>
       </div>
-      <div class="help-block">
-        <h3>Build script (.rb) — the parametric way</h3>
-        <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter. (Or drop the file into your Plugins folder.) Serious users want this one — components stay editable.</p>
-      </div>
-      <div class="help-block">
-        <h3>3D model / AR (.glb)</h3>
-        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer (or the three.js editor) reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter to get an AR Quick Look file. Geometry is exact millimetres, rotations included.</p>
-      </div>
-      <div class="help-block">
-        <h3>Integrations: SketchUp connector in Claude</h3>
-        <p>Working inside Claude with the Trimble SketchUp connector? Export your <strong>DesignSpec (.json)</strong>, paste it into the conversation, and ask Claude to build the piece directly in your live SketchUp model. The spec carries every dimension, so nothing is lost in translation.</p>
-      </div>
       <div class="modal-foot">
         <span></span>
         <button class="btn primary" id="helpClose">Got it</button>
       </div>
+    </div>
+  </div>
+
+  <div class="scrim" inert id="diagramScrim" role="dialog" aria-modal="true" aria-labelledby="diagramTitle">
+    <div class="modal modal-wide">
+      <div class="drawer-head" style="margin-bottom:var(--s3)">
+        <h2 id="diagramTitle">Cutting diagram</h2>
+        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">✕</button>
+      </div>
+      <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
+      <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
     </div>
   </div>
 
