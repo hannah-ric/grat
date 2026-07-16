@@ -233,6 +233,10 @@ section('local intent parser');
 
   const wal = AI.localModel('make it walnut', spec);
   eq(wal.patch.wood.species, 'walnut', 'species change parsed');
+  eq(AI.localModel('make the top oak instead of walnut', { ...spec, wood: { species: 'walnut' } }).patch.wood.species, 'red_oak',
+    '"oak instead of walnut" picks the target species, not the one being replaced');
+  eq(AI.localModel('switch to white oak instead of pine', { ...spec, wood: { species: 'pine' } }).patch.wood.species, 'white_oak',
+    '"instead of" stripping works with multi-word oak');
 
   // 2026 species: multi-word labels beat last-word collisions, aliases work,
   // and a named sheet good switches ONLY the sheet stock.

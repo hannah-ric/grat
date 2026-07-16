@@ -3,12 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#F5F2E9">
+<link rel="manifest" href='data:application/manifest+json,%7B%22name%22%3A%22Blueprint%20Buddy%22%2C%22short_name%22%3A%22BB%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F5F2E9%22%2C%22theme_color%22%3A%22%23F5F2E9%22%7D'>
 <title>Blueprint Buddy</title>
 <style>
 /* Blueprint Buddy — design system.
-   Warm oat neutrals biased toward the marking-blue accent's complement,
-   one accent (machinist layout blue), Bitter slab display, 8pt spacing,
-   one easing family for every state change. */
+   Showroom tokens (docs/ui/brand-system.md): mid-century brand constants,
+   rust action color, Bitter slab display, 8pt spacing, one easing family.
+   Blueprint Mode keeps a deliberate cyanotype field as the blue exception. */
 
 @font-face {
   font-family: 'Bitter';
@@ -27,27 +29,33 @@
 }
 
 :root {
-  /* palette — light bench */
-  --paper: #efeade;
-  --panel: #faf7f0;
-  --panel-2: #f3eee3;
-  --ink: #2b2419;
-  --ink-2: #56493a;
-  --muted: #7d705d;
-  --line: #ddd3c0;
-  --line-2: #cabfa8;
-  --accent: #1b5d82;
-  --accent-ink: #f5fafd;
-  --accent-soft: #e3edf3;
-  --amber: #8f6316;
-  --amber-soft: #f4e8cf;
-  --amber-ink: #684a0e;
-  --brick: #a33d2a;
-  --brick-soft: #f6e2dc;
-  --brick-ink: #8c2f1e;
-  --green: #4a7c3f;
-  --shadow: 0 1px 2px rgba(43, 36, 25, .07), 0 8px 24px -12px rgba(43, 36, 25, .25);
-  --shadow-lg: 0 2px 4px rgba(43, 36, 25, .08), 0 24px 48px -16px rgba(43, 36, 25, .35);
+  /* Showroom palette (docs/ui/brand-system.md) — mid-century brand constants.
+     Action/CTA is rust; Blueprint Mode keeps its cyanotype field below. */
+  --paper: #F5F2E9;
+  --panel: #FDFBF5;
+  --panel-2: #ECE7DA;
+  --ink: #2A1B1A;
+  --ink-2: #593837;
+  --muted: #7A6663;
+  --line: color-mix(in oklab, #2A1B1A 16%, transparent);
+  --line-2: color-mix(in oklab, #2A1B1A 38%, transparent);
+  --accent: #942911;
+  --accent-ink: #FFF6EE;
+  --accent-soft: #F6E4DC;
+  --amber: #9D8420;
+  --amber-soft: #F1EBD3;
+  --amber-ink: #6E5C0F;
+  --brick: #942911;
+  --brick-soft: #F6E4DC;
+  --brick-ink: #6E1D0A;
+  --green: #46662C;
+  --shadow: 0 1px 2px color-mix(in oklab, #593837 12%, transparent), 0 8px 24px -12px color-mix(in oklab, #593837 28%, transparent);
+  --shadow-lg: 0 2px 4px color-mix(in oklab, #593837 14%, transparent), 0 24px 48px -16px color-mix(in oklab, #593837 36%, transparent);
+  --focus: #9D8420;
+  --link: #942911;
+  --on-brand: #241A18;
+  --seafoam: #94B9AF;
+  --fern: #90A583;
 
   /* type */
   --display: 'Bitter', 'Iowan Old Style', Georgia, serif;
@@ -63,7 +71,7 @@
 
   --radius: 10px; --radius-lg: 16px;
 
-  /* blueprint mode: drafting field behind the transparent canvas */
+  /* blueprint mode: drafting field behind the transparent canvas — deliberate blue exception */
   --blueprint-field: #eef3f7;
   --blueprint-grid: rgba(27, 93, 130, 0.08);
 
@@ -74,24 +82,26 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #191511;
-    --panel: #241f18;
-    --panel-2: #2c261d;
-    --ink: #ede5d6;
-    --ink-2: #c8bba6;
-    --muted: #998a72;
-    --line: #3a3226;
-    --line-2: #4c4232;
-    --accent: #6fb0d6;
-    --accent-ink: #0e2231;
-    --accent-soft: #1e3648;
-    --amber: #d9a94e;
-    --amber-soft: #3a2f17;
-    --amber-ink: #eac37a;
-    --brick: #e0796a;
-    --brick-soft: #40201a;
-    --brick-ink: #f0a396;
-    --green: #8fbc7f;
+    --paper: #1B1312;
+    --panel: #251A18;
+    --panel-2: #140E0D;
+    --ink: #F1EAE0;
+    --ink-2: #C9B9AF;
+    --muted: #9C8A80;
+    --line: color-mix(in oklab, #F1EAE0 16%, transparent);
+    --line-2: color-mix(in oklab, #F1EAE0 38%, transparent);
+    --accent: #E47952;
+    --accent-ink: #2A1109;
+    --accent-soft: #3A1D14;
+    --amber: #C8A63C;
+    --amber-soft: #322813;
+    --amber-ink: #D9BC55;
+    --brick: #E47952;
+    --brick-soft: #3A1D14;
+    --brick-ink: #EE9370;
+    --green: #A5C88B;
+    --focus: #94B9AF;
+    --link: #94B9AF;
     --blueprint-field: #0e2a3d;
     --blueprint-grid: rgba(168, 204, 228, 0.09);
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
@@ -99,21 +109,23 @@
   }
 }
 :root[data-theme="light"] {
-  --paper: #efeade; --panel: #faf7f0; --panel-2: #f3eee3; --ink: #2b2419; --ink-2: #56493a;
-  --muted: #7d705d; --line: #ddd3c0; --line-2: #cabfa8; --accent: #1b5d82; --accent-ink: #f5fafd;
-  --accent-soft: #e3edf3; --amber: #8f6316; --amber-soft: #f4e8cf; --amber-ink: #684a0e;
-  --brick: #a33d2a; --brick-soft: #f6e2dc; --brick-ink: #8c2f1e;
-  --green: #4a7c3f;
+  --paper: #F5F2E9; --panel: #FDFBF5; --panel-2: #ECE7DA; --ink: #2A1B1A; --ink-2: #593837;
+  --muted: #7A6663; --line: color-mix(in oklab, #2A1B1A 16%, transparent); --line-2: color-mix(in oklab, #2A1B1A 38%, transparent);
+  --accent: #942911; --accent-ink: #FFF6EE; --accent-soft: #F6E4DC;
+  --amber: #9D8420; --amber-soft: #F1EBD3; --amber-ink: #6E5C0F;
+  --brick: #942911; --brick-soft: #F6E4DC; --brick-ink: #6E1D0A;
+  --green: #46662C; --focus: #9D8420; --link: #942911;
   --blueprint-field: #eef3f7; --blueprint-grid: rgba(27, 93, 130, 0.08);
-  --shadow: 0 1px 2px rgba(43, 36, 25, .07), 0 8px 24px -12px rgba(43, 36, 25, .25);
-  --shadow-lg: 0 2px 4px rgba(43, 36, 25, .08), 0 24px 48px -16px rgba(43, 36, 25, .35);
+  --shadow: 0 1px 2px color-mix(in oklab, #593837 12%, transparent), 0 8px 24px -12px color-mix(in oklab, #593837 28%, transparent);
+  --shadow-lg: 0 2px 4px color-mix(in oklab, #593837 14%, transparent), 0 24px 48px -16px color-mix(in oklab, #593837 36%, transparent);
 }
 :root[data-theme="dark"] {
-  --paper: #191511; --panel: #241f18; --panel-2: #2c261d; --ink: #ede5d6; --ink-2: #c8bba6;
-  --muted: #998a72; --line: #3a3226; --line-2: #4c4232; --accent: #6fb0d6; --accent-ink: #0e2231;
-  --accent-soft: #1e3648; --amber: #d9a94e; --amber-soft: #3a2f17; --amber-ink: #eac37a;
-  --brick: #e0796a; --brick-soft: #40201a; --brick-ink: #f0a396;
-  --green: #8fbc7f;
+  --paper: #1B1312; --panel: #251A18; --panel-2: #140E0D; --ink: #F1EAE0; --ink-2: #C9B9AF;
+  --muted: #9C8A80; --line: color-mix(in oklab, #F1EAE0 16%, transparent); --line-2: color-mix(in oklab, #F1EAE0 38%, transparent);
+  --accent: #E47952; --accent-ink: #2A1109; --accent-soft: #3A1D14;
+  --amber: #C8A63C; --amber-soft: #322813; --amber-ink: #D9BC55;
+  --brick: #E47952; --brick-soft: #3A1D14; --brick-ink: #EE9370;
+  --green: #A5C88B; --focus: #94B9AF; --link: #94B9AF;
   --blueprint-field: #0e2a3d; --blueprint-grid: rgba(168, 204, 228, 0.09);
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
   --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
@@ -130,7 +142,7 @@ body {
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus { outline: none; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: 2px; border-radius: 4px; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -159,6 +171,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .brand { display: flex; align-items: center; gap: var(--s2); flex: none; }
 .brand svg { display: block; }
+.brand-short {
+  display: none;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -.01em;
+}
 .brand-name {
   font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: -.01em;
   white-space: nowrap; margin: 0;
@@ -229,14 +248,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
   z-index: 60;
 }
 .menu.open { opacity: 1; transform: none; pointer-events: auto; }
-.menu > button {
+.menu > button, .menu-group > button {
   display: flex; width: 100%; text-align: left; gap: var(--s2); align-items: baseline;
   background: none; border: 0; border-radius: 8px; padding: 9px 12px; cursor: pointer;
   transition: background var(--t-fast) var(--ease);
 }
-.menu > button:hover { background: var(--panel-2); }
-.menu > button .hint { color: var(--ink-2); font-size: 12px; margin-left: auto; }
+.menu > button:hover, .menu-group > button:hover { background: var(--panel-2); }
+.menu > button .hint, .menu-group > button .hint { color: var(--ink-2); font-size: 12px; margin-left: auto; }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
+.mobile-export-only { display: none; }
 /* inline control rows inside a menu (units, precision, theme) */
 .menu .menu-row { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) 12px; }
 .menu .menu-row-label { flex: 1; font-size: 12.5px; font-weight: 550; color: var(--muted); }
@@ -260,6 +280,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: var(--s2);
 }
 .chat-head h2 { font: 600 13px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; flex: 1; }
+.readiness-mobile { display: none; margin-left: auto; }
+.readiness-mobile .ready-label, .readiness-mobile .ready-sep { display: none; }
+.readiness-mobile .ready-step { padding: 4px; min-width: 24px; justify-content: center; }
 .level-select {
   border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px;
   padding: 4px 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer;
@@ -376,6 +399,9 @@ body.drafting .viewport-wrap {
   display: flex; align-items: center; justify-content: center;
   touch-action: none; position: relative; background: none; border: 0;
 }
+.splitter::after {
+  content: ""; position: absolute; left: 0; right: 0; top: -8px; bottom: -8px;
+}
 .splitter::before {
   content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
   background: var(--line); transition: background var(--t-fast) var(--ease);
@@ -449,6 +475,7 @@ body.drafting .viewport-wrap {
   cursor: pointer; box-shadow: var(--shadow);
 }
 .advisory-more:hover { color: var(--ink); border-color: var(--muted); }
+.advisory-pill { font-size: 13px; }
 
 /* ---------------- welcome (first run, never blocking) ---------------- */
 .welcome {
@@ -471,7 +498,11 @@ body.drafting .viewport-wrap {
 .welcome-paths .welcome-card:nth-child(2) { animation-delay: 120ms; }
 .welcome-paths .welcome-card:nth-child(3) { animation-delay: 240ms; }
 .welcome-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
-.welcome-card .w-emoji { font-size: 20px; }
+.welcome-card .w-emoji {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; color: var(--accent);
+}
+.welcome-card .w-emoji svg { display: block; width: 22px; height: 22px; }
 .welcome-card .w-name { font-family: var(--display); font-weight: 650; font-size: 14px; }
 .welcome-card .w-caption { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .welcome-note { margin: var(--s2) 0 2px; font-size: 12px; color: var(--muted); text-align: center; }
@@ -540,12 +571,13 @@ body.drafting .viewport-wrap {
 .panel h3:first-child { margin-top: 0; }
 .panel .lede { color: var(--muted); font-size: 13.5px; margin: 0 0 var(--s3); }
 
-.table-scroll { overflow-x: auto; overscroll-behavior-x: contain; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.table-scroll { overflow: visible; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.table-scroll.scrollable { overflow-x: auto; overscroll-behavior-x: contain; }
 table.data { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
 table.data th {
   text-align: left; font: 600 11.5px var(--body); letter-spacing: .07em; text-transform: uppercase;
   color: var(--muted); padding: var(--s2) 14px; border-bottom: 1px solid var(--line-2); background: var(--panel-2);
-  white-space: nowrap;
+  white-space: nowrap; position: sticky; top: 0; z-index: 1;
 }
 table.data td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.data tr:last-child td { border-bottom: 0; }
@@ -556,6 +588,9 @@ table.data td.num .prov-btn { text-align: right; }
 table.data tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel-2) 45%, transparent); }
 table.data tbody tr { transition: background var(--t-fast) var(--ease); }
 table.data tbody tr:hover { background: var(--panel-2); }
+.diagram-zoom-trigger { border-radius: 8px; }
+.diagram-zoom-body { max-height: min(72vh, 860px); }
+.diagram-zoom-body svg { display: block; width: 100%; min-width: 960px; height: auto; }
 
 .empty-state {
   padding: var(--s5) var(--s4); text-align: center; color: var(--muted); font-size: 14px;
@@ -808,7 +843,8 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   .ready-sep { display: none; }
 }
 @media (max-width: 660px) {
-  .readiness { display: none; }
+  .topbar .readiness { display: none; }
+  .chat-head .readiness-mobile { display: flex; }
 }
 
 /* ---------------- mobile ---------------- */
@@ -818,7 +854,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   .bench { flex-direction: column; }
   .stage { order: 0; }
   .viewport-wrap { min-height: 180px; }
-  .splitter { height: 14px; }
+  .splitter { height: 20px; }
   .chat {
     order: 1; width: 100%; border-right: 0; border-top: 1px solid var(--line-2);
     position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: 46vh; z-index: 50;
@@ -854,23 +890,25 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   .control-card { padding: 6px 10px; }
   .control-card input[type="range"] { width: 64px; }
   .viewport-toolbar label { display: none; }
-  /* Phase 5 controls join the one-row toolbar contract: separators drop,
-     labels shorten, help defers to gestures — nothing wraps. */
-  .viewport-toolbar { gap: 6px; flex-wrap: nowrap; }
+  /* Phone toolbar: larger touch targets; explode range stays usable */
+  .viewport-toolbar { gap: 6px; flex-wrap: wrap; }
   .viewport-toolbar .vt-sep, .viewport-toolbar #vpHelpBtn { display: none; }
   .viewport-toolbar .vt-long { display: none; }
   .viewport-toolbar .vt-short { display: inline; }
-  .viewport-toolbar .toggle { font-size: 11px; }
+  .viewport-toolbar .toggle { font-size: 12px; min-height: 40px; padding: 8px 10px; }
   .viewport-toolbar #frameBtn span { display: none; }
-  .view-seg button { min-width: 26px; padding: 5px 7px; font-size: 11px; }
+  .viewport-toolbar #frameBtn { min-height: 40px; }
+  .view-seg button { min-width: 36px; min-height: 40px; padding: 8px 10px; font-size: 12px; }
+  .control-card input[type="range"] { width: 88px; min-height: 40px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,
      Build shortens — nothing wraps into a second row. */
   .topbar { flex-wrap: nowrap; gap: var(--s1); padding: 6px var(--s2); min-height: 48px; }
   .brand-name { display: none; }
-  .design-name { width: auto; flex: 1 1 56px; min-width: 44px; }
-  .topbar .btn { padding: 8px 9px; font-size: 13px; }
+  .brand-short { display: inline-block; }
+  .design-name { width: auto; flex: 1 1 96px; min-width: 96px; }
+  .topbar .btn { padding: 8px 9px; font-size: 13px; min-height: 40px; }
   .build-cta .cta-long { display: none; }
   .build-cta .cta-short { display: inline; }
   .welcome { top: 56px; width: min(420px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); overflow-y: auto; overscroll-behavior: contain; }
@@ -884,6 +922,10 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 }
 @media (max-width: 560px) {
   .save-state { display: none; }
+  .mobile-export-only { display: block; }
+  #exportBtn.mobile-export-hide { display: none; }
+  .design-name { min-width: 96px; }
+  #redoBtn { display: inline-flex; }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -961,6 +1003,9 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .integrity-disclaimer { font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); padding-top: var(--s2); margin-top: var(--s3); }
 .climate-row { display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s3); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
 .climate-row select { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; }
+.integrity-details > summary {
+  cursor: pointer; font-weight: 600; color: var(--accent); margin-bottom: var(--s3);
+}
 
 /* ---------------- stock tab ---------------- */
 .stock-controls { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; margin-bottom: var(--s3); font-size: 13px; color: var(--ink-2); }
@@ -970,6 +1015,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
 .stock-board .sb-title .offcut { color: var(--muted); font-weight: 500; }
 .stock-note { font-size: 12px; color: var(--muted); margin: var(--s2) 0; }
 .price-editor summary { cursor: pointer; font-weight: 600; font-size: 13.5px; padding: var(--s2) 0; color: var(--ink-2); }
+.price-editor-note { margin: 0 0 var(--s2); }
 .price-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--s2); margin: var(--s2) 0 var(--s3); }
 .price-grid label { display: flex; flex-direction: column; gap: 3px; font: 550 11px var(--body); color: var(--muted); }
 .price-grid input {
@@ -1127,11 +1173,42 @@ body.bm-playback .playback-bar { display: none !important; }
 @media (max-width: 880px) {
   .bm-columns { flex-direction: column; }
   .modal-wide { width: calc(100vw - 24px); }
-  /* the title box may shrink below its longest word: wrap inside it, and
-     give the wake note its own line instead of colliding */
-  .bm-name { overflow-wrap: anywhere; }
-  .bm-head { flex-wrap: wrap; }
+  /* Title must NEVER shrink to a vertical letter stack (overflow-wrap:anywhere
+     + flex min-width:0 caused a 16×600px bug on phone). Keep a readable floor,
+     wrap whole words only, and put exit/wake on their own row. */
+  .bm-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--s2) var(--s3);
+  }
+  .bm-title {
+    flex: 1 1 100%;
+    min-width: min(100%, 12rem);
+    max-width: 100%;
+  }
+  .bm-name {
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .bm-wake { flex: 1 1 auto; }
   .bm-wake:empty { display: none; }
+  .bm-exit { flex: none; margin-left: auto; }
+  .bm-diagram {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: 96px;
+  }
+  .bm-diagram .cut-diagram-svg,
+  .stock-board .cut-diagram-svg {
+    min-height: 96px;
+  }
+  .stock-board {
+    overflow-x: auto;
+  }
 }
 
 /* photo bubble in chat */
@@ -1149,7 +1226,7 @@ body.bm-playback .playback-bar { display: none !important; }
 }
 
 @media (max-width: 400px) {
-  #redoBtn { display: none; }
+  .topbar .btn { padding-left: 8px; padding-right: 8px; }
 }
 
 </style>
@@ -1166,6 +1243,7 @@ body.bm-playback .playback-bar { display: none !important; }
         <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
         <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
       </svg>
+      <span class="brand-short" aria-hidden="true">BB</span>
       <h1 class="brand-name">Blueprint<span>Buddy</span></h1>
     </div>
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
@@ -1185,6 +1263,8 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
+          <div class="menu-sep mobile-export-only" id="moreExportSep"></div>
+          <div class="menu-group mobile-export-only" id="moreExportMirror" hidden></div>
           <div class="menu-sep" id="accountSep" hidden></div>
           <div id="accountArea" hidden></div>
           <div class="menu-sep"></div>
@@ -1222,17 +1302,17 @@ body.bm-playback .playback-bar { display: none !important; }
         </div>
       </div>
       <div class="menu-wrap">
-        <button id="exportBtn" class="btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <button id="exportBtn" class="btn mobile-export-hide" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
         <div id="exportMenu" class="menu" role="menu" inert>
-          <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
-          <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
-          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
-          <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
-          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
-          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
-          <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
-          <div class="menu-sep"></div>
           <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
+          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+          <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
+          <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+          <div class="menu-sep"></div>
+          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
+          <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+          <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
         </div>
@@ -1252,6 +1332,7 @@ body.bm-playback .playback-bar { display: none !important; }
       </button>
       <div class="chat-head">
         <h2><span class="chat-head-long">Design </span>chat</h2>
+        <nav class="readiness readiness-mobile" id="readinessMobile" aria-label="Design readiness"></nav>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
           <option value="beginner">Beginner</option>
           <option value="intermediate">Intermediate</option>
@@ -1288,17 +1369,17 @@ body.bm-playback .playback-bar { display: none !important; }
           </div>
           <div class="welcome-paths">
             <button class="welcome-card" id="welcomeDescribe">
-              <span class="w-emoji" aria-hidden="true">💬</span>
+              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 5.5h14a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 16.5h-7l-4.5 3v-3H4A2.5 2.5 0 0 1 1.5 14V8A2.5 2.5 0 0 1 4 5.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
               <span class="w-name">Describe it</span>
               <span class="w-caption">Type a piece in plain words — or drop in a photo — and full plans appear.</span>
             </button>
             <button class="welcome-card" id="welcomeStarter">
-              <span class="w-emoji" aria-hidden="true">📐</span>
+              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 17h12M6 15.5 12.5 5 17 15.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
               <span class="w-name">Pick a starter</span>
               <span class="w-caption">Six proven designs, plans ready instantly. Refine any of them in chat.</span>
             </button>
             <button class="welcome-card" id="welcomeResume">
-              <span class="w-emoji" aria-hidden="true">🗂</span>
+              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M14 4.5h4v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 13.5 18 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 12v4a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16V8A2.5 2.5 0 0 1 6.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span class="w-name" id="welcomeResumeName">Import a design</span>
               <span class="w-caption" id="welcomeResumeCaption">Paste a BB4: share code to pick up a design from anywhere.</span>
             </button>
@@ -1335,8 +1416,8 @@ body.bm-playback .playback-bar { display: none !important; }
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="vpHelpBtn" aria-label="Viewport controls help" aria-haspopup="dialog" aria-expanded="false">?</button>
           </div>
-          <div class="vp-help" id="vpHelp" role="dialog" aria-label="Viewport controls help" hidden>
-            <h3>Moving around</h3>
+          <div class="vp-help" id="vpHelp" role="dialog" aria-label="Keyboard and pointer help" hidden>
+            <h3>Viewport</h3>
             <dl>
               <div><dt>Orbit</dt><dd>drag · arrow keys</dd></div>
               <div><dt>Zoom</dt><dd>scroll or pinch · <kbd>+</kbd> <kbd>−</kbd></dd></div>
@@ -1344,7 +1425,14 @@ body.bm-playback .playback-bar { display: none !important; }
               <div><dt>Inspect a part</dt><dd>click / tap it</dd></div>
               <div><dt>Isolate &amp; frame</dt><dd>double-click · <kbd>F</kbd></dd></div>
               <div><dt>Joint close-up</dt><dd>tap a glowing dot (playback)</dd></div>
+            </dl>
+            <h3>Everywhere</h3>
+            <dl>
               <div><dt>Undo · redo</dt><dd><kbd>Ctrl</kbd><kbd>Z</kbd> · <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></dd></div>
+              <div><dt>Focus chat</dt><dd><kbd>/</kbd></dd></div>
+              <div><dt>Cycle plan tabs</dt><dd><kbd>[</kbd> · <kbd>]</kbd></dd></div>
+              <div><dt>Close overlays</dt><dd><kbd>Esc</kbd></dd></div>
+              <div><dt>Resize splitter</dt><dd>drag · arrow keys</dd></div>
             </dl>
           </div>
         </div>
@@ -1407,9 +1495,29 @@ body.bm-playback .playback-bar { display: none !important; }
 
   <div class="scrim" inert id="helpScrim" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <div class="modal">
-      <h2 id="helpTitle">Getting your design into SketchUp</h2>
+      <h2 id="helpTitle">Getting plans into the shop</h2>
       <div class="help-block">
-        <h3>Mesh import (.dae)</h3>
+        <h3>Print plans</h3>
+        <p>Use <strong>Export → Print plans</strong> (or <kbd>⌘P</kbd> / <kbd>Ctrl+P</kbd>) for a one-page drawing sheet with cut list, elevations, and title block — the fastest path to the bench.</p>
+      </div>
+      <div class="help-block">
+        <h3>Build mode on your phone</h3>
+        <p>Tap <strong>Build</strong> for board-by-board cutting diagrams and a checkable assembly list. The screen stays awake while you work. Share a <strong>BB4:</strong> code from Export → Share if you designed on a desktop and build on a phone.</p>
+      </div>
+      <div class="help-block">
+        <h3>Cut list spreadsheet (.csv)</h3>
+        <p>Export <strong>Cut list (.csv)</strong> for a spreadsheet or shopping list app. Lengths already include joinery allowances; dimensions use your display units plus a millimetre column.</p>
+      </div>
+      <div class="help-block">
+        <h3>Drawing sheet (.svg)</h3>
+        <p>Export <strong>Drawing sheet (.svg)</strong> for a vector file you can print, mark up, or open in any SVG viewer — same sheet as Print.</p>
+      </div>
+      <div class="help-block">
+        <h3>3D model / AR (.glb)</h3>
+        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter for AR Quick Look. Geometry is exact millimetres.</p>
+      </div>
+      <div class="help-block">
+        <h3>SketchUp mesh (.dae)</h3>
         <ol class="help-steps">
           <li>Export <strong>SketchUp mesh (.dae)</strong> from the Export menu.</li>
           <li>In SketchUp choose <strong>File &gt; Import…</strong> and pick <em>COLLADA (*.dae)</em> as the file type.</li>
@@ -1417,21 +1525,28 @@ body.bm-playback .playback-bar { display: none !important; }
         </ol>
       </div>
       <div class="help-block">
-        <h3>Build script (.rb) — the parametric way</h3>
-        <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter. (Or drop the file into your Plugins folder.) Serious users want this one — components stay editable.</p>
+        <h3>SketchUp build script (.rb)</h3>
+        <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter.</p>
       </div>
       <div class="help-block">
-        <h3>3D model / AR (.glb)</h3>
-        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer (or the three.js editor) reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter to get an AR Quick Look file. Geometry is exact millimetres, rotations included.</p>
-      </div>
-      <div class="help-block">
-        <h3>Integrations: SketchUp connector in Claude</h3>
-        <p>Working inside Claude with the Trimble SketchUp connector? Export your <strong>DesignSpec (.json)</strong>, paste it into the conversation, and ask Claude to build the piece directly in your live SketchUp model. The spec carries every dimension, so nothing is lost in translation.</p>
+        <h3>Claude + SketchUp connector</h3>
+        <p>Working inside Claude with the Trimble SketchUp connector? Export your <strong>DesignSpec (.json)</strong>, paste it into the conversation, and ask Claude to build the piece in your live SketchUp model.</p>
       </div>
       <div class="modal-foot">
         <span></span>
         <button class="btn primary" id="helpClose">Got it</button>
       </div>
+    </div>
+  </div>
+
+  <div class="scrim" inert id="diagramScrim" role="dialog" aria-modal="true" aria-labelledby="diagramTitle">
+    <div class="modal modal-wide">
+      <div class="drawer-head" style="margin-bottom:var(--s3)">
+        <h2 id="diagramTitle">Cutting diagram</h2>
+        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">✕</button>
+      </div>
+      <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
+      <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
     </div>
   </div>
 
@@ -6689,9 +6804,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       `<line x1="0" y1="0" x2="0" y2="7" stroke="var(--muted)" stroke-width="1" opacity="0.55"/></pattern></defs>`;
   }
 
-  function boardSVG(board, fmt) {
+  function boardSVG(board, fmt, opts) {
     fmt = fmt || (v => U().fmtLength(v));
-    const W = 720, H = 64, pad = 4;
+    // Tall enough that labels stay ≥ ~12 CSS px when the SVG is full-bleed
+    // on a 390-wide phone; callers may pass { large: true } for lightbox zoom.
+    const large = opts && opts.large;
+    const W = large ? 1080 : 720, H = large ? 180 : 140, pad = large ? 10 : 8;
     const id = 'bbhatch' + (++hatchSeq);
     const sx = (W - 2 * pad) / board.stockLen;
     const trim = L().END_TRIM, kerf = L().KERF;
@@ -6708,46 +6826,51 @@ var BB = globalThis.BB = globalThis.BB || {};
       rects.push(seg(c.len * sx, 'cut', `${c.name} · ${fmt(c.len)}`, `${c.name} — ${fmt(c.len)}${c.note ? ' · ' + c.note : ''}`));
     });
     const offX = x;
+    // Font sizes are SVG user units — on a ~350 px phone the viewBox scales
+    // by ~0.5, so 24 → ~12 CSS px (readable at the saw). Lightbox uses larger.
+    const fsMain = large ? 30 : 24, fsSmall = large ? 24 : 18, fsOff = large ? 26 : 20;
     const parts = rects.map(r => {
       const fill = r.cls === 'cut' ? 'var(--accent-soft)' : r.cls === 'kerf' ? 'var(--line-2)' : 'var(--panel-2)';
       const stroke = r.cls === 'cut' ? 'var(--accent)' : 'var(--line-2)';
       let out = `<rect x="${r.px.toFixed(1)}" y="${pad}" width="${Math.max(0.8, r.w).toFixed(1)}" height="${H - 2 * pad}" fill="${fill}" stroke="${stroke}" stroke-width="1"><title>${escXML(r.title || '')}</title></rect>`;
-      if (r.label && r.w > 60) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" font-size="11" fill="var(--ink)" font-family="var(--mono)">${escXML(r.label)}</text>`;
-      else if (r.label) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" font-size="9" fill="var(--ink-2)" font-family="var(--mono)" transform="rotate(-30 ${(r.px + r.w / 2).toFixed(1)} ${H / 2})">${escXML(r.label.split(' · ')[0].slice(0, 14))}</text>`;
+      if (r.label && r.w > 70) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsMain}" fill="var(--ink)" font-family="var(--mono)">${escXML(r.label)}</text>`;
+      else if (r.label) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsSmall}" fill="var(--ink-2)" font-family="var(--mono)" transform="rotate(-30 ${(r.px + r.w / 2).toFixed(1)} ${H / 2})">${escXML(r.label.split(' · ')[0].slice(0, 14))}</text>`;
       return out;
     }).join('');
     const offW = W - pad - offX;
     const offcut = offW > 1 ? `<rect x="${offX.toFixed(1)}" y="${pad}" width="${offW.toFixed(1)}" height="${H - 2 * pad}" fill="url(#${id})" stroke="var(--line-2)" stroke-width="1"><title>offcut ${fmt(board.offcut)}</title></rect>` +
-      (offW > 46 ? `<text x="${(offX + offW / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--mono)">${escXML(fmt(board.offcut))}</text>` : '') : '';
-    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cutting diagram for one ${board.nominal} board" style="width:100%;height:auto;display:block">` +
+      (offW > 46 ? `<text x="${(offX + offW / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsOff}" fill="var(--muted)" font-family="var(--mono)">${escXML(fmt(board.offcut))}</text>` : '') : '';
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cutting diagram for one ${board.nominal} board" class="cut-diagram-svg" style="width:100%;height:auto;display:block;min-height:${large ? 200 : 96}px">` +
       hatchDef(id) +
       `<rect x="${pad}" y="${pad}" width="${W - 2 * pad}" height="${H - 2 * pad}" fill="var(--panel)" stroke="var(--ink-2)" stroke-width="1.5"/>` +
       parts + offcut +
       `</svg>`;
   }
 
-  function sheetSVG(sheet, fmt) {
+  function sheetSVG(sheet, fmt, opts) {
     fmt = fmt || (v => U().fmtLength(v));
+    const large = opts && opts.large;
     const SW = L().SHEET.L, SH = L().SHEET.W;
-    const W = 720, H = Math.round(W * SH / SW), pad = 3;
+    const W = large ? 1080 : 720, H = Math.round(W * SH / SW), pad = large ? 5 : 3;
     const id = 'bbhatch' + (++hatchSeq);
     const sx = (W - 2 * pad) / SW, sy = (H - 2 * pad) / SH;
+    const fsName = large ? 22 : 18, fsDims = large ? 18 : 15, fsFoot = large ? 18 : 14;
     const rects = sheet.placements.map(p => {
       const x = pad + p.x * sx, y = pad + p.y * sy, w = p.w * sx, h = p.h * sy;
       const label = `${p.name}`;
       const dims = `${fmt(p.w)} × ${fmt(p.h)}`;
       return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"><title>${escXML(p.name)} — ${escXML(dims)}${p.rot ? ' (rotated)' : ''}</title></rect>` +
-        (w > 54 && h > 26 ? `<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 - 2).toFixed(1)}" text-anchor="middle" font-size="10.5" fill="var(--ink)" font-family="var(--mono)">${escXML(label.slice(0, Math.max(4, Math.floor(w / 7))))}</text>` +
-          `<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + 10).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--ink-2)" font-family="var(--mono)">${escXML(dims)}</text>` : '');
+        (w > 54 && h > 26 ? `<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 - 2).toFixed(1)}" text-anchor="middle" font-size="${fsName}" fill="var(--ink)" font-family="var(--mono)">${escXML(label.slice(0, Math.max(4, Math.floor(w / 7))))}</text>` +
+          `<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + 12).toFixed(1)}" text-anchor="middle" font-size="${fsDims}" fill="var(--ink-2)" font-family="var(--mono)">${escXML(dims)}</text>` : '');
     }).join('');
     // fraction guides
     const guides = `<line x1="${pad + 1220 * sx}" y1="${pad}" x2="${pad + 1220 * sx}" y2="${H - pad}" stroke="var(--line-2)" stroke-dasharray="5 4" stroke-width="1"/>` +
       `<line x1="${pad}" y1="${pad + 610 * sy}" x2="${pad + 1220 * sx}" y2="${pad + 610 * sy}" stroke="var(--line-2)" stroke-dasharray="5 4" stroke-width="1"/>`;
-    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sheet cutting diagram" style="width:100%;height:auto;display:block">` +
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sheet cutting diagram" class="cut-diagram-svg" style="width:100%;height:auto;display:block;min-height:${large ? 280 : 120}px">` +
       hatchDef(id) +
       `<rect x="${pad}" y="${pad}" width="${W - 2 * pad}" height="${H - 2 * pad}" fill="url(#${id})" stroke="var(--ink-2)" stroke-width="1.5"/>` +
       guides + rects +
-      `<text x="${W - 8}" y="${H - 8}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="var(--mono)">grain ⟶ · hatched = offcut · dashed = half/quarter cuts</text>` +
+      `<text x="${W - 8}" y="${H - 8}" text-anchor="end" font-size="${fsFoot}" fill="var(--muted)" font-family="var(--mono)">grain ⟶ · hatched = offcut · dashed = half/quarter cuts</text>` +
       `</svg>`;
   }
 
@@ -8760,21 +8883,23 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Species. Two passes so multi-word labels ("southern yellow pine") beat
     // last-word collisions ("pine"); `aliases` come from the species table.
+    // Strip "instead of <species>" so "make it oak instead of walnut" picks oak.
+    const speciesText = t.replace(/\binstead of\s+[\w\s-]{2,40}(?=\s|$|,|\.|!|;)/g, ' ');
     const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
     const solid = Object.values(K.WOOD_SPECIES).filter(s => !s.sheet);
     let picked = null;
     for (const s of [...solid].sort((x, y) => y.label.length - x.label.length)) {
       const names = [s.label.toLowerCase(), ...(s.aliases || [])];
-      if (names.some(nm => rxWord(nm).test(t))) { picked = s; break; }
+      if (names.some(nm => rxWord(nm).test(speciesText))) { picked = s; break; }
     }
     if (!picked) {
       for (const s of solid) {
         const last = s.label.toLowerCase().split(' ').pop();
-        if (last !== 'oak' && rxWord(last).test(t)) { picked = s; break; }
+        if (last !== 'oak' && rxWord(last).test(speciesText)) { picked = s; break; }
       }
     }
     if (picked) { set('wood.species', picked.key); notes.push(picked.label); }
-    if (!patch.wood && /\boak\b/.test(t)) { set('wood.species', /white\s+oak/.test(t) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
+    if (!patch.wood && /\boak\b/.test(speciesText)) { set('wood.species', /white\s+oak/.test(speciesText) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
     // Sheet stock (drawer boxes, backs): a named sheet good switches only the
     // sheet species — solid parts keep their wood.
     for (const s of Object.values(K.WOOD_SPECIES).filter(x => x.sheet)) {
@@ -8907,6 +9032,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   async function anthropicTransport(system, messages) {
+    // Browser pages never hold ANTHROPIC_API_KEY and CORS blocks this call —
+    // skip immediately so DIY sessions fall to the offline parser without a
+    // noisy console error. Direct Anthropic is for non-browser hosts only.
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      anthropicDead = true;
+      throw new Error('direct Anthropic unavailable in browser');
+    }
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -8937,11 +9069,17 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function hasRemote() {
     if (injectedTransport) return true;
-    if (typeof fetch === 'function' && (!proxyDead || !anthropicDead) && typeof window !== 'undefined') return true;
+    // In the browser, only the same-origin proxy (or window.claude) can reach
+    // a model — never count bare Anthropic as "remote available".
+    const inBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+    if (typeof fetch === 'function' && !proxyDead && typeof window !== 'undefined') return true;
+    if (!inBrowser && typeof fetch === 'function' && !anthropicDead) return true;
     return typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
   }
   function supportsImages() {
-    return !!injectedTransport || (typeof fetch === 'function' && (!proxyDead || !anthropicDead));
+    if (injectedTransport) return true;
+    if (typeof fetch === 'function' && !proxyDead) return true;
+    return false;
   }
 
   async function rawCall(system, messages) {
@@ -12626,6 +12764,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
   const darkMq = matchMedia('(prefers-color-scheme: dark)');
+  const mobileAdvisoryMq = matchMedia('(max-width: 880px)');
+  const DEFAULT_CHAT_PEEK = 'Ask to change wood, size, or drawers...';
 
   // ALL displayed lengths go through BB.Units — the single mm→text boundary.
   const fmt = mm => Units.fmtLength(mm);
@@ -12857,6 +12997,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const a of report.advisories) {
       if (!state.dismissed.has(a.id)) items.push({ error: false, text: a.text, id: a.id });
     }
+    if (mobileAdvisoryMq.matches && items.length && !state.advisoriesExpanded) {
+      const pill = el('button', 'advisory-more advisory-pill', `${items.some(it => it.error) ? '🛑' : '⚠️'} ${items.length}`);
+      pill.setAttribute('aria-expanded', 'false');
+      pill.setAttribute('aria-label', `Show ${items.length} advisory message${items.length === 1 ? '' : 's'}`);
+      pill.onclick = () => { state.advisoriesExpanded = true; renderAdvisories(report); };
+      wrap.append(pill);
+      return;
+    }
     const visible = state.advisoriesExpanded ? items : items.slice(0, ADVISORY_CAP);
     for (const it of visible) {
       const chip = el('div', 'advisory' + (it.error ? ' error' : ''));
@@ -12870,7 +13018,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       wrap.append(chip);
     }
-    if (items.length > ADVISORY_CAP) {
+    if (mobileAdvisoryMq.matches && items.length) {
+      const less = el('button', 'advisory-more', 'Show fewer');
+      less.setAttribute('aria-expanded', 'true');
+      less.onclick = () => { state.advisoriesExpanded = false; renderAdvisories(report); };
+      wrap.append(less);
+    } else if (items.length > ADVISORY_CAP) {
       const more = el('button', 'advisory-more',
         state.advisoriesExpanded ? 'Show fewer' : `+${items.length - ADVISORY_CAP} more`);
       more.setAttribute('aria-expanded', String(!!state.advisoriesExpanded));
@@ -12880,6 +13033,38 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- render: panels ---------------- */
+  function syncScrollableTable(box) {
+    if (!box) return;
+    box.classList.toggle('scrollable', box.scrollWidth > box.clientWidth + 1);
+  }
+  const tableScrollObserver = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      const box = entry.target.classList && entry.target.classList.contains('table-scroll')
+        ? entry.target
+        : entry.target.closest && entry.target.closest('.table-scroll');
+      if (box) syncScrollableTable(box);
+    }
+  });
+  function wireScrollableTables(root) {
+    root.querySelectorAll('.table-scroll').forEach(box => {
+      syncScrollableTable(box);
+      if (!box.dataset.scrollObserved) {
+        box.dataset.scrollObserved = '1';
+        tableScrollObserver.observe(box);
+      }
+      const table = box.querySelector('table');
+      if (table && !table.dataset.scrollObserved) {
+        table.dataset.scrollObserved = '1';
+        tableScrollObserver.observe(table);
+      }
+    });
+  }
+  function focusPanelHeading() {
+    const heading = $('panel-main').querySelector('h1, h2, h3');
+    if (!heading) return;
+    heading.setAttribute('tabindex', '-1');
+    heading.focus();
+  }
   function renderPanel() {
     hideProv();
     const p = $('panel-main');
@@ -12892,6 +13077,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (state.tab === 'assembly') renderAssembly(inner);
     else if (state.tab === 'integrity') renderIntegrity(inner);
     else renderReference(inner);
+    wireScrollableTables(inner);
   }
 
   /* ---------------- provenance dialog (stretch: number provenance) ---------------- */
@@ -12935,9 +13121,60 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(box);
   }
 
+  function ensureDiagramScrim() {
+    let scrim = $('diagramScrim');
+    if (scrim) return scrim;
+    scrim = el('div', 'scrim');
+    scrim.id = 'diagramScrim';
+    scrim.inert = true;
+    scrim.setAttribute('role', 'dialog');
+    scrim.setAttribute('aria-modal', 'true');
+    scrim.setAttribute('aria-labelledby', 'diagramTitle');
+    scrim.innerHTML = `<div class="modal modal-wide">
+      <div class="drawer-head" style="margin-bottom:var(--s3)">
+        <h2 id="diagramTitle">Cutting diagram</h2>
+        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">✕</button>
+      </div>
+      <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
+      <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
+    </div>`;
+    document.body.append(scrim);
+    const close = scrim.querySelector('#diagramClose');
+    if (close) close.onclick = () => closeScrim(scrim);
+    scrim.addEventListener('click', e => { if (e.target === scrim) closeScrim(scrim); });
+    return scrim;
+  }
+  function openDiagramZoom(svgHtml, title) {
+    const scrim = ensureDiagramScrim();
+    scrim.querySelector('#diagramTitle').textContent = title || 'Cutting diagram';
+    const body = scrim.querySelector('#diagramZoomBody');
+    body.innerHTML = svgHtml;
+    body.scrollTop = 0;
+    body.scrollLeft = 0;
+    openScrim(scrim.id);
+  }
+  function wireDiagramZoom(container, getLargeSvg) {
+    if (!container || container.dataset.zoomWired) return;
+    container.dataset.zoomWired = '1';
+    container.classList.add('diagram-zoom-trigger');
+    container.tabIndex = 0;
+    container.setAttribute('role', 'button');
+    container.setAttribute('aria-label', 'Enlarge diagram');
+    container.style.cursor = 'zoom-in';
+    container.style.touchAction = 'manipulation';
+    const open = () => openDiagramZoom(getLargeSvg(), container.dataset.diagramTitle || 'Cutting diagram');
+    container.addEventListener('click', open);
+    container.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+  }
+
   function renderCut(root) {
     root.append(el('h3', '', 'Cut list'));
-    root.append(el('p', 'lede', `Lengths include joinery allowances — tap any dimension to see the formula behind it. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
+    root.append(el('p', 'lede', `Every part, ready for the saw. Tap a dimension to see where it comes from. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
     if (!state.cut.length) {
       emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
@@ -12961,7 +13198,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const plan = state.stockPlan;
     const species = state.spec.wood.species;
     root.append(el('h3', '', 'Stock — what to buy, and how to break it down'));
-    root.append(el('p', 'lede', `Deterministic packing of the cut list onto buyable lumber: ${fmtS(K.LUMBER.KERF)} kerf per cut, ${fmt(K.LUMBER.END_TRIM)} end trim per board end, grain honored on sheets. Offcuts are hatched.`));
+    root.append(el('p', 'lede', 'Here is what to buy at the lumber yard, and how to break each board down. Kerf and end trim are already included.'));
 
     const controls = el('div', 'stock-controls');
     const modeSel = document.createElement('select');
@@ -13006,7 +13243,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       plan.boards.forEach((b, i) => {
         if (!b.stockLen) return;
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Board ${i + 1} — ${esc(K.WOOD_SPECIES[species].label)} ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}</span><span class="offcut">offcut ${fmt(Math.max(0, b.offcut))}</span></div>` + Packing.boardSVG(b, fmt);
+        const title = `Board ${i + 1} — ${K.WOOD_SPECIES[species].label} ${Units.fmtNominal(b.nominal, b.actual, b.stockLen)}`;
+        card.innerHTML = `<div class="sb-title"><span>${esc(title)}</span><span class="offcut">offcut ${fmt(Math.max(0, b.offcut))}</span></div>`;
+        const diagram = el('div', 'cut-diagram-wrap');
+        diagram.dataset.diagramTitle = title;
+        diagram.innerHTML = Packing.boardSVG(b, fmt);
+        wireDiagramZoom(diagram, () => Packing.boardSVG(b, fmt, { large: true }));
+        card.append(diagram);
         root.append(card);
       });
     }
@@ -13014,7 +13257,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       root.append(el('h3', '', 'Cutting diagrams — sheets'));
       plan.sheets.forEach((s, i) => {
         const card = el('div', 'stock-board');
-        card.innerHTML = `<div class="sb-title"><span>Sheet ${i + 1} — ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)} ${fmt(s.thickness)} · buy a ${esc(s.fractionLabel)}</span><span class="offcut">layout ${fmt(s.extent.x)} × ${fmt(s.extent.y)}</span></div>` + Packing.sheetSVG(s, fmt);
+        const title = `Sheet ${i + 1} — ${(K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label} ${fmt(s.thickness)} · buy a ${s.fractionLabel}`;
+        card.innerHTML = `<div class="sb-title"><span>${esc(title)}</span><span class="offcut">layout ${fmt(s.extent.x)} × ${fmt(s.extent.y)}</span></div>`;
+        const diagram = el('div', 'cut-diagram-wrap');
+        diagram.dataset.diagramTitle = title;
+        diagram.innerHTML = Packing.sheetSVG(s, fmt);
+        wireDiagramZoom(diagram, () => Packing.sheetSVG(s, fmt, { large: true }));
+        card.append(diagram);
         root.append(card);
       });
     }
@@ -13025,7 +13274,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // editable, persisted price table
     const details = document.createElement('details');
     details.className = 'price-editor';
-    details.innerHTML = `<summary>Price table (editable — saved to your device)</summary>`;
+    details.innerHTML = `<summary>Edit lumber &amp; hardware prices (optional)</summary><p class="sub price-editor-note">Saved on this device and used only for your cost estimates.</p>`;
     const grid = el('div', 'price-grid');
     const priceInput = (labelText, value, onChange) => {
       const lab = el('label', '', `<span>${esc(labelText)}</span>`);
@@ -13205,11 +13454,27 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderIntegrity(root) {
     const integ = state.integrity;
     const overall = integ.summary.fails ? 'fail' : integ.summary.advisories ? 'advisory' : 'pass';
+    const beginner = state.spec.meta.level === 'beginner';
     root.append(el('h3', '', 'Structural integrity'));
     const summary = el('div', 'integrity-summary');
     summary.innerHTML = `<span class="stamp ${overall}">${overall}</span>
       <span style="font-size:13px;color:var(--muted)">${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory</span>`;
     root.append(summary);
+    let target = root;
+    if (beginner) {
+      const plain = overall === 'pass'
+        ? 'Your piece looks structurally sound.'
+        : overall === 'advisory'
+          ? 'A few things to double-check before you build.'
+          : 'This design needs a fix before it is safe to build.';
+      root.append(el('p', 'lede integrity-beginner', plain));
+      const details = document.createElement('details');
+      details.className = 'integrity-details';
+      details.innerHTML = '<summary>Full structural report</summary>';
+      details.open = true; // after innerHTML — start open so checks/fixes stay reachable
+      root.append(details);
+      target = details;
+    }
 
     // climate preference drives ΔMC in the movement math
     const climate = el('div', 'climate-row');
@@ -13219,10 +13484,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     sel.value = state.prefs4.climate;
     sel.onchange = () => { state.prefs4.climate = sel.value; Store.savePrefs(state.prefs4); recompute(); };
     climate.append(el('span', '', 'Seasonal movement assumes'), sel);
-    root.append(climate);
+    target.append(climate);
 
     if (integ.surfaces.length) {
-      root.append(el('h3', '', 'Load presets (per surface)'));
+      target.append(el('h3', '', 'Load presets (per surface)'));
       for (const s of integ.surfaces) {
         const row = el('div', 'load-row');
         const label = el('span', '', `${esc(s.label)}<span class="span-note">${fmt(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}</span>`);
@@ -13237,9 +13502,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
         ls.onchange = () => { state.loadChoices[s.id] = ls.value; recompute(); };
         row.append(label, ls);
-        root.append(row);
+        target.append(row);
       }
-      root.append(el('div', '', '&nbsp;'));
+      target.append(el('div', '', '&nbsp;'));
     }
 
     for (const c of integ.checks) {
@@ -13258,45 +13523,95 @@ var BB = globalThis.BB = globalThis.BB || {};
             if (merge(f.patch, 'fix', [f.label])) {
               const chips = Structural.integrityDiff(before, state.integrity);
               botSay(`Applied fix: ${f.label}.`, chips, { noChange: !chips.length });
-              state.tab = 'integrity'; renderTabs(); renderPanel();
+              state.tab = 'integrity'; renderTabs(); renderPanel(); focusPanelHeading();
             }
           };
           row.append(b);
         }
         card.append(row);
       }
-      root.append(card);
+      target.append(card);
     }
     // Design-value basis disclosed in full (audit F-S3-7): what the numbers
     // rest on, what the safety factor absorbs, and the clear-stock rule.
-    root.append(el('p', 'integrity-disclaimer', esc(K.DESIGN_BASIS)));
+    target.append(el('p', 'integrity-disclaimer', esc(K.DESIGN_BASIS)));
   }
 
   /* ---------------- shop reference ---------------- */
+  function referenceHit(q, ...xs) {
+    return !q || xs.join(' ').toLowerCase().includes(q);
+  }
+  function referenceTabHasHits(tab, q) {
+    q = (q || '').trim().toLowerCase();
+    const hit = (...xs) => referenceHit(q, ...xs);
+    if (tab === 'wood') {
+      return Object.values(K.WOOD_SPECIES).some(s => hit(s.label, s.blurb, s.movement));
+    } else if (tab === 'ergo') {
+      return K.ERGONOMICS.some(r => hit(r.label, r.note));
+    } else if (tab === 'joinery') {
+      return Object.values(K.JOINERY).some(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' ')));
+    } else if (tab === 'hardware') {
+      const HW = BB.HW;
+      const groups = [
+        Object.values(HW.HINGES), Object.values(HW.PULLS), Object.values(HW.SLIDES), Object.values(HW.LIFTS),
+        Object.values(HW.CATCHES), Object.values(HW.LOCKS), Object.values(HW.SHELF_SUPPORT), Object.values(HW.TABLE_BED),
+        Object.values(HW.WALL_HANG), Object.values(HW.FEET_MISC), Object.values(HW.TRADITIONAL)
+      ];
+      return groups.some(list => list.some(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))));
+    } else if (tab === 'lumber') {
+      return Object.entries(K.LUMBER.NOMINALS).some(([n]) => hit(n)) || hit('sheet goods');
+    }
+    const f = K.FASTENERS;
+    return [...f.screws, ...f.dowels, ...f.hardware].some(x => hit(x.label, x.use)) ||
+      K.FINISHES.some(x => hit(x.label, x.blurb)) ||
+      K.GLUES.some(x => hit(x.label, x.blurb, x.water));
+  }
+  function syncReferenceTabForQuery() {
+    const q = state.refQuery.trim().toLowerCase();
+    if (!q || referenceTabHasHits(state.refTab, q)) return false;
+    const next = REF_TABS.find(tab => referenceTabHasHits(tab, q));
+    if (!next || next === state.refTab) return false;
+    state.refTab = next;
+    return true;
+  }
   function renderReference(root) {
+    syncReferenceTabForQuery();
     root.append(el('h3', '', 'Shop reference'));
     const search = el('input', 'ref-search');
     search.type = 'search';
     search.placeholder = 'Search species, joints, screws, finishes…';
     search.value = state.refQuery;
     search.setAttribute('aria-label', 'Search reference tables');
-    search.oninput = () => { state.refQuery = search.value; renderRefBody(body); };
+    const body = el('div');
+    const tabs = el('div', 'ref-tabs');
+    const syncTabButtons = () => {
+      tabs.querySelectorAll('.ref-tab').forEach((b, i) => {
+        const key = REF_ENTRIES[i][0];
+        b.setAttribute('aria-selected', String(state.refTab === key));
+        b.tabIndex = state.refTab === key ? 0 : -1;
+      });
+    };
+    search.oninput = () => {
+      state.refQuery = search.value;
+      syncReferenceTabForQuery();
+      syncTabButtons();
+      syncHash();
+      renderRefBody(body);
+    };
     root.append(search);
 
-    const tabs = el('div', 'ref-tabs');
     tabs.setAttribute('role', 'tablist');
-    const refEntries = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
-    for (const [key, label] of refEntries) {
+    for (const [key, label] of REF_ENTRIES) {
       const b = el('button', 'ref-tab', esc(label));
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', state.refTab === key);
       b.tabIndex = state.refTab === key ? 0 : -1; // roving tabindex
-      b.onclick = () => { state.refTab = key; renderPanel(); };
+      b.onclick = () => { state.refTab = key; syncHash(); renderPanel(); };
       tabs.append(b);
     }
     // Same arrow-key pattern as the main plan tabs.
     tabs.addEventListener('keydown', e => {
-      const order = refEntries.map(x => x[0]);
+      const order = REF_TABS;
       const i = order.indexOf(state.refTab);
       let next = null;
       if (e.key === 'ArrowRight') next = order[(i + 1) % order.length];
@@ -13306,13 +13621,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (next) {
         e.preventDefault();
         state.refTab = next;
+        syncHash();
         renderPanel(); // rebuilds the tablist — refocus the selected tab
         const nb = document.querySelectorAll('.ref-tab')[order.indexOf(next)];
         if (nb) nb.focus();
       }
     });
     root.append(tabs);
-    const body = el('div');
+    syncTabButtons();
     root.append(body);
     renderRefBody(body);
   }
@@ -13320,7 +13636,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderRefBody(body) {
     body.textContent = '';
     const q = state.refQuery.trim().toLowerCase();
-    const hit = (...xs) => !q || xs.join(' ').toLowerCase().includes(q);
+    const hit = (...xs) => referenceHit(q, ...xs);
     const scroll = el('div', 'table-scroll');
     let rows = '', head = '';
     if (state.refTab === 'wood') {
@@ -13442,20 +13758,30 @@ var BB = globalThis.BB = globalThis.BB || {};
     log.scrollTop = log.scrollHeight;
     // The collapsed mobile sheet shows the tail of the conversation.
     const peekText = m.textContent.trim();
-    if (peekText) $('chatPeek').textContent = (kind === 'user' ? 'You: ' : '') + peekText;
+    setChatPeek(peekText, kind);
     // A reply landing while the desktop chat is folded lights the rail dot.
     if (kind === 'bot' && state.prefs4.ui.chatCollapsed) $('chatRailDot').hidden = false;
     return m;
+  }
+  function setChatPeek(text, kind) {
+    const raw = (text || '').trim();
+    let next = DEFAULT_CHAT_PEEK;
+    if (kind === 'user' && raw) next = 'You: ' + raw;
+    else if (raw && !/^Welcome to the shop\./i.test(raw) && !/^Updated\.?$/i.test(raw) &&
+      !/^Loaded .+ plans ready\./i.test(raw) && !/^Opened “.+”/i.test(raw) && !/^Imported “.+”/i.test(raw)) {
+      next = raw;
+    }
+    $('chatPeek').textContent = next;
   }
   function botSay(text, chips, opts) {
     opts = opts || {};
     let html = `<div class="bubble">${esc(text)}</div>`;
     const chipHTML = [];
-    if (opts.caveat) chipHTML.push(`<span class="chip caveat">${esc(opts.caveat)}</span>`);
     for (const c of chips || []) chipHTML.push(`<span class="chip">${esc(c)}</span>`);
     if (!chips || !chips.length) {
       if (opts.noChange && !opts.caveat) chipHTML.push(`<span class="chip neutral">no dimensional change</span>`);
     }
+    if (opts.caveat) chipHTML.push(`<span class="chip caveat">${esc(opts.caveat)}</span>`);
     if (chipHTML.length) html += `<div class="chips">${chipHTML.join('')}</div>`;
     return chatMsg('bot', html);
   }
@@ -13541,7 +13867,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain };
+    return { final, failReport, explain, local: !!res.local };
   }
 
   async function sendMessage(text, image) {
@@ -13574,7 +13900,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = Spec.describeDiff(realDiffs);
-      const caveat = image ? 'Proportions estimated from photo. Verify dimensions.' : null;
+      const caveat = [
+        image ? 'Proportions estimated from photo. Verify dimensions.' : null,
+        out.local ? 'Working offline - plain-language edits still work.' : null
+      ].filter(Boolean).join(' ') || null;
       if (out.failReport) {
         botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Integrity tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
         state.tab = 'integrity'; renderTabs(); renderPanel();
@@ -13988,6 +14317,11 @@ var BB = globalThis.BB = globalThis.BB || {};
           state.engine.heroAssemble();
         }
         botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
+        if (!state.prefs4.seenCoach) {
+          state.prefs4.seenCoach = true;
+          Store.savePrefs(state.prefs4);
+          botSay('First build tips: 1) Check the Stock tab before you buy. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Integrity tab shows red, fix that before you build.', []);
+        }
       };
       grid.append(card);
       galleryCards.push({ card, model: r.model, spec: r.spec });
@@ -14349,18 +14683,21 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Cuts grouped by stock board, straight from the optimizer diagrams —
     // the user works board by board.
-    const diagram = svg => {
+    const diagram = (title, svg, getLargeSvg) => {
       const d = el('div', 'bm-diagram');
+      d.dataset.diagramTitle = title;
       d.innerHTML = svg;
+      wireDiagramZoom(d, getLargeSvg);
       return d;
     };
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
-      group.append(el('div', 'bm-board-title', `Board ${bi + 1} — ${esc(Units.fmtNominal(b.nominal, b.actual, b.stockLen))}`));
+      const title = `Board ${bi + 1} — ${Units.fmtNominal(b.nominal, b.actual, b.stockLen)}`;
+      group.append(el('div', 'bm-board-title', esc(title)));
       // The same drafting diagram as the Stock tab, at the saw: which piece
       // comes out of which end of this exact board.
-      group.append(diagram(Packing.boardSVG(b, fmt)));
+      group.append(diagram(title, Packing.boardSVG(b, fmt), () => Packing.boardSVG(b, fmt, { large: true })));
       b.cuts.forEach((c, ci) => {
         const key = cutKey('b', bi, ci, c.name, c.len);
         group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -14369,8 +14706,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     plan.sheets.forEach((s, si) => {
       const group = el('div', 'bm-board');
-      group.append(el('div', 'bm-board-title', `Sheet ${si + 1} — ${esc(fmt(s.thickness))} (${esc(s.fractionLabel)})`));
-      group.append(diagram(Packing.sheetSVG(s, fmt)));
+      const title = `Sheet ${si + 1} — ${fmt(s.thickness)} (${s.fractionLabel})`;
+      group.append(el('div', 'bm-board-title', esc(title)));
+      group.append(diagram(title, Packing.sheetSVG(s, fmt), () => Packing.sheetSVG(s, fmt, { large: true })));
       s.placements.forEach((p, pi) => {
         const key = cutKey('s', si, pi, p.name, Math.round(p.w));
         group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
@@ -14442,7 +14780,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('chatRail').hidden = !on;
     $('chatCollapse').setAttribute('aria-expanded', String(!on));
     if (!on) $('chatRailDot').hidden = true;
-    if (!opts || opts.persist !== false) Store.savePrefs(state.prefs4);
+    if (!opts || opts.persist !== false) {
+      Store.savePrefs(state.prefs4);
+      if (state.spec) syncHash();
+    }
   }
   /* Bring the chat input into reach whatever the layout: unfold the desktop
    * rail or raise the mobile sheet, then focus the box. */
@@ -14470,27 +14811,47 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sp = $('vpSplitter');
     sp.setAttribute('aria-valuenow', String(pct));
     sp.setAttribute('aria-valuetext', `3D viewport ${pct}% of the stage`);
-    if (!opts || opts.persist !== false) Store.savePrefs(state.prefs4);
+    if (!opts || opts.persist !== false) {
+      Store.savePrefs(state.prefs4);
+      if (state.spec) syncHash();
+    }
   }
   function bindSplitter() {
     const sp = $('vpSplitter'), stage = $('stage');
     let dragging = false;
+    let moved = false;
+    let lastTouchTapAt = 0;
+    let dragStartY = 0;
     sp.addEventListener('pointerdown', e => {
       dragging = true;
+      moved = false;
+      dragStartY = e.clientY;
       sp.classList.add('dragging');
       sp.setPointerCapture(e.pointerId);
       e.preventDefault();
     });
     sp.addEventListener('pointermove', e => {
       if (!dragging) return;
+      if (Math.abs(e.clientY - dragStartY) > 3) moved = true;
       const r = stage.getBoundingClientRect();
       if (r.height > 0) setSplit(((e.clientY - r.top) / r.height) * 100, { persist: false });
     });
-    const endDrag = () => {
+    const endDrag = e => {
+      const touchTap = e && e.pointerType === 'touch' && !moved;
       if (!dragging) return;
       dragging = false;
       sp.classList.remove('dragging');
       Store.savePrefs(state.prefs4);
+      syncHash();
+      if (touchTap) {
+        const now = performance.now();
+        if (now - lastTouchTapAt <= 300) {
+          lastTouchTapAt = 0;
+          setSplit(SPLIT_DEFAULT);
+        } else {
+          lastTouchTapAt = now;
+        }
+      }
     };
     sp.addEventListener('pointerup', endDrag);
     sp.addEventListener('pointercancel', endDrag);
@@ -14547,27 +14908,29 @@ var BB = globalThis.BB = globalThis.BB || {};
     ];
   }
   function renderReadiness() {
-    const nav = $('readiness');
-    nav.textContent = '';
+    const navs = [$('readiness'), $('readinessMobile')].filter(Boolean);
+    navs.forEach(nav => { nav.textContent = ''; });
     if (!state.integrity) return;
     const steps = readinessSteps();
     const complete = st => st === 'done' || st === 'attn';
-    let currentSet = false;
-    steps.forEach((s, i) => {
-      if (i) nav.append(el('span', 'ready-sep', '›'));
-      const b = el('button', 'ready-step');
-      b.type = 'button';
-      b.dataset.state = s.state;
-      b.dataset.step = s.label.toLowerCase();
-      b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
-      b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
-      b.title = s.aria;
-      if (!currentSet && !complete(s.state)) {
-        b.setAttribute('aria-current', 'step');
-        currentSet = true;
-      }
-      b.onclick = s.go;
-      nav.append(b);
+    navs.forEach(nav => {
+      let currentSet = false;
+      steps.forEach((s, i) => {
+        if (i) nav.append(el('span', 'ready-sep', '›'));
+        const b = el('button', 'ready-step');
+        b.type = 'button';
+        b.dataset.state = s.state;
+        b.dataset.step = s.label.toLowerCase();
+        b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
+        b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
+        b.title = s.aria;
+        if (!currentSet && !complete(s.state)) {
+          b.setAttribute('aria-current', 'step');
+          currentSet = true;
+        }
+        b.onclick = s.go;
+        nav.append(b);
+      });
     });
   }
 
@@ -14587,18 +14950,34 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- shell: URL-restorable tabs ----------------
    * The active plan tab (and reference subtab) mirrors into location.hash via
    * replaceState — deep-linkable and reload-safe, with no history spam. */
-  const REF_TABS = ['wood', 'ergo', 'joinery', 'fast', 'hardware', 'lumber'];
+  const REF_ENTRIES = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
+  const REF_TABS = REF_ENTRIES.map(x => x[0]);
   function syncHash() {
-    const h = '#' + state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    const path = state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    const h = '#' + path + `;split=${state.prefs4.ui.split};chat=${state.prefs4.ui.chatCollapsed ? 1 : 0}`;
     if (location.hash !== h) {
       try { history.replaceState(null, '', h); } catch (e) { /* sandboxed frame: tabs still work, hash doesn't */ }
     }
   }
   function applyHash() {
-    const parts = (location.hash || '').replace(/^#/, '').split('/');
+    const raw = (location.hash || '').replace(/^#/, '');
+    const bits = raw.split(';');
+    const parts = (bits.shift() || '').split('/');
     if (!TABS.includes(parts[0])) return false;
     state.tab = parts[0];
     if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    bits.forEach(bit => {
+      const eq = bit.indexOf('=');
+      if (eq < 0) return;
+      const key = bit.slice(0, eq);
+      const value = bit.slice(eq + 1);
+      if (key === 'split') {
+        const pct = +value;
+        if (isFinite(pct)) setSplit(pct, { persist: false });
+      } else if (key === 'chat' && (value === '0' || value === '1')) {
+        setChatCollapsed(value === '1', { persist: false });
+      }
+    });
     return true;
   }
 
@@ -14707,6 +15086,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('inspClose', 'close', undefined);
     set('historyClose', 'close', undefined);
     set('jointClose', 'close', undefined);
+    set('diagramClose', 'close', undefined);
     set('frameBtn', 'fit', 'Fit');
     set('pbPrev', 'prev');
     set('pbNext', 'next');
@@ -14801,6 +15181,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderAll();
     renderHints();
     renderGallery();
+    setChatPeek();
 
     // Returning users land in the studio with their latest project. First
     // runs get a welcome card with the three ways in — floating over a live,
@@ -14898,6 +15279,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('copyShare').onclick = copyShare;
     $('importShare').onclick = importShare;
     $('speciesClose').onclick = () => closeScrim('speciesScrim');
+    if ($('diagramClose')) $('diagramClose').onclick = () => closeScrim('diagramScrim');
     $('diagClose').onclick = () => closeScrim('diagScrim');
     $('jointClose').onclick = () => { closeScrim('jointScrim'); BB.JointView.close(); };
     $('jointExplode').addEventListener('input', e => BB.JointView.setExplode(e.target.value / 100));
@@ -14954,6 +15336,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     const menu = bindMenu('exportBtn', 'exportMenu');
     const moreMenu = bindMenu('moreBtn', 'moreMenu');
+    const moreExportMirror = $('moreExportMirror');
+    if (moreExportMirror) {
+      moreExportMirror.textContent = '';
+      menu.querySelectorAll('[data-export]').forEach(b => moreExportMirror.append(b.cloneNode(true)));
+      moreExportMirror.hidden = !moreExportMirror.children.length;
+      if ($('moreExportSep')) $('moreExportSep').hidden = !moreExportMirror.children.length;
+    }
     menu.querySelectorAll('[data-export]').forEach(b => {
       b.addEventListener('click', () => {
         closeMenu('exportBtn', menu);
@@ -14966,6 +15355,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
       b.addEventListener('click', () => {
         closeMenu('moreBtn', moreMenu);
+        if (b.dataset.export) { doExport(b.dataset.export); return; }
         if (!trapStack.length) $('moreBtn').focus(); // unless a dialog already took focus
       });
     });
@@ -15127,6 +15517,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         e.preventDefault(); $('undoBtn').click();
       } else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
         if (!typing) { e.preventDefault(); $('redoBtn').click(); }
+      } else if (!typing && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        focusChat();
+      } else if (!typing && (e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const i = TABS.indexOf(state.tab);
+        const next = e.key === ']' ? TABS[(i + 1) % TABS.length] : TABS[(i - 1 + TABS.length) % TABS.length];
+        selectTab(next);
       } else if (e.key === 'Escape') {
         // Close the topmost overlay only — one layer per press. Build mode
         // is the bottom layer: it exits last, never before an open modal.

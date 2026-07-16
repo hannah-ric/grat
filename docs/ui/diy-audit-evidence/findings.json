@@ -1,0 +1,297 @@
+{
+  "generated": "2026-07-15T23:47:33.555Z",
+  "counts": {
+    "good": 62,
+    "observe": 4,
+    "P2": 3,
+    "P1": 8,
+    "P0": 1
+  },
+  "items": [
+    {
+      "cat": "chat",
+      "severity": "observe",
+      "title": "Species change via chat (offline)",
+      "detail": {
+        "msgs": 4,
+        "lastBot": "Adjusted Black Walnut.\nno dimensional change",
+        "species": "walnut"
+      },
+      "evidence": "desk-04-chat-species.png",
+      "at": "2026-07-15T23:44:19.339Z"
+    },
+    {
+      "cat": "chat",
+      "severity": "P2",
+      "title": "Ambiguous prompt asks clarifying question",
+      "detail": {
+        "hasClarify": false,
+        "opts": []
+      },
+      "evidence": "desk-06-clarify.png",
+      "at": "2026-07-15T23:44:27.090Z"
+    },
+    {
+      "cat": "integrity",
+      "severity": "observe",
+      "title": "No fix buttons on current design (all pass/advisory)",
+      "detail": {
+        "worstSag": {
+          "id": "shelf_1",
+          "sag": 0.030822155416845187,
+          "limit": 1.36,
+          "span": 408
+        },
+        "tipLoaded": 25.988027486230603,
+        "rackScore": 100,
+        "fails": 0,
+        "advisories": 2
+      },
+      "evidence": null,
+      "at": "2026-07-15T23:44:59.478Z"
+    },
+    {
+      "cat": "reference",
+      "severity": "P2",
+      "title": "Reference search for dovetail",
+      "detail": {
+        "hit": false
+      },
+      "evidence": "desk-23-ref-search.png",
+      "at": "2026-07-15T23:45:05.945Z"
+    },
+    {
+      "cat": "stability",
+      "severity": "P1",
+      "title": "Desktop journey aborted",
+      "detail": {
+        "err": "TimeoutError: page.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('#shareClose')\n    - locator resolved to <button class=\"btn\" id=\"shareClose\">Close</button>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enab"
+      },
+      "evidence": null,
+      "at": "2026-07-15T23:46:22.513Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "P1",
+      "title": "Brand name visibility on 390px",
+      "detail": {
+        "display": "none",
+        "w": 0
+      },
+      "evidence": "DESIGN.md says brand must be hero-level; CSS hides .brand-name under 880px.",
+      "at": "2026-07-15T23:46:27.975Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "P1",
+      "title": "Design name width on phone",
+      "detail": {
+        "w": 61,
+        "h": 33,
+        "top": 9,
+        "left": 38,
+        "visible": true,
+        "text": "",
+        "overflowX": true,
+        "overflowY": false
+      },
+      "evidence": null,
+      "at": "2026-07-15T23:46:28.064Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "P1",
+      "title": "Redo button visible on phone",
+      "detail": {
+        "redoVis": false
+      },
+      "evidence": null,
+      "at": "2026-07-15T23:46:28.153Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "P1",
+      "title": "Readiness strip on phone",
+      "detail": {
+        "display": "none",
+        "w": 0
+      },
+      "evidence": "phase2-roadmap item 4: no phone readiness surface.",
+      "at": "2026-07-15T23:46:28.242Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "observe",
+      "title": "Advisory chip placement vs panel",
+      "detail": {
+        "advisories": {
+          "w": 358,
+          "h": 0,
+          "top": 626,
+          "left": 16,
+          "visible": false,
+          "text": "",
+          "overflowX": false,
+          "overflowY": false
+        },
+        "panelTop": 478
+      },
+      "evidence": "phone-06-advisories.png",
+      "at": "2026-07-15T23:46:45.236Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "P1",
+      "title": "Cutting diagram readability on phone",
+      "detail": {
+        "svgW": 324,
+        "svgH": 29,
+        "minFont": 10,
+        "nText": 6,
+        "note": "phase2-roadmap item 2: board-diagram labels ~4px at 390."
+      },
+      "evidence": "phone-08-stock-diagrams.png",
+      "at": "2026-07-15T23:46:59.977Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "P2",
+      "title": "Viewport toolbar touch targets on phone",
+      "detail": {
+        "w": 366,
+        "h": 43,
+        "wrap": false,
+        "btns": [
+          {
+            "id": "explodeRange",
+            "w": 64,
+            "h": 16,
+            "label": "Exploded view amount"
+          },
+          {
+            "id": "dimsToggle",
+            "w": 72,
+            "h": 26,
+            "label": "Dimensions"
+          },
+          {
+            "id": "draftToggle",
+            "w": 73,
+            "h": 26,
+            "label": "Blueprint view"
+          },
+          {
+            "id": "viewFront",
+            "w": 26,
+            "h": 27,
+            "label": "F"
+          },
+          {
+            "id": "viewSide",
+            "w": 26,
+            "h": 27,
+            "label": "S"
+          },
+          {
+            "id": "viewTop",
+            "w": 26,
+            "h": 27,
+            "label": "T"
+          },
+          {
+            "id": "viewIso",
+            "w": 26,
+            "h": 27,
+            "label": "Iso"
+          },
+          {
+            "id": "frameBtn",
+            "w": 37,
+            "h": 27,
+            "label": "Fit"
+          },
+          {
+            "id": "vpHelpBtn",
+            "w": 0,
+            "h": 0,
+            "label": "Viewport controls help"
+          }
+        ]
+      },
+      "evidence": "phone-09-toolbar.png",
+      "at": "2026-07-15T23:47:01.393Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "P0",
+      "title": "Build-mode cutting diagrams at phone size",
+      "detail": {
+        "progress": "0% built",
+        "cutText": "Board 1 — 1x4 x 10 ft (3/4 x 3 1/2 in)\nTop (strip 1/5) · 20 in\nTop (strip 2/5) · 20 in\nTop (strip 3/5) · 20 in\nTop (strip 4/5) · 20 in\nTop (strip 5/5) · 20 in\n18 3/8 in\nTop (strip 1/5)\n20 in\nTop (strip 2/5)\n20 in\nTop (strip 3/5)\n20 in\nTop (strip 4/5)",
+        "svgCount": 9,
+        "minSvgText": 9,
+        "svgHeights": [
+          27,
+          27,
+          27,
+          27,
+          27,
+          27,
+          27,
+          154,
+          154
+        ],
+        "stepCount": 1,
+        "exitH": 54,
+        "note": "Saw-bench readability is the product promise for build mode."
+      },
+      "evidence": "phone-10-build.png",
+      "at": "2026-07-15T23:47:05.452Z"
+    },
+    {
+      "cat": "mobile",
+      "severity": "P1",
+      "title": "Phone header action cluster crowding",
+      "detail": {
+        "nameW": 61,
+        "nameVal": "Two-Drawer Nightstand",
+        "exportW": 84,
+        "moreW": 75,
+        "buildW": 53,
+        "exportText": "Export",
+        "moreText": "More",
+        "buildText": "Build"
+      },
+      "evidence": "phase2-roadmap item 1.",
+      "at": "2026-07-15T23:47:09.054Z"
+    },
+    {
+      "cat": "stability",
+      "severity": "P1",
+      "title": "Console errors on phone journey",
+      "detail": {
+        "count": 2,
+        "sample": [
+          "Access to fetch at 'https://api.anthropic.com/v1/messages' from origin 'http://127.0.0.1:33901' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "Failed to load resource: net::ERR_FAILED"
+        ]
+      },
+      "evidence": null,
+      "at": "2026-07-15T23:47:22.041Z"
+    },
+    {
+      "cat": "tablet",
+      "severity": "observe",
+      "title": "Tablet layout metrics",
+      "detail": {
+        "chatW": 280,
+        "stageW": 744,
+        "brandDisplay": "block",
+        "readyDisplay": "flex",
+        "chatCollapsed": false
+      },
+      "evidence": "tablet-01-bench.png",
+      "at": "2026-07-15T23:47:31.325Z"
+    }
+  ]
+}

@@ -9,6 +9,11 @@ smoke suite. Each item names its evidence. Baselines to preserve while doing
 any of it: `npm test` (293 + 99 + 6 golden), `npm run test:smoke` (158),
 `test/handcalc.js` (14/14), in-app diagnostics green.
 
+> **July 2026 DIY click-through:** a full hobby-user walkthrough of every
+> surface (desktop + phone + tablet) is recorded in
+> [`diy-frontend-audit.md`](diy-frontend-audit.md). It confirms items 1–4 and
+> 14 below, and elevates phone Build-mode title/diagram readability to **P0**.
+
 ## How this list was prioritized
 
 P1 = users hit it in normal flows on real devices; P2 = interaction depth and
