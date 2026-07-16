@@ -24,7 +24,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     cut: [], bomData: { items: [], total: 0 }, steps: [],
     integrity: null, stockPlan: null,
     history: null, engine: null,
-    tab: 'cut', refTab: 'wood', refQuery: '',
+    mode: 'design',
+    tab: 'overview', refTab: 'wood', refQuery: '',
     dismissed: new Set(),
     selected: null,
     playbackIndex: -1,
@@ -40,6 +41,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     prefs4: JSON.parse(JSON.stringify(Store.DEFAULT_PREFS)),
     project: null,                  // {id, progress:{cuts:{},steps:{}}}
     buildMode: false, bmPlayback: false,
+    bmTask: null,                   // phone pager position (derived on entry)
+    installPrompt: null,            // stashed beforeinstallprompt event
     wakeLock: null,
     speciesPick: []
   };
@@ -211,7 +214,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!show) return;
     if (a.user) {
       const row = el('div', 'menu-account');
-      row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : '<span class="account-avatar fallback" aria-hidden="true">●</span>'}
+      row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="account-avatar fallback" aria-hidden="true">${BB.Icons.svg('user', 14)}</span>`}
         <span class="account-name">${esc(a.user.name)}</span>
         <span class="hint">${a.cloud ? 'cloud sync on' : 'signed in'}</span>`;
       area.append(row);
@@ -230,7 +233,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- render: top bar ---------------- */
+  function updateChatPlaceholder() {
+    const designed = !!state.project || (state.history && state.history.snapshots.length > 1);
+    const t = $('chatText');
+    if (t) t.placeholder = designed ? 'Ask for a change…' : 'Describe your piece…';
+  }
   function renderTopbar() {
+    updateChatPlaceholder();
     $('designName').value = state.spec.meta.name;
     const imperial = state.spec.meta.units !== 'mm';
     $('unitsIn').setAttribute('aria-pressed', String(imperial));
@@ -279,7 +288,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!state.dismissed.has(a.id)) items.push({ error: false, text: a.text, id: a.id });
     }
     if (mobileAdvisoryMq.matches && items.length && !state.advisoriesExpanded) {
-      const pill = el('button', 'advisory-more advisory-pill', `${items.some(it => it.error) ? '🛑' : '⚠️'} ${items.length}`);
+      const pill = el('button', 'advisory-more advisory-pill',
+        `${BB.Icons.svg(items.some(it => it.error) ? 'stop' : 'warn', 14)} ${items.length}`);
       pill.setAttribute('aria-expanded', 'false');
       pill.setAttribute('aria-label', `Show ${items.length} advisory message${items.length === 1 ? '' : 's'}`);
       pill.onclick = () => { state.advisoriesExpanded = true; renderAdvisories(report); };
@@ -289,7 +299,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const visible = state.advisoriesExpanded ? items : items.slice(0, ADVISORY_CAP);
     for (const it of visible) {
       const chip = el('div', 'advisory' + (it.error ? ' error' : ''));
-      chip.append(el('span', 'adv-icon', it.error ? '🛑' : '⚠️'));
+      chip.append(el('span', 'adv-icon', BB.Icons.svg(it.error ? 'stop' : 'warn', 14)));
       chip.append(el('span', '', esc(it.text)));
       if (!it.error) {
         const x = el('button', 'dismiss', BB.Icons.svg('close', 13));
@@ -352,13 +362,66 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
-    if (state.tab === 'cut') renderCut(inner);
-    else if (state.tab === 'stock') renderStock(inner);
-    else if (state.tab === 'bom') renderBom(inner);
+    if (state.tab === 'overview') renderOverview(inner);
+    else if (state.tab === 'cut') renderCut(inner);
+    else if (state.tab === 'stock') { renderStock(inner); renderBom(inner); }
     else if (state.tab === 'assembly') renderAssembly(inner);
     else if (state.tab === 'integrity') renderIntegrity(inner);
     else renderReference(inner);
     wireScrollableTables(inner);
+  }
+
+  /* ---------------- Plan overview ----------------
+   * Four honest numbers straight from the computed state, then ONE next
+   * action. Everything here is a pure read of what the pipeline already
+   * derived — no new math, no stored copies. */
+  function renderOverview(root) {
+    if (!state.cut.length) {
+      emptyState(root, 'No design yet.', 'Describe a piece in the chat or pick a starter — the plan builds itself.');
+      return;
+    }
+    const sum = state.integrity.summary;
+    const plan = state.stockPlan;
+    const boards = plan ? plan.boards.length + plan.sheets.length : 0;
+    const partCount = state.cut.reduce((n, r) => n + r.qty, 0);
+    const verdict = sum.fails ? 'fail' : sum.advisories ? 'advisory' : 'pass';
+    const verdictText = sum.fails
+      ? 'This design does not yet pass the required strength checks.'
+      : sum.advisories
+        ? 'This design passes the required strength checks, with notes worth reading.'
+        : 'This design passes the required strength checks.';
+    const cards = [
+      { label: 'Parts to cut', value: String(partCount), go: 'cut', aria: 'Open the cut list' },
+      { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : String(boards), go: 'stock', aria: 'Open the buying plan' },
+      { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'stock', aria: 'Open buying and pricing' },
+      { label: 'Safety', value: verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
+    ];
+    const grid = el('div', 'overview-grid');
+    for (const c of cards) {
+      const b = el('button', 'overview-card' + (c.stamp ? ' verdict-' + c.stamp : ''));
+      b.type = 'button';
+      b.setAttribute('aria-label', `${c.label}: ${c.value}. ${c.aria}`);
+      b.innerHTML = `<span class="ov-value${c.stamp ? ' stamp ' + c.stamp : ''}">${esc(c.value)}</span><span class="ov-label">${esc(c.label)}</span>`;
+      b.onclick = () => selectTab(c.go);
+      grid.append(b);
+    }
+    root.append(el('h3', '', 'Overview'));
+    root.append(el('p', 'lede', verdictText + (sum.fails ? '' : ' Every number below comes from the same engineering pass.')));
+    root.append(grid);
+    // One clear next action, derived from where the project actually stands.
+    const pct = progressPct();
+    const next = sum.fails
+      ? { label: 'Review safety first', go: () => selectTab('integrity') }
+      : pct > 0 && pct < 100
+        ? { label: `Keep building — ${pct}% done`, go: enterBuildMode }
+        : pct >= 100
+          ? { label: 'Build complete — review or share it', go: () => { openShareSheet(); } }
+          : { label: 'Check the cut list, then head to the shop', go: () => selectTab('cut') };
+    const row = el('div', 'overview-next');
+    const nb = el('button', 'btn primary', esc(next.label));
+    nb.onclick = next.go;
+    row.append(nb);
+    root.append(row);
   }
 
   /* ---------------- provenance dialog (stretch: number provenance) ---------------- */
@@ -367,7 +430,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const pop = $('provPop');
     const lines = Prov.forCutRow(state.spec, state.model, row);
     pop.innerHTML = `<div class="prov-head"><h5>${esc(row.name)} — where these numbers come from</h5>
-      <button type="button" class="prov-close" aria-label="Close provenance">✕</button></div>` +
+      <button type="button" class="prov-close" aria-label="Close provenance">${BB.Icons.svg('close', 13)}</button></div>` +
       lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('') +
       `<div class="prov-foot">computed internally in metric</div>`;
     pop.hidden = false;
@@ -414,7 +477,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     scrim.innerHTML = `<div class="modal modal-wide">
       <div class="drawer-head" style="margin-bottom:var(--s3)">
         <h2 id="diagramTitle">Cutting diagram</h2>
-        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">✕</button>
+        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">${BB.Icons.svg('close')}</button>
       </div>
       <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
       <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
@@ -460,17 +523,35 @@ var BB = globalThis.BB = globalThis.BB || {};
       emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
     }
-    const scroll = el('div', 'table-scroll');
     const dim = (r, v, i, what) => `<button type="button" class="prov-btn num" data-prov="${i}" aria-label="${esc(r.name)} ${what} ${esc(fmt(v))} — show the formula">${fmt(v)}</button>`;
+    const wireProv = box => box.querySelectorAll('.prov-btn').forEach(b => {
+      b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
+    });
+    if (mobileAdvisoryMq.matches) {
+      // Phones read cards, not seven-column tables: name, qty, dimensions,
+      // material — and "Why this length?" opens the same provenance dialog.
+      const list = el('div', 'cut-cards');
+      list.innerHTML = state.cut.map((r, i) => `<div class="cut-card">
+        <div class="cut-card-head"><span class="cc-name">${esc(r.name)}</span><span class="cc-qty">× ${r.qty}</span></div>
+        <div class="cc-dims">${dim(r, r.L, i, 'length')} × ${dim(r, r.W, i, 'width')} × ${dim(r, r.T, i, 'thickness')}</div>
+        <div class="cc-meta">${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}${r.note ? ' · ' + esc(r.note) : ''}</div>
+        <button type="button" class="learn-link cc-why" data-prov="${i}">Why this length?</button>
+      </div>`).join('');
+      wireProv(list);
+      list.querySelectorAll('.cc-why').forEach(b => {
+        b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
+      });
+      root.append(list);
+      return;
+    }
+    const scroll = el('div', 'table-scroll');
     const rows = state.cut.map((r, i) => `<tr>
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
-      <td style="color:var(--muted);font-size:12.5px">${esc(r.note || '')}</td></tr>`).join('');
+      <td style="color:var(--muted);font-size:var(--text-s)">${esc(r.note || '')}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
-    scroll.querySelectorAll('.prov-btn').forEach(b => {
-      b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
-    });
+    wireProv(scroll);
     root.append(scroll);
   }
 
@@ -604,7 +685,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function renderBom(root) {
-    root.append(el('h3', '', 'Bill of materials'));
+    root.append(el('h3', '', 'Materials & cost'));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
     if (!state.bomData.items.length) {
       emptyState(root, 'Nothing to buy yet.', 'Describe a piece and the shopping list prices itself.');
@@ -618,7 +699,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const rows = state.bomData.items.map(i => `<tr>
       <td><span class="kind-tag">${esc(i.kind)}</span></td>
       <td>${esc(i.label)}</td><td class="num">${i.qty}</td>
-      <td style="color:var(--muted);font-size:12.5px">${esc(i.detail || '')}</td>
+      <td style="color:var(--muted);font-size:var(--text-s)">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
     root.append(scroll);
@@ -674,7 +755,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       <span class="stat">strength ${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span>
       <span class="stat">${esc(j.level)}</span><br>
       ${esc(j.bestFor)}<br><em>Watch for:</em> ${esc(j.failure)}<br>
-      <em>Tools:</em> ${esc(j.tools.join(', '))}</span></span>`;
+      <em>Tools:</em> ${esc(j.tools.join(', '))}<br>
+      <button type="button" class="learn-link" data-reflink="joinery" data-refquery="${esc(j.label)}">Learn why in the Shop reference</button></span></span>`;
   }
 
   function renderAssembly(root) {
@@ -731,31 +813,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- Integrity tab (structural engine + Phase 4 movement) ---------------- */
+  /* ---------------- Safety tab (structural engine + movement) ----------------
+   * Plain language leads for everyone: one sentence, one stamp. Anything that
+   * FAILS surfaces immediately with its fixes in plain terms. The full
+   * engineering report (creep factors, ΔMC, load presets, every passing
+   * check) lives behind "See engineering details" — open by default for
+   * intermediate/advanced, closed for beginners so jargon is never the
+   * first layer while fixes stay one glance away. */
   function renderIntegrity(root) {
     const integ = state.integrity;
     const overall = integ.summary.fails ? 'fail' : integ.summary.advisories ? 'advisory' : 'pass';
     const beginner = state.spec.meta.level === 'beginner';
-    root.append(el('h3', '', 'Structural integrity'));
+    root.append(el('h3', '', 'Safety'));
     const summary = el('div', 'integrity-summary');
     summary.innerHTML = `<span class="stamp ${overall}">${overall}</span>
-      <span style="font-size:13px;color:var(--muted)">${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory</span>`;
-    root.append(summary);
-    let target = root;
-    if (beginner) {
-      const plain = overall === 'pass'
-        ? 'Your piece looks structurally sound.'
+      <span class="integrity-plain">${overall === 'pass'
+        ? 'This design passes the required strength checks.'
         : overall === 'advisory'
-          ? 'A few things to double-check before you build.'
-          : 'This design needs a fix before it is safe to build.';
-      root.append(el('p', 'lede integrity-beginner', plain));
-      const details = document.createElement('details');
-      details.className = 'integrity-details';
-      details.innerHTML = '<summary>Full structural report</summary>';
-      details.open = true; // after innerHTML — start open so checks/fixes stay reachable
-      root.append(details);
-      target = details;
+          ? 'This design passes the required strength checks, with notes worth reading below.'
+          : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
+    root.append(summary);
+    // Failing checks never hide: plain card + one-tap fixes, above the fold.
+    for (const c of integ.checks.filter(x => x.status === 'fail')) {
+      root.append(checkCard(c, { full: !beginner }));
     }
+    const details = document.createElement('details');
+    details.className = 'integrity-details';
+    details.innerHTML = '<summary>See engineering details</summary>';
+    details.open = !beginner;
+    root.append(details);
+    const target = details;
+    target.append(el('p', 'lede', `${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory — exact numbers, thresholds, and the design basis.`));
 
     // climate preference drives ΔMC in the movement math
     const climate = el('div', 'climate-row');
@@ -764,7 +852,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     sel.innerHTML = `<option value="arid">Arid climate — ΔMC 2%</option><option value="temperate">Temperate indoor — ΔMC 4%</option><option value="humid">Humid climate — ΔMC 6%</option>`;
     sel.value = state.prefs4.climate;
     sel.onchange = () => { state.prefs4.climate = sel.value; Store.savePrefs(state.prefs4); recompute(); };
-    climate.append(el('span', '', 'Seasonal movement assumes'), sel);
+    climate.append(el('span', '', 'Seasonal movement assumes'), sel,
+      el('button', 'learn-link', 'Learn why wood moves'));
+    const learnMove = climate.querySelector('.learn-link');
+    learnMove.type = 'button';
+    learnMove.dataset.reflink = 'wood';
+    learnMove.dataset.refquery = 'movement';
     target.append(climate);
 
     if (integ.surfaces.length) {
@@ -788,34 +881,45 @@ var BB = globalThis.BB = globalThis.BB || {};
       target.append(el('div', '', '&nbsp;'));
     }
 
-    for (const c of integ.checks) {
-      const card = el('div', 'check-card' + (c.status === 'fail' ? ' fail' : ''));
-      card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>
-        <div class="check-value">${esc(c.value)}</div>
-        <div class="check-threshold">threshold: ${esc(c.threshold)}</div>
-        <p class="check-explain">${esc(c.explain)}</p>` +
-        (c.factors ? `<div class="check-factors">${c.factors.map(f => `<div><span>${esc(f.label)}</span><span>${f.mult ? '× ' + f.mult : '+' + f.pts}</span></div>`).join('')}</div>` : '');
-      if (c.fixes && c.fixes.length) {
-        const row = el('div', 'fix-row');
-        for (const f of c.fixes) {
-          const b = el('button', 'btn small primary', esc(f.label));
-          b.onclick = () => {
-            const before = state.integrity;
-            if (merge(f.patch, 'fix', [f.label])) {
-              const chips = Structural.integrityDiff(before, state.integrity);
-              botSay(`Applied fix: ${f.label}.`, chips, { noChange: !chips.length });
-              state.tab = 'integrity'; renderTabs(); renderPanel(); focusPanelHeading();
-            }
-          };
-          row.append(b);
-        }
-        card.append(row);
-      }
-      target.append(card);
-    }
+    for (const c of integ.checks) target.append(checkCard(c, { full: true }));
     // Design-value basis disclosed in full (audit F-S3-7): what the numbers
     // rest on, what the safety factor absorbs, and the clear-stock rule.
     target.append(el('p', 'integrity-disclaimer', esc(K.DESIGN_BASIS)));
+  }
+
+  /* One check, two depths: plain (title + what it means + fixes) for the
+   * surfaced beginner card; full adds the exact value, threshold, and creep/
+   * duty factors. The fix buttons are identical in both. */
+  function checkCard(c, opts) {
+    const full = !opts || opts.full !== false;
+    const card = el('div', 'check-card' + (c.status === 'fail' ? ' fail' : ''));
+    // The plain tier speaks builder, not engineer: what went wrong and that a
+    // one-tap fix exists. The engine's full explanation (creep factors, exact
+    // values, thresholds) stays one fold away in "See engineering details".
+    const plainLine = 'This part would not safely carry its expected load as designed. '
+      + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.');
+    card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
+      (full ? `<div class="check-value">${esc(c.value)}</div>
+        <div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
+      `<p class="check-explain">${full ? esc(c.explain) : esc(plainLine)}</p>` +
+      (full && c.factors ? `<div class="check-factors">${c.factors.map(f => `<div><span>${esc(f.label)}</span><span>${f.mult ? '× ' + f.mult : '+' + f.pts}</span></div>`).join('')}</div>` : '');
+    if (c.fixes && c.fixes.length) {
+      const row = el('div', 'fix-row');
+      for (const f of c.fixes) {
+        const b = el('button', 'btn small primary', esc(f.label));
+        b.onclick = () => {
+          const before = state.integrity;
+          if (merge(f.patch, 'fix', [f.label])) {
+            const chips = Structural.integrityDiff(before, state.integrity);
+            botSay(`Applied fix: ${f.label}.`, chips, { noChange: !chips.length });
+            selectTab('integrity'); focusPanelHeading();
+          }
+        };
+        row.append(b);
+      }
+      card.append(row);
+    }
+    return card;
   }
 
   /* ---------------- shop reference ---------------- */
@@ -927,14 +1031,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td class="num">${s.moe.toFixed(1)}</td><td class="num">${s.mor}</td><td class="num">${s.sg.toFixed(2)}</td>
         <td class="num movement-${s.movement}">${s.ct.toFixed(5)}</td>
         <td class="num">${'$'.repeat(s.costTier)}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
     } else if (state.refTab === 'ergo') {
       head = '<th>Measure</th><th class="num">Range</th><th>Applies to</th><th>Note</th>';
       rows = K.ERGONOMICS.filter(r => hit(r.label, r.note)).map(r => `<tr>
         <td><strong>${esc(r.label)}</strong></td>
         <td class="num">${isFinite(r.max) ? `${fmt(r.min)} – ${fmt(r.max)}` : `≥ ${fmt(r.min)}`}</td>
         <td>${esc(r.appliesTo.join(', '))}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
       head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
@@ -943,9 +1047,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td><span class="dots">${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span></td>
         <td><span class="dots">${'●'.repeat(j.difficulty)}${'○'.repeat(5 - j.difficulty)}</span></td>
         <td>${esc(j.level)}</td>
-        <td style="font-size:12.5px">${esc(j.bestFor)}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(j.failure)}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
+        <td style="font-size:var(--text-s)">${esc(j.bestFor)}</td>
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(j.failure)}</td>
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
     } else if (state.refTab === 'hardware') {
       // The hardware repository: when, why, how, where — quantities and
       // ratings are computed by code (BB.HW rules), the table teaches the
@@ -981,9 +1085,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         const body2 = list.filter(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))).map(x => `<tr>
           <td><strong>${esc(Units.fmtTemplate(x.label))}</strong><br><span class="kind-tag">${esc(gLabel)}</span></td>
           <td>${view3d[x.key] ? `<button type="button" class="btn small ghost joint-demo" data-joint="${esc(view3d[x.key])}" title="See it in 3D">${BB.Icons.svg('ruler', 13)} 3D</button>` : ''}</td>
-          <td class="num" style="font-size:12px">${esc(classOf(x))}</td>
-          <td style="font-size:12.5px">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
-          <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
+          <td class="num" style="font-size:var(--text-s)">${esc(classOf(x))}</td>
+          <td style="font-size:var(--text-s)">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
+          <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
         return body2;
       }).join('');
     } else if (state.refTab === 'lumber') {
@@ -998,15 +1102,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       rows = [...f.screws, ...f.dowels, ...f.hardware].filter(x => hit(x.label, x.use)).map(x => `<tr>
         <td><strong>${esc(Units.fmtTemplate(x.label))}</strong></td>
         <td class="num">${x.pilot ? esc(fmtS(x.pilot)) + ' pilot' : (x.price ? '~$' + x.price : '—')}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
       rows += K.FINISHES.filter(x => hit(x.label, x.blurb)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}${x.exterior ? ' <span class="kind-tag">exterior</span>' : ''}</td>
         <td class="num">${x.coats} coats · ${x.recoatHrs} h recoat · ${x.cureDays} d cure</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(x.blurb)}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(x.blurb)}</td></tr>`).join('');
       rows += K.GLUES.filter(x => hit(x.label, x.blurb, x.water)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}</td>
         <td class="num">open ${x.openMin} min · clamp ${x.clampMin} min · ${x.cureHrs} h full</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
     }
     if (!rows) {
       body.append(el('div', 'empty-state', `<span class="big">No matches in the reference.</span>Try a different word — “dovetail”, “walnut”, “pilot”…`));
@@ -1037,8 +1141,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     m.innerHTML = html;
     log.append(m);
     log.scrollTop = log.scrollHeight;
-    // The collapsed mobile sheet shows the tail of the conversation.
-    const peekText = m.textContent.trim();
+    // The collapsed mobile sheet shows the tail of the conversation —
+    // the sentence only, never the diff-card ledger squeezed into one line.
+    const bubble = m.querySelector('.bubble');
+    const peekText = (bubble ? bubble.textContent : m.textContent).trim();
     setChatPeek(peekText, kind);
     // A reply landing while the desktop chat is folded lights the rail dot.
     if (kind === 'bot' && state.prefs4.ui.chatCollapsed) $('chatRailDot').hidden = false;
@@ -1054,6 +1160,43 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     $('chatPeek').textContent = next;
   }
+
+  /* ---------------- AI connection badge ----------------
+   * Persistent, and TRUTHFUL: states change only on evidence — a zero-token
+   * probe of the same-origin proxy (`POST {}` → 400 means the route exists
+   * AND holds a key, because the key check precedes body validation; 503
+   * means unconfigured), the presence of window.claude, or the observed
+   * outcome of a real send. Never an optimistic guess. */
+  function setAIState(mode, detail) {
+    const badge = $('aiBadge');
+    if (!badge) return;
+    badge.dataset.state = mode;
+    const label = mode === 'online' ? 'AI online'
+      : mode === 'offline' ? 'Offline · basic edits'
+        : 'AI · checking…';
+    $('aiBadgeLabel').textContent = label;
+    badge.title = detail || (mode === 'online'
+      ? 'Connected to the design service — full natural-language design and photo input.'
+      : mode === 'offline'
+        ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
+        : 'Checking the design service…');
+  }
+  async function probeAI() {
+    setAIState('checking');
+    const claudeHost = typeof window.claude !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
+    if (navigator.onLine === false) { setAIState('offline', 'You are offline. Basic edits keep working.'); return; }
+    try {
+      const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (r.status === 400) { setAIState('online'); return; }               // proxy present, key configured
+      if (r.status === 503) {                                               // proxy present, no key
+        setAIState(claudeHost ? 'online' : 'offline', claudeHost ? undefined : 'AI proxy not configured (no API key on the server). Basic edits still work.');
+        return;
+      }
+      setAIState(claudeHost ? 'online' : 'offline');                        // 404/405: no proxy here
+    } catch (e) {
+      setAIState(claudeHost ? 'online' : 'offline');
+    }
+  }
   function botSay(text, chips, opts) {
     opts = opts || {};
     let html = `<div class="bubble">${esc(text)}</div>`;
@@ -1063,7 +1206,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (opts.noChange && !opts.caveat) chipHTML.push(`<span class="chip neutral">no dimensional change</span>`);
     }
     if (opts.caveat) chipHTML.push(`<span class="chip caveat">${esc(opts.caveat)}</span>`);
-    if (chipHTML.length) html += `<div class="chips">${chipHTML.join('')}</div>`;
+    const hasDiff = (chips || []).length > 0;
+    if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title">Changed</span>' : ''}${chipHTML.join('')}</div>`;
     return chatMsg('bot', html);
   }
   function askQuestion(q) {
@@ -1181,17 +1325,32 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = Spec.describeDiff(realDiffs);
+      // The badge reflects what actually just happened — the strongest
+      // evidence there is about the connection state.
+      setAIState(out.local ? 'offline' : 'online');
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
       ].filter(Boolean).join(' ') || null;
       if (out.failReport) {
-        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Integrity tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
-        state.tab = 'integrity'; renderTabs(); renderPanel();
+        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
+        selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
-        const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Integrity tab.` : '';
+        const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Safety tab.` : '';
         botSay((out.explain || 'Updated.') + integLine, chips, { noChange: !chips.length, caveat });
+        // Offline and nothing changed: offer the edits the built-in parser is
+        // actually good at, instead of leaving a dead end.
+        if (out.local && !chips.length) {
+          const m = chatMsg('bot', '<div class="bubble">Offline, I follow sizes, drawers, and wood species best. Try one:</div>');
+          const row = el('div', 'answer-row');
+          for (const sp of ['walnut', 'white_oak', 'cherry', 'pine']) {
+            const b = el('button', 'btn small', esc(K.WOOD_SPECIES[sp].label));
+            b.onclick = () => { row.remove(); sendMessage('make it ' + K.WOOD_SPECIES[sp].label.toLowerCase()); };
+            row.append(b);
+          }
+          m.append(row);
+        }
       }
     } catch (err) {
       typing.remove();
@@ -1318,7 +1477,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(dim('Depth', 'overall.depth', 200, 1200));
       body.append(dim('Height', 'overall.height', 120, 2400));
     } else {
-      body.append(el('p', '', '<span style="font-size:12.5px;color:var(--muted)">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
+      body.append(el('p', '', '<span style="font-size:var(--text-s);color:var(--muted)">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
     if (part.role === 'leg') body.append(dim('Leg thickness', 'structure.legThickness', 32, 100));
     if (part.role === 'apron' || part.role === 'rail') body.append(dim('Apron height', 'structure.apronHeight', 60, 160));
@@ -1570,7 +1729,29 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
+  const heroCards = [];    // [{card, starterIndex}] — hero starters share the same thumbs
   let galleryThumbs = null; // rendered thumbs, kept so every re-render gets them back
+  function loadStarter(g, r) {
+    hideHints(); // a loaded design replaces the first-run prompts
+    state.dismissed.clear();
+    state.project = null;   // a starter begins a fresh project
+    state.turns = [];
+    commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
+    state.engine.frame();
+    // First starter ever: the piece assembles itself once — the pipeline
+    // dramatized in one shot. Reduced motion snaps it (engine-side).
+    if (!state.prefs4.seenHero) {
+      state.prefs4.seenHero = true;
+      Store.savePrefs(state.prefs4);
+      state.engine.heroAssemble();
+    }
+    botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
+    if (!state.prefs4.seenCoach) {
+      state.prefs4.seenCoach = true;
+      Store.savePrefs(state.prefs4);
+      botSay('First build tips: 1) Check the Buy tab before you shop. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Safety tab shows red, fix that before you build.', []);
+    }
+  }
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
@@ -1578,31 +1759,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const g of Gallery.STARTERS) {
       const r = runPipeline(g.spec);
       const card = el('button', 'gallery-card');
-      card.innerHTML = `<span class="g-emoji">${g.emoji}</span>
+      card.innerHTML = `<span class="g-fallback" aria-hidden="true">${BB.Icons.svg('board', 26)}</span>
         <span class="g-name">${esc(r.spec.meta.name)}</span>
         <span class="g-caption">${esc(g.caption)}</span>
         <span class="g-meta">${fmt(r.spec.overall.width)} × ${fmt(r.spec.overall.depth)} × ${fmt(r.spec.overall.height)} · ${esc(K.WOOD_SPECIES[r.spec.wood.species].label)}</span>`;
       card.onclick = () => {
         closeScrim('galleryScrim');
-        hideHints(); // a loaded design replaces the first-run prompts
-        state.dismissed.clear();
-        state.project = null;   // a starter begins a fresh project
-        state.turns = [];
-        commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
-        state.engine.frame();
-        // First starter ever: the piece assembles itself once — the pipeline
-        // dramatized in one shot. Reduced motion snaps it (engine-side).
-        if (!state.prefs4.seenHero) {
-          state.prefs4.seenHero = true;
-          Store.savePrefs(state.prefs4);
-          state.engine.heroAssemble();
-        }
-        botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
-        if (!state.prefs4.seenCoach) {
-          state.prefs4.seenCoach = true;
-          Store.savePrefs(state.prefs4);
-          botSay('First build tips: 1) Check the Stock tab before you buy. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Integrity tab shows red, fix that before you build.', []);
-        }
+        loadStarter(g, r);
       };
       grid.append(card);
       galleryCards.push({ card, model: r.model, spec: r.spec });
@@ -1612,10 +1775,34 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
   }
 
+  /* Three polished starters ride the hero — the same specs, pipeline, and
+   * idle-rendered thumbnails as the gallery; skeletons until the thumbs land
+   * (an honest empty sheet, never fabricated imagery). */
+  const HERO_STARTER_INDEXES = [0, 3, 4]; // dining table, bookshelf, nightstand
+  function renderHeroStarters() {
+    const wrap = $('heroStarters');
+    if (!wrap) return;
+    wrap.textContent = '';
+    heroCards.length = 0;
+    for (const i of HERO_STARTER_INDEXES) {
+      const g = Gallery.STARTERS[i];
+      if (!g) continue;
+      const r = runPipeline(g.spec);
+      const card = el('button', 'hero-starter');
+      card.innerHTML = `<span class="g-fallback" aria-hidden="true">${BB.Icons.svg('board', 22)}</span>
+        <span class="hs-name">${esc(r.spec.meta.name)}</span>`;
+      card.setAttribute('aria-label', `Start from the ${r.spec.meta.name}`);
+      card.onclick = () => loadStarter(g, r);
+      wrap.append(card);
+      heroCards.push({ card, starterIndex: i });
+    }
+    if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
+  }
+
   /* Real 3D thumbnails for the starter cards, rendered by a throwaway
    * mini-engine after boot settles. Cached in storage keyed by a hash of the
    * starter specs, so repeat boots skip GL work entirely. Failures leave the
-   * emoji cards — this pass is decoration, never load-bearing. */
+   * skeleton cards — this pass is decoration, never load-bearing. */
   const THUMBS_KEY = 'gallery:thumbs:v1';
   function startersHash() {
     const s = JSON.stringify(Gallery.STARTERS.map(g => g.spec));
@@ -1625,17 +1812,19 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function patchGalleryThumbs(thumbs) {
     galleryThumbs = thumbs;
-    galleryCards.forEach(({ card }, i) => {
-      if (!thumbs[i]) return;
-      const emoji = card.querySelector('.g-emoji');
-      if (!emoji) return;
+    const swap = (card, thumb) => {
+      if (!thumb) return;
+      const fallback = card.querySelector('.g-fallback');
+      if (!fallback) return;
       const img = document.createElement('img');
       img.className = 'g-thumb';
       img.alt = '';
-      img.src = thumbs[i];
-      emoji.replaceWith(img);
+      img.src = thumb;
+      fallback.replaceWith(img);
       requestAnimationFrame(() => img.classList.add('on'));
-    });
+    };
+    galleryCards.forEach(({ card }, i) => swap(card, thumbs[i]));
+    heroCards.forEach(({ card, starterIndex }) => swap(card, thumbs[starterIndex]));
   }
   async function galleryThumbsPass() {
     try {
@@ -1660,7 +1849,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       canvas.remove();
       patchGalleryThumbs(thumbs);
       await Store.set(THUMBS_KEY, { hash, thumbs });
-    } catch (e) { /* emoji cards remain */ }
+    } catch (e) { /* skeleton cards remain */ }
   }
 
   /* ---------------- My Projects (Phase 4 item 2) ---------------- */
@@ -1685,7 +1874,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const card = el('div', 'project-card' + (state.project && state.project.id === row.id ? ' current' : ''));
       const thumb = row.thumb
         ? `<img class="p-thumb" src="${row.thumb}" alt="">`
-        : `<div class="p-thumb empty" aria-hidden="true">▦</div>`;
+        : `<div class="p-thumb empty" aria-hidden="true">${BB.Icons.svg('board', 22)}</div>`;
       card.innerHTML = `${thumb}
         <span class="p-name">${esc(row.name)}</span>
         <span class="p-meta">${esc(row.dims || '')}</span>
@@ -1771,6 +1960,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- share codes (Phase 4 item 2) ---------------- */
+  function openShareSheet() {
+    const link = shareLink();
+    const row = $('shareLinkRow');
+    if (row) {
+      row.hidden = !link;
+      if (link) $('shareLinkText').value = link;
+      $('shareLinkNote').hidden = !!link;
+    }
+    openShare();
+  }
   function openShare() {
     const code = Codec.toShareCode(state.spec);
     $('shareCode').value = code;
@@ -1788,17 +1987,29 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('copyShare').textContent = ok ? 'Copied ✓' : 'Copy manually (selected)';
     setTimeout(() => { $('copyShare').textContent = 'Copy code'; }, 1600);
   }
-  function importShare() {
-    const res = Codec.fromShareCode($('importCode').value);
-    if (res.error) { $('importMsg').textContent = res.error; return; }
+  function importCodeText(text, sourceLabel) {
+    const res = Codec.fromShareCode(text);
+    if (res.error) return { error: res.error };
     state.project = null; // imported design becomes a fresh project
     state.turns = [];
     state.dismissed.clear();
-    const ok = commit(res.spec, 'import', ['imported from share code']);
-    if (!ok) { $('importMsg').textContent = 'That design decoded but won’t build.'; return; }
+    const ok = commit(res.spec, 'import', ['imported from ' + (sourceLabel || 'share code')]);
+    if (!ok) return { error: 'That design decoded but won’t build.' };
     state.engine.frame();
+    botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+    return { ok: true };
+  }
+  function importShare() {
+    const res = importCodeText($('importCode').value);
+    if (res.error) { $('importMsg').textContent = res.error; return; }
     closeScrim('shareScrim');
-    botSay(`Imported “${state.spec.meta.name}” from a share code — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+  }
+  /* The share LINK is the same self-contained code riding the URL hash —
+   * no server, works wherever the app is hosted. */
+  function shareLink() {
+    return location.origin && location.origin !== 'null'
+      ? location.origin + location.pathname + '#d=' + encodeURIComponent(Codec.toShareCode(state.spec))
+      : null; // file:// has no shareable origin — the sheet says so honestly
   }
 
   /* ---------------- species comparison (stretch) ---------------- */
@@ -1842,7 +2053,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const maxSag = Math.max(...cols.map(c => c.sagMargin || 0));
     const cell = (v, isBest, suffix) => `<td class="num${isBest ? ' species-best' : ''}">${v}${suffix || ''}</td>`;
     wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
-      `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} →</button></th>`).join('')}</tr></thead><tbody>
+      `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody>
       <tr><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
       <tr><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
       <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span style="color:var(--muted)">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
@@ -1918,11 +2129,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   function enterBuildMode() {
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
+    state.bmTask = null; // pager re-lands on the first unfinished task
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
     renderBuildChecklists();
     trapFocus($('buildMode')); // keyboard users land on the shop surface
     requestWakeLock();
+    renderReadiness(); // Build takes aria-current in the mode nav
   }
   function exitBuildMode() {
     if (!state.buildMode) return;
@@ -1932,29 +2145,85 @@ var BB = globalThis.BB = globalThis.BB || {};
     releaseFocus($('buildMode'));
     releaseWakeLock();
     scheduleAutosave();
+    renderReadiness(); // the underlying mode resumes aria-current
   }
 
-  function toggleProgress(map, key, btn) {
+  function toggleProgress(map, key, btn, src) {
     map[key] = !map[key];
     btn.setAttribute('aria-pressed', String(!!map[key]));
-    btn.querySelector('.box').textContent = map[key] ? '✓' : '';
+    btn.querySelector('.box').innerHTML = map[key] ? BB.Icons.svg('check', 20) : '';
     $('bmProgress').textContent = progressPct() + '% built';
     renderReadiness(); // the Build step tracks shop progress live
     scheduleAutosave();
+    // The two build surfaces stay in step: checking on one re-renders the
+    // OTHER (never the one holding focus).
+    if (src === 'pager') renderBuildChecklists({ columnsOnly: true });
+    else renderBmTask();
+    // First fully-built project: one quiet install suggestion (see nudge).
+    if (progressPct() >= 100) maybeInstallNudge();
   }
 
   function checkButton(label, dims, checked, onToggle) {
     const b = el('button', 'bm-check');
     b.type = 'button';
     b.setAttribute('aria-pressed', String(!!checked));
-    b.innerHTML = `<span class="box" aria-hidden="true">${checked ? '✓' : ''}</span>
+    b.innerHTML = `<span class="box" aria-hidden="true">${checked ? BB.Icons.svg('check', 20) : ''}</span>
       <span class="bm-check-label">${esc(label)}</span>
       ${dims ? `<span class="bm-check-dims">${esc(dims)}</span>` : ''}`;
     b.onclick = () => onToggle(b);
     return b;
   }
 
-  function renderBuildChecklists() {
+  /* One derivation of the build work-list feeds BOTH surfaces (wide two-
+   * column checklist and the phone one-task pager), so progress keys can
+   * never drift between them. */
+  function checksForBoard(b, bi) {
+    return b.cuts.map((c, ci) => ({ key: cutKey('b', bi, ci, c.name, c.len), label: c.name, dims: fmt(c.len) }));
+  }
+  function checksForSheet(s, si) {
+    return s.placements.map((p, pi) => ({ key: cutKey('s', si, pi, p.name, Math.round(p.w)), label: p.name, dims: `${fmt(p.w)} × ${fmt(p.h)}` }));
+  }
+  function checksForRough() {
+    const out = [];
+    state.cut.filter(r => r.stock !== 'sheet').forEach((r, ri) => {
+      for (let qi = 0; qi < r.qty; qi++) {
+        out.push({
+          key: cutKey('r', ri, qi, r.name, r.L),
+          label: r.qty > 1 ? `${r.name} (${qi + 1} of ${r.qty})` : r.name,
+          dims: `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`
+        });
+      }
+    });
+    return out;
+  }
+  function buildTasks() {
+    const plan = state.stockPlan;
+    const tasks = [];
+    plan.boards.forEach((b, bi) => {
+      if (!b.stockLen) return;
+      tasks.push({
+        kind: 'board', title: `Board ${bi + 1} — ${Units.fmtNominal(b.nominal, b.actual, b.stockLen)}`,
+        svg: () => Packing.boardSVG(b, fmt), largeSvg: () => Packing.boardSVG(b, fmt, { large: true }),
+        checks: checksForBoard(b, bi)
+      });
+    });
+    plan.sheets.forEach((s, si) => {
+      tasks.push({
+        kind: 'sheet', title: `Sheet ${si + 1} — ${fmt(s.thickness)} (${s.fractionLabel})`,
+        svg: () => Packing.sheetSVG(s, fmt), largeSvg: () => Packing.sheetSVG(s, fmt, { large: true }),
+        checks: checksForSheet(s, si)
+      });
+    });
+    if (plan.mode === 'rough') {
+      tasks.push({ kind: 'rough', title: 'Cut list (rough stock)', checks: checksForRough() });
+    }
+    state.steps.forEach((s, i) => {
+      tasks.push({ kind: 'step', title: `Step ${i + 1} — ${s.title}`, stepIndex: i, stepId: s.id, text: s.text });
+    });
+    return tasks;
+  }
+
+  function renderBuildChecklists(opts) {
     const cuts = $('bmCuts');
     const stepsEl = $('bmSteps');
     cuts.textContent = '';
@@ -1971,18 +2240,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       wireDiagramZoom(d, getLargeSvg);
       return d;
     };
+    const checkRows = (group, checks) => {
+      for (const c of checks) {
+        group.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn)));
+      }
+    };
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
       const title = `Board ${bi + 1} — ${Units.fmtNominal(b.nominal, b.actual, b.stockLen)}`;
       group.append(el('div', 'bm-board-title', esc(title)));
-      // The same drafting diagram as the Stock tab, at the saw: which piece
+      // The same drafting diagram as the Buy tab, at the saw: which piece
       // comes out of which end of this exact board.
       group.append(diagram(title, Packing.boardSVG(b, fmt), () => Packing.boardSVG(b, fmt, { large: true })));
-      b.cuts.forEach((c, ci) => {
-        const key = cutKey('b', bi, ci, c.name, c.len);
-        group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
-      });
+      checkRows(group, checksForBoard(b, bi));
       cuts.append(group);
     });
     plan.sheets.forEach((s, si) => {
@@ -1990,10 +2261,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const title = `Sheet ${si + 1} — ${fmt(s.thickness)} (${s.fractionLabel})`;
       group.append(el('div', 'bm-board-title', esc(title)));
       group.append(diagram(title, Packing.sheetSVG(s, fmt), () => Packing.sheetSVG(s, fmt, { large: true })));
-      s.placements.forEach((p, pi) => {
-        const key = cutKey('s', si, pi, p.name, Math.round(p.w));
-        group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
-      });
+      checkRows(group, checksForSheet(s, si));
       cuts.append(group);
     });
     if (plan.mode === 'rough') {
@@ -2001,18 +2269,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       group.append(el('div', 'bm-board-title', 'Cut list (rough stock)'));
       // One check per physical piece, not per quantity batch — you cut them
       // one at a time, you check them one at a time.
-      state.cut.filter(r => r.stock !== 'sheet').forEach((r, ri) => {
-        for (let qi = 0; qi < r.qty; qi++) {
-          const key = cutKey('r', ri, qi, r.name, r.L);
-          const label = r.qty > 1 ? `${r.name} (${qi + 1} of ${r.qty})` : r.name;
-          group.append(checkButton(label, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
-        }
-      });
+      checkRows(group, checksForRough());
       cuts.append(group);
     }
     if (!cuts.children.length) cuts.append(el('p', 'sub', 'No cuts — the design has no parts.'));
 
-    // Assembly steps: tap to check; ▶ opens step-synced 3D playback full screen.
+    // Assembly steps: tap to check; play opens step-synced 3D full screen.
     const stepsWrap = el('div', 'bm-steps');
     state.steps.forEach((s, i) => {
       const row = el('div', '');
@@ -2021,7 +2283,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       row.style.alignItems = 'stretch';
       const btn = checkButton(`${i + 1}. ${s.title}`, null, prog.steps[s.id], b => toggleProgress(prog.steps, s.id, b));
       btn.style.flex = '1';
-      const play = el('button', 'bm-step-play', '▶');
+      const play = el('button', 'bm-step-play', BB.Icons.svg('play', 20));
       play.setAttribute('aria-label', `Play 3D animation for step ${i + 1}`);
       play.onclick = () => enterBmPlayback(i);
       row.append(btn, play);
@@ -2029,6 +2291,84 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     stepsEl.append(stepsWrap);
     $('bmProgress').textContent = progressPct() + '% built';
+    if (!(opts && opts.columnsOnly)) renderBmTask();
+  }
+
+  /* ---------------- phone pager: one board or one step at a time ---------- */
+  function taskDone(t, prog) {
+    if (t.kind === 'step') return !!prog.steps[t.stepId];
+    return t.checks.length > 0 && t.checks.every(c => prog.cuts[c.key]);
+  }
+  function renderBmTask() {
+    const pager = $('bmPager');
+    if (!pager) return;
+    pager.textContent = '';
+    const tasks = buildTasks();
+    if (!tasks.length) { pager.append(el('p', 'sub', 'No cuts or steps — the design has no parts.')); return; }
+    const prog = state.project.progress;
+    if (state.bmTask == null) {
+      const firstOpen = tasks.findIndex(t => !taskDone(t, prog));
+      state.bmTask = firstOpen < 0 ? 0 : firstOpen;
+    }
+    state.bmTask = Math.max(0, Math.min(tasks.length - 1, state.bmTask));
+    const t = tasks[state.bmTask];
+    const card = el('section', 'bm-task');
+    card.setAttribute('aria-label', t.title);
+    card.append(el('div', 'bm-board-title', esc(t.title)));
+    if (t.svg) {
+      const d = el('div', 'bm-diagram bm-diagram-hero');
+      d.dataset.diagramTitle = t.title;
+      d.innerHTML = t.largeSvg();
+      wireDiagramZoom(d, t.largeSvg);
+      card.append(d);
+      card.append(el('p', 'bm-zoom-hint', 'Tap the diagram to enlarge · drag sideways to see the whole board'));
+    }
+    if (t.kind === 'step') {
+      if (t.text) card.append(el('p', 'bm-step-text', esc(t.text)));
+      const row = el('div', 'bm-step-row');
+      const btn = checkButton('Done — ' + t.title.replace(/^Step \d+ — /, ''), null, prog.steps[t.stepId],
+        b => toggleProgress(prog.steps, t.stepId, b, 'pager'));
+      btn.style.flex = '1';
+      const play = el('button', 'bm-step-play', BB.Icons.svg('play', 20));
+      play.setAttribute('aria-label', `Play 3D animation for this step`);
+      play.onclick = () => enterBmPlayback(t.stepIndex);
+      row.append(btn, play);
+      card.append(row);
+    } else {
+      for (const c of t.checks) {
+        card.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn, 'pager')));
+      }
+    }
+    pager.append(card);
+    $('bmTaskPos').textContent = `${state.bmTask + 1} of ${tasks.length}`;
+    $('bmTaskPrev').disabled = state.bmTask === 0;
+    $('bmTaskNext').textContent = state.bmTask === tasks.length - 1 ? 'Done' : 'Next';
+  }
+  function bmTaskGo(delta) {
+    const tasks = buildTasks();
+    if (!tasks.length) return;
+    const next = (state.bmTask || 0) + delta;
+    if (next >= tasks.length) { exitBuildMode(); return; } // "Done" walks out of the shop
+    state.bmTask = Math.max(0, next);
+    renderBmTask();
+    $('bmPager').scrollTop = 0;
+  }
+
+  /* ---------------- install nudge (once, after the first finished build) --- */
+  function maybeInstallNudge() {
+    if (state.prefs4.installNudged || !state.buildMode) return;
+    state.prefs4.installNudged = true;
+    Store.savePrefs(state.prefs4);
+    const box = $('bmInstall');
+    box.hidden = false;
+    $('bmInstallGo').hidden = !state.installPrompt;
+    if (!state.installPrompt) {
+      // No install event on this browser (iOS Safari, or already installed):
+      // say the honest thing instead of a dead button.
+      $('bmInstallText').textContent = /iPhone|iPad/.test(navigator.userAgent)
+        ? 'Nice build. For next time: Share → Add to Home Screen keeps Blueprint Buddy one tap from the shop.'
+        : 'Nice build. Bookmark or install this page and the next project opens straight from the shop.';
+    }
   }
 
   function enterBmPlayback(i) {
@@ -2151,77 +2491,65 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- shell: readiness strip ----------------
-   * Design → Validate → Plans → Build, every state DERIVED from what the
-   * pipeline already knows — nothing stored, nothing to get stale. Each step
-   * is a button that jumps to its surface. */
-  function readinessSteps() {
+  /* ---------------- shell: modes ----------------
+   * The journey IS the navigation: Design → Plan → Build. Each mode button
+   * carries a state dot DERIVED from what the pipeline already knows —
+   * nothing stored, nothing to get stale. Build stays the existing
+   * full-screen surface layered over whichever mode it was entered from. */
+  function setMode(m, opts) {
+    if (m === 'build') { enterBuildMode(); return; }
+    state.mode = m === 'plan' ? 'plan' : 'design';
+    document.body.dataset.mode = state.mode;
+    if (!(opts && opts.silent)) syncHash();
+    renderReadiness();
+    if (state.mode === 'plan') { renderTabs(); renderPanel(); }
+  }
+  function modeStates() {
     const sum = state.integrity.summary;
     const designed = !!state.project || state.history.snapshots.length > 1;
     const stockTrouble = state.stockPlan && state.stockPlan.errors.length > 0;
     const pct = progressPct();
-    return [
-      {
-        label: 'Design', state: designed ? 'done' : 'todo',
-        aria: designed ? 'Design captured — open the chat to refine it' : 'Start here — describe a piece, or pick a starter',
-        go: focusChat
+    return {
+      design: {
+        state: designed ? 'done' : 'todo',
+        aria: designed ? 'Design mode — the 3D model and chat' : 'Start here — describe a piece, or pick a starter'
       },
-      {
-        label: 'Validate',
-        state: sum.fails ? 'fail' : sum.advisories ? 'attn' : 'done',
-        aria: sum.fails ? `${sum.fails} failing structural check${sum.fails > 1 ? 's' : ''} — open the integrity report`
-          : sum.advisories ? `Checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''} — open the integrity report`
-            : 'All structural checks pass — open the integrity report',
-        go: () => selectTab('integrity')
+      plan: {
+        state: sum.fails ? 'fail' : sum.advisories || stockTrouble ? 'attn' : state.cut.length ? 'done' : 'todo',
+        aria: sum.fails ? `Plan mode — ${sum.fails} failing safety check${sum.fails > 1 ? 's' : ''}`
+          : sum.advisories ? `Plan mode — checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`
+            : `Plan mode — cut list, buying, assembly, safety`
       },
-      {
-        label: 'Plans',
-        state: state.cut.length ? (stockTrouble ? 'attn' : 'done') : 'todo',
-        aria: state.cut.length ? `Plans ready — ${state.cut.length} part${state.cut.length > 1 ? 's' : ''} in the cut list` : 'Plans appear once the design has parts',
-        go: () => selectTab('cut')
-      },
-      {
-        label: 'Build',
-        state: pct >= 100 ? 'done' : pct > 0 ? 'active' : 'todo',
-        aria: pct >= 100 ? 'Build complete — open build mode' : pct > 0 ? `${pct}% built — back to build mode` : 'Open build mode when you head to the shop',
-        go: enterBuildMode
+      build: {
+        state: pct >= 100 ? 'done' : pct > 0 ? 'attn' : 'todo',
+        aria: pct >= 100 ? 'Build complete' : pct > 0 ? `Build mode — ${pct}% built` : 'Build mode — the full-screen shop companion'
       }
-    ];
+    };
   }
   function renderReadiness() {
-    const navs = [$('readiness'), $('readinessMobile')].filter(Boolean);
-    navs.forEach(nav => { nav.textContent = ''; });
     if (!state.integrity) return;
-    const steps = readinessSteps();
-    const complete = st => st === 'done' || st === 'attn';
-    navs.forEach(nav => {
-      let currentSet = false;
-      steps.forEach((s, i) => {
-        if (i) nav.append(el('span', 'ready-sep', '›'));
-        const b = el('button', 'ready-step');
-        b.type = 'button';
-        b.dataset.state = s.state;
-        b.dataset.step = s.label.toLowerCase();
-        b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
-        b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
-        b.title = s.aria;
-        if (!currentSet && !complete(s.state)) {
-          b.setAttribute('aria-current', 'step');
-          currentSet = true;
-        }
-        b.onclick = s.go;
-        nav.append(b);
-      });
-    });
+    const states = modeStates();
+    for (const m of ['design', 'plan', 'build']) {
+      const b = $(m === 'build' ? 'buildModeBtn' : 'mode-' + m);
+      if (!b) continue;
+      const s = states[m];
+      b.dataset.state = s.state;
+      const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
+      if (current) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+      b.setAttribute('aria-label', s.aria);
+      b.title = s.aria;
+    }
   }
 
-  /* ---------------- shell: welcome (first run, never blocking) ---------------- */
+  /* ---------------- shell: first-run hero (never blocking) ---------------- */
   function showWelcome(hasProjects) {
-    $('welcomeResumeName').textContent = hasProjects ? 'Open a project' : 'Import a design';
+    $('welcomeResumeName').textContent = hasProjects ? 'Open a saved design' : 'Open a saved design';
     $('welcomeResumeCaption').textContent = hasProjects
       ? 'Pick up where you left off — plans and build progress included.'
       : 'Paste a BB4: share code to pick up a design from anywhere.';
     $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
+    renderHeroStarters();
     $('welcomeOverlay').hidden = false;
   }
   function hideWelcome() {
@@ -2234,7 +2562,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const REF_ENTRIES = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
   const REF_TABS = REF_ENTRIES.map(x => x[0]);
   function syncHash() {
-    const path = state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    const path = state.mode === 'design'
+      ? 'design'
+      : state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
     const h = '#' + path + `;split=${state.prefs4.ui.split};chat=${state.prefs4.ui.chatCollapsed ? 1 : 0}`;
     if (location.hash !== h) {
       try { history.replaceState(null, '', h); } catch (e) { /* sandboxed frame: tabs still work, hash doesn't */ }
@@ -2242,11 +2572,30 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function applyHash() {
     const raw = (location.hash || '').replace(/^#/, '');
+    if (raw.startsWith('d=')) {
+      // A share link: the design itself rides the hash. Import through the
+      // exact same gate as a pasted code, then hand the hash back to the app.
+      const res = importCodeText(decodeURIComponent(raw.slice(2)), 'share link');
+      if (res.error) botSay('That share link didn\u2019t decode: ' + res.error, []);
+      else state.importedFromLink = true;
+      syncHash();
+      return true;
+    }
     const bits = raw.split(';');
     const parts = (bits.shift() || '').split('/');
-    if (!TABS.includes(parts[0])) return false;
-    state.tab = parts[0];
-    if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    if (parts[0] === 'design') {
+      setMode('design', { silent: true });
+    } else if (parts[0] === 'bom') {
+      // Materials merged into Buy — old links keep working
+      state.mode = 'plan';
+      document.body.dataset.mode = 'plan';
+      state.tab = 'stock';
+    } else if (TABS.includes(parts[0])) {
+      state.mode = 'plan';
+      document.body.dataset.mode = 'plan';
+      state.tab = parts[0];
+      if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    } else return false;
     bits.forEach(bit => {
       const eq = bit.indexOf('=');
       if (eq < 0) return;
@@ -2262,14 +2611,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     return true;
   }
 
-  /* ---------------- tabs ---------------- */
-  const TABS = ['cut', 'stock', 'bom', 'assembly', 'integrity', 'reference'];
+  /* ---------------- tabs (Plan sub-navigation) ----------------
+   * Reference is deliberately not a peer destination: its tab stays hidden
+   * until a "Learn why" link or the More menu opens it. */
+  const TABS = ['overview', 'cut', 'stock', 'assembly', 'integrity', 'reference'];
   function selectTab(t) {
     state.tab = t;
+    if (state.mode !== 'plan') setMode('plan');
     renderTabs();
     renderPanel();
   }
   function renderTabs() {
+    $('tab-reference').hidden = state.tab !== 'reference';
     for (const t of TABS) {
       $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
       $('tab-' + t).tabIndex = state.tab === t ? 0 : -1;
@@ -2294,12 +2647,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       $('tab-' + t).addEventListener('click', () => selectTab(t));
     }
     bar.addEventListener('keydown', e => {
-      const i = TABS.indexOf(state.tab);
+      // Hidden reference never enters the arrow-key cycle.
+      const cycle = state.tab === 'reference' ? TABS : TABS.filter(t => t !== 'reference');
+      const i = cycle.indexOf(state.tab);
       let next = null;
-      if (e.key === 'ArrowRight') next = TABS[(i + 1) % TABS.length];
-      if (e.key === 'ArrowLeft') next = TABS[(i + TABS.length - 1) % TABS.length];
-      if (e.key === 'Home') next = TABS[0];
-      if (e.key === 'End') next = TABS[TABS.length - 1];
+      if (e.key === 'ArrowRight') next = cycle[(i + 1) % cycle.length];
+      if (e.key === 'ArrowLeft') next = cycle[(i + cycle.length - 1) % cycle.length];
+      if (e.key === 'Home') next = cycle[0];
+      if (e.key === 'End') next = cycle[cycle.length - 1];
       if (next) {
         e.preventDefault();
         selectTab(next);
@@ -2332,7 +2687,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt)), 'image/svg+xml');
       botSay('Exported the drawing sheet — front, side, and plan elevations with dimensions, plus a title block. Opens in any browser or vector editor.', []);
     } else if (kind === 'share') {
-      openShare();
+      openShareSheet();
     } else if (kind === 'print') {
       $('printRoot').innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan);
       window.print();
@@ -2368,6 +2723,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('historyClose', 'close', undefined);
     set('jointClose', 'close', undefined);
     set('diagramClose', 'close', undefined);
+    set('welcomeClose', 'close', undefined);
     set('frameBtn', 'fit', 'Fit');
     set('pbPrev', 'prev');
     set('pbNext', 'next');
@@ -2375,7 +2731,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('bmPbPrev', 'prev', 'Prev');
     set('bmPbNext', 'next', 'Next', true);
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
-    $('exportBtn').innerHTML = `Export ${icon('caret', 13)}`;
   }
 
   async function boot() {
@@ -2416,6 +2771,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     });
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
+    mobileAdvisoryMq.addEventListener('change', () => {
+      renderAdvisories(state.report);
+      if (state.mode === 'plan') renderPanel(); // cut cards <-> table swap
+    });
     // In auto theme, the 3D scene follows the OS the same way the CSS does.
     darkMq.addEventListener('change', () => {
       if ((state.prefs4.theme || 'auto') === 'auto') applyTheme('auto');
@@ -2446,9 +2805,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
     applyRender();
+    document.body.dataset.mode = state.mode; // design until a hash says otherwise
     setChatCollapsed(state.prefs4.ui.chatCollapsed, { persist: false });
     setSplit(state.prefs4.ui.split, { persist: false });
     bindSplitter();
+    // The AI badge earns its state from a zero-token probe, then from every
+    // real send; connectivity flips re-probe.
+    probeAI();
+    window.addEventListener('online', probeAI);
+    window.addEventListener('offline', probeAI);
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -2467,11 +2832,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Returning users land in the studio with their latest project. First
     // runs get a welcome card with the three ways in — floating over a live,
     // fully working bench: nothing blocks, everything behind it responds.
-    let opened = false, projectCount = 0;
+    let opened = !!state.importedFromLink, projectCount = 0;
     try {
       const idx = await Store.loadIndex();
       projectCount = idx.length;
-      if (idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
+      if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
       showWelcome(projectCount > 0);
@@ -2544,18 +2909,40 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
     $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
-    /* chat fold + welcome paths */
+    /* chat fold + hero paths */
     $('chatCollapse').onclick = () => setChatCollapsed(true);
     $('chatRail').onclick = () => { setChatCollapsed(false); $('chatText').focus(); };
     $('welcomeClose').onclick = hideWelcome;
-    $('welcomeDescribe').onclick = () => { hideWelcome(); focusChat(); };
+    /* The hero prompt IS the chat pipeline — one path for every input. */
+    const heroSubmit = () => {
+      const t = $('heroText').value.trim();
+      if (!t) { hideWelcome(); focusChat(); return; }
+      hideWelcome();
+      sendMessage(t);
+    };
+    $('heroSend').onclick = heroSubmit;
+    $('heroText').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); heroSubmit(); }
+    });
+    $('welcomePhoto').onclick = () => $('photoInput').click();
     $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
     $('welcomeResume').onclick = () => {
       hideWelcome();
       if ($('welcomeOverlay').dataset.mode === 'projects') openProjects();
-      else { openShare(); $('importCode').focus(); }
+      else { openShareSheet(); $('importCode').focus(); }
     };
-    $('shareBtn').onclick = openShare;
+    $('shareBtn').onclick = openShareSheet;
+    $('copyShareLink').onclick = async () => {
+      const ta = $('shareLinkText');
+      ta.select();
+      let done = false;
+      try { await navigator.clipboard.writeText(ta.value); done = true; }
+      catch (e) { try { done = document.execCommand('copy'); } catch (e2) { /* stays selected */ } }
+      $('copyShareLink').textContent = done ? 'Copied' : 'Copy manually';
+      setTimeout(() => { $('copyShareLink').textContent = 'Copy link'; }, 1600);
+    };
+    $('shareGlb').onclick = () => doExport('glb');
+    $('sharePrint').onclick = () => doExport('print');
     $('shareClose').onclick = () => closeScrim('shareScrim');
     $('copyShare').onclick = copyShare;
     $('importShare').onclick = importShare;
@@ -2572,6 +2959,27 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('diagRerun').onclick = runDiagnostics;
     $('buildModeBtn').onclick = enterBuildMode;
     $('bmExit').onclick = exitBuildMode;
+    $('bmTaskPrev').onclick = () => bmTaskGo(-1);
+    $('bmTaskNext').onclick = () => bmTaskGo(1);
+    /* swipe between tasks; vertical scrolling stays native */
+    const swipe = { x: 0, y: 0, id: null };
+    $('bmPager').addEventListener('pointerdown', e => { swipe.id = e.pointerId; swipe.x = e.clientX; swipe.y = e.clientY; });
+    $('bmPager').addEventListener('pointerup', e => {
+      if (e.pointerId !== swipe.id) return;
+      const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+      if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.4) bmTaskGo(dx < 0 ? 1 : -1);
+      swipe.id = null;
+    });
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault(); // saved for the post-build nudge — never unprompted
+      state.installPrompt = e;
+    });
+    $('bmInstallGo').onclick = async () => {
+      const p = state.installPrompt;
+      $('bmInstall').hidden = true;
+      if (p) { try { p.prompt(); await p.userChoice; } catch (e) { /* declined */ } state.installPrompt = null; }
+    };
+    $('bmInstallDismiss').onclick = () => { $('bmInstall').hidden = true; };
     $('bmPbPrev').onclick = () => scrubPlayback(state.playbackIndex - 1);
     $('bmPbNext').onclick = () => scrubPlayback(state.playbackIndex + 1);
     $('bmPbBack').onclick = exitBmPlayback;
@@ -2615,22 +3023,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       return m;
     };
-    const menu = bindMenu('exportBtn', 'exportMenu');
+    // One menu owns everything quiet: dialogs, export, reference, settings.
+    // Share and Build stay out as the only strong actions (with the mode nav).
     const moreMenu = bindMenu('moreBtn', 'moreMenu');
-    const moreExportMirror = $('moreExportMirror');
-    if (moreExportMirror) {
-      moreExportMirror.textContent = '';
-      menu.querySelectorAll('[data-export]').forEach(b => moreExportMirror.append(b.cloneNode(true)));
-      moreExportMirror.hidden = !moreExportMirror.children.length;
-      if ($('moreExportSep')) $('moreExportSep').hidden = !moreExportMirror.children.length;
-    }
-    menu.querySelectorAll('[data-export]').forEach(b => {
-      b.addEventListener('click', () => {
-        closeMenu('exportBtn', menu);
-        $('exportBtn').focus(); // menu pattern: activation returns focus to the button
-        doExport(b.dataset.export);
-      });
-    });
+    /* View popover: camera presets, explode, and help live one press away */
+    const viewMenu = bindMenu('viewBtn', 'viewMenu');
     // Picking a dialog from More closes the menu; the units row stays open
     // so the seg gives instant feedback.
     moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
@@ -2639,6 +3036,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (b.dataset.export) { doExport(b.dataset.export); return; }
         if (!trapStack.length) $('moreBtn').focus(); // unless a dialog already took focus
       });
+    });
+    $('referenceBtn').onclick = () => selectTab('reference');
+    /* mode navigation */
+    $('mode-design').onclick = () => setMode('design');
+    $('mode-plan').onclick = () => setMode('plan');
+    $('skipToPlans').addEventListener('click', () => { if (state.mode !== 'plan') setMode('plan'); });
+    /* "Learn why" links anywhere in the app open the reference on the right
+     * shelf — the Shop Reference relocated from peer tab to contextual door. */
+    document.addEventListener('click', e => {
+      const link = e.target.closest('[data-reflink]');
+      if (!link) return;
+      state.refTab = link.dataset.reflink;
+      if (link.dataset.refquery !== undefined) state.refQuery = link.dataset.refquery;
+      selectTab('reference');
     });
 
     /* chat — no form element (artifact rules); Enter and the button both send */
@@ -2801,18 +3212,27 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else if (!typing && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         focusChat();
+      } else if (!typing && state.buildMode && !state.bmPlayback && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        bmTaskGo(e.key === 'ArrowRight' ? 1 : -1);
       } else if (!typing && (e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        const i = TABS.indexOf(state.tab);
-        const next = e.key === ']' ? TABS[(i + 1) % TABS.length] : TABS[(i - 1 + TABS.length) % TABS.length];
-        selectTab(next);
+        // Bracket keys walk the Plan sub-tabs (and pull you into Plan mode
+        // first); the hidden reference tab stays out of the cycle.
+        if (state.mode !== 'plan') { setMode('plan'); }
+        else {
+          const cycle = TABS.filter(t => t !== 'reference' || state.tab === 'reference');
+          const i = cycle.indexOf(state.tab);
+          const next = e.key === ']' ? cycle[(i + 1) % cycle.length] : cycle[(i - 1 + cycle.length) % cycle.length];
+          selectTab(next);
+        }
       } else if (e.key === 'Escape') {
         // Close the topmost overlay only — one layer per press. Build mode
         // is the bottom layer: it exits last, never before an open modal.
         const prov = $('provPop');
         if (prov && !prov.hidden) { hideProv(); return; }
         if (!$('vpHelp').hidden) { setVpHelp(false); $('vpHelpBtn').focus(); return; }
-        if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
+        if (viewMenu.classList.contains('open')) { closeMenu('viewBtn', viewMenu); return; }
         if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
         const scrims = [...document.querySelectorAll('.scrim.open')];
         if (scrims.length) { closeScrim(scrims[scrims.length - 1]); return; }
@@ -2832,7 +3252,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
       preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
-      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness
+      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness,
+      setMode, probeAI, setAIState
     };
 
     // Viewport guidance speaks the input language it sees, and steps aside

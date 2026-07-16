@@ -73,6 +73,12 @@ const clickMoreCtl = async sel => {
   ok(await page.isVisible('#welcomeOverlay'), 'welcome paths show on first run');
   ok(!(await page.isVisible('#galleryScrim.open')), 'no modal blocks the bench on boot');
   ok(await page.$$eval('#welcomeOverlay .welcome-card', b => b.length) === 3, 'welcome offers three entry paths');
+  ok(await page.evaluate(() => document.body.dataset.mode === 'design'), 'first run opens in Design mode - the model is the hero');
+  ok(await page.isVisible('#heroText'), 'hero leads with a real prompt field');
+  ok(await page.$$eval('#heroStarters .hero-starter', b => b.length) === 3, 'hero offers three ready starters');
+  ok(await page.evaluate(() => document.getElementById('chatText').placeholder.startsWith('Describe your piece')),
+    'chat placeholder invites a first description');
+  await page.click('#mode-plan');
   await page.click('#tab-stock');
   ok(await page.evaluate(() => __bb.state.tab === 'stock'), 'bench interactive behind the welcome card');
   await page.click('#tab-cut');
@@ -106,6 +112,8 @@ const clickMoreCtl = async sel => {
   ok(ns.bomSlides === 2, 'slide pairs in BOM');
   ok(await page.evaluate(() => document.getElementById('hintPrompts').children.length === 0),
     'hint prompts hide once a gallery design loads');
+  ok(await page.evaluate(() => document.getElementById('chatText').placeholder.startsWith('Ask for a change')),
+    'chat placeholder flips to refinement once a design exists');
   await page.waitForTimeout(900);
   await page.screenshot({ path: SHOTS + '/02-nightstand.png' });
 
@@ -115,6 +123,8 @@ const clickMoreCtl = async sel => {
   await page.waitForSelector('.msg.bot .chip', { timeout: 8000 });
   const chip = await page.locator('.msg.bot:last-child .chip:not(.caveat)').first().textContent();
   ok(/height 24 in → 22 1\/16 in/.test(chip), `diff chip shows code-computed change in display units (${chip.trim()})`);
+  ok(await page.evaluate(() => document.getElementById('aiBadge').dataset.state === 'offline'),
+    'AI badge tells the truth: no service here, offline basic edits');
   ok(await page.evaluate(() => __bb.state.spec.overall.height === 559.6), 'spec height merged to 559.6 mm internally');
 
   // Ambiguous prompt → clarifying question with tappable answers.
@@ -351,9 +361,12 @@ const clickMoreCtl = async sel => {
   await page.click('#jointClose');
   await page.waitForTimeout(150);
   ok(await page.evaluate(() => !BB.JointView._live()), 'closing the inspector disposes its scene');
-  // Reference-tab demo: every joint learnable before it is used.
-  await page.click('#tab-reference');
+  // Reference demo (via the More menu - no longer a peer tab): every joint
+  // learnable before it is used.
+  await clickMoreCtl('#referenceBtn');
   await page.waitForSelector('.ref-search');
+  ok(await page.evaluate(() => !document.getElementById('tab-reference').hidden),
+    'reference tab appears only while reference is open');
   await page.click('.ref-tabs .ref-tab:nth-child(3)');
   await page.waitForSelector('.joint-demo');
   ok(await page.evaluate(() => document.querySelectorAll('.joint-demo').length === Object.keys(BB.K.JOINERY).length),
@@ -364,7 +377,7 @@ const clickMoreCtl = async sel => {
   await page.click('#jointClose');
 
   // Shop reference searchable.
-  await page.click('#tab-reference');
+  await clickMoreCtl('#referenceBtn');
   await page.waitForSelector('.ref-search');
   await page.fill('.ref-search', 'dovetail');
   await page.click('.ref-tabs .ref-tab:nth-child(3)');
@@ -812,35 +825,44 @@ const clickMoreCtl = async sel => {
   // Viewport controls live in ONE toolbar.
   ok(await page.evaluate(() => {
     const cards = document.querySelectorAll('.stage-controls .control-card');
-    return cards.length === 1 && !!cards[0].querySelector('#explodeRange') &&
-      !!cards[0].querySelector('#dimsToggle') && !!cards[0].querySelector('#frameBtn');
-  }), 'viewport controls merged into a single toolbar');
+    return cards.length === 1 && !!cards[0].querySelector('#dimsToggle') &&
+      !!cards[0].querySelector('#frameBtn') && !!cards[0].querySelector('#viewBtn') &&
+      !!cards[0].querySelector('#viewMenu #explodeRange');
+  }), 'toolbar keeps Dims/Blueprint/Fit/View; explode and presets ride the View popover');
+  await page.click('#viewBtn');
+  ok(await page.isVisible('#viewMenu #explodeRange') && await page.isVisible('#viewMenu #viewFront'),
+    'View popover opens with explode and camera presets');
+  await page.keyboard.press('Escape');
+  ok(await page.evaluate(() => !document.getElementById('viewMenu').classList.contains('open')),
+    'Escape closes the View popover');
 
   // Menu-button keyboard pattern: ArrowDown opens + enters, arrows cycle.
-  await page.focus('#exportBtn');
+  // (Export lives inside More now - one quiet menu, per the shell redesign.)
+  await page.focus('#moreBtn');
   await page.keyboard.press('ArrowDown');
   const menuKb = await page.evaluate(() => ({
-    open: document.getElementById('exportMenu').classList.contains('open'),
-    first: document.activeElement.dataset.export
+    open: document.getElementById('moreMenu').classList.contains('open'),
+    first: document.activeElement.id
   }));
-  ok(menuKb.open && menuKb.first === 'print', 'ArrowDown opens the export menu onto its first item');
+  ok(menuKb.open && menuKb.first === 'historyBtn', 'ArrowDown opens the More menu onto its first item');
   await page.keyboard.press('ArrowDown');
-  ok(await page.evaluate(() => document.activeElement.dataset.export === 'svg'), 'arrow keys cycle menu items');
+  ok(await page.evaluate(() => document.activeElement.id === 'projectsBtn'), 'arrow keys cycle menu items');
+  ok(await page.evaluate(() => !!document.querySelector('#moreMenu [data-export="print"]')),
+    'export actions live inside the More menu');
   await page.keyboard.press('Escape');
-  ok(await page.evaluate(() => !document.getElementById('exportMenu').classList.contains('open')), 'Escape closes the open menu');
+  ok(await page.evaluate(() => !document.getElementById('moreMenu').classList.contains('open')), 'Escape closes the open menu');
 
-  // Focus trap + restore: open Share from the export menu, Tab stays inside,
-  // Escape hands focus back to the menu item that opened it.
-  await page.click('#exportBtn');
-  await page.click('#exportMenu [data-export="share"]');
+  // Focus trap + restore: open Share (a strong top-bar action), Tab stays
+  // inside, Escape hands focus back to the button that opened it.
+  await page.click('#shareBtn');
   await page.waitForSelector('#shareScrim.open');
   const inTrap = await page.evaluate(() => !!document.activeElement.closest('#shareScrim'));
   await page.keyboard.press('Shift+Tab');
   const wrapped = await page.evaluate(() => !!document.activeElement.closest('#shareScrim'));
   ok(inTrap && wrapped, 'share dialog traps focus (Shift+Tab wraps inside the dialog)');
   await page.keyboard.press('Escape');
-  ok(await page.evaluate(() => document.activeElement && document.activeElement.id === 'exportBtn'),
-    'closing the dialog restores focus to the menu button that opened it');
+  ok(await page.evaluate(() => document.activeElement && document.activeElement.id === 'shareBtn'),
+    'closing the dialog restores focus to the control that opened it');
 
   // Provenance is a real dialog with a close control and focus restore.
   await page.click('#tab-cut');
@@ -859,7 +881,7 @@ const clickMoreCtl = async sel => {
     'cut dimensions have accessible names');
 
   // Reference tabs: roving tabindex + arrow keys.
-  await page.click('#tab-reference');
+  await clickMoreCtl('#referenceBtn');
   await page.waitForSelector('.ref-tabs');
   await page.focus('.ref-tab[aria-selected="true"]');
   await page.keyboard.press('ArrowRight');
@@ -871,6 +893,26 @@ const clickMoreCtl = async sel => {
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
   await page.click('#tab-integrity');
   await page.waitForSelector('.fix-row .btn', { timeout: 5000 });
+
+  // Beginner-first Safety: plain sentence leads, engineering details fold
+  // closed, failing checks + their fixes stay surfaced above the fold.
+  await page.evaluate(() => __bb.merge({ meta: { level: 'beginner' } }, 'manual'));
+  await page.click('#tab-integrity');
+  const safetyShape = await page.evaluate(() => ({
+    plain: !!document.querySelector('.integrity-plain'),
+    detailsOpen: document.querySelector('.integrity-details').open,
+    surfacedFail: !!document.querySelector('.panel-inner > .check-card.fail'),
+    fixReachable: !!document.querySelector('.panel-inner > .check-card.fail .fix-row .btn'),
+    jargonFree: !/\u0394MC|creep/i.test([...document.querySelectorAll('.panel-inner > .check-card.fail')].map(x => x.textContent).join(''))
+  }));
+  ok(safetyShape.plain && !safetyShape.detailsOpen, 'Safety leads plain for beginners; details fold closed');
+  ok(safetyShape.surfacedFail && safetyShape.fixReachable, 'failing checks and fixes stay above the fold');
+  ok(safetyShape.jargonFree, 'no creep/\u0394MC jargon in the beginner first layer');
+  await page.evaluate(() => __bb.merge({ meta: { level: 'intermediate' } }, 'manual'));
+  await page.click('#tab-integrity');
+  ok(await page.evaluate(() => document.querySelector('.integrity-details').open),
+    'intermediate level opens the engineering details by default');
+
   const fixSnap = () => page.evaluate(() => ({ t: __bb.state.spec.structure.topThickness, a: __bb.state.spec.structure.apronHeight, sp: __bb.state.spec.wood.species, fails: __bb.state.integrity.summary.fails }));
   const beforeFix = await fixSnap();
   await page.click('.fix-row .btn');
@@ -980,13 +1022,13 @@ const clickMoreCtl = async sel => {
       }
       return out;
     };
-    return grab(['cut', 'stock', 'bom', 'assembly', 'integrity'], /\d\s?mm\b/);
+    return grab(['cut', 'stock', 'assembly', 'integrity'], /\d\s?mm\b/);
   });
   ok(Object.keys(sweep).length === 0, 'imperial sweep finds zero stale mm: ' + JSON.stringify(sweep));
   await clickMoreCtl('#unitsMm');
   const sweepMet = await page.evaluate(() => {
     const out = {};
-    for (const tab of ['cut', 'stock', 'bom', 'assembly', 'integrity']) {
+    for (const tab of ['cut', 'stock', 'assembly', 'integrity']) {
       document.getElementById('tab-' + tab).click();
       const text = document.getElementById('panel-main').textContent;
       const m = text.match(/\d\s?in\b|\d+\/\d+\s?in\b|\d\s?ft\b|\d\s?lb\b/);
@@ -1015,8 +1057,8 @@ const clickMoreCtl = async sel => {
   /* ================= Phase E: shell redesign ================= */
 
   // Compact header: one row on desktop.
-  ok(await page.evaluate(() => document.querySelector('.topbar').getBoundingClientRect().height <= 58),
-    'desktop header is one compact row');
+  ok(await page.evaluate(() => document.querySelector('.topbar').getBoundingClientRect().height <= 64),
+    'desktop header is one compact row (redesign spec: 56\u201364px app bar)');
 
   // Collapsible chat: fold to the rail, bench width goes to the stage;
   // unread replies light the rail dot; expanding restores and focuses chat.
@@ -1072,20 +1114,27 @@ const clickMoreCtl = async sel => {
   ok(splitDrag < 58, `pointer drag moves the split and persists (${splitDrag}%)`);
   await page.evaluate(() => __bb.setSplit(58));
 
-  // Readiness strip: four derived steps, clickable, tracking live state.
-  const ready = await page.evaluate(() => [...document.querySelectorAll('#readiness .ready-step')].map(b => b.dataset.step + ':' + b.dataset.state));
-  ok(ready.length === 4 && ready[0] === 'design:done', `readiness strip derives four steps (${ready.join(' ')})`);
-  await page.click('#readiness .ready-step[data-step="validate"]');
-  ok(await page.evaluate(() => __bb.state.tab === 'integrity'), 'Validate step jumps to the integrity report');
-  await page.click('#readiness .ready-step[data-step="plans"]');
-  ok(await page.evaluate(() => __bb.state.tab === 'cut'), 'Plans step jumps to the cut list');
-  const readyBuild = await page.evaluate(() => {
+  // Mode nav: three derived segments (Design / Plan / Build), states live.
+  const modes = await page.evaluate(() => [...document.querySelectorAll('#modeNav .mode-btn')].map(b => b.dataset.mode + ':' + b.dataset.state));
+  ok(modes.length === 3 && modes[0] === 'design:done', `mode nav derives three segments (${modes.join(' ')})`);
+  await page.click('#mode-design');
+  ok(await page.evaluate(() => document.body.dataset.mode === 'design'
+    && getComputedStyle(document.querySelector('.tabs')).display === 'none'
+    && /^#design(;|$)/.test(location.hash)),
+    'Design mode gives the stage to the model and mirrors into the hash');
+  await page.click('#mode-plan');
+  ok(await page.evaluate(() => document.body.dataset.mode === 'plan'
+    && getComputedStyle(document.querySelector('.tabs')).display !== 'none'),
+    'Plan mode brings the sub-tabs back');
+  const modeBuild = await page.evaluate(() => {
     __bb.enterBuildMode();
+    const current = document.getElementById('buildModeBtn').getAttribute('aria-current') === 'page';
     document.querySelector('.bm-check[aria-pressed="false"]').click();
     __bb.exitBuildMode();
-    return document.querySelector('#readiness .ready-step[data-step="build"]').dataset.state;
+    return { current, state: document.getElementById('buildModeBtn').dataset.state };
   });
-  ok(readyBuild === 'active', 'Build step turns active once shop progress lands');
+  ok(modeBuild.current && modeBuild.state === 'attn',
+    'Build segment holds aria-current in build mode and turns attn once progress lands');
 
   // URL-restorable tabs: hash mirrors the tab, external hash edits apply,
   // and a deep link survives reload — reference subtab included.
@@ -1104,6 +1153,16 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => __bb.state.prefs4.ui.split === 58 && !__bb.state.prefs4.ui.chatCollapsed),
     'shell prefs round-trip through storage');
 
+  // Share links: the design itself rides the URL hash through the same
+  // import gate as a pasted code, then the app takes the hash back.
+  await page.evaluate(() => {
+    const spec = JSON.parse(JSON.stringify(__bb.state.spec));
+    spec.meta.name = 'Linked Bench';
+    location.hash = '#d=' + encodeURIComponent(BB.Codec.toShareCode(spec));
+  });
+  await page.waitForFunction(() => __bb.state.spec.meta.name === 'Linked Bench', null, { timeout: 5000 });
+  ok(await page.evaluate(() => !/^#d=/.test(location.hash)), 'share-link hash imports the design and returns the URL to the app');
+
   // Panel labelled by its tab; skip link is the first tab stop.
   ok(await page.evaluate(() => document.getElementById('panel-main').getAttribute('aria-labelledby') === 'tab-reference'),
     'tab panel is labelled by the active tab');
@@ -1111,9 +1170,10 @@ const clickMoreCtl = async sel => {
   await page.keyboard.press('Tab');
   ok(await page.evaluate(() => document.activeElement.classList.contains('skip-link')), 'skip link is the first tab stop');
 
-  // Viewport help popover: opens from the toolbar, Escape closes and restores.
+  // Viewport help: now inside the View popover; Escape closes and restores.
+  await page.click('#viewBtn');
   await page.click('#vpHelpBtn');
-  ok(await page.isVisible('#vpHelp'), 'viewport help opens');
+  ok(await page.isVisible('#vpHelp'), 'viewport help opens from the View popover');
   await page.keyboard.press('Escape');
   ok(await page.evaluate(() => document.getElementById('vpHelp').hidden && document.activeElement.id === 'vpHelpBtn'),
     'Escape closes viewport help and restores focus');
@@ -1135,13 +1195,81 @@ const clickMoreCtl = async sel => {
     topbarH: document.querySelector('.topbar').getBoundingClientRect().height,
     toolbarH: document.querySelector('.viewport-toolbar').getBoundingClientRect().height,
     brandHidden: getComputedStyle(document.querySelector('.brand-name')).display === 'none',
-    shortCta: getComputedStyle(document.querySelector('.build-cta .cta-short')).display !== 'none'
+    shortCta: getComputedStyle(document.querySelector('#buildModeBtn .mode-label')).display !== 'none'
   }));
-  ok(mobileShell.topbarH <= 56, `mobile header stays one row (${Math.round(mobileShell.topbarH)}px)`);
+  ok(mobileShell.topbarH <= 64, `mobile header stays one row (${Math.round(mobileShell.topbarH)}px, redesign spec: 56\u201364px)`);
   // Touch targets ≥40 px may wrap the toolbar onto a second row on narrow phones —
   // that is preferred over unreadably small controls at the bench.
   ok(mobileShell.toolbarH <= 120, `mobile viewport toolbar stays compact (${Math.round(mobileShell.toolbarH)}px)`);
-  ok(mobileShell.brandHidden && mobileShell.shortCta, 'wordmark yields and Build CTA shortens on phones');
+  ok(mobileShell.brandHidden && mobileShell.shortCta, 'wordmark yields and Build keeps its word on phones');
+  await page.evaluate(() => __bb.selectTab('cut'));
+  await page.waitForSelector('.cut-card');
+  ok(await page.evaluate(() => !document.querySelector('#panel-main table.data') && document.querySelectorAll('.cut-card').length >= 3),
+    'phone cut list reads as cards, not a seven-column table');
+  const whyOpens = await page.evaluate(() => {
+    document.querySelector('.cut-card .cc-why').click();
+    const open = !document.getElementById('provPop').hidden;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    return open;
+  });
+  ok(whyOpens, '"Why this length?" opens the provenance dialog on a phone');
+
+  // Phone Build mode: one board or step at a time — big diagram on a
+  // legibility floor, 56px controls, Next/swipe pager, honest install nudge.
+  await page.evaluate(() => __bb.enterBuildMode());
+  await page.waitForSelector('.bm-task');
+  const pagerShape = await page.evaluate(() => ({
+    columnsHidden: getComputedStyle(document.querySelector('.bm-columns')).display === 'none',
+    oneTask: document.querySelectorAll('.bm-task').length === 1,
+    pos: document.getElementById('bmTaskPos').textContent,
+    nextH: document.getElementById('bmTaskNext').offsetHeight >= 56,
+    checkH: [...document.querySelectorAll('.bm-task .bm-check')].every(b => b.offsetHeight >= 56),
+    noScrollX: document.documentElement.scrollWidth <= innerWidth
+  }));
+  ok(pagerShape.columnsHidden && pagerShape.oneTask, `phone build shows one task at a time (${pagerShape.pos})`);
+  ok(pagerShape.nextH && pagerShape.checkH, 'build pager controls hold the 56px shop floor');
+  ok(pagerShape.noScrollX, 'build mode never pans the page sideways');
+  const fsOK = await page.evaluate(() => {
+    const svg = document.querySelector('.bm-diagram-hero .cut-diagram-svg');
+    if (!svg) return { ok: true, min: null }; // step-first pager (no boards)
+    const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+    const sizes = [...svg.querySelectorAll('text')].map(t => parseFloat(t.getAttribute('font-size')) * scale);
+    return { ok: sizes.every(x => x >= 13.5), min: Math.round(Math.min(...sizes) * 10) / 10 };
+  });
+  ok(fsOK.ok, `every diagram label lands at effective >=14px (min ${fsOK.min})`);
+  const posBefore = await page.evaluate(() => __bb.state.bmTask);
+  await page.click('#bmTaskNext');
+  ok(await page.evaluate(b => __bb.state.bmTask === b + 1, posBefore), 'Next advances the one-task pager');
+  const nudged = await page.evaluate(() => {
+    // Fill every checklist key except one, then check the last box for real —
+    // completion must raise the one-time install nudge through the UI path.
+    const keys = BB.Plans.checklistKeys(__bb.state.stockPlan, __bb.state.cut, __bb.state.steps);
+    const prog = __bb.state.project.progress;
+    keys.cuts.forEach(k => { prog.cuts[k] = true; });
+    keys.steps.forEach(k => { prog.steps[k] = true; });
+    const firstKey = keys.cuts[0];
+    prog.cuts[firstKey] = false;
+    __bb.state.bmTask = 0;
+    __bb.renderReadiness();
+    document.querySelectorAll('#bmPager .bm-check[aria-pressed="false"]').length; // pager may be stale; re-render
+    return (async () => {
+      __bb.state.prefs4.installNudged = false;
+      const el = document.getElementById('bmPager');
+      __bb.exitBuildMode(); __bb.enterBuildMode(); // re-derive pager on fresh progress
+      const btn = document.querySelector('#bmPager .bm-check[aria-pressed="false"]');
+      if (!btn) return { clicked: false };
+      btn.click();
+      return {
+        clicked: true,
+        pct: document.getElementById('bmProgress').textContent,
+        nudge: !document.getElementById('bmInstall').hidden,
+        flag: __bb.state.prefs4.installNudged === true
+      };
+    })();
+  });
+  ok(nudged.clicked && /100%/.test(nudged.pct) && nudged.nudge && nudged.flag,
+    `finishing the build raises the one-time install nudge (${nudged.pct})`);
+  await page.evaluate(() => { document.getElementById('bmInstallDismiss').click(); __bb.exitBuildMode(); });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 

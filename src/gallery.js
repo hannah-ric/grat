@@ -12,7 +12,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * 1828.8 = 72 in, 914.4 = 36 in, 749.3 = 29 1/2 in, and so on. */
   const STARTERS = [
     {
-      caption: 'The classic first commission', emoji: '🍽',
+      caption: 'The classic first commission',
       spec: {
         meta: { name: 'Shaker Dining Table', template: 'table', level: 'intermediate', units: 'in' },
         overall: { width: 1828.8, depth: 914.4, height: 749.3 },
@@ -22,7 +22,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     },
     {
-      caption: 'A weekend of pocket screws', emoji: '💻',
+      caption: 'A weekend of pocket screws',
       spec: {
         meta: { name: 'Weekend Desk', template: 'desk', level: 'beginner', units: 'in' },
         overall: { width: 1320.8, depth: 660.4, height: 736.6 },
@@ -32,7 +32,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     },
     {
-      caption: 'Sturdy seat for the mudroom', emoji: '🪑',
+      caption: 'Sturdy seat for the mudroom',
       spec: {
         meta: { name: 'Entry Bench', template: 'bench', level: 'intermediate', units: 'in' },
         overall: { width: 1117.6, depth: 381, height: 457.2 },
@@ -42,7 +42,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     },
     {
-      caption: 'Five shelves, one afternoon', emoji: '📚',
+      caption: 'Five shelves, one afternoon',
       spec: {
         meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'in' },
         overall: { width: 914.4, depth: 304.8, height: 1828.8 },
@@ -54,7 +54,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     },
     {
-      caption: 'Drawer joinery, sized by code', emoji: '🌙',
+      caption: 'Drawer joinery, sized by code',
       spec: {
         meta: { name: 'Two-Drawer Nightstand', template: 'nightstand', level: 'intermediate', units: 'in' },
         overall: { width: 508, depth: 406.4, height: 609.6 },
@@ -66,7 +66,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     },
     {
-      caption: 'Carcass work with a drawer bank', emoji: '🗄',
+      caption: 'Carcass work with a drawer bank',
       spec: {
         meta: { name: 'Sideboard Cabinet', template: 'cabinet', level: 'advanced', units: 'in' },
         overall: { width: 762, depth: 457.2, height: 914.4 },

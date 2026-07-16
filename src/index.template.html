@@ -12,7 +12,9 @@
 </head>
 <body>
 
-<a class="skip-link" href="#panel-main">Skip to plans</a>
+<a class="skip-link" href="#chatText">Skip to chat</a>
+<a class="skip-link" href="#view3d">Skip to the 3D model</a>
+<a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
 
 <div id="app">
   <header class="topbar">
@@ -28,22 +30,38 @@
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
     <span class="save-state" id="saveState" aria-live="polite"></span>
     <div class="topbar-spacer"></div>
-    <nav class="readiness" id="readiness" aria-label="Design readiness"></nav>
+    <!-- The journey is the navigation: Design → Plan → Build, each segment
+         carrying a derived state dot (never stored, never stale). -->
+    <nav class="mode-nav" id="modeNav" aria-label="Workflow">
+      <button class="mode-btn" id="mode-design" data-mode="design" aria-current="page"><span class="dot" aria-hidden="true"></span><span class="mode-label">Design</span></button>
+      <button class="mode-btn" id="mode-plan" data-mode="plan"><span class="dot" aria-hidden="true"></span><span class="mode-label">Plan</span></button>
+      <button class="mode-btn build-cta" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span></button>
+    </nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
-      <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
-      <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
+      <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"></button>
     </div>
     <div class="topbar-group">
       <div class="menu-wrap">
-        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More ▾</button>
+        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More</button>
         <div id="moreMenu" class="menu" role="menu" inert>
           <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
-          <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
-          <div class="menu-sep mobile-export-only" id="moreExportSep"></div>
-          <div class="menu-group mobile-export-only" id="moreExportMirror" hidden></div>
+          <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-group" id="moreExportGroup">
+            <div class="menu-group-label">Export</div>
+            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+            <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
+            <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+            <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+            <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
+            <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+            <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
+            <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
+          </div>
           <div class="menu-sep" id="accountSep" hidden></div>
           <div id="accountArea" hidden></div>
           <div class="menu-sep"></div>
@@ -53,7 +71,7 @@
               <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
               <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
             </div>
-            <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
+            <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false"></button>
           </div>
           <div class="menu-row" id="precisionRow">
             <span class="menu-row-label">Precision</span>
@@ -80,23 +98,7 @@
           </div>
         </div>
       </div>
-      <div class="menu-wrap">
-        <button id="exportBtn" class="btn mobile-export-hide" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
-        <div id="exportMenu" class="menu" role="menu" inert>
-          <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
-          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
-          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
-          <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
-          <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
-          <div class="menu-sep"></div>
-          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
-          <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
-          <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
-          <div class="menu-sep"></div>
-          <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
-        </div>
-      </div>
-      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion"><span class="cta-long">Build mode</span><span class="cta-short" aria-hidden="true">Build</span></button>
+      <button id="shareBtn" class="btn share-cta" aria-haspopup="dialog">Share</button>
     </div>
   </header>
 
@@ -111,7 +113,7 @@
       </button>
       <div class="chat-head">
         <h2><span class="chat-head-long">Design </span>chat</h2>
-        <nav class="readiness readiness-mobile" id="readinessMobile" aria-label="Design readiness"></nav>
+        <span class="ai-badge" id="aiBadge" role="status" data-state="checking"><span class="dot" aria-hidden="true"></span><span id="aiBadgeLabel">AI…</span></span>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
           <option value="beginner">Beginner</option>
           <option value="intermediate">Intermediate</option>
@@ -141,66 +143,83 @@
 
         <div class="advisories" id="advisories" aria-live="polite"></div>
 
-        <div class="welcome" id="welcomeOverlay" role="region" aria-label="Ways to start" hidden>
+        <!-- First-run hero: one question over the live model. The bench behind
+             stays fully interactive; nothing here blocks. -->
+        <div class="welcome" id="welcomeOverlay" role="region" aria-label="Start a design" hidden>
           <div class="welcome-head">
-            <h2 id="welcomeTitle">Where should we start?</h2>
-            <button class="btn icon ghost" id="welcomeClose" aria-label="Dismiss welcome">✕</button>
+            <h2 id="welcomeTitle" class="hero-title">What are you building?</h2>
+            <button class="btn icon ghost" id="welcomeClose" aria-label="Dismiss welcome"></button>
+          </div>
+          <div class="hero-prompt">
+            <textarea id="heroText" rows="1" placeholder="A walnut nightstand with two drawers" aria-label="Describe your piece" spellcheck="false"></textarea>
+            <button class="btn primary" id="heroSend">Design it</button>
           </div>
           <div class="welcome-paths">
-            <button class="welcome-card" id="welcomeDescribe">
-              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 5.5h14a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 16.5h-7l-4.5 3v-3H4A2.5 2.5 0 0 1 1.5 14V8A2.5 2.5 0 0 1 4 5.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
-              <span class="w-name">Describe it</span>
-              <span class="w-caption">Type a piece in plain words — or drop in a photo — and full plans appear.</span>
+            <button class="welcome-card" id="welcomePhoto">
+              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="1.8" y="4.8" width="18.4" height="13.4" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11.4" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 4.8 8.6 2.4 h4.8 L15 4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+              <span class="w-name">Upload a photo</span>
+              <span class="w-caption">A furniture photo becomes a parametric design you can edit.</span>
             </button>
             <button class="welcome-card" id="welcomeStarter">
-              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 17h12M6 15.5 12.5 5 17 15.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
-              <span class="w-name">Pick a starter</span>
-              <span class="w-caption">Six proven designs, plans ready instantly. Refine any of them in chat.</span>
+              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 17h12M6 15.5 12.5 5 17 15.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+              <span class="w-name">Browse starters</span>
+              <span class="w-caption">Six proven designs, plans ready instantly.</span>
             </button>
             <button class="welcome-card" id="welcomeResume">
-              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M14 4.5h4v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 13.5 18 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 12v4a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16V8A2.5 2.5 0 0 1 6.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-              <span class="w-name" id="welcomeResumeName">Import a design</span>
+              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M14 4.5h4v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 13.5 18 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 12v4a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16V8A2.5 2.5 0 0 1 6.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="w-name" id="welcomeResumeName">Open a saved design</span>
               <span class="w-caption" id="welcomeResumeCaption">Paste a BB4: share code to pick up a design from anywhere.</span>
             </button>
           </div>
-          <p class="welcome-note">The table behind this card is live — orbit it, click a part, or just start typing. Nothing here blocks you.</p>
+          <div class="hero-starters" id="heroStarters" aria-label="Three starters, ready to open"></div>
         </div>
 
         <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
             <h3 id="inspName">Part</h3>
-            <button class="btn icon ghost" id="inspClose" aria-label="Close inspector">✕</button>
+            <button class="btn icon ghost" id="inspClose" aria-label="Close inspector"></button>
           </div>
           <div class="inspector-dims" id="inspDims"></div>
           <div class="inspector-body" id="inspBody"></div>
         </div>
 
         <div class="stage-controls">
+          <!-- Always visible: Dimensions, Blueprint, Fit, View. Camera
+               presets, explode, and help live inside the View popover. -->
           <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
-            <label for="explodeRange">Explode</label>
-            <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
-            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
-            <div class="seg view-seg" role="group" aria-label="Camera view">
-              <button id="viewFront" title="Front elevation (orthographic)">F</button>
-              <button id="viewSide" title="Side elevation (orthographic)">S</button>
-              <button id="viewTop" title="Plan view (orthographic)">T</button>
-              <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+            <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">Fit</button>
+            <span class="vt-sep" aria-hidden="true"></span>
+            <div class="menu-wrap">
+              <button class="btn small ghost" id="viewBtn" aria-haspopup="true" aria-expanded="false">View</button>
+              <div class="menu view-menu" id="viewMenu" role="group" aria-label="View controls" inert>
+                <div class="menu-row">
+                  <span class="menu-row-label">Camera</span>
+                  <div class="seg view-seg" role="group" aria-label="Camera view">
+                    <button id="viewFront" title="Front elevation (orthographic)">F</button>
+                    <button id="viewSide" title="Side elevation (orthographic)">S</button>
+                    <button id="viewTop" title="Plan view (orthographic)">T</button>
+                    <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+                  </div>
+                </div>
+                <div class="menu-row">
+                  <label class="menu-row-label" for="explodeRange">Explode</label>
+                  <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
+                </div>
+                <div class="menu-sep"></div>
+                <button class="menu-help" id="vpHelpBtn" aria-haspopup="dialog" aria-expanded="false">Keyboard &amp; pointer help</button>
+              </div>
             </div>
-            <span class="vt-sep" aria-hidden="true"></span>
-            <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
-            <span class="vt-sep" aria-hidden="true"></span>
-            <button class="btn small ghost" id="vpHelpBtn" aria-label="Viewport controls help" aria-haspopup="dialog" aria-expanded="false">?</button>
           </div>
           <div class="vp-help" id="vpHelp" role="dialog" aria-label="Keyboard and pointer help" hidden>
             <h3>Viewport</h3>
             <dl>
               <div><dt>Orbit</dt><dd>drag · arrow keys</dd></div>
               <div><dt>Zoom</dt><dd>scroll or pinch · <kbd>+</kbd> <kbd>−</kbd></dd></div>
-              <div><dt>Reframe</dt><dd><kbd>Home</kbd> or ⤢ Fit</dd></div>
+              <div><dt>Reframe</dt><dd><kbd>Home</kbd> or Fit</dd></div>
               <div><dt>Inspect a part</dt><dd>click / tap it</dd></div>
               <div><dt>Isolate &amp; frame</dt><dd>double-click · <kbd>F</kbd></dd></div>
               <div><dt>Joint close-up</dt><dd>tap a glowing dot (playback)</dd></div>
@@ -222,11 +241,11 @@
         </div>
 
         <div class="playback-bar" id="playbackBar" hidden>
-          <button class="btn icon" id="pbPrev" aria-label="Previous step">‹</button>
+          <button class="btn icon" id="pbPrev" aria-label="Previous step"></button>
           <span class="step-count" id="pbCount">1/9</span>
           <span class="step-label" id="pbLabel">Step</span>
-          <button class="btn icon" id="pbReplay" aria-label="Replay step">↺</button>
-          <button class="btn icon" id="pbNext" aria-label="Next step">›</button>
+          <button class="btn icon" id="pbReplay" aria-label="Replay step"></button>
+          <button class="btn icon" id="pbNext" aria-label="Next step"></button>
           <button class="btn small" id="pbExit">Exit</button>
         </div>
 
@@ -237,13 +256,15 @@
         <span class="splitter-grip" aria-hidden="true"></span>
       </div>
 
-      <nav class="tabs" role="tablist" aria-label="Plans" id="tabBar">
-        <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="true">Cut list</button>
-        <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Stock</button>
-        <button class="tab" role="tab" id="tab-bom" aria-controls="panel-main" aria-selected="false">Materials</button>
-        <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assembly</button>
-        <button class="tab" role="tab" id="tab-integrity" aria-controls="panel-main" aria-selected="false">Integrity <span class="integrity-dot" id="integrityDot" hidden></span></button>
-        <button class="tab" role="tab" id="tab-reference" aria-controls="panel-main" aria-selected="false">Shop reference</button>
+      <nav class="tabs" role="tablist" aria-label="Plan" id="tabBar">
+        <button class="tab" role="tab" id="tab-overview" aria-controls="panel-main" aria-selected="true">Overview</button>
+        <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="false">Cut</button>
+        <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Buy</button>
+        <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assemble</button>
+        <button class="tab" role="tab" id="tab-integrity" aria-controls="panel-main" aria-selected="false">Safety <span class="integrity-dot" id="integrityDot" hidden></span></button>
+        <!-- Shop reference is no longer a peer destination: it opens from
+             "Learn why" links and the More menu, and only then shows a tab. -->
+        <button class="tab tab-aux" role="tab" id="tab-reference" aria-controls="panel-main" aria-selected="false" hidden>Shop reference</button>
       </nav>
       <div class="panel" id="panel-main" role="tabpanel" tabindex="0"></div>
     </section>
@@ -254,7 +275,7 @@
     <div class="drawer-head">
       <h2 id="historyTitle">Revisions</h2>
       <button class="btn small" id="compareBtn" disabled>Compare</button>
-      <button class="btn icon ghost" id="historyClose" aria-label="Close history">✕</button>
+      <button class="btn icon ghost" id="historyClose" aria-label="Close history"></button>
     </div>
     <div class="drawer-body" id="historyList"></div>
     <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
@@ -322,7 +343,7 @@
     <div class="modal modal-wide">
       <div class="drawer-head" style="margin-bottom:var(--s3)">
         <h2 id="diagramTitle">Cutting diagram</h2>
-        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">✕</button>
+        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram"></button>
       </div>
       <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
       <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
@@ -365,6 +386,22 @@
         <div class="share-row">
           <span class="share-meta" id="shareMeta"></span>
           <button class="btn primary" id="copyShare">Copy code</button>
+        </div>
+      </div>
+      <div class="share-block" id="shareLinkRow" hidden>
+        <label class="share-label" for="shareLinkText">Link</label>
+        <textarea id="shareLinkText" class="share-code" rows="2" readonly spellcheck="false" aria-label="Share link for this design"></textarea>
+        <div class="share-row">
+          <span class="share-meta">The whole design rides the URL — no account, no server.</span>
+          <button class="btn" id="copyShareLink">Copy link</button>
+        </div>
+      </div>
+      <p class="share-meta" id="shareLinkNote" hidden>Share links need a hosted copy — from a local file, the code above travels anywhere.</p>
+      <div class="share-block">
+        <label class="share-label" id="shareActionsLabel">Take it further</label>
+        <div class="share-row share-actions" role="group" aria-labelledby="shareActionsLabel">
+          <button class="btn" id="shareGlb">3D model / AR (.glb)</button>
+          <button class="btn" id="sharePrint">Print plans</button>
         </div>
       </div>
       <div class="share-block">
@@ -410,6 +447,7 @@
       <span class="bm-wake" id="bmWake" title="Screen stays awake while you build"></span>
       <button class="btn bm-exit" id="bmExit">Exit build mode</button>
     </header>
+    <!-- Wide benches see the full board-by-board + assembly overview. -->
     <div class="bm-columns">
       <section class="bm-col" aria-label="Cuts, board by board">
         <h2>Cuts — board by board</h2>
@@ -420,12 +458,25 @@
         <div id="bmSteps"></div>
       </section>
     </div>
+    <!-- Phones work one board or one step at a time: big diagram, big checks,
+         swipe or the big buttons to move on. -->
+    <div class="bm-pager" id="bmPager" aria-live="polite"></div>
+    <nav class="bm-tasknav" aria-label="Build tasks">
+      <button class="btn bm-big" id="bmTaskPrev">Prev</button>
+      <span class="bm-taskpos" id="bmTaskPos" aria-live="polite"></span>
+      <button class="btn primary bm-big" id="bmTaskNext">Next</button>
+    </nav>
+    <div class="bm-install" id="bmInstall" hidden>
+      <span id="bmInstallText">Nice build. Add Blueprint Buddy to your home screen and the next one opens straight from the shop.</span>
+      <button class="btn small primary" id="bmInstallGo" hidden>Add to home screen</button>
+      <button class="btn small ghost" id="bmInstallDismiss" aria-label="Dismiss install suggestion">Not now</button>
+    </div>
   </section>
 
   <div class="bm-playbar" id="bmPlaybar" hidden>
-    <button class="btn bm-big" id="bmPbPrev">‹ Prev</button>
+    <button class="btn bm-big" id="bmPbPrev">Prev</button>
     <span class="bm-pblabel" id="bmPbLabel"></span>
-    <button class="btn bm-big" id="bmPbNext">Next ›</button>
+    <button class="btn bm-big" id="bmPbNext">Next</button>
     <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
   </div>
 
@@ -433,7 +484,7 @@
     <div class="modal joint-modal">
       <div class="joint-head">
         <h2 id="jointTitle">Joint inspector</h2>
-        <button class="btn icon ghost" id="jointClose" aria-label="Close joint inspector">✕</button>
+        <button class="btn icon ghost" id="jointClose" aria-label="Close joint inspector"></button>
       </div>
       <div class="joint-canvas-wrap">
         <canvas id="jointCanvas" tabindex="0" aria-label="3D joint close-up. Drag to orbit, scroll to zoom."></canvas>
