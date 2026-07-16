@@ -166,21 +166,23 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Species. Two passes so multi-word labels ("southern yellow pine") beat
     // last-word collisions ("pine"); `aliases` come from the species table.
+    // Strip "instead of <species>" so "make it oak instead of walnut" picks oak.
+    const speciesText = t.replace(/\binstead of\s+[\w\s-]{2,40}(?=\s|$|,|\.|!|;)/g, ' ');
     const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
     const solid = Object.values(K.WOOD_SPECIES).filter(s => !s.sheet);
     let picked = null;
     for (const s of [...solid].sort((x, y) => y.label.length - x.label.length)) {
       const names = [s.label.toLowerCase(), ...(s.aliases || [])];
-      if (names.some(nm => rxWord(nm).test(t))) { picked = s; break; }
+      if (names.some(nm => rxWord(nm).test(speciesText))) { picked = s; break; }
     }
     if (!picked) {
       for (const s of solid) {
         const last = s.label.toLowerCase().split(' ').pop();
-        if (last !== 'oak' && rxWord(last).test(t)) { picked = s; break; }
+        if (last !== 'oak' && rxWord(last).test(speciesText)) { picked = s; break; }
       }
     }
     if (picked) { set('wood.species', picked.key); notes.push(picked.label); }
-    if (!patch.wood && /\boak\b/.test(t)) { set('wood.species', /white\s+oak/.test(t) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
+    if (!patch.wood && /\boak\b/.test(speciesText)) { set('wood.species', /white\s+oak/.test(speciesText) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
     // Sheet stock (drawer boxes, backs): a named sheet good switches only the
     // sheet species — solid parts keep their wood.
     for (const s of Object.values(K.WOOD_SPECIES).filter(x => x.sheet)) {
@@ -313,6 +315,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   async function anthropicTransport(system, messages) {
+    // Browser pages never hold ANTHROPIC_API_KEY and CORS blocks this call —
+    // skip immediately so DIY sessions fall to the offline parser without a
+    // noisy console error. Direct Anthropic is for non-browser hosts only.
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      anthropicDead = true;
+      throw new Error('direct Anthropic unavailable in browser');
+    }
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -343,11 +352,17 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function hasRemote() {
     if (injectedTransport) return true;
-    if (typeof fetch === 'function' && (!proxyDead || !anthropicDead) && typeof window !== 'undefined') return true;
+    // In the browser, only the same-origin proxy (or window.claude) can reach
+    // a model — never count bare Anthropic as "remote available".
+    const inBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+    if (typeof fetch === 'function' && !proxyDead && typeof window !== 'undefined') return true;
+    if (!inBrowser && typeof fetch === 'function' && !anthropicDead) return true;
     return typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
   }
   function supportsImages() {
-    return !!injectedTransport || (typeof fetch === 'function' && (!proxyDead || !anthropicDead));
+    if (injectedTransport) return true;
+    if (typeof fetch === 'function' && !proxyDead) return true;
+    return false;
   }
 
   async function rawCall(system, messages) {

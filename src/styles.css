@@ -1,7 +1,7 @@
 /* Blueprint Buddy — design system.
-   Warm oat neutrals biased toward the marking-blue accent's complement,
-   one accent (machinist layout blue), Bitter slab display, 8pt spacing,
-   one easing family for every state change. */
+   Showroom tokens (docs/ui/brand-system.md): mid-century brand constants,
+   rust action color, Bitter slab display, 8pt spacing, one easing family.
+   Blueprint Mode keeps a deliberate cyanotype field as the blue exception. */
 
 @font-face {
   font-family: 'Bitter';
@@ -845,7 +845,7 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   .bench { flex-direction: column; }
   .stage { order: 0; }
   .viewport-wrap { min-height: 180px; }
-  .splitter { height: 14px; }
+  .splitter { height: 20px; }
   .chat {
     order: 1; width: 100%; border-right: 0; border-top: 1px solid var(--line-2);
     position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: 46vh; z-index: 50;
@@ -881,15 +881,16 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   .control-card { padding: 6px 10px; }
   .control-card input[type="range"] { width: 64px; }
   .viewport-toolbar label { display: none; }
-  /* Phase 5 controls join the one-row toolbar contract: separators drop,
-     labels shorten, help defers to gestures — nothing wraps. */
-  .viewport-toolbar { gap: 6px; flex-wrap: nowrap; }
+  /* Phone toolbar: larger touch targets; explode range stays usable */
+  .viewport-toolbar { gap: 6px; flex-wrap: wrap; }
   .viewport-toolbar .vt-sep, .viewport-toolbar #vpHelpBtn { display: none; }
   .viewport-toolbar .vt-long { display: none; }
   .viewport-toolbar .vt-short { display: inline; }
-  .viewport-toolbar .toggle { font-size: 11px; }
+  .viewport-toolbar .toggle { font-size: 12px; min-height: 40px; padding: 8px 10px; }
   .viewport-toolbar #frameBtn span { display: none; }
-  .view-seg button { min-width: 26px; padding: 5px 7px; font-size: 11px; }
+  .viewport-toolbar #frameBtn { min-height: 40px; }
+  .view-seg button { min-width: 36px; min-height: 40px; padding: 8px 10px; font-size: 12px; }
+  .control-card input[type="range"] { width: 88px; min-height: 40px; }
   .btn { padding: 9px 13px; }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,
@@ -897,8 +898,8 @@ code.inline { font-family: var(--mono); font-size: 12.5px; background: var(--pan
   .topbar { flex-wrap: nowrap; gap: var(--s1); padding: 6px var(--s2); min-height: 48px; }
   .brand-name { display: none; }
   .brand-short { display: inline-block; }
-  .design-name { width: auto; flex: 1 1 56px; min-width: 44px; }
-  .topbar .btn { padding: 8px 9px; font-size: 13px; }
+  .design-name { width: auto; flex: 1 1 96px; min-width: 96px; }
+  .topbar .btn { padding: 8px 9px; font-size: 13px; min-height: 40px; }
   .build-cta .cta-long { display: none; }
   .build-cta .cta-short { display: inline; }
   .welcome { top: 56px; width: min(420px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); overflow-y: auto; overscroll-behavior: contain; }
@@ -1163,11 +1164,42 @@ body.bm-playback .playback-bar { display: none !important; }
 @media (max-width: 880px) {
   .bm-columns { flex-direction: column; }
   .modal-wide { width: calc(100vw - 24px); }
-  /* the title box may shrink below its longest word: wrap inside it, and
-     give the wake note its own line instead of colliding */
-  .bm-name { overflow-wrap: anywhere; }
-  .bm-head { flex-wrap: wrap; }
+  /* Title must NEVER shrink to a vertical letter stack (overflow-wrap:anywhere
+     + flex min-width:0 caused a 16×600px bug on phone). Keep a readable floor,
+     wrap whole words only, and put exit/wake on their own row. */
+  .bm-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--s2) var(--s3);
+  }
+  .bm-title {
+    flex: 1 1 100%;
+    min-width: min(100%, 12rem);
+    max-width: 100%;
+  }
+  .bm-name {
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .bm-wake { flex: 1 1 auto; }
   .bm-wake:empty { display: none; }
+  .bm-exit { flex: none; margin-left: auto; }
+  .bm-diagram {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: 96px;
+  }
+  .bm-diagram .cut-diagram-svg,
+  .stock-board .cut-diagram-svg {
+    min-height: 96px;
+  }
+  .stock-board {
+    overflow-x: auto;
+  }
 }
 
 /* photo bubble in chat */

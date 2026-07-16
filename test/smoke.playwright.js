@@ -35,7 +35,9 @@ const clickMoreCtl = async sel => {
   const port = server.address().port;
 
   const browser = await chromium.launch({
-    executablePath: '/opt/pw-browsers/chromium',
+    executablePath: fs.existsSync('/opt/pw-browsers/chromium')
+      ? '/opt/pw-browsers/chromium'
+      : require('playwright').chromium.executablePath(),
     args: ['--no-sandbox', '--enable-unsafe-swiftshader']
   });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -111,7 +113,7 @@ const clickMoreCtl = async sel => {
   await page.fill('#chatText', 'lower it by 50mm');
   await page.click('#sendBtn');
   await page.waitForSelector('.msg.bot .chip', { timeout: 8000 });
-  const chip = await page.textContent('.msg.bot:last-child .chip');
+  const chip = await page.locator('.msg.bot:last-child .chip:not(.caveat)').first().textContent();
   ok(/height 24 in → 22 1\/16 in/.test(chip), `diff chip shows code-computed change in display units (${chip.trim()})`);
   ok(await page.evaluate(() => __bb.state.spec.overall.height === 559.6), 'spec height merged to 559.6 mm internally');
 
@@ -532,7 +534,8 @@ const clickMoreCtl = async sel => {
   await page.click('#tab-cut');
   await page.click('#panel-main .prov-btn');
   ok(await page.isVisible('#provPop') && (await page.textContent('#provPop')).includes('='), 'provenance popover shows formula with live inputs');
-  await page.click('#panel-main h3');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('provPop').hidden, null, { timeout: 3000 }).catch(() => {});
 
   // Share code: export → import round trip.
   await page.evaluate(() => __bb.openShare());
@@ -820,9 +823,9 @@ const clickMoreCtl = async sel => {
     open: document.getElementById('exportMenu').classList.contains('open'),
     first: document.activeElement.dataset.export
   }));
-  ok(menuKb.open && menuKb.first === 'dae', 'ArrowDown opens the export menu onto its first item');
+  ok(menuKb.open && menuKb.first === 'print', 'ArrowDown opens the export menu onto its first item');
   await page.keyboard.press('ArrowDown');
-  ok(await page.evaluate(() => document.activeElement.dataset.export === 'rb'), 'arrow keys cycle menu items');
+  ok(await page.evaluate(() => document.activeElement.dataset.export === 'svg'), 'arrow keys cycle menu items');
   await page.keyboard.press('Escape');
   ok(await page.evaluate(() => !document.getElementById('exportMenu').classList.contains('open')), 'Escape closes the open menu');
 
@@ -1070,24 +1073,25 @@ const clickMoreCtl = async sel => {
   await page.evaluate(() => __bb.setSplit(58));
 
   // Readiness strip: four derived steps, clickable, tracking live state.
-  const ready = await page.evaluate(() => [...document.querySelectorAll('.ready-step')].map(b => b.dataset.step + ':' + b.dataset.state));
+  const ready = await page.evaluate(() => [...document.querySelectorAll('#readiness .ready-step')].map(b => b.dataset.step + ':' + b.dataset.state));
   ok(ready.length === 4 && ready[0] === 'design:done', `readiness strip derives four steps (${ready.join(' ')})`);
-  await page.click('.ready-step[data-step="validate"]');
+  await page.click('#readiness .ready-step[data-step="validate"]');
   ok(await page.evaluate(() => __bb.state.tab === 'integrity'), 'Validate step jumps to the integrity report');
-  await page.click('.ready-step[data-step="plans"]');
+  await page.click('#readiness .ready-step[data-step="plans"]');
   ok(await page.evaluate(() => __bb.state.tab === 'cut'), 'Plans step jumps to the cut list');
   const readyBuild = await page.evaluate(() => {
     __bb.enterBuildMode();
     document.querySelector('.bm-check[aria-pressed="false"]').click();
     __bb.exitBuildMode();
-    return document.querySelector('.ready-step[data-step="build"]').dataset.state;
+    return document.querySelector('#readiness .ready-step[data-step="build"]').dataset.state;
   });
   ok(readyBuild === 'active', 'Build step turns active once shop progress lands');
 
   // URL-restorable tabs: hash mirrors the tab, external hash edits apply,
   // and a deep link survives reload — reference subtab included.
+  // Hash may also carry ;split=N;chat=0|1 view state (ignored if unknown).
   await page.click('#tab-stock');
-  ok(await page.evaluate(() => location.hash === '#stock'), 'selecting a tab mirrors into the URL hash');
+  ok(await page.evaluate(() => /^#stock(;|$)/.test(location.hash)), 'selecting a tab mirrors into the URL hash');
   await page.evaluate(() => { location.hash = '#assembly'; });
   await page.waitForFunction(() => __bb.state.tab === 'assembly');
   ok(true, 'editing the hash switches tabs');
@@ -1134,7 +1138,9 @@ const clickMoreCtl = async sel => {
     shortCta: getComputedStyle(document.querySelector('.build-cta .cta-short')).display !== 'none'
   }));
   ok(mobileShell.topbarH <= 56, `mobile header stays one row (${Math.round(mobileShell.topbarH)}px)`);
-  ok(mobileShell.toolbarH <= 48, `mobile viewport toolbar stays one row (${Math.round(mobileShell.toolbarH)}px)`);
+  // Touch targets ≥40 px may wrap the toolbar onto a second row on narrow phones —
+  // that is preferred over unreadably small controls at the bench.
+  ok(mobileShell.toolbarH <= 120, `mobile viewport toolbar stays compact (${Math.round(mobileShell.toolbarH)}px)`);
   ok(mobileShell.brandHidden && mobileShell.shortCta, 'wordmark yields and Build CTA shortens on phones');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);

@@ -314,9 +314,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       `<line x1="0" y1="0" x2="0" y2="7" stroke="var(--muted)" stroke-width="1" opacity="0.55"/></pattern></defs>`;
   }
 
-  function boardSVG(board, fmt) {
+  function boardSVG(board, fmt, opts) {
     fmt = fmt || (v => U().fmtLength(v));
-    const W = 720, H = 64, pad = 4;
+    // Tall enough that labels stay ≥ ~12 CSS px when the SVG is full-bleed
+    // on a 390-wide phone; callers may pass { large: true } for lightbox zoom.
+    const large = opts && opts.large;
+    const W = large ? 1080 : 720, H = large ? 180 : 140, pad = large ? 10 : 8;
     const id = 'bbhatch' + (++hatchSeq);
     const sx = (W - 2 * pad) / board.stockLen;
     const trim = L().END_TRIM, kerf = L().KERF;
@@ -333,46 +336,51 @@ var BB = globalThis.BB = globalThis.BB || {};
       rects.push(seg(c.len * sx, 'cut', `${c.name} · ${fmt(c.len)}`, `${c.name} — ${fmt(c.len)}${c.note ? ' · ' + c.note : ''}`));
     });
     const offX = x;
+    // Font sizes are SVG user units — on a ~350 px phone the viewBox scales
+    // by ~0.5, so 24 → ~12 CSS px (readable at the saw). Lightbox uses larger.
+    const fsMain = large ? 30 : 24, fsSmall = large ? 24 : 18, fsOff = large ? 26 : 20;
     const parts = rects.map(r => {
       const fill = r.cls === 'cut' ? 'var(--accent-soft)' : r.cls === 'kerf' ? 'var(--line-2)' : 'var(--panel-2)';
       const stroke = r.cls === 'cut' ? 'var(--accent)' : 'var(--line-2)';
       let out = `<rect x="${r.px.toFixed(1)}" y="${pad}" width="${Math.max(0.8, r.w).toFixed(1)}" height="${H - 2 * pad}" fill="${fill}" stroke="${stroke}" stroke-width="1"><title>${escXML(r.title || '')}</title></rect>`;
-      if (r.label && r.w > 60) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" font-size="11" fill="var(--ink)" font-family="var(--mono)">${escXML(r.label)}</text>`;
-      else if (r.label) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" font-size="9" fill="var(--ink-2)" font-family="var(--mono)" transform="rotate(-30 ${(r.px + r.w / 2).toFixed(1)} ${H / 2})">${escXML(r.label.split(' · ')[0].slice(0, 14))}</text>`;
+      if (r.label && r.w > 70) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsMain}" fill="var(--ink)" font-family="var(--mono)">${escXML(r.label)}</text>`;
+      else if (r.label) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsSmall}" fill="var(--ink-2)" font-family="var(--mono)" transform="rotate(-30 ${(r.px + r.w / 2).toFixed(1)} ${H / 2})">${escXML(r.label.split(' · ')[0].slice(0, 14))}</text>`;
       return out;
     }).join('');
     const offW = W - pad - offX;
     const offcut = offW > 1 ? `<rect x="${offX.toFixed(1)}" y="${pad}" width="${offW.toFixed(1)}" height="${H - 2 * pad}" fill="url(#${id})" stroke="var(--line-2)" stroke-width="1"><title>offcut ${fmt(board.offcut)}</title></rect>` +
-      (offW > 46 ? `<text x="${(offX + offW / 2).toFixed(1)}" y="${H / 2 + 4}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--mono)">${escXML(fmt(board.offcut))}</text>` : '') : '';
-    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cutting diagram for one ${board.nominal} board" style="width:100%;height:auto;display:block">` +
+      (offW > 46 ? `<text x="${(offX + offW / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsOff}" fill="var(--muted)" font-family="var(--mono)">${escXML(fmt(board.offcut))}</text>` : '') : '';
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cutting diagram for one ${board.nominal} board" class="cut-diagram-svg" style="width:100%;height:auto;display:block;min-height:${large ? 200 : 96}px">` +
       hatchDef(id) +
       `<rect x="${pad}" y="${pad}" width="${W - 2 * pad}" height="${H - 2 * pad}" fill="var(--panel)" stroke="var(--ink-2)" stroke-width="1.5"/>` +
       parts + offcut +
       `</svg>`;
   }
 
-  function sheetSVG(sheet, fmt) {
+  function sheetSVG(sheet, fmt, opts) {
     fmt = fmt || (v => U().fmtLength(v));
+    const large = opts && opts.large;
     const SW = L().SHEET.L, SH = L().SHEET.W;
-    const W = 720, H = Math.round(W * SH / SW), pad = 3;
+    const W = large ? 1080 : 720, H = Math.round(W * SH / SW), pad = large ? 5 : 3;
     const id = 'bbhatch' + (++hatchSeq);
     const sx = (W - 2 * pad) / SW, sy = (H - 2 * pad) / SH;
+    const fsName = large ? 22 : 18, fsDims = large ? 18 : 15, fsFoot = large ? 18 : 14;
     const rects = sheet.placements.map(p => {
       const x = pad + p.x * sx, y = pad + p.y * sy, w = p.w * sx, h = p.h * sy;
       const label = `${p.name}`;
       const dims = `${fmt(p.w)} × ${fmt(p.h)}`;
       return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"><title>${escXML(p.name)} — ${escXML(dims)}${p.rot ? ' (rotated)' : ''}</title></rect>` +
-        (w > 54 && h > 26 ? `<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 - 2).toFixed(1)}" text-anchor="middle" font-size="10.5" fill="var(--ink)" font-family="var(--mono)">${escXML(label.slice(0, Math.max(4, Math.floor(w / 7))))}</text>` +
-          `<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + 10).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--ink-2)" font-family="var(--mono)">${escXML(dims)}</text>` : '');
+        (w > 54 && h > 26 ? `<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 - 2).toFixed(1)}" text-anchor="middle" font-size="${fsName}" fill="var(--ink)" font-family="var(--mono)">${escXML(label.slice(0, Math.max(4, Math.floor(w / 7))))}</text>` +
+          `<text x="${(x + w / 2).toFixed(1)}" y="${(y + h / 2 + 12).toFixed(1)}" text-anchor="middle" font-size="${fsDims}" fill="var(--ink-2)" font-family="var(--mono)">${escXML(dims)}</text>` : '');
     }).join('');
     // fraction guides
     const guides = `<line x1="${pad + 1220 * sx}" y1="${pad}" x2="${pad + 1220 * sx}" y2="${H - pad}" stroke="var(--line-2)" stroke-dasharray="5 4" stroke-width="1"/>` +
       `<line x1="${pad}" y1="${pad + 610 * sy}" x2="${pad + 1220 * sx}" y2="${pad + 610 * sy}" stroke="var(--line-2)" stroke-dasharray="5 4" stroke-width="1"/>`;
-    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sheet cutting diagram" style="width:100%;height:auto;display:block">` +
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sheet cutting diagram" class="cut-diagram-svg" style="width:100%;height:auto;display:block;min-height:${large ? 280 : 120}px">` +
       hatchDef(id) +
       `<rect x="${pad}" y="${pad}" width="${W - 2 * pad}" height="${H - 2 * pad}" fill="url(#${id})" stroke="var(--ink-2)" stroke-width="1.5"/>` +
       guides + rects +
-      `<text x="${W - 8}" y="${H - 8}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="var(--mono)">grain ⟶ · hatched = offcut · dashed = half/quarter cuts</text>` +
+      `<text x="${W - 8}" y="${H - 8}" text-anchor="end" font-size="${fsFoot}" fill="var(--muted)" font-family="var(--mono)">grain ⟶ · hatched = offcut · dashed = half/quarter cuts</text>` +
       `</svg>`;
   }
 

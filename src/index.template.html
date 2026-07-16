@@ -195,8 +195,8 @@
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="vpHelpBtn" aria-label="Viewport controls help" aria-haspopup="dialog" aria-expanded="false">?</button>
           </div>
-          <div class="vp-help" id="vpHelp" role="dialog" aria-label="Viewport controls help" hidden>
-            <h3>Moving around</h3>
+          <div class="vp-help" id="vpHelp" role="dialog" aria-label="Keyboard and pointer help" hidden>
+            <h3>Viewport</h3>
             <dl>
               <div><dt>Orbit</dt><dd>drag · arrow keys</dd></div>
               <div><dt>Zoom</dt><dd>scroll or pinch · <kbd>+</kbd> <kbd>−</kbd></dd></div>
@@ -204,7 +204,14 @@
               <div><dt>Inspect a part</dt><dd>click / tap it</dd></div>
               <div><dt>Isolate &amp; frame</dt><dd>double-click · <kbd>F</kbd></dd></div>
               <div><dt>Joint close-up</dt><dd>tap a glowing dot (playback)</dd></div>
+            </dl>
+            <h3>Everywhere</h3>
+            <dl>
               <div><dt>Undo · redo</dt><dd><kbd>Ctrl</kbd><kbd>Z</kbd> · <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></dd></div>
+              <div><dt>Focus chat</dt><dd><kbd>/</kbd></dd></div>
+              <div><dt>Cycle plan tabs</dt><dd><kbd>[</kbd> · <kbd>]</kbd></dd></div>
+              <div><dt>Close overlays</dt><dd><kbd>Esc</kbd></dd></div>
+              <div><dt>Resize splitter</dt><dd>drag · arrow keys</dd></div>
             </dl>
           </div>
         </div>
@@ -267,26 +274,42 @@
 
   <div class="scrim" inert id="helpScrim" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <div class="modal">
-      <h2 id="helpTitle">Export &amp; integration help</h2>
+      <h2 id="helpTitle">Getting plans into the shop</h2>
       <div class="help-block">
-        <h3>Integrations: SketchUp connector in Claude</h3>
-        <p>Working inside Claude with the Trimble SketchUp connector? Export your <strong>DesignSpec (.json)</strong>, paste it into the conversation, and ask Claude to build the piece directly in your live SketchUp model. The spec carries every dimension, so nothing is lost in translation.</p>
+        <h3>Print plans</h3>
+        <p>Use <strong>Export → Print plans</strong> (or <kbd>⌘P</kbd> / <kbd>Ctrl+P</kbd>) for a one-page drawing sheet with cut list, elevations, and title block — the fastest path to the bench.</p>
+      </div>
+      <div class="help-block">
+        <h3>Build mode on your phone</h3>
+        <p>Tap <strong>Build</strong> for board-by-board cutting diagrams and a checkable assembly list. The screen stays awake while you work. Share a <strong>BB4:</strong> code from Export → Share if you designed on a desktop and build on a phone.</p>
+      </div>
+      <div class="help-block">
+        <h3>Cut list spreadsheet (.csv)</h3>
+        <p>Export <strong>Cut list (.csv)</strong> for a spreadsheet or shopping list app. Lengths already include joinery allowances; dimensions use your display units plus a millimetre column.</p>
+      </div>
+      <div class="help-block">
+        <h3>Drawing sheet (.svg)</h3>
+        <p>Export <strong>Drawing sheet (.svg)</strong> for a vector file you can print, mark up, or open in any SVG viewer — same sheet as Print.</p>
       </div>
       <div class="help-block">
         <h3>3D model / AR (.glb)</h3>
-        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer (or the three.js editor) reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter to get an AR Quick Look file. Geometry is exact millimetres, rotations included.</p>
+        <p>The <strong>.glb</strong> export is the universal 3D format. On an <strong>Android phone</strong>, opening the file offers <em>View in your space</em> — the piece stands in your room at true size. On desktop, any glTF viewer reads it. On <strong>iOS</strong>, run it through Apple&rsquo;s free Reality Converter for AR Quick Look. Geometry is exact millimetres.</p>
       </div>
       <div class="help-block">
-        <h3>Build script (.rb) — the parametric way</h3>
-        <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter. (Or drop the file into your Plugins folder.) Serious users want this one — components stay editable.</p>
-      </div>
-      <div class="help-block">
-        <h3>Mesh import (.dae)</h3>
+        <h3>SketchUp mesh (.dae)</h3>
         <ol class="help-steps">
           <li>Export <strong>SketchUp mesh (.dae)</strong> from the Export menu.</li>
           <li>In SketchUp choose <strong>File &gt; Import…</strong> and pick <em>COLLADA (*.dae)</em> as the file type.</li>
           <li>Select the downloaded file and click <strong>Import</strong> — parts arrive named, at exact size, right side up.</li>
         </ol>
+      </div>
+      <div class="help-block">
+        <h3>SketchUp build script (.rb)</h3>
+        <p>The Ruby script rebuilds the model natively: one component per unique part, instances placed exactly, a tag per role, all in one undo step. Open <code class="inline">Window &gt; Ruby Console</code>, paste the script, press Enter.</p>
+      </div>
+      <div class="help-block">
+        <h3>Claude + SketchUp connector</h3>
+        <p>Working inside Claude with the Trimble SketchUp connector? Export your <strong>DesignSpec (.json)</strong>, paste it into the conversation, and ask Claude to build the piece in your live SketchUp model.</p>
       </div>
       <div class="modal-foot">
         <span></span>

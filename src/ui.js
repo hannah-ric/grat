@@ -752,6 +752,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const details = document.createElement('details');
       details.className = 'integrity-details';
       details.innerHTML = '<summary>Full structural report</summary>';
+      details.open = true; // after innerHTML — start open so checks/fixes stay reachable
       root.append(details);
       target = details;
     }
@@ -1057,11 +1058,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     opts = opts || {};
     let html = `<div class="bubble">${esc(text)}</div>`;
     const chipHTML = [];
-    if (opts.caveat) chipHTML.push(`<span class="chip caveat">${esc(opts.caveat)}</span>`);
     for (const c of chips || []) chipHTML.push(`<span class="chip">${esc(c)}</span>`);
     if (!chips || !chips.length) {
       if (opts.noChange && !opts.caveat) chipHTML.push(`<span class="chip neutral">no dimensional change</span>`);
     }
+    if (opts.caveat) chipHTML.push(`<span class="chip caveat">${esc(opts.caveat)}</span>`);
     if (chipHTML.length) html += `<div class="chips">${chipHTML.join('')}</div>`;
     return chatMsg('bot', html);
   }
@@ -2797,6 +2798,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         e.preventDefault(); $('undoBtn').click();
       } else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
         if (!typing) { e.preventDefault(); $('redoBtn').click(); }
+      } else if (!typing && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        focusChat();
+      } else if (!typing && (e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const i = TABS.indexOf(state.tab);
+        const next = e.key === ']' ? TABS[(i + 1) % TABS.length] : TABS[(i - 1 + TABS.length) % TABS.length];
+        selectTab(next);
       } else if (e.key === 'Escape') {
         // Close the topmost overlay only — one layer per press. Build mode
         // is the bottom layer: it exits last, never before an open modal.
