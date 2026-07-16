@@ -15,7 +15,8 @@
     "test:server": "node test/server.test.js",
     "test:handcalc": "node test/handcalc.js",
     "test:smoke": "node build.js && node test/smoke.playwright.js",
-    "test:cloud": "node build.js && node test/cloud.playwright.js"
+    "test:cloud": "node build.js && node test/cloud.playwright.js",
+    "verify": "node --env-file-if-exists=/vercel/share/.env.project scripts/verify-production.js"
   },
   "devDependencies": {
     "playwright": "^1.49.1"
