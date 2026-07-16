@@ -745,5 +745,58 @@ section('KB-5 hardware is a pure function of the corrected spec');
   ok(/22mm.*5mm.*3mm.*14mm/.test(rjLabel.replace(/[^0-9a-z.]/gi, '')) || /14/.test(rjLabel), 'rule-joint view teaches r = t − fillet − pin height');
 }
 
+/* ================= FE-C2 (2026-07 front-end audit): screw length bounded by the joint path ================= */
+section('FE-C2 screw length never exceeds the wood it crosses');
+{
+  // Cabinet wood runner: 19 mm runner face-screwed to an 18 mm sheet side.
+  // The old fixed #8 × 50 exited the show face by ~13 mm.
+  const wr = pipeline({
+    meta: { name: 'WR', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 700, depth: 450, height: 900 },
+    structure: { toeKick: true, backPanel: true, shelfCount: 0 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'wood_runners' }
+  });
+  const rj = wr.model.joints.find(j => /runner/.test(j.a));
+  ok(rj, 'cabinet wood-runner joint exists');
+  const runner = wr.model.parts.find(p => p.id === rj.a), side = wr.model.parts.find(p => p.id === rj.b);
+  const lay = Fasteners.layoutForJoint(wr.spec, wr.model, rj);
+  const len = lay && lay.fasteners.length ? parseInt((lay.fasteners[0].spec.match(/× (\d+)/) || [])[1], 10) : NaN;
+  const pathA = runner.size.w, pathB = side.size.w; // contact along x
+  ok(isFinite(len) && len <= pathA + pathB - 3,
+    `cabinet runner screw ${len} mm stays inside ${pathA}+${pathB} mm of wood (≤ path − 3)`);
+  ok(len < 50, `cabinet runner screw shortened from the fixed 50 (got ${len})`);
+
+  // Nightstand wood runner: 44 mm runner onto a 20 mm apron — a capped screw
+  // alone leaves ≤ 6 mm of bite, so the setout must counterbore for thread.
+  const nswr = pipeline({
+    meta: { name: 'NSWR', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }
+  });
+  const nrj = nswr.model.joints.find(j => /runner/.test(j.a));
+  const nrunner = nswr.model.parts.find(p => p.id === nrj.a), napron = nswr.model.parts.find(p => p.id === nrj.b);
+  const nlay = Fasteners.layoutForJoint(nswr.spec, nswr.model, nrj);
+  const nlen = parseInt((nlay.fasteners[0].spec.match(/× (\d+)/) || [])[1], 10);
+  const cbore = nlay.fasteners[0].counterboreMM || 0;
+  const bite = nlen - (nrunner.size.w - cbore);
+  ok(nlen <= nrunner.size.w + napron.size.d - 3 + 0.01 || nlen <= nrunner.size.w + 20 - 3,
+    `nightstand runner screw ${nlen} mm never exits the apron`);
+  ok(bite >= 8 && bite <= 20 - 3, `runner screw bites ${bite} mm into the 20 mm apron (counterbore ${cbore} mm)`);
+  ok(cbore > 0 && /counterbore/i.test(nlay.text), 'thick-runner setout instructs the counterbore');
+
+  // Bookshelf case screws were CORRECT (through the 19 side into deep end
+  // grain) — they must stay #8 × 50, and the text must name the true
+  // through-member (you screw through the side, not through the shelf).
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const sj = bs.model.joints.find(j => /^shelf/.test(j.a) && /^side/.test(j.b));
+  const slay = Fasteners.layoutForJoint(bs.spec, bs.model, sj);
+  ok(/× 50 mm/.test(slay.fasteners[0].spec), 'bookshelf case screw stays #8 × 50 (end-grain depth is real)');
+  ok(/through side into shelf/i.test(slay.text), 'setout names the true through-member (side, not shelf)');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

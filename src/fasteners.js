@@ -66,6 +66,62 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
+  /* Screw path across a butt joint (audit FE-C2): the contact axis is the
+   * axis of LEAST overlap (that's where the faces meet); each part's extent
+   * along it is the wood the screw crosses on that side. Interpenetrating
+   * joints (notched shelves, housings) have no clean face pair — fall back
+   * to the attached member's thinnest dimension with real depth beyond. */
+  function contactPaths(a, b) {
+    const ext = p => { const e = BB.Geo.worldExtents(p); return [e.x, e.y, e.z]; };
+    const A = ext(a), B = ext(b);
+    const ca = [a.pos.x, a.pos.y, a.pos.z], cb = [b.pos.x, b.pos.y, b.pos.z];
+    let axis = 0, minOv = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const ov = Math.min(ca[i] + A[i] / 2, cb[i] + B[i] / 2) - Math.max(ca[i] - A[i] / 2, cb[i] - B[i] / 2);
+      if (ov < minOv) { minOv = ov; axis = i; }
+    }
+    if (minOv > 2) return { pathA: minDim(a), pathB: 1000, housed: true };
+    return { pathA: A[axis], pathB: B[axis], housed: false };
+  }
+
+  /* One decision for every plain wood screw: which member it enters through,
+   * the longest catalog length that stays inside the wood (never out a show
+   * face), and a counterbore when the entry member is so thick the thread
+   * would barely reach the mate. Lengths are the buyable #8 ladder. */
+  const SCREW_LENGTHS = [16, 25, 32, 38, 50, 64];
+  function screwPlan(a, b, baseLen) {
+    const { pathA, pathB, housed } = contactPaths(a, b);
+    let thru = a, into = b, thruT = pathA, deepT = pathB;
+    if (!housed) {
+      if (pathA <= 64) { /* screw through the attached member */ }
+      else if (pathB <= 64) { thru = b; into = a; thruT = pathB; deepT = pathA; }
+      else { thruT = minDim(a); deepT = 1000; }
+    }
+    const cap = thruT + deepT - 3;
+    let li = SCREW_LENGTHS.indexOf(baseLen);
+    if (li < 0) li = SCREW_LENGTHS.length - 1;
+    while (li > 0 && SCREW_LENGTHS[li] > cap) li--;
+    let len = SCREW_LENGTHS[li];
+    // thin bite: first try one size up, then counterbore the entry member
+    let counterboreMM = 0;
+    if (len - thruT < 8) {
+      if (li + 1 < SCREW_LENGTHS.length && SCREW_LENGTHS[li + 1] <= cap) len = SCREW_LENGTHS[++li];
+      if (len - thruT < 8 && deepT >= 12) {
+        const target = Math.min(deepT - 4, 16);
+        let c = Math.ceil(thruT + target - len);
+        c = Math.max(0, Math.min(c, Math.floor(thruT / 2)));
+        if (c >= 4) counterboreMM = c;
+      }
+    }
+    return {
+      len, counterboreMM, thru, into,
+      biteMM: Math.round((len - (thruT - counterboreMM)) * 10) / 10,
+      pilotMM: len >= 50 ? 3.2 : 2.8,
+      spec: `#8 × {${len}} wood screw`,
+      housed
+    };
+  }
+
   const CATALOG = {
     butt_screw: { spec: '#8 × {50} wood screw', pilotMM: 3.2 },
     case_screw: { spec: '#8 × {32} wood screw', pilotMM: 2.8 },
@@ -109,10 +165,19 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     switch (type) {
       case 'butt_screws': {
-        const c = a.group !== 'frame' || b.group !== 'frame' ? CATALOG.front_screw : (runMM > 400 ? CATALOG.case_screw : CATALOG.butt_screw);
+        const baseLen = a.group !== 'frame' || b.group !== 'frame' ? 25 : (runMM > 400 ? 32 : 50);
+        const sp = screwPlan(a, b, baseLen);
+        const specTxt = U().fmtTemplate(sp.spec);
         const pos = positions(runMM, 2);
-        for (const p of pos) out.fasteners.push({ kind: 'screw', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-        out.text = `${pos.length} × ${fmtSpec(c)} through ${a.name.toLowerCase()} into ${b.name.toLowerCase()}: first ${len(RULES.edgeMM)} from each end${pos.length > 2 ? `, then every ${len(Math.round((runMM - 2 * RULES.edgeMM) / (pos.length - 1)))}` : ''}, centered ${fine(mateT / 2)} from the joint line. Pilot ${fine(c.pilotMM)}.`;
+        for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
+        const spacing = pos.length === 1 ? 'centered on the run'
+          : `first ${len(RULES.edgeMM)} from each end${pos.length > 2 ? `, then every ${len(Math.round((runMM - 2 * RULES.edgeMM) / (pos.length - 1)))}` : ''}`;
+        const where = sp.housed ? `centered ${fine(mateT / 2)} from the joint line`
+          : sp.thru === a ? `on the ${a.name.toLowerCase()}'s centerline`
+            : `centered ${fine(minDim(a) / 2)} from the joint line`;
+        const cbore = sp.counterboreMM
+          ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, so the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.` : '';
+        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${fine(sp.pilotMM)}.${cbore}`;
         break;
       }
       case 'pocket_screws': {
@@ -286,10 +351,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         break;
       }
       default: {
-        const c = CATALOG.case_screw;
+        const sp = screwPlan(a, b, 32);
+        const specTxt = U().fmtTemplate(sp.spec);
         const pos = positions(runMM, 2);
-        for (const p of pos) out.fasteners.push({ kind: 'screw', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-        out.text = `${pos.length} × ${fmtSpec(c)}, ${len(RULES.edgeMM)} from each end, pilot ${fine(c.pilotMM)}.`;
+        for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
+        out.text = `${pos.length} × ${specTxt}, ${len(RULES.edgeMM)} from each end, pilot ${fine(sp.pilotMM)}.`;
       }
     }
     return out;
