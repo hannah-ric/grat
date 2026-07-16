@@ -1,0 +1,40 @@
+name: CI
+
+# Guardrail for the whole suite: physics/joinery/packing/export tests, the
+# golden corpus, the live behaviour battery, and the server (auth/store/
+# billing/webhook) tests all run on every push and PR. The app has ZERO runtime
+# dependencies, so the core suite needs no install at all — it is plain Node.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build the single-file bundle
+        run: npm run build
+
+      - name: Run the full test suite (unit + audit + golden + battery + server)
+        run: npm test
+
+      - name: Hand-arithmetic verification worksheet (must stay 14/14)
+        run: npm run test:handcalc
+
+      # dist/index.html is committed and must stay byte-identical to a fresh
+      # build — nothing else enforces this, and a stale bundle ships stale code.
+      - name: dist/index.html is in sync with src/
+        run: |
+          node build.js
+          if ! git diff --quiet -- dist/index.html; then
+            echo "::error::dist/index.html is stale — run 'npm run build' and commit the result."
+            git --no-pager diff --stat -- dist/index.html
+            exit 1
+          fi

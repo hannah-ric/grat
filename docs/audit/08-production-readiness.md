@@ -12,11 +12,59 @@ contract, security posture, and repo hygiene — none of which the earlier audit
 
 ## 1. Verdict
 
-**Not production-ready as merged.** The engineering core is in excellent shape, but the SaaS layer
-that was added last shipped with **zero tests, zero documentation, no CI, and a dependency that
-violates the repo's founding zero-dependency rule and crashes a fresh clone.** There are **four
-ship-blockers** (§3, severity HIGH+) that must be resolved before any real deploy, plus a webhook
-data-path that is *likely* broken on Vercel and must be proven on a live deploy.
+**As merged: not production-ready.** The engineering core was in excellent shape, but the SaaS layer
+added last shipped with **zero tests, zero documentation, no CI, and a dependency that violated the
+repo's founding zero-dependency rule and crashed a fresh clone.**
+
+**After remediation (this branch): all findings addressed** — see the status table below. The `stripe`
+dependency is gone (hand-rolled in `api/_stripe.js`), anonymous AI is metered, the client acts on the
+server's usage limit, the store index no longer bloats, CI runs the suite on every push, and the SaaS
+layer is documented. The one item that still needs a human step is **A3**: the webhook is now robust and
+self-diagnosing, but signature verification over the raw body must still be confirmed on the real Vercel
+deploy with the Stripe CLI (§3, A3) — the code can't prove the platform's body handling on its own.
+
+### Remediation status (2026-07-16)
+
+| ID | Sev | Status |
+|---|----|--------|
+| M1/A1/A2 | HIGH | **Fixed** — `stripe` removed; `api/_stripe.js` hand-rolls the 4 REST calls over `fetch`+`crypto`; fresh clone boots again |
+| A3 | HIGH | **Fixed + verify-on-deploy** — raw-body read made robust and now returns a distinct `raw_body_unavailable` 400 instead of a mystery signature failure; confirm on live deploy with `stripe trigger` |
+| A4b | HIGH | **Fixed** — every `/api/chat` request metered (uid or hashed IP) + in-memory burst limit |
+| T2 | HIGH | **Fixed** — `.github/workflows/ci.yml` runs build + full suite + handcalc + dist-sync check |
+| A4a | MED | **Fixed** — `proxyTransport` surfaces 402/429; the client opens the upgrade dialog from the server payload |
+| A5 | MED | **Fixed** — thumbnails moved to their own per-project docs; index stays tiny; legacy thumbs self-migrate |
+| M2/H1 | MED | **Fixed** — `pnpm-lock.yaml` removed; `vercel.json` → `npm install --omit=dev --ignore-scripts` |
+| M3/A6 | MED | **Fixed** — SaaS layer + env matrix + webhook setup + font swap documented (DEPLOYMENT/CLAUDE/AGENTS/brand-system/DESIGN) |
+| T1 | MED | **Fixed** — 40 new server assertions: entitlements, webhook signature/A7/A3, checkout/portal, anon metering |
+| A7 | LOW | **Fixed** — renewal date read from `items[].current_period_end` |
+| S1 | LOW | **Fixed** — `billing.js` no longer returns raw `error.message` |
+| S2 | LOW | **Fixed (doc)** — `APP_ORIGIN` documented as recommended in production |
+| S3 | LOW | **Noted** — benign KV TTL edge; left as-is |
+| M4 | LOW | **Fixed** — `.v0-*.png` + orphan `bitter-*.woff2` removed |
+| A9 | LOW | **Fixed** — Free-tier numbers single-sourced into one documented client mirror |
+| B1/B2 | HYGIENE | **Deferred to maintainer** — branch deletion is outward and `v0/*` may be tool-recreated |
+
+**Discovered during remediation (running the smoke suite that no CI ever ran — T2):**
+
+- **V1 — Build Mode gated behind Pro, smoke test stale.** #26 moved **Build Mode**
+  (the full-screen workshop companion) and **premium exports** behind the Pro
+  paywall (`ui.js` `gate('advancedFeatures'|'premiumExports')`) but never updated
+  `test/smoke.playwright.js`, which drives Build Mode as an anonymous Free user —
+  so the smoke test had been failing since #26 with nobody to catch it. The gating
+  is intended monetization (the pricing card markets "advanced workshop tools");
+  **fixed** the smoke harness to grant Pro on boot, and documented the entitlement
+  split in DEPLOYMENT.md.
+- **V2 — topbar drifted 3px over its own spec.** With Build Mode unblocked, the
+  suite reached a later assertion and showed the desktop app bar at **67px** vs the
+  redesign's stated **56–64px** — a regression from #24's Bitter→Fraunces/Hanken
+  font swap (identical in Free and Pro, so not billing-related). **Fixed** with a
+  minimal, spec-conforming trim (`.topbar` vertical padding 7px→5px → 63px); the
+  segmented-capsule design is untouched.
+- **A5 test update.** The smoke assertion that a project card "carries a 3D
+  thumbnail" checked the index row; with thumbnails now in their own docs it checks
+  `Store.loadThumb(id)` instead — a stronger check of the new storage shape.
+
+The findings detail below is retained as the record of what was wrong and why.
 
 ### What is solid (verified this audit, do not re-litigate)
 - **`npm test` → 40 passed, 0 failed** (unit + audit + golden + battery + server). Hand-calc stays 14/14.

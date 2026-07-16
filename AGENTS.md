@@ -45,15 +45,21 @@ hand-edit a digest string.
   each — see `docs/audit/02-constants-reference.md`).
 - `src/index.template.html` + `build.js` — `{{PLACEHOLDER}}` inlining; adding
   a new src module means adding a placeholder in both.
-- `api/` — all server code, CommonJS, zero deps: `chat.js` (same-origin
-  Anthropic proxy; `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`),
-  `auth.js` (optional OAuth logins → stateless HMAC session cookies;
-  `_session.js` is the shared signer, not an endpoint), `store.js`
-  (optional per-user document store on Upstash/Vercel KV REST, or a local
-  JSON file in dev). All auth/storage degrades: no env vars → the client
-  persists to `localStorage` and shows no login UI (see `DEPLOYMENT.md`).
+- `api/` — all server code, CommonJS, zero deps (Stripe's few REST calls
+  hand-rolled in `_stripe.js` over `fetch`+`crypto`, like `_kv.js` — the
+  no-dependency rule holds): `chat.js` (same-origin Anthropic proxy;
+  `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`; meters AI by uid or
+  hashed IP + a burst limit), `auth.js` (optional OAuth logins → stateless
+  HMAC session cookies; `_session.js` is the shared signer, not an endpoint),
+  `store.js` (optional per-user document store on Upstash/Vercel KV REST, or a
+  local JSON file in dev), `billing.js` + `stripe-webhook.js` (optional Stripe
+  subscriptions → the Free/Pro gate; `_entitlements.js` is the entitlement/
+  usage authority, `_stripe.js` the client — both shared libs, not endpoints).
+  All auth/storage/billing degrades: no env vars → the client persists to
+  `localStorage` and shows no login or upgrade UI (see `DEPLOYMENT.md`).
 - `serve.js` — zero-dep dev server; mounts every `api/` handler locally.
-- `vendor/` — Three.js + fonts, committed, inlined at build time.
+- `vendor/` — Three.js + the Fraunces / Hanken Grotesk / IBM Plex Mono fonts,
+  committed, inlined at build time.
 - `blueprint-buddy.jsx` — the earlier React-artifact incarnation (Phase 3);
   reference only, not part of the build.
 

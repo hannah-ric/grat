@@ -15,6 +15,7 @@
  */
 'use strict';
 
+const crypto = require('crypto');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
 
@@ -22,6 +23,37 @@ const DEFAULT_MODEL = 'claude-sonnet-5';
 const MAX_TOKENS_CAP = 1024;   // client asks for 1000; the proxy grants no more than this
 const MAX_MESSAGES = 32;       // 6 verbatim turns + digest + continuations, with headroom
 const MAX_BODY_BYTES = 5 * 1024 * 1024; // one downscaled photo is ~300 KB base64
+
+/* Every request is metered — signed-in by uid, anonymous by hashed client IP —
+ * so no one can burn the owner's Anthropic key unmetered or dodge the Free cap
+ * by signing out (A4b). The IP hash keeps raw addresses out of KV keys. */
+function anonMeterId(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const ip = fwd || (req.socket && req.socket.remoteAddress) || 'unknown';
+  return 'ip:' + crypto.createHash('sha256').update('bb-anon:' + ip).digest('hex').slice(0, 24);
+}
+
+/* In-memory per-instance burst guard: a cheap backstop that ALWAYS applies —
+ * even when KV is unconfigured (dev) or briefly down, so "no storage" degrades
+ * to rate-limited, never to unlimited. The KV monthly meter (25/500) is the
+ * DURABLE cap and trips first in production; this only bites when there is no KV.
+ * Set high because ONE user message can fan out into several proxy calls (the
+ * continuation protocol adds up to 2, and the novel-piece critique loop up to 3
+ * rounds), so a legitimate complex design may issue ~12 POSTs — the limit must
+ * clear that comfortably and only catch runaway flooding. */
+const BURST_MAX = 60;
+const BURST_WINDOW_MS = 60 * 1000;
+const burst = new Map();
+function burstOK(id) {
+  const now = Date.now();
+  const hits = (burst.get(id) || []).filter(t => now - t < BURST_WINDOW_MS);
+  hits.push(now);
+  burst.set(id, hits);
+  if (burst.size > 5000) { // bound the map on a long-lived instance
+    for (const [k, v] of burst) if (!v.some(t => now - t < BURST_WINDOW_MS)) burst.delete(k);
+  }
+  return hits.length <= BURST_MAX;
+}
 
 function sendJSON(res, status, obj) {
   res.statusCode = status;
@@ -64,18 +96,20 @@ module.exports = async function handler(req, res) {
   }
 
   const session = S.sessionFrom(req);
-  if (session) {
-    try {
-      const account = await E.statusFor(session.uid);
-      if (account.usage.aiMessages >= account.entitlements.aiMonthlyLimit) {
-        return sendJSON(res, 402, {
-          type: 'error',
-          error: { type: 'usage_limit', message: 'Monthly AI message limit reached.' },
-          billing: account
-        });
-      }
-    } catch (error) { /* storage outage must not break AI */ }
+  const meterId = session ? session.uid : anonMeterId(req);
+  if (!burstOK(meterId)) {
+    return sendJSON(res, 429, { type: 'error', error: { type: 'rate_limited', message: 'Too many requests — please slow down.' } });
   }
+  try {
+    const account = await E.statusFor(meterId);
+    if (account.usage.aiMessages >= account.entitlements.aiMonthlyLimit) {
+      return sendJSON(res, 402, {
+        type: 'error',
+        error: { type: 'usage_limit', message: 'Monthly AI message limit reached.' },
+        billing: account
+      });
+    }
+  } catch (error) { /* storage outage must not break AI — the burst guard still applies */ }
 
   let body;
   try { body = await readBody(req); }
@@ -114,8 +148,10 @@ module.exports = async function handler(req, res) {
   let data;
   try { data = await upstream.json(); }
   catch (e) { return sendJSON(res, 502, errBody('upstream returned non-JSON (' + upstream.status + ')')); }
-  if (upstream.ok && session) {
-    try { await E.incrementAI(session.uid); } catch (error) { /* usage metering is best-effort */ }
+  if (upstream.ok) {
+    try { await E.incrementAI(meterId); } catch (error) { /* usage metering is best-effort */ }
   }
   return sendJSON(res, upstream.status, data);
 };
+
+module.exports.anonMeterId = anonMeterId; // exported for the server test suite

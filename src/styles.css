@@ -284,7 +284,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
    mode nav slims to dots, then the brand wordmark drops. */
 .topbar {
   display: flex; align-items: center; gap: var(--s2);
-  padding: 7px var(--s3);
+  /* 5px keeps the bar within its own 56–64px spec once the mode-nav capsule
+     (52px) + border are counted; the Fraunces/Hanken swap had pushed it to 67. */
+  padding: 5px var(--s3);
   background: var(--panel);
   /* drafting title-block: a bold structural rule shadowed by a thin hairline */
   border-bottom: 1.5px solid var(--line-2);

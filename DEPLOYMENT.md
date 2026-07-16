@@ -1,8 +1,10 @@
 # Deploying Blueprint Buddy — Vercel & v0
 
-Blueprint Buddy is a **static single-file app plus one serverless function** — no
-framework, no bundler, no runtime dependencies. That maps onto exactly one
-Vercel application type and gives v0 everything its sandbox needs.
+Blueprint Buddy is a **static single-file app plus a few small serverless
+functions** (`api/chat`, `api/auth`, `api/store`, `api/billing`,
+`api/stripe-webhook`) — no framework, no bundler, **no runtime dependencies**
+(Stripe's few REST calls are hand-rolled over `fetch` + `node:crypto`). That maps
+onto exactly one Vercel application type and gives v0 everything its sandbox needs.
 
 ## Application type
 
@@ -16,7 +18,7 @@ Vercel application type and gives v0 everything its sandbox needs.
 
 | Setting | Value | Why |
 |---|---|---|
-| Install Command | `npm install --ignore-scripts` | The build has **zero** dependencies; the only devDependency (Playwright) is test-only, and `--ignore-scripts` skips its browser download |
+| Install Command | `npm install --omit=dev --ignore-scripts` | The build has **zero** runtime dependencies; `--omit=dev` skips the one devDependency (Playwright, test-only) and `--ignore-scripts` skips its browser download, so deploys install nothing and stay fast |
 | Build Command | `node build.js` | Inlines `src/` + fonts + Three.js into one self-contained `dist/index.html` |
 | Output Directory | `dist` | Where `build.js` writes; Vercel serves it statically |
 | Development Command (`npm run dev`) | `node serve.js` | Builds, serves on `$PORT` (default 3000), watch-rebuilds `src/`/`vendor/`, and mounts `/api/chat` — production-identical behavior for local dev and the v0 preview |
@@ -43,8 +45,11 @@ vercel env add ANTHROPIC_API_KEY development
 | `AUTH_SECRET` | For accounts | Server-side only (`api/auth.js`, `api/store.js`) | Signs stateless session cookies (`openssl rand -hex 32`). |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | No | Server-side only | Enables "Sign in with Google". |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | No | Server-side only | Enables "Sign in with GitHub". |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | For cloud sync | Server-side only (`api/store.js`) | Upstash Redis REST endpoint — auto-injected by the Vercel Marketplace integration. Upstash-native names (`UPSTASH_REDIS_REST_URL`/`_TOKEN`) also work. |
-| `APP_ORIGIN` | No | Server-side only | Override the derived origin for OAuth redirect URIs (normally unnecessary). |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | For cloud sync **and** subscriptions | Server-side only (`api/store.js`, `api/_entitlements.js`) | Upstash Redis REST endpoint — auto-injected by the Vercel Marketplace integration. Upstash-native names (`UPSTASH_REDIS_REST_URL`/`_TOKEN`) also work. Entitlements + AI usage counters live here too. |
+| `STRIPE_SECRET_KEY` | For subscriptions | Server-side only (`api/billing.js`, `api/stripe-webhook.js`) | Stripe secret key. Enables the Free→Pro upgrade flow. Absent → billing endpoints return 503 and the app stays fully usable on Free. |
+| `STRIPE_PRO_MONTHLY_PRICE_ID` / `STRIPE_PRO_YEARLY_PRICE_ID` | For subscriptions | Server-side only | The recurring Price IDs for Blueprint Buddy Pro (create one monthly, one yearly). |
+| `STRIPE_WEBHOOK_SECRET` | For subscriptions | Server-side only (`api/stripe-webhook.js`) | Signing secret (`whsec_…`) for the webhook endpoint — without it, paid upgrades never activate. See the Subscriptions section below. |
+| `APP_ORIGIN` | **Recommended in production** | Server-side only | Canonical origin (e.g. `https://your-app.com`) for OAuth redirect URIs and Stripe success/cancel URLs. When unset these are derived from the `Host`/`X-Forwarded-Host` header; **set `APP_ORIGIN` in production** so a spoofed header can never influence a redirect target. |
 
 ## Accounts & cloud persistence (optional)
 
@@ -100,6 +105,46 @@ Implementation notes — all zero-dependency, in keeping with the repo rule:
 Local development: `cp .env.example .env`, add your key, `npm run dev` —
 `serve.js` reads `.env` itself (no dotenv dependency). `.env` is gitignored.
 
+## Subscriptions & billing (optional)
+
+Blueprint Buddy ships a Free/Pro model (`api/_entitlements.js` is the authority:
+Free = 3 saved projects + 25 AI messages/mo + core drawing and cut-list exports;
+Pro = unlimited projects + 500 messages/mo + premium exports (print plans, 3D,
+SketchUp) + advanced workshop tools including full-screen Build Mode). The client
+gates the Pro-only surfaces via `BB.Billing.gate('advancedFeatures'|'premiumExports')`.
+All of it is optional — with no Stripe env vars the billing endpoints return 503
+and everyone is on Free. To enable upgrades:
+
+1. **Prices** — in Stripe, create a Product "Blueprint Buddy Pro" with a monthly
+   and a yearly recurring Price. Set `STRIPE_PRO_MONTHLY_PRICE_ID` /
+   `STRIPE_PRO_YEARLY_PRICE_ID` and `STRIPE_SECRET_KEY`.
+2. **Webhook** — add an endpoint at `https://YOUR-APP/api/stripe-webhook`
+   subscribed to `customer.subscription.created`, `.updated`, and `.deleted`.
+   Put its signing secret in `STRIPE_WEBHOOK_SECRET`. The webhook flips a user to
+   Pro when their subscription activates — **without it, checkout succeeds but the
+   account is never upgraded.**
+3. **Storage** — entitlements and usage counters live in the same KV as cloud
+   sync, so `KV_REST_API_URL`/`_TOKEN` (or the Upstash-native names) are required
+   for subscriptions to persist.
+4. **Verify the webhook on the real deploy.** Because signature verification
+   needs the *raw* request body, confirm it end-to-end before launch:
+   `stripe listen --forward-to https://YOUR-APP/api/stripe-webhook` then
+   `stripe trigger customer.subscription.created`. A `200` with the subscription
+   stored is success; a `raw_body_unavailable` 400 means the platform pre-parsed
+   the body (the handler surfaces that distinctly, on purpose, so a misconfigured
+   runtime is obvious instead of failing every upgrade silently).
+
+Zero-dependency, in keeping with the repo rule: `api/_stripe.js` hand-rolls the
+four Stripe REST calls used (customer create, checkout session, billing-portal
+session, webhook signature verification) over `fetch` + `node:crypto` — no
+`stripe` SDK, no client-side Stripe.js (checkout is a Stripe-hosted redirect, so
+the single-file build stays self-contained). The browser never holds a Stripe key.
+
+AI usage is metered on `api/chat.js` for **every** request — signed-in users by
+account, anonymous users by a hashed client IP, plus a small in-memory burst
+limit — so the Anthropic key can't be burned unmetered and the Free cap can't be
+dodged by signing out.
+
 ## Importing into v0
 
 1. Push this repo to GitHub (default branch or any branch).
@@ -129,6 +174,9 @@ browser ──POST /api/chat──▶ api/chat.js (holds ANTHROPIC_API_KEY)
 ```
 
 The client tries transports in order: injected (tests) → same-origin proxy →
-direct Anthropic (claude.ai artifact hosting) → `window.claude.complete` →
-built-in offline parser. On Vercel/v0 the proxy is the live path; on claude.ai
-it 404s once and the artifact behavior is unchanged.
+direct Anthropic (**non-browser hosts only** — a browser never holds the key and
+CORS blocks it, so this is skipped in the app) → `window.claude.complete`
+(claude.ai artifact hosting) → built-in offline parser. On Vercel/v0 the proxy is
+the live path; on claude.ai the proxy 404s once and `window.claude.complete`
+serves the model. The proxy enforces AI usage metering (see the billing section);
+the other transports are for hosts where no server proxy exists.

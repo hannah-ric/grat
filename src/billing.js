@@ -3,7 +3,15 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
-  const FREE = { plan: 'free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false };
+  // Mirror of api/_entitlements.js. The SERVER is the authority — the client
+  // always prefers a fetched billing payload; these values only drive display
+  // before/without a fetch (offline, anonymous, first paint). There is no shared
+  // module across the client/server runtime split, so keep the two in sync.
+  const PLANS = {
+    free: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false },
+    pro: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500, premiumExports: true, advancedFeatures: true }
+  };
+  const FREE = PLANS.free;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   let dialog = null;
   let interval = 'year';
@@ -60,12 +68,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       <div class="pricing-grid">
         <section class="price-card" aria-label="Free plan">
           <div><span class="plan-label">Free</span><strong>$0</strong><small>forever</small></div>
-          <ul><li>3 saved projects</li><li>25 AI messages per month</li><li>Core drawing and cut-list exports</li><li>Device and cloud sync</li></ul>
+          <ul><li>${FREE.projectLimit} saved projects</li><li>${FREE.aiMonthlyLimit} AI messages per month</li><li>Core drawing and cut-list exports</li><li>Device and cloud sync</li></ul>
           <button class="btn" data-pricing-close>Keep Free</button>
         </section>
         <section class="price-card featured" aria-label="Pro plan">
           <div><span class="plan-label">Pro</span><strong data-price>$12</strong><small data-period>/ month, billed yearly</small></div>
-          <ul><li>Unlimited saved projects</li><li>500 AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Structural reports and advanced workshop tools</li></ul>
+          <ul><li>Unlimited saved projects</li><li>${PLANS.pro.aiMonthlyLimit} AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Structural reports and advanced workshop tools</li></ul>
           <button class="btn primary pricing-upgrade" data-upgrade>Upgrade to Pro</button>
         </section>
       </div>
