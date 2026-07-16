@@ -36,16 +36,51 @@ function fakeRes() {
 }
 const json = res => { try { return JSON.parse(res.body); } catch (e) { return null; } };
 
+const crypto = require('crypto');
 const S = require('../api/_session.js');
 const auth = require('../api/auth.js');
 const store = require('../api/store.js');
+const E = require('../api/_entitlements.js');
+const Stripe = require('../api/_stripe.js');
+const billing = require('../api/billing.js');
+const webhook = require('../api/stripe-webhook.js');
+const chat = require('../api/chat.js');
 
 const cleanEnv = () => {
   for (const k of ['AUTH_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
-    'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'BB_KV_FILE', 'BB_DEV_LOGIN', 'APP_ORIGIN']) {
+    'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'BB_KV_FILE', 'BB_DEV_LOGIN', 'APP_ORIGIN',
+    'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRO_MONTHLY_PRICE_ID', 'STRIPE_PRO_YEARLY_PRICE_ID', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL']) {
     delete process.env[k];
   }
 };
+
+/* A fresh file-backed KV per call site, so entitlement/usage state never leaks
+ * between sections. */
+function useTempKV() {
+  const file = path.join(os.tmpdir(), 'bb-test-kv-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.json');
+  process.env.BB_KV_FILE = file;
+  return () => { try { fs.unlinkSync(file); } catch (e) { /* already gone */ } };
+}
+
+/* Sign a webhook body exactly as Stripe does, so the hand-rolled verifier
+ * (api/_stripe.js) accepts it — the same scheme the real platform uses. */
+function signWebhook(payload, secret) {
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = crypto.createHmac('sha256', secret).update(ts + '.' + payload).digest('hex');
+  return `t=${ts},v1=${sig}`;
+}
+
+/* A request whose body was already parsed into an object with NOTHING left on
+ * the wire — the shape a body-parsing runtime would hand a webhook, used to
+ * prove the raw-body-unavailable diagnostic (A3). */
+function objectBodyReq(url, bodyObj, headers) {
+  return {
+    url, method: 'POST',
+    headers: Object.assign({ host: 'app.example.com', 'x-forwarded-proto': 'https' }, headers || {}),
+    socket: {}, body: bodyObj,
+    on(event, cb) { if (event === 'end') setImmediate(cb); }
+  };
+}
 
 (async () => {
   /* ---------------- session signing ---------------- */
@@ -212,6 +247,155 @@ const cleanEnv = () => {
     eq(calls[1].cmd, ['GET', 'bb:google:9:prefs:v2'], 'GET command shape');
     ok(calls.every(x => x.auth === 'Bearer tok'), 'bearer token on every command');
     eq(json(res).value, '{"a":1}', 'REST GET returns the value');
+    cleanEnv();
+  }
+
+  /* ---------------- entitlements: plans + usage ---------------- */
+  section('entitlements: Free/Pro plans + usage metering');
+  {
+    const rmkv = useTempKV();
+    let st = await E.statusFor('u:free');
+    eq(st.plan, 'free', 'no subscription → Free');
+    eq(st.entitlements.aiMonthlyLimit, 25, 'Free AI cap');
+    eq(st.entitlements.projectLimit, 3, 'Free project cap');
+    await E.incrementAI('u:free'); await E.incrementAI('u:free');
+    eq((await E.getUsage('u:free')).aiMessages, 2, 'incrementAI accrues usage');
+
+    await E.setSubscription('u:pro', { customerId: 'cus_1', status: 'active', interval: 'month', currentPeriodEnd: '2026-08-01T00:00:00.000Z' });
+    st = await E.statusFor('u:pro');
+    eq(st.plan, 'pro', 'active subscription → Pro');
+    eq(st.entitlements.aiMonthlyLimit, 500, 'Pro AI cap');
+    eq(st.entitlements.projectLimit, null, 'Pro → unlimited projects');
+    ok(st.subscription && st.subscription.status === 'active', 'status echoes the subscription');
+
+    await E.setSubscription('u:pro', { customerId: 'cus_1', status: 'canceled' });
+    eq((await E.statusFor('u:pro')).plan, 'free', 'canceled subscription falls back to Free');
+    rmkv();
+    cleanEnv();
+  }
+
+  /* ---------------- stripe webhook: signature + record ---------------- */
+  section('stripe webhook: signature verify, subscription record (A3/A7)');
+  {
+    const rmkv = useTempKV();
+    process.env.STRIPE_SECRET_KEY = 'sk_test_x';
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_x';
+    const periodEnd = 1785000000; // unix seconds, lives on the ITEM in current API versions
+    const event = JSON.stringify({
+      id: 'evt_1', type: 'customer.subscription.created',
+      data: { object: {
+        id: 'sub_1', customer: 'cus_9', status: 'active', cancel_at_period_end: false,
+        metadata: { bb_uid: 'github:55' },
+        items: { data: [{ price: { id: 'price_1', recurring: { interval: 'month' } }, current_period_end: periodEnd }] }
+      } }
+    });
+
+    let res = fakeRes();
+    await webhook(fakeReq('/api/stripe-webhook', { method: 'POST', headers: { 'stripe-signature': signWebhook(event, 'whsec_test_x') }, body: event }), res);
+    eq(res.statusCode, 200, 'a validly-signed event is accepted');
+    const sub = await E.getSubscription('github:55');
+    eq(sub && sub.status, 'active', 'subscription persisted under the metadata uid');
+    eq(sub && sub.currentPeriodEnd, new Date(periodEnd * 1000).toISOString(), 'renewal date read from items[] (A7 fix)');
+
+    res = fakeRes();
+    await webhook(fakeReq('/api/stripe-webhook', { method: 'POST', headers: { 'stripe-signature': signWebhook(event, 'whsec_test_x') }, body: event + ' ' }), res);
+    eq(res.statusCode, 400, 'a tampered body is rejected');
+    eq(json(res).error, 'invalid_signature', 'rejection is a signature error');
+
+    res = fakeRes();
+    await webhook(objectBodyReq('/api/stripe-webhook', { id: 'evt_x' }, { 'stripe-signature': 't=1,v1=deadbeef' }), res);
+    eq(res.statusCode, 400, 'a pre-parsed body with no raw bytes is a 400');
+    eq(json(res).error, 'raw_body_unavailable', 'and it is DIAGNOSABLE, not a mystery invalid_signature (A3)');
+
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+    res = fakeRes();
+    await webhook(fakeReq('/api/stripe-webhook', { method: 'POST', headers: {}, body: event }), res);
+    eq(res.statusCode, 503, 'missing secret → webhook_unconfigured');
+    rmkv();
+    cleanEnv();
+  }
+
+  /* ---------------- billing: checkout + portal (mocked Stripe) ---------------- */
+  section('billing: checkout + portal via the zero-dep Stripe client');
+  {
+    const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    process.env.STRIPE_SECRET_KEY = 'sk_test_x';
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = 'price_month';
+    const realFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url) => {
+      const u = String(url); calls.push(u);
+      if (u.includes('/v1/customers')) return { ok: true, status: 200, json: async () => ({ id: 'cus_new' }) };
+      if (u.includes('/v1/checkout/sessions')) return { ok: true, status: 200, json: async () => ({ id: 'cs_1', url: 'https://checkout.stripe.test/pay' }) };
+      if (u.includes('/v1/billing_portal/sessions')) return { ok: true, status: 200, json: async () => ({ url: 'https://billing.stripe.test/portal' }) };
+      return { ok: false, status: 404, json: async () => ({ error: { message: 'no' } }) };
+    };
+    const cookie = uid => ({ cookie: S.sessionCookieFor({ uid, name: 'T', provider: 'dev' }, fakeReq('/')).split(';')[0] });
+
+    let res = fakeRes();
+    await billing(fakeReq('/api/billing?action=checkout', { method: 'POST', body: {} }), res);
+    eq(res.statusCode, 401, 'billing requires a session');
+
+    res = fakeRes();
+    await billing(fakeReq('/api/billing?action=checkout', { method: 'POST', headers: cookie('github:70'), body: { interval: 'month' } }), res);
+    eq(res.statusCode, 200, 'checkout returns 200');
+    eq(json(res).url, 'https://checkout.stripe.test/pay', 'checkout returns the Stripe-hosted URL');
+    ok(calls.some(u => u.includes('/v1/customers')), 'a Stripe customer was created');
+    const saved = await E.getSubscription('github:70');
+    eq(saved && saved.customerId, 'cus_new', 'the customer id is persisted for the webhook to match');
+
+    res = fakeRes();
+    await billing(fakeReq('/api/billing?action=status', { headers: cookie('github:70') }), res);
+    eq(json(res).plan, 'free', 'status stays Free until the webhook activates the subscription');
+
+    res = fakeRes();
+    await billing(fakeReq('/api/billing?action=portal', { method: 'POST', headers: cookie('github:70'), body: {} }), res);
+    eq(json(res).url, 'https://billing.stripe.test/portal', 'portal returns the Stripe portal URL');
+
+    globalThis.fetch = realFetch;
+    rmkv();
+    cleanEnv();
+  }
+
+  /* ---------------- chat: anonymous metering + rate limit (A4b) ---------------- */
+  section('chat: anonymous requests are metered and rate-limited (A4b)');
+  {
+    const rmkv = useTempKV();
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) });
+    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-forwarded-for': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+
+    // (a) an anonymous call is proxied AND metered by hashed IP — no more free-for-all
+    let res = fakeRes();
+    await chat(chatReq('203.0.113.10'), res);
+    eq(res.statusCode, 200, 'anonymous chat is proxied');
+    eq((await E.getUsage(chat.anonMeterId({ headers: { 'x-forwarded-for': '203.0.113.10' }, socket: {} }))).aiMessages, 1,
+      'anonymous usage is metered by IP (signing out no longer resets to unlimited)');
+
+    // (b) once an anon IP hits the Free cap, the proxy refuses with 402
+    const meterB = chat.anonMeterId({ headers: { 'x-forwarded-for': '203.0.113.20' }, socket: {} });
+    for (let i = 0; i < E.FREE.aiMonthlyLimit; i++) await E.incrementAI(meterB);
+    res = fakeRes();
+    await chat(chatReq('203.0.113.20'), res);
+    eq(res.statusCode, 402, 'anonymous over the Free cap → 402, not a free bypass');
+
+    // (c) burst guard: with NO durable meter (KV down/unset) a rapid run from one
+    //     IP is still capped by the in-memory guard — "no storage" ≠ "unlimited".
+    delete process.env.BB_KV_FILE;
+    let got429 = false, sent = 0;
+    for (; sent < 70 && !got429; sent++) { res = fakeRes(); await chat(chatReq('203.0.113.30'), res); if (res.statusCode === 429) got429 = true; }
+    ok(got429, `a burst from one IP is rate-limited (429) with no KV (tripped after ${sent})`);
+
+    // (d) no key → 503, never a crash
+    delete process.env.ANTHROPIC_API_KEY;
+    res = fakeRes();
+    await chat(chatReq('203.0.113.40'), res);
+    eq(res.statusCode, 503, 'no ANTHROPIC_API_KEY → 503');
+
+    globalThis.fetch = realFetch;
+    rmkv();
     cleanEnv();
   }
 

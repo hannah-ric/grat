@@ -36,8 +36,9 @@ product *looks* like the blueprint it produces.
 > `currentColor`. Blueprint Mode's cyanotype ink is the one candidate for a
 > deliberate blue exception — a blueprint is blue; decide there.
 
-The token system (warm oat + machinist blue, Bitter slab serif, 8pt scale,
-one easing family) is kept. Phase 5 added, in order of leverage:
+The token system (warm oat + machinist blue, Fraunces display serif with Hanken
+Grotesk body and IBM Plex Mono numbers, 8pt scale, one easing family) is kept.
+Phase 5 added, in order of leverage:
 
 1. **The model as hero** — procedural per-species wood grain, ACES tone
    mapping, a procedural studio environment, soft grounded shadows. Species

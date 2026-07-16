@@ -2,6 +2,8 @@
 
 const KV = require('./_kv.js');
 
+// This is the AUTHORITY for entitlements. src/billing.js keeps a display-only
+// mirror (PLANS) for pre-fetch/offline rendering — keep the two in sync.
 const FREE = Object.freeze({
   plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25,
   premiumExports: false, advancedFeatures: false

@@ -308,6 +308,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       proxyDead = true;
       throw new Error('proxy unavailable (' + response.status + ')');
     }
+    // Usage limit (402) and rate limit (429) are AUTHORITATIVE, not transport
+    // failures — surface them distinctly so the UI can prompt an upgrade instead
+    // of silently dropping to the offline parser. The proxy stays alive.
+    if (response.status === 402 || response.status === 429) {
+      let payload = null;
+      try { payload = await response.json(); } catch (e) { /* no body */ }
+      const err = new Error(response.status === 402 ? 'usage_limit' : 'rate_limited');
+      if (response.status === 402) { err.usageLimit = true; err.billing = payload && payload.billing; }
+      else err.rateLimited = true;
+      throw err;
+    }
     if (!response.ok) throw new Error('proxy returned ' + response.status);
     let data;
     try { data = await response.json(); }
@@ -481,6 +492,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       return { reply: null, turns, error: 'The model never produced a valid design reply.' };
     } catch (err) {
+      // Usage/rate limits are authoritative server answers, not outages — never
+      // mask them behind the offline parser.
+      if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
+      if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
       return { reply: localModel(userText, spec), turns, local: true };
     }

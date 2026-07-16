@@ -8,6 +8,11 @@ the only source of truth; the phase specs as hypotheses.
 Scope exclusion honored: UX/visual/accessibility untouched (one-line appendix
 at the end).
 
+> **Companion report:** the production/SaaS layer added after this audit (Stripe
+> billing, entitlements, webhook, chat auth) is audited separately in
+> `08-production-readiness.md` — front-end↔back-end contract, security posture,
+> and repo hygiene. This engineering-truth report does not cover it.
+
 ## What was done
 
 | Phase | Deliverable |

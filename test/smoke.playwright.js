@@ -58,6 +58,14 @@ const clickMoreCtl = async sel => {
       async set(key, value) { localStorage.setItem('bbshim:' + key, value); },
       async delete(key) { localStorage.removeItem('bbshim:' + key); }
     };
+    // Build Mode + premium exports are Pro features (the SaaS layer gates them
+    // behind `advancedFeatures`/`premiumExports`). The artifact-storage shim above
+    // makes Store.init() skip the /api/auth probe, so grant Pro directly the moment
+    // BB.Store loads — re-runs on every navigation, so it survives reloads.
+    const PRO = { plan: 'pro', entitlements: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500, premiumExports: true, advancedFeatures: true }, usage: { aiMessages: 0 }, subscription: { status: 'active' } };
+    const grant = setInterval(() => {
+      if (globalThis.BB && BB.Store && BB.Store.setBilling) { BB.Store.setBilling(PRO); clearInterval(grant); }
+    }, 5);
   });
 
   await page.goto(`http://127.0.0.1:${port}/`);
@@ -932,11 +940,13 @@ const clickMoreCtl = async sel => {
     const dupName = idx.find(r => r.id === dupId).name;
     await BB.Store.deleteProject(dupId);
     idx = await BB.Store.loadIndex();
-    return { renamed, dupName, dupGone: !idx.some(r => r.id === dupId), thumb: !!idx.find(r => r.id === id).thumb };
+    // Thumbnails live in their own per-project docs now (not embedded in the
+    // index), so check the thumb doc rather than the index row.
+    return { renamed, dupName, dupGone: !idx.some(r => r.id === dupId), thumb: !!(await BB.Store.loadThumb(id)) };
   });
   ok(projOps.renamed === 'Renamed Desk', 'project rename persists');
   ok(projOps.dupName === 'Renamed Desk copy' && projOps.dupGone, 'duplicate + delete round-trip');
-  ok(projOps.thumb, 'project card carries a 3D thumbnail');
+  ok(projOps.thumb, 'project card carries a 3D thumbnail (stored in its own doc)');
 
   // Species comparison: five rows, applies on tap.
   await page.evaluate(() => __bb.openSpecies());

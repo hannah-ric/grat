@@ -122,11 +122,14 @@ headless Chromium at 1440/390).
 
 ### Faces
 
+Font families (2026-07 swap from Bitter → the trio below; the three faces are
+committed in `vendor/fonts` and base64-inlined at build):
+
 | Voice | Stack | Use |
 | --- | --- | --- |
-| `--display` | `'Bitter', 'Iowan Old Style', Georgia, serif` (500/600/700, committed in `vendor/fonts`, inlined) | `h1–h4`, blockquote, big verdict figures — never below `--text-l` |
-| `--body` | `system-ui …` grotesque | body, labels, `h5/h6`, controls |
-| `--mono` | `ui-monospace …` + `tabular-nums` | `code/kbd/samp/data/time/output` — every machine value (the display-boundary rule, spoken in type) |
+| `--display` | `'Fraunces', 'Iowan Old Style', Georgia, serif` (500/600/700/900) — an old-style serif with real retro character | `h1–h4`, blockquote, big verdict figures — never below `--text-l` |
+| `--body` | `'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif` (400/500/600/700) — a warm humanist grotesque, clean at small sizes | body, labels, `h5/h6`, controls |
+| `--mono` | `'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace` (400/500/600) + `tabular-nums` | `code/kbd/samp/data/time/output` — every machine value (the display-boundary rule, spoken in type) |
 
 ### Leading — additive, self-regulating
 

@@ -190,12 +190,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!localIdx) return;
     let idx;
     try { idx = JSON.parse(localIdx) || []; } catch (e) { return; }
-    await remoteSet(INDEX_KEY, localIdx);
     for (const row of idx.slice(0, 100)) {
       const k = PROJECT_PREFIX + row.id;
       const v = ls.getItem(LOCAL_PREFIX + k);
       if (v) await remoteSet(k, v);
+      // Move a thumbnail — legacy-embedded in the row, or its own local doc —
+      // into the cloud thumb doc, then strip it so the cloud index stays under
+      // the 400 KB value cap (A5). Values are stored JSON-stringified.
+      const localThumb = ls.getItem(LOCAL_PREFIX + THUMB_PREFIX + row.id);
+      if (row.thumb) { await remoteSet(THUMB_PREFIX + row.id, JSON.stringify(row.thumb)); delete row.thumb; }
+      else if (localThumb) { await remoteSet(THUMB_PREFIX + row.id, localThumb); }
     }
+    await remoteSet(INDEX_KEY, JSON.stringify(idx));
     for (const k of [PRICES_KEY, PREFS_KEY]) {
       const v = ls.getItem(LOCAL_PREFIX + k);
       if (v) await remoteSet(k, v);
@@ -226,7 +232,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- projects ---------------- */
   const INDEX_KEY = 'projects:index';
   const PROJECT_PREFIX = 'project:';
+  // Thumbnails live in their OWN per-project docs, never embedded in the index.
+  // A ~15 KB JPEG per row would push projects:index past the 400 KB cloud value
+  // cap at ~26 projects, silently stopping cloud sync for Pro users (A5). Kept
+  // out, the index rows are tiny and scale to thousands of projects.
+  const THUMB_PREFIX = 'thumb:';
   const MAX_REVISIONS = 20;
+
+  const loadThumb = id => get(THUMB_PREFIX + id);
 
   const newId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -246,15 +259,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       progress: data.progress || { cuts: {}, steps: {} }
     };
     await set(PROJECT_PREFIX + data.id, record);
+    if (data.thumb) await set(THUMB_PREFIX + data.id, data.thumb); // its own doc, not the index
     const idx = await loadIndex();
     const row = {
       id: data.id, name: data.name, updated: record.updated,
-      thumb: data.thumb || (idx.find(r => r.id === data.id) || {}).thumb || null,
       dims: data.dims || null,
       progressPct: data.progressPct !== undefined ? data.progressPct : (idx.find(r => r.id === data.id) || {}).progressPct || 0
     };
     const i = idx.findIndex(r => r.id === data.id);
     if (i >= 0) idx[i] = row; else idx.unshift(row);
+    // Self-healing migration: move any thumbnails a legacy index still embeds
+    // into their own docs, so the persisted index is always thumbnail-free.
+    const migrations = [];
+    for (const r of idx) {
+      if (r.thumb) { migrations.push(set(THUMB_PREFIX + r.id, r.thumb)); delete r.thumb; }
+    }
+    if (migrations.length) await Promise.all(migrations);
     idx.sort((a, b) => b.updated - a.updated);
     await saveIndex(idx);
     return record;
@@ -267,6 +287,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   async function deleteProject(id) {
     await del(PROJECT_PREFIX + id);
+    await del(THUMB_PREFIX + id);
     const idx = await loadIndex();
     await saveIndex(idx.filter(r => r.id !== id));
   }
@@ -287,7 +308,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const copyId = newId();
     const copy = { ...rec, id: copyId, name: rec.name + ' copy', updated: Date.now(), progress: { cuts: {}, steps: {} } };
     await set(PROJECT_PREFIX + copyId, copy);
-    idx.unshift({ id: copyId, name: copy.name, updated: copy.updated, thumb: row.thumb || null, dims: row.dims || null, progressPct: 0 });
+    const srcThumb = row.thumb || await loadThumb(id); // legacy embedded or its own doc
+    if (srcThumb) await set(THUMB_PREFIX + copyId, srcThumb);
+    idx.unshift({ id: copyId, name: copy.name, updated: copy.updated, dims: row.dims || null, progressPct: 0 });
     await saveIndex(idx);
     return copyId;
   }
@@ -406,7 +429,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     persistenceMode, init, auth: authState, setBilling, onModeChange,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
     logoutUrl: '/api/auth?logout=1',
-    newId, loadIndex, saveProject, loadProject, deleteProject, renameProject, duplicateProject,
+    newId, loadIndex, saveProject, loadProject, loadThumb, deleteProject, renameProject, duplicateProject,
     loadPrices, savePrices, loadPrefs, savePrefs, makeThumb,
     MAX_REVISIONS, DEFAULT_PREFS
   };

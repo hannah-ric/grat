@@ -294,7 +294,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
    mode nav slims to dots, then the brand wordmark drops. */
 .topbar {
   display: flex; align-items: center; gap: var(--s2);
-  padding: 7px var(--s3);
+  /* 5px keeps the bar within its own 56–64px spec once the mode-nav capsule
+     (52px) + border are counted; the Fraunces/Hanken swap had pushed it to 67. */
+  padding: 5px var(--s3);
   background: var(--panel);
   /* drafting title-block: a bold structural rule shadowed by a thin hairline */
   border-bottom: 1.5px solid var(--line-2);
@@ -9537,6 +9539,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       proxyDead = true;
       throw new Error('proxy unavailable (' + response.status + ')');
     }
+    // Usage limit (402) and rate limit (429) are AUTHORITATIVE, not transport
+    // failures — surface them distinctly so the UI can prompt an upgrade instead
+    // of silently dropping to the offline parser. The proxy stays alive.
+    if (response.status === 402 || response.status === 429) {
+      let payload = null;
+      try { payload = await response.json(); } catch (e) { /* no body */ }
+      const err = new Error(response.status === 402 ? 'usage_limit' : 'rate_limited');
+      if (response.status === 402) { err.usageLimit = true; err.billing = payload && payload.billing; }
+      else err.rateLimited = true;
+      throw err;
+    }
     if (!response.ok) throw new Error('proxy returned ' + response.status);
     let data;
     try { data = await response.json(); }
@@ -9710,6 +9723,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       return { reply: null, turns, error: 'The model never produced a valid design reply.' };
     } catch (err) {
+      // Usage/rate limits are authoritative server answers, not outages — never
+      // mask them behind the offline parser.
+      if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
+      if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
       return { reply: localModel(userText, spec), turns, local: true };
     }
@@ -9983,12 +10000,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!localIdx) return;
     let idx;
     try { idx = JSON.parse(localIdx) || []; } catch (e) { return; }
-    await remoteSet(INDEX_KEY, localIdx);
     for (const row of idx.slice(0, 100)) {
       const k = PROJECT_PREFIX + row.id;
       const v = ls.getItem(LOCAL_PREFIX + k);
       if (v) await remoteSet(k, v);
+      // Move a thumbnail — legacy-embedded in the row, or its own local doc —
+      // into the cloud thumb doc, then strip it so the cloud index stays under
+      // the 400 KB value cap (A5). Values are stored JSON-stringified.
+      const localThumb = ls.getItem(LOCAL_PREFIX + THUMB_PREFIX + row.id);
+      if (row.thumb) { await remoteSet(THUMB_PREFIX + row.id, JSON.stringify(row.thumb)); delete row.thumb; }
+      else if (localThumb) { await remoteSet(THUMB_PREFIX + row.id, localThumb); }
     }
+    await remoteSet(INDEX_KEY, JSON.stringify(idx));
     for (const k of [PRICES_KEY, PREFS_KEY]) {
       const v = ls.getItem(LOCAL_PREFIX + k);
       if (v) await remoteSet(k, v);
@@ -10019,7 +10042,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- projects ---------------- */
   const INDEX_KEY = 'projects:index';
   const PROJECT_PREFIX = 'project:';
+  // Thumbnails live in their OWN per-project docs, never embedded in the index.
+  // A ~15 KB JPEG per row would push projects:index past the 400 KB cloud value
+  // cap at ~26 projects, silently stopping cloud sync for Pro users (A5). Kept
+  // out, the index rows are tiny and scale to thousands of projects.
+  const THUMB_PREFIX = 'thumb:';
   const MAX_REVISIONS = 20;
+
+  const loadThumb = id => get(THUMB_PREFIX + id);
 
   const newId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -10039,15 +10069,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       progress: data.progress || { cuts: {}, steps: {} }
     };
     await set(PROJECT_PREFIX + data.id, record);
+    if (data.thumb) await set(THUMB_PREFIX + data.id, data.thumb); // its own doc, not the index
     const idx = await loadIndex();
     const row = {
       id: data.id, name: data.name, updated: record.updated,
-      thumb: data.thumb || (idx.find(r => r.id === data.id) || {}).thumb || null,
       dims: data.dims || null,
       progressPct: data.progressPct !== undefined ? data.progressPct : (idx.find(r => r.id === data.id) || {}).progressPct || 0
     };
     const i = idx.findIndex(r => r.id === data.id);
     if (i >= 0) idx[i] = row; else idx.unshift(row);
+    // Self-healing migration: move any thumbnails a legacy index still embeds
+    // into their own docs, so the persisted index is always thumbnail-free.
+    const migrations = [];
+    for (const r of idx) {
+      if (r.thumb) { migrations.push(set(THUMB_PREFIX + r.id, r.thumb)); delete r.thumb; }
+    }
+    if (migrations.length) await Promise.all(migrations);
     idx.sort((a, b) => b.updated - a.updated);
     await saveIndex(idx);
     return record;
@@ -10060,6 +10097,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   async function deleteProject(id) {
     await del(PROJECT_PREFIX + id);
+    await del(THUMB_PREFIX + id);
     const idx = await loadIndex();
     await saveIndex(idx.filter(r => r.id !== id));
   }
@@ -10080,7 +10118,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const copyId = newId();
     const copy = { ...rec, id: copyId, name: rec.name + ' copy', updated: Date.now(), progress: { cuts: {}, steps: {} } };
     await set(PROJECT_PREFIX + copyId, copy);
-    idx.unshift({ id: copyId, name: copy.name, updated: copy.updated, thumb: row.thumb || null, dims: row.dims || null, progressPct: 0 });
+    const srcThumb = row.thumb || await loadThumb(id); // legacy embedded or its own doc
+    if (srcThumb) await set(THUMB_PREFIX + copyId, srcThumb);
+    idx.unshift({ id: copyId, name: copy.name, updated: copy.updated, dims: row.dims || null, progressPct: 0 });
     await saveIndex(idx);
     return copyId;
   }
@@ -10199,7 +10239,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     persistenceMode, init, auth: authState, setBilling, onModeChange,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
     logoutUrl: '/api/auth?logout=1',
-    newId, loadIndex, saveProject, loadProject, deleteProject, renameProject, duplicateProject,
+    newId, loadIndex, saveProject, loadProject, loadThumb, deleteProject, renameProject, duplicateProject,
     loadPrices, savePrices, loadPrefs, savePrefs, makeThumb,
     MAX_REVISIONS, DEFAULT_PREFS
   };
@@ -10210,7 +10250,15 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
-  const FREE = { plan: 'free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false };
+  // Mirror of api/_entitlements.js. The SERVER is the authority — the client
+  // always prefers a fetched billing payload; these values only drive display
+  // before/without a fetch (offline, anonymous, first paint). There is no shared
+  // module across the client/server runtime split, so keep the two in sync.
+  const PLANS = {
+    free: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false },
+    pro: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500, premiumExports: true, advancedFeatures: true }
+  };
+  const FREE = PLANS.free;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   let dialog = null;
   let interval = 'year';
@@ -10267,12 +10315,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       <div class="pricing-grid">
         <section class="price-card" aria-label="Free plan">
           <div><span class="plan-label">Free</span><strong>$0</strong><small>forever</small></div>
-          <ul><li>3 saved projects</li><li>25 AI messages per month</li><li>Core drawing and cut-list exports</li><li>Device and cloud sync</li></ul>
+          <ul><li>${FREE.projectLimit} saved projects</li><li>${FREE.aiMonthlyLimit} AI messages per month</li><li>Core drawing and cut-list exports</li><li>Device and cloud sync</li></ul>
           <button class="btn" data-pricing-close>Keep Free</button>
         </section>
         <section class="price-card featured" aria-label="Pro plan">
           <div><span class="plan-label">Pro</span><strong data-price>$12</strong><small data-period>/ month, billed yearly</small></div>
-          <ul><li>Unlimited saved projects</li><li>500 AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Structural reports and advanced workshop tools</li></ul>
+          <ul><li>Unlimited saved projects</li><li>${PLANS.pro.aiMonthlyLimit} AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Structural reports and advanced workshop tools</li></ul>
           <button class="btn primary pricing-upgrade" data-upgrade>Upgrade to Pro</button>
         </section>
       </div>
@@ -14652,6 +14700,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   async function aiPipeline(text, image, setStatus) {
     const digest = Codec.buildDigest(state.history.snapshots);
     let res = await AI.respond(text, state.spec, { turns: state.turns, digest, onStatus: setStatus, image });
+    // Server said the AI budget is spent (402) or requests are coming too fast
+    // (429) — act on it instead of pretending we went offline.
+    if (res.usageLimit) {
+      if (res.billing) Store.setBilling(res.billing);
+      const limit = (res.billing && res.billing.entitlements && res.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
+      BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+      return null;
+    }
+    if (res.rateLimited) { botSay('Too many messages in a row — give it a few seconds, then try again.', []); return null; }
     if (res.error) { botSay(res.error, []); return null; }
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
@@ -15300,10 +15357,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       grid.innerHTML = '<p class="sub">No projects yet — designs save here automatically as you work.</p>';
       return;
     }
+    // Thumbnails are stored as their own per-project docs (A5); load them in
+    // parallel. `row.thumb` is the legacy embedded fallback for an index not yet
+    // migrated by a save.
+    const thumbList = await Promise.all(idx.map(r => Store.loadThumb(r.id).catch(() => null)));
+    const thumbById = {};
+    idx.forEach((r, i) => { thumbById[r.id] = thumbList[i] || r.thumb || null; });
     for (const row of idx) {
       const card = el('div', 'project-card' + (state.project && state.project.id === row.id ? ' current' : ''));
-      const thumb = row.thumb
-        ? `<img class="p-thumb" src="${row.thumb}" alt="">`
+      const thumbSrc = thumbById[row.id];
+      const thumb = thumbSrc
+        ? `<img class="p-thumb" src="${esc(thumbSrc)}" alt="">`
         : `<div class="p-thumb empty" aria-hidden="true">${BB.Icons.svg('board', 22)}</div>`;
       card.innerHTML = `${thumb}
         <span class="p-name">${esc(row.name)}</span>

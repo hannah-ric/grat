@@ -77,8 +77,11 @@ re-litigating correctness.
 
 The repo is pre-configured for Vercel (and for import into [v0](https://v0.app)
 via **Import from GitHub**): `vercel.json` pins the framework preset (**Other**),
-install command (`npm install --ignore-scripts`), build command (`node build.js`),
-and output directory (`dist`), and `api/chat.js` is a serverless proxy that keeps
-`ANTHROPIC_API_KEY` server-side so AI chat and photo-to-design work when hosted
-outside claude.ai. Without a key the app degrades to its built-in offline parser.
-Setup steps, environment variables, and v0 caveats: **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+install command (`npm install --omit=dev --ignore-scripts`), build command
+(`node build.js`), and output directory (`dist`), and `api/chat.js` is a
+serverless proxy that keeps `ANTHROPIC_API_KEY` server-side so AI chat and
+photo-to-design work when hosted outside claude.ai. Without a key the app degrades
+to its built-in offline parser. A few more optional, **zero-dependency** functions
+add accounts (`api/auth`, `api/store`) and Free/Pro subscriptions (`api/billing`,
+`api/stripe-webhook`) — all degrade cleanly when their env vars are absent. Setup
+steps, environment variables, and v0 caveats: **[DEPLOYMENT.md](DEPLOYMENT.md)**.

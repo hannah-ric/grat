@@ -1,12 +1,12 @@
 'use strict';
 
-const Stripe = require('stripe');
+const Stripe = require('./_stripe.js');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
 
 function stripeClient() {
   if (!process.env.STRIPE_SECRET_KEY) return null;
-  return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-05-27.dahlia' });
+  return Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-05-27.dahlia' });
 }
 function origin(req) {
   if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN.replace(/\/$/, '');
@@ -85,6 +85,9 @@ module.exports = async function handler(req, res) {
     }
     return sendJSON(res, 404, { error: 'unknown_action' });
   } catch (error) {
-    return sendJSON(res, 500, { error: 'billing_error', message: error.message });
+    // Never leak the raw upstream message to the browser. `error.code` (when
+    // present) is Stripe's enum-like code, not free text, so it is safe and
+    // useful for the client to branch on; the human-readable detail stays server-side.
+    return sendJSON(res, 502, { error: 'billing_error', code: error.code || null });
   }
 };

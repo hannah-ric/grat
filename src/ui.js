@@ -1266,6 +1266,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   async function aiPipeline(text, image, setStatus) {
     const digest = Codec.buildDigest(state.history.snapshots);
     let res = await AI.respond(text, state.spec, { turns: state.turns, digest, onStatus: setStatus, image });
+    // Server said the AI budget is spent (402) or requests are coming too fast
+    // (429) — act on it instead of pretending we went offline.
+    if (res.usageLimit) {
+      if (res.billing) Store.setBilling(res.billing);
+      const limit = (res.billing && res.billing.entitlements && res.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
+      BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+      return null;
+    }
+    if (res.rateLimited) { botSay('Too many messages in a row — give it a few seconds, then try again.', []); return null; }
     if (res.error) { botSay(res.error, []); return null; }
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
@@ -1914,10 +1923,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       grid.innerHTML = '<p class="sub">No projects yet — designs save here automatically as you work.</p>';
       return;
     }
+    // Thumbnails are stored as their own per-project docs (A5); load them in
+    // parallel. `row.thumb` is the legacy embedded fallback for an index not yet
+    // migrated by a save.
+    const thumbList = await Promise.all(idx.map(r => Store.loadThumb(r.id).catch(() => null)));
+    const thumbById = {};
+    idx.forEach((r, i) => { thumbById[r.id] = thumbList[i] || r.thumb || null; });
     for (const row of idx) {
       const card = el('div', 'project-card' + (state.project && state.project.id === row.id ? ' current' : ''));
-      const thumb = row.thumb
-        ? `<img class="p-thumb" src="${row.thumb}" alt="">`
+      const thumbSrc = thumbById[row.id];
+      const thumb = thumbSrc
+        ? `<img class="p-thumb" src="${esc(thumbSrc)}" alt="">`
         : `<div class="p-thumb empty" aria-hidden="true">${BB.Icons.svg('board', 22)}</div>`;
       card.innerHTML = `${thumb}
         <span class="p-name">${esc(row.name)}</span>
