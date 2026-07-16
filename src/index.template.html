@@ -29,6 +29,10 @@
     </div>
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
     <span class="save-state" id="saveState" aria-live="polite"></span>
+    <span class="save-dot" id="saveDot" hidden aria-hidden="true"></span>
+    <span class="ai-badge ai-badge-bar" id="aiBadgeBar" role="status" data-state="checking" hidden>
+      <span class="dot" aria-hidden="true"></span><span id="aiBadgeBarLabel">AI…</span>
+    </span>
     <div class="topbar-spacer"></div>
     <!-- The journey is the navigation: Design → Plan → Build, each segment
          carrying a derived state dot (never stored, never stale). -->
