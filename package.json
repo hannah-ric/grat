@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "playwright": "^1.49.1"
+  },
+  "dependencies": {
+    "stripe": "^22.3.2"
   }
 }

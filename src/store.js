@@ -206,8 +206,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     user: auth && auth.user ? auth.user : null,
     providers: auth && Array.isArray(auth.providers) ? auth.providers : [],
     storage: !!(auth && auth.storage),
-    cloud: remoteAlive
+    cloud: remoteAlive,
+    billing: auth && auth.billing ? auth.billing : null
   });
+  const setBilling = billing => {
+    auth = auth || { user: null, providers: [], storage: false };
+    auth.billing = billing;
+    return authState();
+  };
 
   function persistenceMode() {
     if (hasStorage() && artifactWorks !== false) return 'artifact';
@@ -397,7 +403,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Store = {
     get, set, del, hasStorage,
     isPersistent: () => persistenceMode() !== 'session',
-    persistenceMode, init, auth: authState, onModeChange,
+    persistenceMode, init, auth: authState, setBilling, onModeChange,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
     logoutUrl: '/api/auth?logout=1',
     newId, loadIndex, saveProject, loadProject, deleteProject, renameProject, duplicateProject,

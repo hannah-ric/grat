@@ -147,6 +147,34 @@
   --sheet-peek: calc(150px + env(safe-area-inset-bottom, 0px));
 }
 
+/* SaaS plan badge + hosted-checkout pricing dialog */
+.plan-badge { padding: 0.15rem 0.45rem; border: 1px solid var(--accent-line); border-radius: var(--radius-pill); color: var(--accent); background: var(--accent-soft); font-size: var(--text-xs); font-weight: 700; }
+.pricing-dialog { width: min(880px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: 0; border: 1px solid var(--line-2); border-radius: var(--radius-l); color: var(--ink); background: var(--panel); box-shadow: var(--shadow-lg); }
+.pricing-dialog::backdrop { background: color-mix(in oklab, var(--structure-2) 72%, transparent); }
+.pricing-shell { position: relative; display: flex; flex-direction: column; gap: var(--space-m); padding: var(--space-m); }
+.pricing-close { position: absolute; inset: var(--space-xs) var(--space-xs) auto auto; width: var(--tap); height: var(--tap); border: 0; border-radius: var(--radius-pill); color: var(--muted); background: transparent; font: 400 1.75rem/1 var(--body); cursor: pointer; }
+.pricing-close:hover { color: var(--ink); background: var(--panel-2); }
+.pricing-head { display: flex; flex-direction: column; align-items: center; gap: var(--space-xs); padding-inline: var(--space-m); text-align: center; }
+.pricing-kicker { color: var(--accent); font-size: var(--text-xs); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.pricing-head h2 { max-width: 18ch; margin: 0; font: 700 var(--text-2xl)/var(--leading-display) var(--display); text-wrap: balance; }
+.pricing-head p { max-width: 56ch; margin: 0; color: var(--muted); font-size: var(--text-s); line-height: var(--leading-body); }
+.billing-cycle { display: flex; gap: .25rem; padding: .25rem; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel-2); }
+.billing-cycle button { min-height: 2.25rem; padding: .35rem .8rem; border: 0; border-radius: var(--radius-pill); color: var(--muted); background: transparent; font: 600 var(--text-s)/1 var(--body); cursor: pointer; }
+.billing-cycle button[aria-pressed="true"] { color: var(--ink); background: var(--panel); box-shadow: var(--shadow); }
+.billing-cycle span { color: var(--accent); font-size: var(--text-xs); }
+.pricing-grid { display: grid; grid-template-columns: 1fr; gap: var(--space-s); }
+.price-card { display: flex; flex-direction: column; gap: var(--space-s); padding: var(--space-m); border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--paper); }
+.price-card.featured { border-color: var(--accent); background: var(--accent-soft); }
+.price-card > div { display: flex; align-items: baseline; gap: .4rem; }
+.plan-label { margin-right: auto; font: 700 var(--text-l)/1 var(--display); }
+.price-card strong { font: 700 var(--text-xl)/1 var(--display); }
+.price-card small { color: var(--muted); font-size: var(--text-xs); }
+.price-card ul { display: flex; flex-direction: column; gap: .65rem; min-height: 10rem; margin: 0; padding: 0; list-style: none; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-caption); }
+.price-card li::before { content: '✓'; margin-right: .55rem; color: var(--green); font-weight: 700; }
+.pricing-upgrade { width: 100%; }
+.pricing-note { margin: 0; color: var(--muted); font-size: var(--text-xs); text-align: center; }
+@media (min-width: 680px) { .pricing-grid { grid-template-columns: 1fr 1fr; } .pricing-shell { padding: var(--space-l); } }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #17110F;
@@ -9763,7 +9791,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
 })();
 </script>
-<script>/* Blueprint Buddy — persistence (Phase 4; 2026: real persistence everywhere).
+  <script>/* Blueprint Buddy — persistence (Phase 4; 2026: real persistence everywhere).
  *
  * One key-value API over a DRIVER CHAIN, first available wins per call:
  *   1. artifact — window.storage (claude.ai artifact hosting)
@@ -9971,8 +9999,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     user: auth && auth.user ? auth.user : null,
     providers: auth && Array.isArray(auth.providers) ? auth.providers : [],
     storage: !!(auth && auth.storage),
-    cloud: remoteAlive
+    cloud: remoteAlive,
+    billing: auth && auth.billing ? auth.billing : null
   });
+  const setBilling = billing => {
+    auth = auth || { user: null, providers: [], storage: false };
+    auth.billing = billing;
+    return authState();
+  };
 
   function persistenceMode() {
     if (hasStorage() && artifactWorks !== false) return 'artifact';
@@ -10162,7 +10196,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Store = {
     get, set, del, hasStorage,
     isPersistent: () => persistenceMode() !== 'session',
-    persistenceMode, init, auth: authState, onModeChange,
+    persistenceMode, init, auth: authState, setBilling, onModeChange,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
     logoutUrl: '/api/auth?logout=1',
     newId, loadIndex, saveProject, loadProject, deleteProject, renameProject, duplicateProject,
@@ -10171,7 +10205,139 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
 })();
 </script>
-<script>/* Blueprint Buddy — number provenance + species comparison (Phase 4 stretch).
+  <script>var BB = globalThis.BB = globalThis.BB || {};
+
+(function () {
+  'use strict';
+
+  const FREE = { plan: 'free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false };
+  const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  let dialog = null;
+  let interval = 'year';
+
+  function account() { return BB.Store && BB.Store.auth ? BB.Store.auth() : { user: null, billing: null }; }
+  function status() { return account().billing || { plan: 'free', entitlements: FREE, usage: { aiMessages: 0 } }; }
+  function isPro() { return status().plan === 'pro'; }
+  function entitled(feature) { return !!status().entitlements[feature]; }
+
+  async function api(action, body) {
+    const response = await fetch('/api/billing?action=' + encodeURIComponent(action), {
+      method: action === 'status' ? 'GET' : 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: action === 'status' ? undefined : JSON.stringify(body || {})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Billing request failed');
+    return data;
+  }
+
+  async function refresh() {
+    if (!account().user) return status();
+    try { BB.Store.setBilling(await api('status')); } catch (error) { /* keep last-known entitlements */ }
+    return status();
+  }
+
+  async function redirect(action, body) {
+    try {
+      const data = await api(action, body);
+      if (data.url) window.location.href = data.url;
+    } catch (error) {
+      const note = dialog && dialog.querySelector('[data-billing-note]');
+      if (note) note.textContent = error.message === 'price_unconfigured' ? 'Billing prices are not configured yet.' : 'Billing is temporarily unavailable. Please try again.';
+    }
+  }
+
+  function ensureDialog() {
+    if (dialog) return dialog;
+    dialog = document.createElement('dialog');
+    dialog.className = 'pricing-dialog';
+    dialog.setAttribute('aria-labelledby', 'pricingTitle');
+    dialog.innerHTML = `<div class="pricing-shell">
+      <button class="pricing-close" data-pricing-close aria-label="Close pricing">&times;</button>
+      <header class="pricing-head">
+        <span class="pricing-kicker">Blueprint Buddy Pro</span>
+        <h2 id="pricingTitle">From idea to build day, without limits.</h2>
+        <p>Keep every design, use the full AI workshop, and export production-ready plans.</p>
+        <div class="billing-cycle" role="group" aria-label="Billing cycle">
+          <button data-cycle="month" aria-pressed="false">Monthly</button>
+          <button data-cycle="year" aria-pressed="true">Yearly <span>best value</span></button>
+        </div>
+      </header>
+      <div class="pricing-grid">
+        <section class="price-card" aria-label="Free plan">
+          <div><span class="plan-label">Free</span><strong>$0</strong><small>forever</small></div>
+          <ul><li>3 saved projects</li><li>25 AI messages per month</li><li>Core drawing and cut-list exports</li><li>Device and cloud sync</li></ul>
+          <button class="btn" data-pricing-close>Keep Free</button>
+        </section>
+        <section class="price-card featured" aria-label="Pro plan">
+          <div><span class="plan-label">Pro</span><strong data-price>$12</strong><small data-period>/ month, billed yearly</small></div>
+          <ul><li>Unlimited saved projects</li><li>500 AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Structural reports and advanced workshop tools</li></ul>
+          <button class="btn primary pricing-upgrade" data-upgrade>Upgrade to Pro</button>
+        </section>
+      </div>
+      <p class="pricing-note" data-billing-note>Secure checkout by Stripe. Cancel or change plans anytime.</p>
+    </div>`;
+    document.body.append(dialog);
+    dialog.addEventListener('click', event => {
+      if (event.target === dialog || event.target.closest('[data-pricing-close]')) dialog.close();
+      const cycle = event.target.closest('[data-cycle]');
+      if (cycle) { interval = cycle.dataset.cycle; paintCycle(); }
+      if (event.target.closest('[data-upgrade]')) {
+        if (!account().user) { dialog.close(); openSignIn(); return; }
+        redirect('checkout', { interval });
+      }
+    });
+    return dialog;
+  }
+
+  function paintCycle() {
+    if (!dialog) return;
+    for (const button of dialog.querySelectorAll('[data-cycle]')) button.setAttribute('aria-pressed', String(button.dataset.cycle === interval));
+    dialog.querySelector('[data-price]').textContent = interval === 'year' ? '$12' : '$15';
+    dialog.querySelector('[data-period]').textContent = interval === 'year' ? '/ month, billed yearly' : '/ month';
+  }
+
+  function open(reason) {
+    ensureDialog();
+    const note = dialog.querySelector('[data-billing-note]');
+    note.textContent = reason ? escapeHTML(reason) : 'Secure checkout by Stripe. Cancel or change plans anytime.';
+    paintCycle();
+    dialog.showModal();
+  }
+
+  function openSignIn() {
+    const a = account();
+    const provider = a.providers && a.providers[0];
+    if (provider) window.location.href = BB.Store.loginUrl(provider);
+  }
+
+  function gate(feature, reason) {
+    if (isPro() || entitled(feature)) return true;
+    open(reason || 'This is a Pro feature.');
+    return false;
+  }
+
+  async function gateNewProject() {
+    const limit = status().entitlements.projectLimit;
+    if (limit === null || limit === undefined) return true;
+    const projects = await BB.Store.loadIndex();
+    if (projects.length < limit) return true;
+    open(`Free includes ${limit} saved projects. Upgrade for unlimited projects.`);
+    return false;
+  }
+
+  async function handleReturn() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('billing')) return;
+    await refresh();
+    history.replaceState(null, '', window.location.pathname + window.location.hash);
+  }
+
+  BB.Billing = { status, isPro, entitled, refresh, open, gate, gateNewProject, manage: () => redirect('portal'), handleReturn };
+})();
+</script>
+  <script>/* Blueprint Buddy — number provenance + species comparison (Phase 4 stretch).
  *
  * Provenance: every derived value can show the rule that produced it. Tapping
  * a dimension in the cut list or part inspector opens a popover with the
@@ -13396,6 +13562,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   async function doAutosave() {
     try {
+      if (!state.project && !(await BB.Billing.gateNewProject())) return;
       if (!state.project) state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } };
       const revisions = state.history.snapshots.slice(-Store.MAX_REVISIONS).map(s => ({
         ts: s.ts, source: s.source, summary: (s.summary || []).slice(0, 3), wire: Codec.encode(s.spec)
@@ -13449,10 +13616,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!show) return;
     if (a.user) {
       const row = el('div', 'menu-account');
+      const plan = a.billing && a.billing.plan === 'pro' ? 'Pro' : 'Free';
       row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="account-avatar fallback" aria-hidden="true">${BB.Icons.svg('user', 14)}</span>`}
         <span class="account-name">${esc(a.user.name)}</span>
-        <span class="hint">${a.cloud ? 'cloud sync on' : 'signed in'}</span>`;
+        <span class="plan-badge">${plan}</span>`;
       area.append(row);
+      const billingBtn = el('button', '', plan === 'Pro'
+        ? '<span>Manage subscription</span><span class="hint">billing & plan</span>'
+        : '<span>Upgrade to Pro</span><span class="hint">unlock everything</span>');
+      billingBtn.setAttribute('role', 'menuitem');
+      billingBtn.onclick = () => plan === 'Pro' ? BB.Billing.manage() : BB.Billing.open();
+      area.append(billingBtn);
       const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
       out.setAttribute('role', 'menuitem');
       out.onclick = () => { window.location.href = Store.logoutUrl; };
@@ -14548,6 +14722,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   async function sendMessage(text, image) {
     text = (text || '').trim();
     if ((!text && !image) || state.busy) return;
+    const billing = BB.Billing.status();
+    if (Store.auth().user && billing.usage.aiMessages >= billing.entitlements.aiMonthlyLimit) {
+      BB.Billing.open(`You’ve used this month’s ${billing.entitlements.aiMonthlyLimit} AI messages. Upgrade to keep designing with AI.`);
+      return;
+    }
     hideHints();
     if (image) {
       chatMsg('user', `<img class="photo-thumb" src="${image.dataUrl}" alt="Uploaded furniture photo"><div class="bubble">${esc(text || 'Design this piece from my photo.')}</div>`);
@@ -14578,6 +14757,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // The badge reflects what actually just happened — the strongest
       // evidence there is about the connection state.
       setAIState(out.local ? 'offline' : 'online');
+      if (!out.local && Store.auth().user) BB.Billing.refresh();
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
@@ -15155,7 +15335,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         input.addEventListener('blur', finish);
       };
       const dupB = el('button', 'btn', 'Duplicate');
-      dupB.onclick = async () => { await Store.duplicateProject(row.id); openProjects(); };
+      dupB.onclick = async () => { if (await BB.Billing.gateNewProject()) { await Store.duplicateProject(row.id); openProjects(); } };
       const delB = el('button', 'btn', 'Delete');
       delB.onclick = () => {
         const confirmRow = el('div', 'confirm-row');
@@ -15377,6 +15557,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
 
   function enterBuildMode() {
+    if (!BB.Billing.gate('advancedFeatures', 'The full-screen workshop companion and advanced build tools are included with Pro.')) return;
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
     state.bmTask = null; // pager re-lands on the first unfinished task
@@ -15918,6 +16099,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- exports ---------------- */
   function doExport(kind) {
+    const premium = ['print', 'glb', 'rb', 'dae'];
+    if (premium.includes(kind) && !BB.Billing.gate('premiumExports', 'Production print plans, 3D models, and SketchUp exports are included with Pro.')) return;
     const name = Exports.slug(state.spec.meta.name);
     if (kind === 'dae') {
       Exports.download(name + '.dae', Exports.toDAE(state.spec, state.model), 'model/vnd.collada+xml');
@@ -16050,6 +16233,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       ]);
     } catch (e) { /* device storage is the product */ }
     Store.onModeChange(() => renderAccount());
+    await BB.Billing.handleReturn();
+    renderAccount();
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
     // precision, dual display, and the shell layout never flash from defaults.

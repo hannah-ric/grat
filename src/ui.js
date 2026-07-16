@@ -176,6 +176,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   async function doAutosave() {
     try {
+      if (!state.project && !(await BB.Billing.gateNewProject())) return;
       if (!state.project) state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } };
       const revisions = state.history.snapshots.slice(-Store.MAX_REVISIONS).map(s => ({
         ts: s.ts, source: s.source, summary: (s.summary || []).slice(0, 3), wire: Codec.encode(s.spec)
@@ -229,10 +230,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!show) return;
     if (a.user) {
       const row = el('div', 'menu-account');
+      const plan = a.billing && a.billing.plan === 'pro' ? 'Pro' : 'Free';
       row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="account-avatar fallback" aria-hidden="true">${BB.Icons.svg('user', 14)}</span>`}
         <span class="account-name">${esc(a.user.name)}</span>
-        <span class="hint">${a.cloud ? 'cloud sync on' : 'signed in'}</span>`;
+        <span class="plan-badge">${plan}</span>`;
       area.append(row);
+      const billingBtn = el('button', '', plan === 'Pro'
+        ? '<span>Manage subscription</span><span class="hint">billing & plan</span>'
+        : '<span>Upgrade to Pro</span><span class="hint">unlock everything</span>');
+      billingBtn.setAttribute('role', 'menuitem');
+      billingBtn.onclick = () => plan === 'Pro' ? BB.Billing.manage() : BB.Billing.open();
+      area.append(billingBtn);
       const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
       out.setAttribute('role', 'menuitem');
       out.onclick = () => { window.location.href = Store.logoutUrl; };
@@ -1328,6 +1336,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   async function sendMessage(text, image) {
     text = (text || '').trim();
     if ((!text && !image) || state.busy) return;
+    const billing = BB.Billing.status();
+    if (Store.auth().user && billing.usage.aiMessages >= billing.entitlements.aiMonthlyLimit) {
+      BB.Billing.open(`You’ve used this month’s ${billing.entitlements.aiMonthlyLimit} AI messages. Upgrade to keep designing with AI.`);
+      return;
+    }
     hideHints();
     if (image) {
       chatMsg('user', `<img class="photo-thumb" src="${image.dataUrl}" alt="Uploaded furniture photo"><div class="bubble">${esc(text || 'Design this piece from my photo.')}</div>`);
@@ -1358,6 +1371,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // The badge reflects what actually just happened — the strongest
       // evidence there is about the connection state.
       setAIState(out.local ? 'offline' : 'online');
+      if (!out.local && Store.auth().user) BB.Billing.refresh();
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
@@ -1935,7 +1949,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         input.addEventListener('blur', finish);
       };
       const dupB = el('button', 'btn', 'Duplicate');
-      dupB.onclick = async () => { await Store.duplicateProject(row.id); openProjects(); };
+      dupB.onclick = async () => { if (await BB.Billing.gateNewProject()) { await Store.duplicateProject(row.id); openProjects(); } };
       const delB = el('button', 'btn', 'Delete');
       delB.onclick = () => {
         const confirmRow = el('div', 'confirm-row');
@@ -2157,6 +2171,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
 
   function enterBuildMode() {
+    if (!BB.Billing.gate('advancedFeatures', 'The full-screen workshop companion and advanced build tools are included with Pro.')) return;
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
     state.bmTask = null; // pager re-lands on the first unfinished task
@@ -2698,6 +2713,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- exports ---------------- */
   function doExport(kind) {
+    const premium = ['print', 'glb', 'rb', 'dae'];
+    if (premium.includes(kind) && !BB.Billing.gate('premiumExports', 'Production print plans, 3D models, and SketchUp exports are included with Pro.')) return;
     const name = Exports.slug(state.spec.meta.name);
     if (kind === 'dae') {
       Exports.download(name + '.dae', Exports.toDAE(state.spec, state.model), 'model/vnd.collada+xml');
@@ -2830,6 +2847,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       ]);
     } catch (e) { /* device storage is the product */ }
     Store.onModeChange(() => renderAccount());
+    await BB.Billing.handleReturn();
+    renderAccount();
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
     // precision, dual display, and the shell layout never flash from defaults.
