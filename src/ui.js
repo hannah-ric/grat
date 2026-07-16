@@ -2719,7 +2719,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (kind === 'share') {
       openShareSheet();
     } else if (kind === 'print') {
-      $('printRoot').innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan);
+      const root = $('printRoot');
+      root.innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan);
+      // Release the sheet's inline-SVG DOM (~26 KB) once the dialog closes,
+      // rather than leaving it parked in the document until the next print.
+      const cleanup = () => { root.textContent = ''; window.removeEventListener('afterprint', cleanup); };
+      window.addEventListener('afterprint', cleanup);
       window.print();
     } else if (kind === 'help') {
       openScrim('helpScrim');

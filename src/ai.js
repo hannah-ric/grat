@@ -15,10 +15,12 @@
  *
  * Transports, tried in order:
  *   1. an injected transport (tests / diagnostics use this)
- *   2. fetch to the Anthropic API (available when hosted on claude.ai)
- *   3. window.claude.complete (no stop_reason — truncation detected by
+ *   2. the same-origin /api/chat proxy (Vercel + the bundled dev server)
+ *   3. direct fetch to the Anthropic API — NON-BROWSER hosts only, using the
+ *      server-side ANTHROPIC_API_KEY (browsers skip it: no key + CORS)
+ *   4. window.claude.complete (no stop_reason — truncation detected by
  *      unbalanced braces instead)
- *   4. the built-in local intent parser, so the app is fully functional
+ *   5. the built-in local intent parser, so the app is fully functional
  *      standalone and testable headless.
  *
  * The reply is intent only. Code deep-merges the patch, re-corrects the
@@ -322,10 +324,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       anthropicDead = true;
       throw new Error('direct Anthropic unavailable in browser');
     }
+    // Non-browser host only: authenticate with the server-side key and send
+    // the API version header. Without the key the call can only 401, so fail
+    // fast to the next transport instead of burning a request.
+    const key = (typeof process !== 'undefined' && process.env) ? process.env.ANTHROPIC_API_KEY : '';
+    if (!key) { anthropicDead = true; throw new Error('ANTHROPIC_API_KEY not set'); }
+    const model = (typeof process !== 'undefined' && process.env && process.env.ANTHROPIC_MODEL) || 'claude-sonnet-5';
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: MAX_TOKENS, system, messages })
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages })
     });
     if (!response.ok) throw new Error('API returned ' + response.status);
     const data = await response.json();
