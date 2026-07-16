@@ -3,57 +3,82 @@
    rust action color, Bitter slab display, 8pt spacing, one easing family.
    Blueprint Mode keeps a deliberate cyanotype field as the blue exception. */
 
-@font-face {
-  font-family: 'Bitter';
-  font-style: normal; font-weight: 500; font-display: swap;
-  src: url('{{FONT_500}}') format('woff2');
-}
-@font-face {
-  font-family: 'Bitter';
-  font-style: normal; font-weight: 600; font-display: swap;
-  src: url('{{FONT_600}}') format('woff2');
-}
-@font-face {
-  font-family: 'Bitter';
-  font-style: normal; font-weight: 700; font-display: swap;
-  src: url('{{FONT_700}}') format('woff2');
-}
+/* Display — Fraunces: an old-style serif with real retro character.
+   Carries the workshop's editorial, "expensive" voice in headings and marks. */
+@font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 500; font-display: swap; src: url('{{FONT_FRAUNCES_500}}') format('woff2'); }
+@font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 600; font-display: swap; src: url('{{FONT_FRAUNCES_600}}') format('woff2'); }
+@font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 700; font-display: swap; src: url('{{FONT_FRAUNCES_700}}') format('woff2'); }
+@font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 900; font-display: swap; src: url('{{FONT_FRAUNCES_900}}') format('woff2'); }
+
+/* Body — Hanken Grotesk: a warm humanist grotesque, clean at small sizes. */
+@font-face { font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 400; font-display: swap; src: url('{{FONT_HANKEN_400}}') format('woff2'); }
+@font-face { font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 500; font-display: swap; src: url('{{FONT_HANKEN_500}}') format('woff2'); }
+@font-face { font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 600; font-display: swap; src: url('{{FONT_HANKEN_600}}') format('woff2'); }
+@font-face { font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 700; font-display: swap; src: url('{{FONT_HANKEN_700}}') format('woff2'); }
+
+/* Numbers — IBM Plex Mono: technical, drafting-appropriate, tabular. */
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('{{FONT_MONO_400}}') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('{{FONT_MONO_500}}') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('{{FONT_MONO_600}}') format('woff2'); }
 
 :root {
   /* Showroom palette (docs/ui/brand-system.md) — mid-century brand constants.
      Action/CTA is rust; Blueprint Mode keeps its cyanotype field below. */
-  --paper: #F5F2E9;
-  --panel: #FDFBF5;
-  --panel-2: #ECE7DA;
-  --ink: #2A1B1A;
-  --ink-2: #593837;
-  --muted: #7A6663;
-  --line: color-mix(in oklab, #2A1B1A 16%, transparent);
-  --line-2: color-mix(in oklab, #2A1B1A 38%, transparent);
+  /* Warm-paper neutral ramp — real value steps so surfaces layer and edges read */
+  --paper: #F1EBDD;      /* app field — warm bone */
+  --panel: #FBF8F1;      /* raised cards / surfaces */
+  --panel-2: #E7DFCD;    /* recessed insets, wells, table zebra */
+  --panel-3: #D8CDB6;    /* deepest inset / rule fills */
+  --ink: #241813;        /* primary text — deep espresso-black */
+  --ink-2: #593837;      /* espresso (brand) — secondary text + structure */
+  --muted: #877063;      /* warm brown-grey */
+  --line: color-mix(in oklab, #593837 24%, transparent);   /* crisper hairline */
+  --line-2: color-mix(in oklab, #593837 44%, transparent); /* strong divider */
+
+  /* Espresso #593837 — the structural anchor: drafting frame, title block, rules */
+  --structure: #4A2E2A;
+  --structure-2: #35201D;
+  --structure-ink: #F3EADF;
+
+  /* Rust #942911 — THE single action colour, used sparingly so it lands */
   --accent: #942911;
-  --accent-ink: #FFF6EE;
-  --accent-soft: #F6E4DC;
+  --accent-ink: #FCF4EC;
+  --accent-soft: #F2DED5;
+  --accent-line: color-mix(in oklab, #942911 34%, transparent);
+
+  /* Ochre #9D8420 — dimensions, annotations, tick-marks, advisory */
   --amber: #9D8420;
-  --amber-soft: #F1EBD3;
-  --amber-ink: #6E5C0F;
+  --amber-soft: #EFE6C9;
+  --amber-ink: #5E4E0C;
+
+  /* Fail shares the rust family (kept legible) */
   --brick: #942911;
-  --brick-soft: #F6E4DC;
+  --brick-soft: #F2DED5;
   --brick-ink: #6E1D0A;
-  --green: #46662C;
-  --shadow: 0 1px 2px color-mix(in oklab, #593837 12%, transparent), 0 8px 24px -12px color-mix(in oklab, #593837 28%, transparent);
-  --shadow-lg: 0 2px 4px color-mix(in oklab, #593837 14%, transparent), 0 24px 48px -16px color-mix(in oklab, #593837 36%, transparent);
-  --focus: #9D8420;
+
+  /* Seafoam #94B9AF — the cool secondary hero: proven/PASS, selection, cyanotype */
+  --seafoam: #94B9AF;
+  --seafoam-ink: #1E3A34;
+  --seafoam-wash: #E0EBE6;
+  --seafoam-line: color-mix(in oklab, #3f7568 40%, transparent);
+  --green: #2C6456;      /* "proven" — a deep, legible shade of seafoam */
+
+  /* Fern #90A583 — supporting sage: materials, eco, subtle fills */
+  --fern: #90A583;
+  --fern-ink: #33402A;
+  --fern-wash: #E6EADB;
+
+  --focus: #9D8420;      /* ochre focus ring */
   --link: #942911;
   --on-brand: #241A18;
-  --seafoam: #94B9AF;
-  --fern: #90A583;
-  --seafoam-wash: #E3EDE7;
-  --fern-wash: #E6EADA;
 
-  /* type */
-  --display: 'Bitter', 'Iowan Old Style', Georgia, serif;
-  --body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+  --shadow: 0 1px 2px color-mix(in oklab, #3A2320 15%, transparent), 0 10px 28px -14px color-mix(in oklab, #3A2320 34%, transparent);
+  --shadow-lg: 0 2px 6px color-mix(in oklab, #3A2320 17%, transparent), 0 30px 60px -22px color-mix(in oklab, #3A2320 44%, transparent);
+
+  /* type — curated retro-modern pairing (self-hosted, inlined at build) */
+  --display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --body: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
 
   /* Fluid type — strict clamp() on a 360→1440 window (brand-system.md §3).
      Both bounds are rem, so 200% zoom always at least doubles rendered text. */
@@ -102,9 +127,10 @@
   /* ergonomics: primary-control floor */
   --tap: 44px;
 
-  /* blueprint mode: drafting field behind the transparent canvas — deliberate blue exception */
-  --blueprint-field: #eef3f7;
-  --blueprint-grid: rgba(27, 93, 130, 0.08);
+  /* blueprint mode: a true cyanotype drafting field — deliberate blue exception */
+  --blueprint-field: #123f5f;
+  --blueprint-grid: rgba(206, 230, 246, 0.16);
+  --blueprint-ink: #dcecf7;
 
   /* collapsed mobile chat sheet: handle + last-message peek + input,
      padded for the device safe area */
@@ -113,57 +139,74 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #1B1312;
-    --panel: #251A18;
-    --panel-2: #140E0D;
-    --ink: #F1EAE0;
-    --ink-2: #C9B9AF;
-    --muted: #9C8A80;
-    --line: color-mix(in oklab, #F1EAE0 16%, transparent);
-    --line-2: color-mix(in oklab, #F1EAE0 38%, transparent);
-    --accent: #E47952;
-    --accent-ink: #2A1109;
-    --accent-soft: #3A1D14;
-    --amber: #C8A63C;
+    --paper: #17110F;
+    --panel: #211814;
+    --panel-2: #100B09;
+    --panel-3: #2C201B;
+    --ink: #F2EADF;
+    --ink-2: #CFBBAD;
+    --muted: #9E8778;
+    --line: color-mix(in oklab, #F2EADF 15%, transparent);
+    --line-2: color-mix(in oklab, #F2EADF 34%, transparent);
+    --structure: #0F0A08;
+    --structure-2: #060403;
+    --structure-ink: #F2EADF;
+    --accent: #E17B54;
+    --accent-ink: #2A1008;
+    --accent-soft: #3A1C13;
+    --accent-line: color-mix(in oklab, #E17B54 40%, transparent);
+    --amber: #CBA83E;
     --amber-soft: #322813;
-    --amber-ink: #D9BC55;
-    --brick: #E47952;
-    --brick-soft: #3A1D14;
+    --amber-ink: #DEC05A;
+    --brick: #E17B54;
+    --brick-soft: #3A1C13;
     --brick-ink: #EE9370;
-    --green: #A5C88B;
-    --focus: #94B9AF;
-    --link: #94B9AF;
-    --seafoam-wash: #22302B;
+    --seafoam: #A6C9BF;
+    --seafoam-ink: #12251F;
+    --seafoam-wash: #21302B;
+    --seafoam-line: color-mix(in oklab, #A6C9BF 40%, transparent);
+    --green: #6FB39C;
+    --fern: #A2B590;
+    --fern-ink: #182111;
     --fern-wash: #262E1F;
-    --blueprint-field: #0e2a3d;
-    --blueprint-grid: rgba(168, 204, 228, 0.09);
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
-    --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
+    --focus: #94B9AF;
+    --link: #A6C9BF;
+    --blueprint-field: #0b2942;
+    --blueprint-grid: rgba(168, 204, 228, 0.13);
+    --blueprint-ink: #cfe6f5;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .45), 0 10px 28px -14px rgba(0, 0, 0, .72);
+    --shadow-lg: 0 2px 6px rgba(0, 0, 0, .55), 0 30px 60px -20px rgba(0, 0, 0, .82);
   }
 }
 :root[data-theme="light"] {
-  --paper: #F5F2E9; --panel: #FDFBF5; --panel-2: #ECE7DA; --ink: #2A1B1A; --ink-2: #593837;
-  --muted: #7A6663; --line: color-mix(in oklab, #2A1B1A 16%, transparent); --line-2: color-mix(in oklab, #2A1B1A 38%, transparent);
-  --accent: #942911; --accent-ink: #FFF6EE; --accent-soft: #F6E4DC;
-  --amber: #9D8420; --amber-soft: #F1EBD3; --amber-ink: #6E5C0F;
-  --brick: #942911; --brick-soft: #F6E4DC; --brick-ink: #6E1D0A;
-  --green: #46662C; --focus: #9D8420; --link: #942911;
-  --seafoam-wash: #E3EDE7; --fern-wash: #E6EADA;
-  --blueprint-field: #eef3f7; --blueprint-grid: rgba(27, 93, 130, 0.08);
-  --shadow: 0 1px 2px color-mix(in oklab, #593837 12%, transparent), 0 8px 24px -12px color-mix(in oklab, #593837 28%, transparent);
-  --shadow-lg: 0 2px 4px color-mix(in oklab, #593837 14%, transparent), 0 24px 48px -16px color-mix(in oklab, #593837 36%, transparent);
+  --paper: #F1EBDD; --panel: #FBF8F1; --panel-2: #E7DFCD; --panel-3: #D8CDB6;
+  --ink: #241813; --ink-2: #593837; --muted: #877063;
+  --line: color-mix(in oklab, #593837 24%, transparent); --line-2: color-mix(in oklab, #593837 44%, transparent);
+  --structure: #4A2E2A; --structure-2: #35201D; --structure-ink: #F3EADF;
+  --accent: #942911; --accent-ink: #FCF4EC; --accent-soft: #F2DED5; --accent-line: color-mix(in oklab, #942911 34%, transparent);
+  --amber: #9D8420; --amber-soft: #EFE6C9; --amber-ink: #5E4E0C;
+  --brick: #942911; --brick-soft: #F2DED5; --brick-ink: #6E1D0A;
+  --seafoam: #94B9AF; --seafoam-ink: #1E3A34; --seafoam-wash: #E0EBE6; --seafoam-line: color-mix(in oklab, #3f7568 40%, transparent);
+  --green: #2C6456; --fern: #90A583; --fern-ink: #33402A; --fern-wash: #E6EADB;
+  --focus: #9D8420; --link: #942911; --on-brand: #241A18;
+  --blueprint-field: #123f5f; --blueprint-grid: rgba(206, 230, 246, 0.16); --blueprint-ink: #dcecf7;
+  --shadow: 0 1px 2px color-mix(in oklab, #3A2320 15%, transparent), 0 10px 28px -14px color-mix(in oklab, #3A2320 34%, transparent);
+  --shadow-lg: 0 2px 6px color-mix(in oklab, #3A2320 17%, transparent), 0 30px 60px -22px color-mix(in oklab, #3A2320 44%, transparent);
 }
 :root[data-theme="dark"] {
-  --paper: #1B1312; --panel: #251A18; --panel-2: #140E0D; --ink: #F1EAE0; --ink-2: #C9B9AF;
-  --muted: #9C8A80; --line: color-mix(in oklab, #F1EAE0 16%, transparent); --line-2: color-mix(in oklab, #F1EAE0 38%, transparent);
-  --accent: #E47952; --accent-ink: #2A1109; --accent-soft: #3A1D14;
-  --amber: #C8A63C; --amber-soft: #322813; --amber-ink: #D9BC55;
-  --brick: #E47952; --brick-soft: #3A1D14; --brick-ink: #EE9370;
-  --green: #A5C88B; --focus: #94B9AF; --link: #94B9AF;
-  --seafoam-wash: #22302B; --fern-wash: #262E1F;
-  --blueprint-field: #0e2a3d; --blueprint-grid: rgba(168, 204, 228, 0.09);
-  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
-  --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
+  --paper: #17110F; --panel: #211814; --panel-2: #100B09; --panel-3: #2C201B;
+  --ink: #F2EADF; --ink-2: #CFBBAD; --muted: #9E8778;
+  --line: color-mix(in oklab, #F2EADF 15%, transparent); --line-2: color-mix(in oklab, #F2EADF 34%, transparent);
+  --structure: #0F0A08; --structure-2: #060403; --structure-ink: #F2EADF;
+  --accent: #E17B54; --accent-ink: #2A1008; --accent-soft: #3A1C13; --accent-line: color-mix(in oklab, #E17B54 40%, transparent);
+  --amber: #CBA83E; --amber-soft: #322813; --amber-ink: #DEC05A;
+  --brick: #E17B54; --brick-soft: #3A1C13; --brick-ink: #EE9370;
+  --seafoam: #A6C9BF; --seafoam-ink: #12251F; --seafoam-wash: #21302B; --seafoam-line: color-mix(in oklab, #A6C9BF 40%, transparent);
+  --green: #6FB39C; --fern: #A2B590; --fern-ink: #182111; --fern-wash: #262E1F;
+  --focus: #94B9AF; --link: #A6C9BF; --on-brand: #241A18;
+  --blueprint-field: #0b2942; --blueprint-grid: rgba(168, 204, 228, 0.13); --blueprint-ink: #cfe6f5;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .45), 0 10px 28px -14px rgba(0, 0, 0, .72);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .55), 0 30px 60px -20px rgba(0, 0, 0, .82);
 }
 
 * { box-sizing: border-box; }
@@ -213,22 +256,26 @@ button, input, select, textarea { font: inherit; color: inherit; }
    mode nav slims to dots, then the brand wordmark drops. */
 .topbar {
   display: flex; align-items: center; gap: var(--s2);
-  padding: 6px var(--s3);
-  background: var(--panel); border-bottom: 1px solid var(--line);
-  flex: none; z-index: 30; min-height: 50px;
+  padding: 7px var(--s3);
+  background: var(--panel);
+  /* drafting title-block: a bold structural rule shadowed by a thin hairline */
+  border-bottom: 1.5px solid var(--line-2);
+  box-shadow: 0 3.5px 0 -2px var(--line);
+  flex: none; z-index: 30; min-height: 54px;
+  position: relative;
 }
-.brand { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.brand { display: flex; align-items: center; gap: 9px; flex: none; padding-right: var(--s2); }
 .brand svg { display: block; }
 .brand-short {
   display: none;
   font-family: var(--display);
   font-weight: 700;
-  font-size: var(--text-m);
-  letter-spacing: -.01em;
+  font-size: var(--text-l);
+  letter-spacing: -.015em;
 }
 .brand-name {
-  font-family: var(--display); font-weight: 700; font-size: var(--text-m); letter-spacing: -.01em;
-  white-space: nowrap; margin: 0;
+  font-family: var(--display); font-weight: 600; font-size: var(--text-l); letter-spacing: -.02em;
+  white-space: nowrap; margin: 0; color: var(--ink);
 }
 .brand-name span { color: var(--accent); }
 .design-name {
@@ -248,19 +295,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
    attention = mustard, failing = rust). Build is the filled CTA segment —
    with Share, the only strong actions in the bar. */
 .mode-nav {
-  display: flex; align-items: center; gap: 2px; flex: none;
-  border: 1px solid var(--line-2); border-radius: var(--radius-pill);
-  padding: 2px; background: var(--panel);
+  display: flex; align-items: center; gap: 3px; flex: none;
+  border: 1px solid var(--line); border-radius: var(--radius-pill);
+  padding: 3px; background: var(--panel-2);
+  /* recessed drafting well so the active segment reads as a raised plate */
+  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--ink) 12%, transparent);
 }
 .mode-btn {
   display: inline-flex; align-items: center; gap: 7px;
-  border: 0; background: none; cursor: pointer; border-radius: var(--radius-pill);
-  padding: 7px 14px; min-height: 44px; font-size: var(--text-s); font-weight: 600; color: var(--muted);
-  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
-  white-space: nowrap;
+  border: 1px solid transparent; background: none; cursor: pointer; border-radius: var(--radius-pill);
+  padding: 7px 15px; min-height: 42px; font-size: var(--text-s); font-weight: 600; color: var(--muted);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  white-space: nowrap; letter-spacing: .01em;
 }
-.mode-btn:hover { background: var(--panel-2); color: var(--ink-2); }
-.mode-btn[aria-current="page"] { color: var(--ink); background: var(--panel-2); }
+.mode-btn:hover { color: var(--ink-2); }
+.mode-btn[aria-current="page"] {
+  color: var(--ink); background: var(--panel);
+  border-color: var(--line); box-shadow: var(--shadow);
+}
 .mode-btn .dot {
   width: 8px; height: 8px; border-radius: 50%; flex: none;
   background: transparent; border: 1.5px solid var(--line-2);
@@ -270,8 +323,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mode-btn[data-state="attn"] .dot { background: var(--amber); border-color: var(--amber); }
 .mode-btn[data-state="fail"] .dot { background: var(--brick); border-color: var(--brick); }
 /* Build: the one filled segment — the shop is where this app is headed */
-.mode-btn.build-cta { background: var(--accent); color: var(--accent-ink); font-weight: 650; }
-.mode-btn.build-cta:hover { background: var(--accent); color: var(--accent-ink); filter: brightness(1.08); }
+.mode-btn.build-cta {
+  background: var(--accent); color: var(--accent-ink); font-weight: 650;
+  border-color: color-mix(in oklab, var(--accent) 60%, black 12%);
+  box-shadow: var(--shadow), inset 0 1px 0 color-mix(in oklab, white 22%, transparent);
+}
+.mode-btn.build-cta:hover { background: var(--accent); color: var(--accent-ink); filter: brightness(1.06); }
 .mode-btn.build-cta .dot { display: none; }
 .mode-btn.build-cta[aria-current="page"] { outline: 2px solid var(--focus); outline-offset: 1px; }
 
@@ -294,8 +351,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); border-color: var(--muted); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .55; cursor: default; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); filter: brightness(1.08); }
+.btn.primary {
+  background: var(--accent); border-color: color-mix(in oklab, var(--accent) 60%, black 12%); color: var(--accent-ink);
+  box-shadow: var(--shadow), inset 0 1px 0 color-mix(in oklab, white 20%, transparent);
+}
+.btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); filter: brightness(1.06); }
 .btn.icon { padding: var(--s2) 9px; min-width: var(--tap); }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover:not(:disabled) { background: var(--panel-2); border-color: transparent; }
@@ -495,7 +555,23 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
    The viewport/plans split is a draggable, keyboard-operable separator:
    --vp-split is the viewport's share of the stage height in percent. */
 .stage { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; --vp-split: 58; }
-.viewport-wrap { position: relative; flex: 0 1 calc(var(--vp-split) * 1%); min-height: 180px; transition: background var(--t-med) var(--ease); }
+/* The workbench: a faint drafting grid + a warm radial pool of light so the
+ * model sits on an intentional surface instead of floating in empty beige. */
+.viewport-wrap {
+  position: relative; flex: 0 1 calc(var(--vp-split) * 1%); min-height: 180px;
+  background:
+    radial-gradient(120% 90% at 50% 30%, color-mix(in oklab, var(--panel) 70%, transparent), transparent 72%),
+    linear-gradient(color-mix(in oklab, var(--ink) 5%, transparent) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, color-mix(in oklab, var(--ink) 5%, transparent) 1px, transparent 1px) 0 0 / 40px 40px,
+    var(--paper);
+  transition: background var(--t-med) var(--ease);
+}
+/* soft vignette to seat the workbench in the frame */
+.viewport-wrap::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 120px -40px color-mix(in oklab, var(--structure-2) 55%, transparent);
+}
+body.drafting .viewport-wrap::after { display: none; }
 .viewport-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; border-radius: 0; }
 .viewport-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 /* Blueprint mode: the transparent canvas sits on a drafting field with a
@@ -1050,10 +1126,20 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .chat-collapse { display: none; } /* the sheet handle owns expand/collapse here */
   #app { padding-bottom: var(--sheet-peek); }
   .inspector { width: min(300px, calc(100vw - 32px)); }
-  /* stacking: playback floats above the collapsed sheet, advisories above both */
+  /* stacking: playback floats above the collapsed sheet, advisories above both.
+   * On phones the stack hugs the right edge and aligns its items to the end so
+   * the collapsed "N advisories" chip reads as a discrete floating pill rather
+   * than a bare number stretched across the plan text behind it. */
   .advisories {
-    position: fixed; left: var(--s3); right: var(--s3); top: auto;
+    position: fixed; left: auto; right: var(--s3); top: auto;
+    max-width: min(340px, calc(100vw - var(--s3) * 2));
     bottom: calc(var(--sheet-peek) + 68px); z-index: 54;
+    align-items: flex-end;
+  }
+  .advisory-more {
+    align-self: flex-end;
+    background: var(--panel); border-color: var(--line-2);
+    box-shadow: var(--shadow-lg);
   }
   .stage-controls { flex-direction: column; }
   .control-card { padding: 6px 10px; }
@@ -1184,32 +1270,47 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: var(--s2); margin: var(--s3) 0;
 }
+/* Spec plates: each stat reads like a stamped ledger tile — mono value,
+   a fine ochre tick-rule up top, a small-caps label below. */
 .overview-card {
-  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--paper);
+  position: relative; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel);
   padding: var(--s3); cursor: pointer; text-align: left;
-  display: flex; flex-direction: column; gap: var(--s1); min-height: 92px; justify-content: flex-end;
+  display: flex; flex-direction: column; gap: var(--s1); min-height: 96px; justify-content: flex-end;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 20%, transparent), 0 1px 0 var(--line);
   transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
-.overview-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+.overview-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: repeating-linear-gradient(90deg, var(--amber) 0 2px, transparent 2px 7px);
+  opacity: .6;
+}
+.overview-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent-line); }
 .overview-card .ov-value {
-  font: 650 var(--text-2xl) var(--mono); font-variant-numeric: tabular-nums; color: var(--ink);
-  line-height: 1.1;
+  font: 600 var(--text-2xl) var(--mono); font-variant-numeric: tabular-nums; color: var(--ink);
+  line-height: 1.1; letter-spacing: -.01em;
 }
 .overview-card .ov-value.stamp { font: 700 var(--text-m) var(--body); letter-spacing: .12em; align-self: flex-start; }
-.overview-card .ov-label { font-size: var(--text-s); color: var(--muted); font-weight: 550; }
+.overview-card .ov-label {
+  font: 600 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
 .overview-card.verdict-fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
 .overview-card.verdict-advisory { background: var(--amber-soft); }
 .overview-next { margin-top: var(--s3); }
 
 /* ---------------- integrity panel ---------------- */
 .integrity-summary { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
+/* Letterpress verdict stamps: a double-ruled inked mark, cocked a touch off
+   square like a real rubber stamp, tinted by the brand semantic colour. */
 .stamp {
   display: inline-block; border: 2px solid currentColor; border-radius: var(--radius-s);
-  font: 700 var(--text-s) var(--body); letter-spacing: .12em; text-transform: uppercase; padding: 2px 10px;
+  font: 700 var(--text-s) var(--mono); letter-spacing: .16em; text-transform: uppercase; padding: 2px 10px;
   transform: rotate(-1.2deg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 22%, transparent);
+  background: color-mix(in oklab, currentColor 8%, transparent);
 }
 .stamp.pass { color: var(--green); }
-.stamp.advisory { color: var(--amber); }
+.stamp.advisory { color: var(--amber-ink); }
 .stamp.fail { color: var(--brick); }
 .load-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s2) 0; border-bottom: 1px solid var(--line); font-size: var(--text-s); }
 .load-row .span-note { font: 500 var(--text-s) var(--mono); color: var(--muted); margin-left: var(--s2); }

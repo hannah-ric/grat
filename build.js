@@ -13,10 +13,27 @@ const readB64 = p => fs.readFileSync(path.join(root, p)).toString('base64');
 
 const fontURI = f => `data:font/woff2;base64,${readB64('vendor/fonts/' + f)}`;
 
-let css = read('src/styles.css')
-  .replace('{{FONT_500}}', fontURI('bitter-latin-500-normal.woff2'))
-  .replace('{{FONT_600}}', fontURI('bitter-latin-600-normal.woff2'))
-  .replace('{{FONT_700}}', fontURI('bitter-latin-700-normal.woff2'));
+/* Self-hosted, base64-inlined at build so dist/index.html stays a single
+ * offline-capable artifact. Curated pairing: Fraunces (display), Hanken
+ * Grotesk (body), IBM Plex Mono (dimensions/ledger numbers). */
+const FONT_FILES = {
+  FRAUNCES_500: 'fraunces-latin-500-normal.woff2',
+  FRAUNCES_600: 'fraunces-latin-600-normal.woff2',
+  FRAUNCES_700: 'fraunces-latin-700-normal.woff2',
+  FRAUNCES_900: 'fraunces-latin-900-normal.woff2',
+  HANKEN_400: 'hanken-grotesk-latin-400-normal.woff2',
+  HANKEN_500: 'hanken-grotesk-latin-500-normal.woff2',
+  HANKEN_600: 'hanken-grotesk-latin-600-normal.woff2',
+  HANKEN_700: 'hanken-grotesk-latin-700-normal.woff2',
+  MONO_400: 'ibm-plex-mono-latin-400-normal.woff2',
+  MONO_500: 'ibm-plex-mono-latin-500-normal.woff2',
+  MONO_600: 'ibm-plex-mono-latin-600-normal.woff2',
+};
+
+let css = read('src/styles.css');
+for (const [key, file] of Object.entries(FONT_FILES)) {
+  css = css.replace(`{{FONT_${key}}}`, fontURI(file));
+}
 
 const js = name => read('src/' + name).replace(/<\/script>/gi, '<\\/script>');
 
