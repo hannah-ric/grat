@@ -126,6 +126,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     butt_screw: { spec: '#8 × {50} wood screw', pilotMM: 3.2 },
     case_screw: { spec: '#8 × {32} wood screw', pilotMM: 2.8 },
     pocket: { spec: '{32} coarse pocket screw', pilotMM: 9.5 }, // the jig's 3/8 in stepped bit
+    pocket_63: { spec: '{63} coarse pocket screw', pilotMM: 9.5 }, // 2× stock — a 32 cannot join 38 (K.FASTENERS)
     front_screw: { spec: '#8 × {25} wood screw', pilotMM: 2.8 },
     figure8: { spec: 'figure-8 fastener + #8 × {16}', pilotMM: 2.8 },
     /* 2026 expansion */
@@ -186,7 +187,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         break;
       }
       case 'pocket_screws': {
-        const c = CATALOG.pocket;
+        // 2× (38 mm) stock needs the long jig setting and its own screw —
+        // the 32 mm pocket screw physically cannot join it (audit FE-H7).
+        const c = memberT >= 36 ? CATALOG.pocket_63 : CATALOG.pocket;
         const pos = positions(runMM, 2);
         for (const p of pos) out.fasteners.push({ kind: 'pocket', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         out.text = `${pos.length} pocket holes on the hidden face of ${a.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — jig set for ${len(memberT)} stock, ${fmtSpec(c)}s.`;

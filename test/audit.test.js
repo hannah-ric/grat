@@ -860,5 +860,18 @@ section('FE-H5 pull screws reach through box front + false front');
     'pull step names the stack-length screw and why');
 }
 
+/* ================= FE-H7 (2026-07 front-end audit): pocket screws escalate for 2× stock ================= */
+section('FE-H7 pocket screws match the stock they join');
+{
+  const mk = t => ({ id: 'r' + t, name: 'Rail', role: 'rail', group: 'frame', size: { w: 600, h: 76, d: t }, pos: { x: 0, y: 0, z: 0 } });
+  const model = { parts: [Object.assign(mk(38), { id: 'a' }), Object.assign(mk(38), { id: 'b', pos: { x: 0, y: 0, z: 38 } })], joints: [] };
+  const lay = Fasteners.layoutForJoint({}, model, { type: 'pocket_screws', a: 'a', b: 'b' });
+  ok(/63 mm coarse pocket screw/.test(lay.text) && !/32 mm coarse/.test(lay.text),
+    '38 mm (2×) stock gets the 63 mm pocket screw the knowledge base documents');
+  const thin = { parts: [Object.assign(mk(19), { id: 'a' }), Object.assign(mk(19), { id: 'b', pos: { x: 0, y: 0, z: 19 } })], joints: [] };
+  const lay19 = Fasteners.layoutForJoint({}, thin, { type: 'pocket_screws', a: 'a', b: 'b' });
+  ok(/32 mm coarse pocket screw/.test(lay19.text), '19 mm stock keeps the 32 mm pocket screw');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
