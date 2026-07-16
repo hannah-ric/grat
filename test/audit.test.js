@@ -913,5 +913,43 @@ section('FE-C1 shelves have one story: model, steps, and BOM agree');
   ok(!bbom.items.some(i => /shelf pin/i.test(i.label)), 'bookshelf BOM buys no pins for butt-screwed shelves (H-02)');
 }
 
+/* ================= FE-H6 (2026-07 front-end audit): a step teaches only its own joints ================= */
+section('FE-H6 fastening notes belong to the step that makes the joint');
+{
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const steps = Plans.assembly(ns.spec, ns.model, null, {});
+  const byId = id => steps.find(s => s.id === id);
+  ok(!/dowel|pocket hole/i.test(byId('dr1_runners').text), 'slide-mounting step carries no rail-joint setout');
+  ok(/dowel|pocket hole/i.test(byId('s2').text), 'the rail step itself still teaches its frame joints');
+  ok((byId('dr1_runners').joints || []).length === 0, 'slide step claims no joints (slides are not joinery)');
+  ok(!/rabbet/i.test(byId('dr1_hang').text), 'hang-the-box step does not re-teach the box joint');
+  ok(!/figure-8/i.test(byId('s1').text), 'side-frame step carries no top-attachment note');
+  ok(/figure-8/i.test(byId('s4').text), 'the top step itself carries the figure-8 setout');
+
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const bsteps = Plans.assembly(bs.spec, bs.model, null, {});
+  const bs1 = bsteps.find(s => s.id === 's1'), bs2 = bsteps.find(s => s.id === 's2');
+  ok(/through side into (top|bottom)/i.test(bs1.text), 'case step teaches the top/bottom screws');
+  ok(!/into shelf/i.test(bs1.text), 'case step does not teach the shelf screws');
+  ok(/into shelf/i.test(bs2.text), 'shelf step teaches the shelf screws');
+  // Playback metadata follows the same rule: no joint appears on two steps.
+  const seen = new Set();
+  let dup = false;
+  for (const s of bsteps) for (const j of (s.joints || [])) {
+    const k = `${j.type}|${j.a}|${j.b}`;
+    if (seen.has(k)) dup = true;
+    seen.add(k);
+  }
+  ok(!dup, 'no joint is claimed by two steps');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

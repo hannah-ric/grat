@@ -513,8 +513,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     safetyStep(spec, model, integrity, opts.stockPlan, out);
     sandingStep(spec, out);
     finishingStep(spec, out);
-    // Attach joint metadata for playback highlighting.
-    for (const s of out) s.joints = jointsFor(model, s.partIds).slice(0, 8);
+    /* Attach joint metadata: a joint belongs to the step that MAKES it — the
+     * first step whose part list contains the joint's attached member — so
+     * fastening notes and playback glow never teach another step's joinery
+     * (audit FE-H6: the slide step used to inherit the rails' dowel setout,
+     * and the case step taught the shelf screws while the top's own
+     * attachment note never surfaced). */
+    const seenJoints = new Set();
+    const jKey = j => `${j.type}|${j.a}|${j.b}`;
+    for (const s of out) {
+      const ids = new Set(s.partIds || []);
+      const mine = model.joints.filter(j => ids.has(j.a) && !seenJoints.has(jKey(j)));
+      for (const j of mine) seenJoints.add(jKey(j));
+      s.joints = mine.slice(0, 8);
+    }
     // Fastener locations & joinery setout, from the engine — the same numbers
     // the BOM counted (audit F-S3-1).
     if (BB.Fasteners) {
