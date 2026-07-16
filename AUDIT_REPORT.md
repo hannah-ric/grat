@@ -11,6 +11,8 @@ Blueprint Buddy's engineering core is genuinely trustworthy — species data mat
 
 **Counts: 2 CRITICAL · 11 HIGH · 22 MEDIUM · 14 LOW (49 findings).**
 
+> **Remediation status (2026-07-16, same branch):** every CRITICAL and HIGH finding is **FIXED** and regression-locked in `test/audit.test.js` sections `FE-C1`, `FE-C2`, `FE-H1`, `FE-H5`, `FE-H6`, `FE-H7`, `FE-H8`, `FE-H9`, `FE-H10/H11` — written failing-first per the repo protocol, verified in the live app, goldens refrozen deliberately (pin lines removed; bookshelf top on case screws; `thickness` step added to four designs). H-08 was corrected against the published Blum-class rule (inside width = opening − 42 mm — subtly different from the report's original outside-width guess). MEDIUM/LOW work is planned in §7.
+
 **Three worst:** ① C-01 cabinet shelf carries a dado allowance but the step installs it on pins — it physically cannot fit its opening; ② C-02 `#8 × 50` runner screws blow 13 mm out through a cabinet's finished side (and only bite 6 mm on a nightstand); ③ H-05 drawer-pull screws are sized for the false front only and cannot reach the pull through the box front behind it.
 
 ---
@@ -191,21 +193,78 @@ All line numbers are from the audited commit (`9a23bb4`). "Live" = reproduced in
 14. L-11: delete the dead `doExport('share')` branch.
 15. H-10 (chip half): filter clarify chips by template capability.
 
-## 7. Proposed fix order (for the follow-up pass)
+## 7. Remediation plan — MEDIUM and LOW findings
 
-1. **Screw-length engine** — one change fixes C-02, H-05, M-19 and enables H-07/M-02/M-03/M-04: give `fasteners.js` a length ladder (16/25/32/38/50/63), bound by `memberT + mateT − 3`, pocket length by `memberT`, pilots by species Janka, plus clearance-hole + countersink text. Refreeze goldens deliberately.
-2. **Shelf system coherence** — C-01 + H-02 + H-04 together: decide pins vs dados per template/level; pin shelves lose the joint allowance and gain a pre-assembly drilling step (+5 mm bit in tools); dado shelves lose the pin BOM line and pin step.
-3. **Step-note integrity** — H-06 + H-01 + M-05/M-07/M-08: `stepNote` only for joints the step introduces; top-attach gated to overhangs; figure-8 recess text; slotted-hole advisory mirrored into the step.
-4. **Sequencing** — H-03 (single carcass+rails glue-up under M&T) and M-09/M-10 (pre-finish interiors; dry-fit lines).
-5. **Stock honesty** — H-09: planing step + planer tool whenever purchased T > part T; M-06 groove caveat; M-11 tool-list consumables + dedupe.
-6. **Offline-parser honesty** — H-11, M-17, H-10's chip filter, M-20 substitution notice, L-09 ack guard.
-7. **Undermount decision** — H-08: confirm the target hardware spec, set the constant, update `selftest.js` + goldens.
-8. **Bench-usability batch** — M-01 (fractional drill callouts), M-12 (sheet-goods badge in reference), M-18 (tipping rollup tier), M-14/M-15/M-16 (autosave honesty, welcome label, a11y).
-9. **AI context** — M-22 budget digest; H-10 product decision on desk drawers.
-10. **LOW polish sweep** — L-01…L-14 as a single cleanup PR.
+All CRITICAL/HIGH items are fixed (see the status note in §1); the original fix-order proposal that stood here has been executed for steps 1–7. The remaining 22 MEDIUM + 14 LOW group into six PR-sized batches, ordered by bench impact. Protocol per batch: failing-test-first for behavior-bearing changes (new `FE-*` sections in `test/audit.test.js`), `npm run build && npm test` after every change, golden refreeze only when the diff is the intended one, smoke test for anything UI-visible.
 
-Steps 1–3 change frozen behavior: run `node test/golden.test.js --update` only after each intended change and review the `test/golden/` diff, per `CLAUDE.md`.
+### Batch A — Fastener bench-usability (`fasteners.js`, `knowledge.js`) · ~half day
+| Items | Change |
+|---|---|
+| M-01 | Render pilots/bores as real drill sizes (imperial: nearest 1/64 fraction — "1/8 in", never "0.13 in") via a dedicated `fmtDrill`; screw *positions* through `fmtLength` fractions (they're tape measurements) |
+| M-02 | Fine-thread pocket screws for hardwood (janka ≥ ~1000); add the fine entries to `K.FASTENERS` + the engine catalog |
+| M-03 + L-12 | Pilot Ø scaled by the receiving species' janka (hardwood ≈ root Ø, softwood ≈ 85%); one pilot per gauge |
+| M-04 | Screw setouts gain "clearance hole in the near member + countersink" phrasing (the countersink bit is already in tools) |
+| M-05 | Figure-8s: recess/mortise instruction + Forstner bit in tools; per-step fastener totals instead of first-joint-only counts |
+| M-19 | Slide screws for the drawer member sized to the 12 mm side (M4 × 10/12) — reuse the C-02 `screwPlan` bound |
+| M-21 | `positions()` at n=2 under min spacing → one centered fastener |
+
+Golden impact: BOM pilot/label text churn — one deliberate refreeze at batch end.
+
+### Batch B — Instruction completeness (`plans.js`) · ~half day
+| Items | Change |
+|---|---|
+| M-06 | Drawer-bottom groove step gains the measured-ply caveat the dado text already has (nominal 6 mm ply ≈ 5.2 mm) |
+| M-07 | `fasteners.js` dado text names the real housed part (`b.name`), not the literal "shelf" |
+| M-08 | When the movement check demands slotted screw holes for a captured panel, append that demand to the step that drives those screws (integrity already flows into `assembly()`) |
+| M-09 | Cases with backs or drawer banks get a "pre-finish interior faces, shelves, and drawer boxes before closing the case" step |
+| M-10 | Dry-fit-before-glue phrasing on all template case/frame glue-up steps (custom path already has it) |
+| M-11 | Abrasives line built from `fin.prep.grits` + `betweenGrit` (150 for hardwax, 320 pads for film finishes); tool dedupe by canonical key ("Table saw or router table" ≡ "Router or table saw", "Drill" ⊂ "Drill/driver", "Clamps" ⊂ "Bar or pipe clamps") |
+| L-09 | "Several rips" → count-aware copy |
+
+Golden impact: step additions (pre-finish) — refreeze; battery fixtures re-checked.
+
+### Batch C — Materials & reference honesty (`ui.js`, `knowledge.js`, `provenance.js`, `structural.js`) · 2–3 h
+| Items | Change |
+|---|---|
+| M-12 | Shop Reference Wood table: badge `sheet: true` rows, dash their Janka/movement cells (MDF "700 lbf" reads as solid-wood hardness today) |
+| M-13 | `weightKg` skips `p.hardware` so steel slides stop weighing as wood in species compare |
+| L-01 | French cleat ply 19 → 18 (`K.SHEET_THICKNESS`) |
+| L-03 | Drop vestigial `pricePerBdFt` from `sheet: true` species |
+| L-04 | Derive the movement category label from `ct` thresholds so label and coefficient can't disagree (red vs white oak) |
+| L-05 | Stiffness upsell recommends the stiffest qualifying species, not hardcoded hard maple |
+| NEW (found during the H-09 fix) | Bookshelf default `sideThickness` 18 → 19: solid sides should default to a buyable S4S thickness (18 is a sheet number; today's default implies a 1 mm skim on every 1× side and a 2 mm interior-width drift if the builder keeps 19) |
+
+### Batch D — UI, a11y, state (`ui.js`, `index.template.html`, `styles.css`) · ~half day
+| Items | Change |
+|---|---|
+| M-14 | Autosave gate-block shows "not saved — export a share code" instead of a stuck "saving…" (work silently lost today) |
+| M-15 | `welcomeResumeName` no-projects branch reads "Import a design" |
+| M-16 | Diagnostics reachable by keyboard (button semantics + Enter/Space); camera presets get `aria-label="Front elevation"` etc. |
+| M-18 | F2057 failure rolls up as its own tier — a "safe only when anchored" stamp — instead of sitting under "passes the required strength checks" |
+| L-08 | Stock-diagram labels ellipsize with tooltips; boards cross-reference their shopping-list row |
+| L-11 | Dead-code sweep: `doExport('share')` branch, duplicated `diagramScrim` markup, dead placeholder, `buildModeBtn` id note, panel scroll restore, ellipsis normalization |
+| L-13 | `state.turns` persists only after a successful commit |
+
+Smoke-test additions for M-14/M-16; no golden impact.
+
+### Batch E — AI context & honesty (`ai.js`, `spec.js`, `knowledge.js`, `api/chat.js`) · ~half day
+| Items | Change |
+|---|---|
+| M-17 | Part-scoped species asks ("make the *top* oak") ack the true scope: "species applies to the whole piece" |
+| M-20 | A small corrections-note channel from `correctSpec` → chat so silent snaps (unknown species → red oak; AI-path drawer strips) surface as honest notes — design carefully: notes describe what code did; the model never writes numbers |
+| M-22 | One budget digest line in the prompt (species $/bd ft + the current design's BOM total) so "keep it under $200" is answerable |
+| L-14 | Missing-key 503 surfaces once as "AI isn't set up on this site" instead of masquerading as offline; deploy-time model-id check |
+
+Prompt digests are self-tested — keep `knowledgeDigest` tests green.
+
+### Batch F — Polish sweep · 1–2 h
+L-02 (jointview/joinery3d `' mm'` fallbacks → `BB.Units.fmtLength`), L-06 (CSV UTF-8 BOM), L-07 (joint-inspector tenon capped by the mate-aware allowance), L-10 (cap displayed margins at ">1000×").
+
+**Order: A → B → C → D → E → F.** A and B finish the bench-truth story the CRITICAL/HIGH fixes started; C and D are trust and access; E carries the one new design decision (the corrections-note channel); F is cleanup. Every batch lands as its own commit series with the same verify-as-you-go discipline used for the CRITICAL/HIGH pass.
+
+### Carry-over UNVERIFIED (unchanged from §5)
+Real-model AI chat (needs `ANTHROPIC_API_KEY`), print fidelity, external CAD/AR imports, real-device gestures, Stripe upgrade flow — plus one new item: pin the exact undermount SKU the product recommends (the −42 inside rule and 12.7 mm recess implemented are the Blum TANDEM-family standard).
 
 ---
 
-*Audit pass only — no code was modified. Every CRITICAL/HIGH item above was verified twice: once in source at the cited lines, and (where the runtime allows) once in the running app or the frozen golden fixtures.*
+*The original audit was read-only. The remediation pass changed `src/` under the repo's engineering-truth guardrails: failing-test-first, all suites green after every fix (unit 946 · audit 319 · golden 6/6 · battery · server 69 · handcalc 14/14 · smoke 212), goldens refrozen only where the diff was the intended behavior change.*
