@@ -28,7 +28,13 @@
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
     <span class="save-state" id="saveState" aria-live="polite"></span>
     <div class="topbar-spacer"></div>
-    <nav class="readiness" id="readiness" aria-label="Design readiness"></nav>
+    <!-- The journey is the navigation: Design → Plan → Build, each segment
+         carrying a derived state dot (never stored, never stale). -->
+    <nav class="mode-nav" id="modeNav" aria-label="Workflow">
+      <button class="mode-btn" id="mode-design" data-mode="design" aria-current="page"><span class="dot" aria-hidden="true"></span><span class="mode-label">Design</span></button>
+      <button class="mode-btn" id="mode-plan" data-mode="plan"><span class="dot" aria-hidden="true"></span><span class="mode-label">Plan</span></button>
+      <button class="mode-btn build-cta" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span></button>
+    </nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
       <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
@@ -41,9 +47,19 @@
           <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
-          <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
-          <div class="menu-sep mobile-export-only" id="moreExportSep"></div>
-          <div class="menu-group mobile-export-only" id="moreExportMirror" hidden></div>
+          <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-group" id="moreExportGroup">
+            <div class="menu-group-label">Export</div>
+            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+            <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
+            <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+            <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+            <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
+            <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+            <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
+            <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
+          </div>
           <div class="menu-sep" id="accountSep" hidden></div>
           <div id="accountArea" hidden></div>
           <div class="menu-sep"></div>
@@ -80,23 +96,7 @@
           </div>
         </div>
       </div>
-      <div class="menu-wrap">
-        <button id="exportBtn" class="btn mobile-export-hide" aria-haspopup="menu" aria-expanded="false">Export</button>
-        <div id="exportMenu" class="menu" role="menu" inert>
-          <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
-          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
-          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
-          <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
-          <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
-          <div class="menu-sep"></div>
-          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
-          <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
-          <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
-          <div class="menu-sep"></div>
-          <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
-        </div>
-      </div>
-      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion"><span class="cta-long">Build mode</span><span class="cta-short" aria-hidden="true">Build</span></button>
+      <button id="shareBtn" class="btn share-cta" aria-haspopup="dialog">Share</button>
     </div>
   </header>
 
@@ -111,7 +111,7 @@
       </button>
       <div class="chat-head">
         <h2><span class="chat-head-long">Design </span>chat</h2>
-        <nav class="readiness readiness-mobile" id="readinessMobile" aria-label="Design readiness"></nav>
+        <span class="ai-badge" id="aiBadge" role="status" data-state="checking"><span class="dot" aria-hidden="true"></span><span id="aiBadgeLabel">AI…</span></span>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
           <option value="beginner">Beginner</option>
           <option value="intermediate">Intermediate</option>
@@ -141,29 +141,35 @@
 
         <div class="advisories" id="advisories" aria-live="polite"></div>
 
-        <div class="welcome" id="welcomeOverlay" role="region" aria-label="Ways to start" hidden>
+        <!-- First-run hero: one question over the live model. The bench behind
+             stays fully interactive; nothing here blocks. -->
+        <div class="welcome" id="welcomeOverlay" role="region" aria-label="Start a design" hidden>
           <div class="welcome-head">
-            <h2 id="welcomeTitle">Where should we start?</h2>
+            <h2 id="welcomeTitle" class="hero-title">What are you building?</h2>
             <button class="btn icon ghost" id="welcomeClose" aria-label="Dismiss welcome"></button>
           </div>
+          <div class="hero-prompt">
+            <textarea id="heroText" rows="1" placeholder="A walnut nightstand with two drawers" aria-label="Describe your piece" spellcheck="false"></textarea>
+            <button class="btn primary" id="heroSend">Design it</button>
+          </div>
           <div class="welcome-paths">
-            <button class="welcome-card" id="welcomeDescribe">
-              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 5.5h14a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 16.5h-7l-4.5 3v-3H4A2.5 2.5 0 0 1 1.5 14V8A2.5 2.5 0 0 1 4 5.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
-              <span class="w-name">Describe it</span>
-              <span class="w-caption">Type a piece in plain words — or drop in a photo — and full plans appear.</span>
+            <button class="welcome-card" id="welcomePhoto">
+              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="1.8" y="4.8" width="18.4" height="13.4" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11.4" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 4.8 8.6 2.4 h4.8 L15 4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+              <span class="w-name">Upload a photo</span>
+              <span class="w-caption">A furniture photo becomes a parametric design you can edit.</span>
             </button>
             <button class="welcome-card" id="welcomeStarter">
               <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 17h12M6 15.5 12.5 5 17 15.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
-              <span class="w-name">Pick a starter</span>
-              <span class="w-caption">Six proven designs, plans ready instantly. Refine any of them in chat.</span>
+              <span class="w-name">Browse starters</span>
+              <span class="w-caption">Six proven designs, plans ready instantly.</span>
             </button>
             <button class="welcome-card" id="welcomeResume">
               <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M14 4.5h4v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 13.5 18 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 12v4a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16V8A2.5 2.5 0 0 1 6.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-              <span class="w-name" id="welcomeResumeName">Import a design</span>
+              <span class="w-name" id="welcomeResumeName">Open a saved design</span>
               <span class="w-caption" id="welcomeResumeCaption">Paste a BB4: share code to pick up a design from anywhere.</span>
             </button>
           </div>
-          <p class="welcome-note">The table behind this card is live — orbit it, click a part, or just start typing. Nothing here blocks you.</p>
+          <div class="hero-starters" id="heroStarters" aria-label="Three starters, ready to open"></div>
         </div>
 
         <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
@@ -237,13 +243,16 @@
         <span class="splitter-grip" aria-hidden="true"></span>
       </div>
 
-      <nav class="tabs" role="tablist" aria-label="Plans" id="tabBar">
-        <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="true">Cut list</button>
-        <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Stock</button>
+      <nav class="tabs" role="tablist" aria-label="Plan" id="tabBar">
+        <button class="tab" role="tab" id="tab-overview" aria-controls="panel-main" aria-selected="true">Overview</button>
+        <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="false">Cut</button>
+        <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Buy</button>
         <button class="tab" role="tab" id="tab-bom" aria-controls="panel-main" aria-selected="false">Materials</button>
-        <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assembly</button>
-        <button class="tab" role="tab" id="tab-integrity" aria-controls="panel-main" aria-selected="false">Integrity <span class="integrity-dot" id="integrityDot" hidden></span></button>
-        <button class="tab" role="tab" id="tab-reference" aria-controls="panel-main" aria-selected="false">Shop reference</button>
+        <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assemble</button>
+        <button class="tab" role="tab" id="tab-integrity" aria-controls="panel-main" aria-selected="false">Safety <span class="integrity-dot" id="integrityDot" hidden></span></button>
+        <!-- Shop reference is no longer a peer destination: it opens from
+             "Learn why" links and the More menu, and only then shows a tab. -->
+        <button class="tab tab-aux" role="tab" id="tab-reference" aria-controls="panel-main" aria-selected="false" hidden>Shop reference</button>
       </nav>
       <div class="panel" id="panel-main" role="tabpanel" tabindex="0"></div>
     </section>

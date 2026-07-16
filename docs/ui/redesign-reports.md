@@ -153,3 +153,47 @@ Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` 189/189 · build 1 
 
 - "Panel headings: 24 to 32px": the shared fluid scale gives 23→32px (`--text-xl`); at 360px wide it renders 23px, 1px under the prompt's lower bound, in exchange for one coherent modular scale (the brand-system ramp). Accepted as the closest on-scale step.
 - The two smoke-test header assertions encoded the pre-redesign 50px bar; the redesign prompt itself specifies 56–64px, so the assertions were updated to the new spec rather than shrinking controls below the 44px floor.
+
+---
+
+## Phase 2 — simplify the shell
+
+Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` **195/195** (189 before; six new assertions cover the new surfaces) · build 1 552 KB.
+
+### Files changed and the specific edits
+
+- **`src/index.template.html`**
+  - Top bar rebuilt: brand + project name + save state left; **mode nav** center (`#modeNav`: Design · Plan · Build segments, Build filled rust as the CTA, each segment carrying a derived state dot); undo/redo; one **More** menu; **Share** as the visible companion strong action. The standalone Export button/menu is gone — its nine items live in More under an "Export" group label (`#moreExportGroup`); "Shop reference" joins More (`#referenceBtn`).
+  - Plan sub-nav: **Overview · Cut · Buy · Materials · Assemble · Safety** (`#tab-overview` new; `tab-stock` relabeled "Buy", `tab-assembly` "Assemble", `tab-integrity` "Safety" — element IDs and state keys unchanged). `#tab-reference` remains in the DOM but `hidden` unless active — reference is a contextual door, not a peer destination.
+  - Welcome overlay rebuilt as the **first-run hero**: "What are you building?" (`--text-hero`, Bitter) over the live model, a real prompt field (`#heroText` + "Design it") that feeds the normal chat pipeline, three secondary paths (Upload a photo / Browse starters / Open a saved design), and `#heroStarters` — three starter cards using the same idle-rendered 3D thumbnails as the gallery (skeleton placeholders until they land; no fabricated imagery).
+  - Chat head: mobile readiness dots replaced by the persistent **AI badge** (`#aiBadge`).
+- **`src/ui.js`**
+  - New mode model: `state.mode` (design/plan) + `setMode()`; `body[data-mode]` drives layout; Build remains the full-screen layer and takes `aria-current` while open. `selectTab()` pulls the app into Plan mode; `renderReadiness()` now paints the three mode segments (states derived exactly as before: design done, plan fail/attn/done from integrity+stock, build from progress).
+  - Hash: `#design` is a first-class location; `#cut/#stock/…` imply Plan mode; deep links and reload restore both (smoke-verified).
+  - `renderOverview()`: four stat cards (parts, boards, cost, Safety stamp) read straight from computed state + ONE derived next action (fix safety → keep building → open cut list).
+  - AI badge: `setAIState()` + `probeAI()` — a zero-token truthful probe (`POST /api/chat {}` → 400 = configured, 503 = no key, 404/405 → check `window.claude`), re-probed on online/offline events, and overwritten by the observed result of every real send (`out.local` ⇒ offline). No optimistic states.
+  - Reference conversion: More-menu entry; global `[data-reflink]` delegation; "Learn why" links added to joint why-tips (→ joinery, prefilled query) and the seasonal-movement row (→ wood). Arrow-key/bracket tab cycling skips the hidden reference tab.
+  - Hero bindings (`heroSubmit` via Enter or button, photo path, starter loads through a factored `loadStarter()` also used by the gallery); `patchGalleryThumbs` also fills hero cards; welcome copy updated ("Buy tab", "Safety tab").
+  - Removed: export-menu bindings, `moreExportMirror` cloning, `welcomeDescribe`/readiness-strip code.
+- **`src/styles.css`** — mode-nav segmented capsule + state dots; `body[data-mode]` visibility rules (Design: tabs/panel/splitter hidden, viewport full-bleed; Plan: the existing split view — the prompt's "plan sits beneath the canvas" reading, which also keeps the splitter feature and its tests alive); hero styles (`--text-hero` title, large prompt, starter grid); AI-badge states (checking pulse / fern online / mustard offline); overview cards; `.learn-link`; `.share-cta`; menu group label; phone ladder reworked (dots-only Design/Plan segments ≤880, Share→More ≤560, brand monogram out ≤560, redo out ≤400, tighter paddings ≤360).
+- **`test/smoke.playwright.js`** — updated to the new IA where the old one was encoded, adding six assertions net: first run opens in Design mode with hero field + three hero starters; explicit `#mode-plan` entry before tab clicks; reference opens via the More menu and its tab appears only while open; menu keyboard tests moved from Export to More; Share focus-trap test uses the top-bar button; readiness-strip block became the mode-nav block (3 segments, Design-mode hash, Build aria-current + attn progress); mobile assertion checks the Build segment keeps its label; AI badge asserted `offline` under the test server (which has no `/api/chat`).
+
+### Verified working (and how)
+
+- `npm test` 40/40; **`npm run test:smoke` 195/195** — including the new hero, mode-nav, deep-link, reference-door, and AI-badge assertions, plus all pre-existing behavior (playback, joint inspector, projects, share codes, species compare, diagnostics).
+- Screenshots reviewed at 1440px (hero with three real rendered thumbnails; Plan mode showing Overview dashboard: 24 parts / 9 boards / $384 / ADVISORY stamp + next action) and 390px (hero fits, single-row header, Build labeled).
+- No horizontal document scroll at 320/360/390/430 in BOTH modes (scripted check after a regression was caught and fixed — the first mode-nav cut overflowed phones at 402px).
+- AI badge truthfulness: file:// and test-server sessions show "Offline · basic edits" (no proxy), matching reality; the probe logic distinguishes configured (400) from unconfigured (503) proxies without spending tokens. The 400-status probe semantics were verified against `api/chat.js` source (key check precedes body validation).
+
+### Trade-offs and deferred items
+
+- **Redo hidden ≤400px** (undo stays; Ctrl+Shift+Z still works) — the 320px budget with 44/40px targets forced a choice; documented here.
+- Plan mode keeps the user's split (viewport strip above plans) rather than hiding the canvas; the prompt allowed either ("beneath or replaces").
+- Chat placeholder is still static ("Describe a change…"); dynamic placeholder + composer redesign is Phase 3 per the prompt.
+- The AI badge lives in the chat head, so on phones it is visible only when the chat sheet is expanded; per-message offline caveat chips still cover collapsed use. A topbar badge would not fit the 320px budget.
+- Materials remains a separate sub-tab this phase; it merges into Buy in Phase 3 ("relocated, not deleted").
+
+### Prompt-vs-reality notes
+
+- "Move camera presets, explode, and secondary controls into a single View popover" is listed under the 3D viewport section — deliberately deferred to Phase 3/5 (the toolbar was already consolidated to one control card and passes the compactness assertions; a View popover is a further step, tracked).
+- The smoke suite encoded the old shell throughout (six-tab peer nav, top-level Export, readiness strip); those blocks were rewritten to the new IA rather than deleted, keeping equivalent coverage — this is the "update tests honestly" path, all documented above.

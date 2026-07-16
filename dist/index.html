@@ -202,7 +202,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------------- top bar ----------------
    One compact row at every width: the design name yields first, then the
-   readiness strip slims to dots, then the brand wordmark drops. */
+   mode nav slims to dots, then the brand wordmark drops. */
 .topbar {
   display: flex; align-items: center; gap: var(--s2);
   padding: 6px var(--s3);
@@ -233,31 +233,43 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .design-name:hover, .design-name:focus { border-color: var(--line-2); background: var(--panel-2); }
 .topbar-spacer { flex: 1; }
 .topbar-group { display: flex; align-items: center; gap: var(--s1); }
-.build-cta .cta-short { display: none; }
 
-/* ---------------- readiness strip ----------------
-   Derived, never stored: Design → Validate → Plans → Build, each step a
-   real button that jumps to its surface. States paint the dot. */
-.readiness { display: flex; align-items: center; gap: 2px; flex: none; }
-.ready-step {
-  display: inline-flex; align-items: center; gap: 6px;
-  border: 0; background: none; cursor: pointer; border-radius: 999px;
-  padding: 5px 9px; font-size: var(--text-s); font-weight: 600; color: var(--muted);
+/* ---------------- mode navigation ----------------
+   The journey IS the navigation: Design → Plan → Build. One segmented
+   capsule; each segment carries a derived state dot (done = fern,
+   attention = mustard, failing = rust). Build is the filled CTA segment —
+   with Share, the only strong actions in the bar. */
+.mode-nav {
+  display: flex; align-items: center; gap: 2px; flex: none;
+  border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  padding: 3px; background: var(--panel);
+}
+.mode-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 0; background: none; cursor: pointer; border-radius: var(--radius-pill);
+  padding: 7px 14px; min-height: 38px; font-size: var(--text-s); font-weight: 600; color: var(--muted);
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
   white-space: nowrap;
 }
-.ready-step:hover { background: var(--panel-2); color: var(--ink-2); }
-.ready-step .dot {
+.mode-btn:hover { background: var(--panel-2); color: var(--ink-2); }
+.mode-btn[aria-current="page"] { color: var(--ink); background: var(--panel-2); }
+.mode-btn .dot {
   width: 8px; height: 8px; border-radius: 50%; flex: none;
   background: transparent; border: 1.5px solid var(--line-2);
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
-.ready-step[data-state="done"] .dot { background: var(--green); border-color: var(--green); }
-.ready-step[data-state="attn"] .dot { background: var(--amber); border-color: var(--amber); }
-.ready-step[data-state="fail"] .dot { background: var(--brick); border-color: var(--brick); }
-.ready-step[aria-current="step"] { color: var(--ink); background: var(--panel-2); }
-.ready-step[data-state="done"] { color: var(--ink-2); }
-.ready-sep { width: 4px; height: 4px; border-radius: 50%; background: var(--line-2); flex: none; user-select: none; }
+.mode-btn[data-state="done"] .dot { background: var(--green); border-color: var(--green); }
+.mode-btn[data-state="attn"] .dot { background: var(--amber); border-color: var(--amber); }
+.mode-btn[data-state="fail"] .dot { background: var(--brick); border-color: var(--brick); }
+/* Build: the one filled segment — the shop is where this app is headed */
+.mode-btn.build-cta { background: var(--accent); color: var(--accent-ink); font-weight: 650; }
+.mode-btn.build-cta:hover { background: var(--accent); color: var(--accent-ink); filter: brightness(1.08); }
+.mode-btn.build-cta .dot { display: none; }
+.mode-btn.build-cta[aria-current="page"] { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* Share: the quiet-strong companion action */
+.share-cta { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.share-cta:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 
 /* Buttons are atomic-age capsules; the default is a full-size primary target
    (≥ --tap in both axes). .small is the inline/secondary tier — still ≥40px
@@ -301,7 +313,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .menu > button:hover, .menu-group > button:hover { background: var(--panel-2); }
 .menu > button .hint, .menu-group > button .hint { color: var(--ink-2); font-size: var(--text-s); margin-left: auto; }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
-.mobile-export-only { display: none; }
+.menu-group-label {
+  font: 650 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); padding: 6px 12px 2px;
+}
 /* inline control rows inside a menu (units, precision, theme) */
 .menu .menu-row { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) 12px; }
 .menu .menu-row-label { flex: 1; font-size: var(--text-s); font-weight: 550; color: var(--muted); }
@@ -314,6 +329,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------------- bench layout ---------------- */
 .bench { display: flex; flex: 1; min-height: 0; }
 
+/* ---------------- modes ----------------
+   Design: the 3D model is the whole stage — no tabs, no panel, no splitter.
+   Plan: the plans lead; the model keeps a strip above (the splitter still
+   works there). Build mode remains the existing full-screen layer. */
+body[data-mode="design"] .tabs,
+body[data-mode="design"] .panel,
+body[data-mode="design"] .splitter { display: none; }
+body[data-mode="design"] .viewport-wrap { flex: 1 1 auto; }
+body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
+
 .chat {
   width: 340px; flex: none; display: flex; flex-direction: column;
   border-right: 1px solid var(--line); background: var(--panel);
@@ -325,9 +350,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: var(--s2);
 }
 .chat-head h2 { font: 600 var(--text-s)/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; flex: 1; }
-.readiness-mobile { display: none; margin-left: auto; }
-.readiness-mobile .ready-label, .readiness-mobile .ready-sep { display: none; }
-.readiness-mobile .ready-step { padding: 4px; min-width: 24px; justify-content: center; }
+/* AI connection badge: three truthful states, painted only on evidence */
+.ai-badge {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  font-size: var(--text-s); font-weight: 550; color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px 10px;
+  white-space: nowrap;
+}
+.ai-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; }
+.ai-badge[data-state="online"] .dot { background: var(--green); }
+.ai-badge[data-state="offline"] .dot { background: var(--amber); }
+.ai-badge[data-state="offline"] { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
+@keyframes badgePulse { 50% { opacity: .35; } }
+.ai-badge[data-state="checking"] .dot { animation: badgePulse 1.2s infinite var(--ease); }
+
 .level-select {
   border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px;
   padding: 4px 8px; font-size: var(--text-s); color: var(--ink-2); cursor: pointer;
@@ -525,16 +561,43 @@ body.drafting .viewport-wrap {
 .advisory-more:hover { color: var(--ink); border-color: var(--muted); }
 .advisory-pill { font-size: var(--text-s); display: inline-flex; align-items: center; gap: 6px; }
 
-/* ---------------- welcome (first run, never blocking) ---------------- */
+/* ---------------- first-run hero (never blocking) ----------------
+   One question over the live model. The bench behind stays interactive. */
 .welcome {
-  position: absolute; z-index: 11; top: 64px; left: 50%; transform: translateX(-50%);
-  width: min(660px, calc(100% - var(--s4) * 2));
+  position: absolute; z-index: 11; top: max(40px, 6vh); left: 50%; transform: translateX(-50%);
+  width: min(780px, calc(100% - var(--s4) * 2));
+  max-height: calc(100% - 120px); overflow-y: auto; overscroll-behavior: contain;
   background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(10px);
-  border: 1px solid var(--line-2); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
-  padding: var(--s3) var(--s3) var(--s2); animation: rise var(--t-slow) var(--ease);
+  border: 1px solid var(--line-2); border-radius: var(--radius-l); box-shadow: var(--shadow-lg);
+  padding: var(--s4) var(--s4) var(--s3); animation: rise var(--t-slow) var(--ease);
 }
-.welcome-head { display: flex; align-items: baseline; gap: var(--s2); }
-.welcome-head h2 { font-family: var(--display); font-weight: 700; font-size: var(--text-l); line-height: var(--leading-heading); margin: 0 0 var(--s2); flex: 1; text-wrap: balance; }
+.welcome-head { display: flex; align-items: flex-start; gap: var(--s2); }
+.welcome-head h2 { flex: 1; margin: 0 0 var(--s3); }
+.hero-title {
+  font-family: var(--display); font-weight: 700; font-size: var(--text-hero);
+  line-height: var(--leading-display); letter-spacing: -.02em; text-wrap: balance;
+}
+.hero-prompt { display: flex; gap: var(--s2); align-items: stretch; margin-bottom: var(--s3); }
+.hero-prompt textarea {
+  flex: 1; resize: none; border: 1px solid var(--line-2); background: var(--paper);
+  border-radius: var(--radius-m); padding: 14px 16px; min-height: 56px;
+  font-size: var(--text-l); line-height: 1.35;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.hero-prompt textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.hero-prompt textarea::placeholder { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-prompt .btn.primary { font-size: var(--text-m); padding: var(--s2) var(--s4); }
+.hero-starters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin-top: var(--s2); }
+.hero-starter { min-width: 0; }
+.hero-starter {
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--paper);
+  padding: var(--s2); cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: var(--s2);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.hero-starter:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+.hero-starter .g-thumb { opacity: 1; }
+.hero-starter .hs-name { font-family: var(--display); font-weight: 650; font-size: var(--text-s); }
 .welcome-paths { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
 .welcome-card {
   text-align: left; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
@@ -553,8 +616,6 @@ body.drafting .viewport-wrap {
 .welcome-card .w-icon svg { display: block; width: 22px; height: 22px; }
 .welcome-card .w-name { font-family: var(--display); font-weight: 650; font-size: var(--text-m); }
 .welcome-card .w-caption { color: var(--muted); font-size: var(--text-s); line-height: 1.4; }
-.welcome-note { margin: var(--s2) 0 2px; font-size: var(--text-s); color: var(--muted); text-align: center; }
-@media (max-height: 620px) { .welcome-note { display: none; } }
 
 /* ---------------- viewport help ---------------- */
 .vp-help {
@@ -684,6 +745,14 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .step-body .why-joint { margin-top: var(--s2); }
 .step-play { flex: none; align-self: center; }
 
+.learn-link {
+  border: 0; background: none; cursor: pointer; padding: 0;
+  color: var(--link); font-size: var(--text-s); font-weight: 600;
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.learn-link:hover { text-decoration-style: solid; }
+.why-tip .learn-link { color: color-mix(in srgb, var(--paper) 88%, transparent); display: inline-block; margin-top: 6px; }
+
 .why-joint {
   position: relative; display: inline-block;
 }
@@ -771,8 +840,6 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .units-seg button { flex: none; min-width: 34px; padding: var(--s1) 9px; font-family: var(--mono); }
 #dualBtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
-/* Build mode is the headline feature — the one filled, weighty control */
-.build-cta { font-weight: 650; padding: var(--s2) var(--s3); box-shadow: var(--shadow); }
 
 /* ---------------- history drawer ---------------- */
 .drawer-backdrop {
@@ -886,7 +953,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 
 /* ---------------- tablet ----------------
    Between the phone sheet and the full bench: the chat narrows, paddings
-   tighten, and the readiness strip slims to dots so the header stays one row. */
+   tighten, and the mode nav slims so the header stays one row. */
 @media (min-width: 881px) and (max-width: 1180px) {
   .chat { width: 280px; }
   .chat.collapsed { width: 46px; }
@@ -896,16 +963,11 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .design-name { width: 16ch; }
   .control-card input[type="range"] { width: 84px; }
 }
-/* readiness: labels need the widest desks; dots carry the state elsewhere */
+/* mode nav slims on narrow desks: inactive modes keep only their dot,
+   the current mode and the Build CTA keep their words */
 @media (max-width: 1280px) {
-  .ready-step { padding: 5px 5px; }
-  .ready-step .ready-label { display: none; }
-  .ready-step[aria-current="step"] .ready-label { display: inline; }
-  .ready-sep { display: none; }
-}
-@media (max-width: 660px) {
-  .topbar .readiness { display: none; }
-  .chat-head .readiness-mobile { display: flex; }
+  .mode-btn { padding: 7px 10px; }
+  .mode-btn:not([aria-current="page"]):not(.build-cta) .mode-label { display: none; }
 }
 
 /* ---------------- mobile ---------------- */
@@ -971,23 +1033,30 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .design-name { width: auto; flex: 1 1 96px; min-width: 96px; }
   .topbar .btn { padding: 8px 9px; font-size: var(--text-s); min-height: 40px; }
   .topbar .btn.icon { min-width: 40px; }
-  .build-cta .cta-long { display: none; }
-  .build-cta .cta-short { display: inline; }
-  .welcome { top: 56px; width: min(420px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); overflow-y: auto; overscroll-behavior: contain; }
+  .mode-nav { padding: 2px; }
+  .mode-btn { padding: 6px 9px; min-height: 36px; }
+  /* phones: dots carry Design/Plan; Build alone keeps its word */
+  .mode-btn:not(.build-cta) .mode-label { display: none; }
+  .mode-btn.build-cta .mode-label { display: inline; }
+  .welcome { top: 48px; width: min(440px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); padding: var(--s3); }
   .welcome-paths { grid-template-columns: 1fr; }
   .welcome-card { flex-direction: row; align-items: center; gap: var(--s2); }
   .welcome-card .w-caption { display: none; }
-  .welcome-note { display: none; }
+  .hero-prompt { flex-direction: column; }
+  .hero-prompt textarea { min-height: 64px; font-size: var(--text-m); }
+  .hero-starters { gap: var(--s1); }
+  .hero-starter .hs-name { font-size: var(--text-xs); }
   .playback-bar {
     position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
   }
 }
 @media (max-width: 560px) {
   .save-state { display: none; }
-  .mobile-export-only { display: block; }
-  #exportBtn.mobile-export-hide { display: none; }
-  .design-name { min-width: 96px; }
+  .brand-short { display: none; }
+  .design-name { min-width: 72px; flex-basis: 72px; }
   #redoBtn { display: inline-flex; }
+  /* Share folds into reach of More; Build (mode nav) stays the strong action */
+  .share-cta { display: none; }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -1039,6 +1108,28 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 /* integrity tab dot */
 .integrity-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); vertical-align: 2px; margin-left: 2px; }
 .integrity-dot.fail { background: var(--brick); }
+
+/* ---------------- plan overview ---------------- */
+.overview-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s2); margin: var(--s3) 0;
+}
+.overview-card {
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--paper);
+  padding: var(--s3); cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: var(--s1); min-height: 92px; justify-content: flex-end;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.overview-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+.overview-card .ov-value {
+  font: 650 var(--text-2xl) var(--mono); font-variant-numeric: tabular-nums; color: var(--ink);
+  line-height: 1.1;
+}
+.overview-card .ov-value.stamp { font: 700 var(--text-m) var(--body); letter-spacing: .12em; align-self: flex-start; }
+.overview-card .ov-label { font-size: var(--text-s); color: var(--muted); font-weight: 550; }
+.overview-card.verdict-fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
+.overview-card.verdict-advisory { background: var(--amber-soft); }
+.overview-next { margin-top: var(--s3); }
 
 /* ---------------- integrity panel ---------------- */
 .integrity-summary { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
@@ -1292,10 +1383,16 @@ body.bm-playback .playback-bar { display: none !important; }
 @media (max-width: 400px) {
   .topbar { gap: 2px; }
   .topbar .btn { padding-left: 8px; padding-right: 8px; }
-  .brand-short { display: none; }
   .design-name { min-width: 64px; flex-basis: 64px; }
-  /* the caret is decoration; the 320px header needs its 21px more */
-  #moreBtn svg, #exportBtn svg { display: none; }
+  /* the caret is decoration; the narrow header needs its 21px more */
+  #moreBtn svg { display: none; }
+  .mode-btn { padding: 6px 7px; }
+  /* undo stays; redo rides Ctrl+Shift+Z (documented trade for 320px fit) */
+  #redoBtn { display: none; }
+}
+@media (max-width: 360px) {
+  .design-name { min-width: 56px; flex-basis: 56px; }
+  .mode-btn { padding: 6px 6px; }
 }
 
 /* ---------------- increased contrast ----------------
@@ -1339,7 +1436,13 @@ body.bm-playback .playback-bar { display: none !important; }
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
     <span class="save-state" id="saveState" aria-live="polite"></span>
     <div class="topbar-spacer"></div>
-    <nav class="readiness" id="readiness" aria-label="Design readiness"></nav>
+    <!-- The journey is the navigation: Design → Plan → Build, each segment
+         carrying a derived state dot (never stored, never stale). -->
+    <nav class="mode-nav" id="modeNav" aria-label="Workflow">
+      <button class="mode-btn" id="mode-design" data-mode="design" aria-current="page"><span class="dot" aria-hidden="true"></span><span class="mode-label">Design</span></button>
+      <button class="mode-btn" id="mode-plan" data-mode="plan"><span class="dot" aria-hidden="true"></span><span class="mode-label">Plan</span></button>
+      <button class="mode-btn build-cta" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span></button>
+    </nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
       <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
@@ -1352,9 +1455,19 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
-          <button role="menuitem" id="shareBtn" aria-haspopup="dialog"><span>Share</span><span class="hint">BB4:</span></button>
-          <div class="menu-sep mobile-export-only" id="moreExportSep"></div>
-          <div class="menu-group mobile-export-only" id="moreExportMirror" hidden></div>
+          <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-group" id="moreExportGroup">
+            <div class="menu-group-label">Export</div>
+            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+            <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
+            <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+            <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+            <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
+            <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+            <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
+            <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
+          </div>
           <div class="menu-sep" id="accountSep" hidden></div>
           <div id="accountArea" hidden></div>
           <div class="menu-sep"></div>
@@ -1391,23 +1504,7 @@ body.bm-playback .playback-bar { display: none !important; }
           </div>
         </div>
       </div>
-      <div class="menu-wrap">
-        <button id="exportBtn" class="btn mobile-export-hide" aria-haspopup="menu" aria-expanded="false">Export</button>
-        <div id="exportMenu" class="menu" role="menu" inert>
-          <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
-          <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
-          <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
-          <button role="menuitem" data-export="share"><span>Share code</span><span class="hint">BB4:</span></button>
-          <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
-          <div class="menu-sep"></div>
-          <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
-          <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
-          <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
-          <div class="menu-sep"></div>
-          <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
-        </div>
-      </div>
-      <button id="buildModeBtn" class="btn primary build-cta" title="Full-screen shop companion"><span class="cta-long">Build mode</span><span class="cta-short" aria-hidden="true">Build</span></button>
+      <button id="shareBtn" class="btn share-cta" aria-haspopup="dialog">Share</button>
     </div>
   </header>
 
@@ -1422,7 +1519,7 @@ body.bm-playback .playback-bar { display: none !important; }
       </button>
       <div class="chat-head">
         <h2><span class="chat-head-long">Design </span>chat</h2>
-        <nav class="readiness readiness-mobile" id="readinessMobile" aria-label="Design readiness"></nav>
+        <span class="ai-badge" id="aiBadge" role="status" data-state="checking"><span class="dot" aria-hidden="true"></span><span id="aiBadgeLabel">AI…</span></span>
         <select id="levelSelect" class="level-select" aria-label="Skill level">
           <option value="beginner">Beginner</option>
           <option value="intermediate">Intermediate</option>
@@ -1452,29 +1549,35 @@ body.bm-playback .playback-bar { display: none !important; }
 
         <div class="advisories" id="advisories" aria-live="polite"></div>
 
-        <div class="welcome" id="welcomeOverlay" role="region" aria-label="Ways to start" hidden>
+        <!-- First-run hero: one question over the live model. The bench behind
+             stays fully interactive; nothing here blocks. -->
+        <div class="welcome" id="welcomeOverlay" role="region" aria-label="Start a design" hidden>
           <div class="welcome-head">
-            <h2 id="welcomeTitle">Where should we start?</h2>
+            <h2 id="welcomeTitle" class="hero-title">What are you building?</h2>
             <button class="btn icon ghost" id="welcomeClose" aria-label="Dismiss welcome"></button>
           </div>
+          <div class="hero-prompt">
+            <textarea id="heroText" rows="1" placeholder="A walnut nightstand with two drawers" aria-label="Describe your piece" spellcheck="false"></textarea>
+            <button class="btn primary" id="heroSend">Design it</button>
+          </div>
           <div class="welcome-paths">
-            <button class="welcome-card" id="welcomeDescribe">
-              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 5.5h14a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 16.5h-7l-4.5 3v-3H4A2.5 2.5 0 0 1 1.5 14V8A2.5 2.5 0 0 1 4 5.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
-              <span class="w-name">Describe it</span>
-              <span class="w-caption">Type a piece in plain words — or drop in a photo — and full plans appear.</span>
+            <button class="welcome-card" id="welcomePhoto">
+              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="1.8" y="4.8" width="18.4" height="13.4" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11.4" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 4.8 8.6 2.4 h4.8 L15 4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+              <span class="w-name">Upload a photo</span>
+              <span class="w-caption">A furniture photo becomes a parametric design you can edit.</span>
             </button>
             <button class="welcome-card" id="welcomeStarter">
               <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 17h12M6 15.5 12.5 5 17 15.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
-              <span class="w-name">Pick a starter</span>
-              <span class="w-caption">Six proven designs, plans ready instantly. Refine any of them in chat.</span>
+              <span class="w-name">Browse starters</span>
+              <span class="w-caption">Six proven designs, plans ready instantly.</span>
             </button>
             <button class="welcome-card" id="welcomeResume">
               <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M14 4.5h4v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 13.5 18 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 12v4a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16V8A2.5 2.5 0 0 1 6.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-              <span class="w-name" id="welcomeResumeName">Import a design</span>
+              <span class="w-name" id="welcomeResumeName">Open a saved design</span>
               <span class="w-caption" id="welcomeResumeCaption">Paste a BB4: share code to pick up a design from anywhere.</span>
             </button>
           </div>
-          <p class="welcome-note">The table behind this card is live — orbit it, click a part, or just start typing. Nothing here blocks you.</p>
+          <div class="hero-starters" id="heroStarters" aria-label="Three starters, ready to open"></div>
         </div>
 
         <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
@@ -1548,13 +1651,16 @@ body.bm-playback .playback-bar { display: none !important; }
         <span class="splitter-grip" aria-hidden="true"></span>
       </div>
 
-      <nav class="tabs" role="tablist" aria-label="Plans" id="tabBar">
-        <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="true">Cut list</button>
-        <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Stock</button>
+      <nav class="tabs" role="tablist" aria-label="Plan" id="tabBar">
+        <button class="tab" role="tab" id="tab-overview" aria-controls="panel-main" aria-selected="true">Overview</button>
+        <button class="tab" role="tab" id="tab-cut" aria-controls="panel-main" aria-selected="false">Cut</button>
+        <button class="tab" role="tab" id="tab-stock" aria-controls="panel-main" aria-selected="false">Buy</button>
         <button class="tab" role="tab" id="tab-bom" aria-controls="panel-main" aria-selected="false">Materials</button>
-        <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assembly</button>
-        <button class="tab" role="tab" id="tab-integrity" aria-controls="panel-main" aria-selected="false">Integrity <span class="integrity-dot" id="integrityDot" hidden></span></button>
-        <button class="tab" role="tab" id="tab-reference" aria-controls="panel-main" aria-selected="false">Shop reference</button>
+        <button class="tab" role="tab" id="tab-assembly" aria-controls="panel-main" aria-selected="false">Assemble</button>
+        <button class="tab" role="tab" id="tab-integrity" aria-controls="panel-main" aria-selected="false">Safety <span class="integrity-dot" id="integrityDot" hidden></span></button>
+        <!-- Shop reference is no longer a peer destination: it opens from
+             "Learn why" links and the More menu, and only then shows a tab. -->
+        <button class="tab tab-aux" role="tab" id="tab-reference" aria-controls="panel-main" aria-selected="false" hidden>Shop reference</button>
       </nav>
       <div class="panel" id="panel-main" role="tabpanel" tabindex="0"></div>
     </section>
@@ -12841,7 +12947,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     cut: [], bomData: { items: [], total: 0 }, steps: [],
     integrity: null, stockPlan: null,
     history: null, engine: null,
-    tab: 'cut', refTab: 'wood', refQuery: '',
+    mode: 'design',
+    tab: 'overview', refTab: 'wood', refQuery: '',
     dismissed: new Set(),
     selected: null,
     playbackIndex: -1,
@@ -13170,13 +13277,67 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
-    if (state.tab === 'cut') renderCut(inner);
+    if (state.tab === 'overview') renderOverview(inner);
+    else if (state.tab === 'cut') renderCut(inner);
     else if (state.tab === 'stock') renderStock(inner);
     else if (state.tab === 'bom') renderBom(inner);
     else if (state.tab === 'assembly') renderAssembly(inner);
     else if (state.tab === 'integrity') renderIntegrity(inner);
     else renderReference(inner);
     wireScrollableTables(inner);
+  }
+
+  /* ---------------- Plan overview ----------------
+   * Four honest numbers straight from the computed state, then ONE next
+   * action. Everything here is a pure read of what the pipeline already
+   * derived — no new math, no stored copies. */
+  function renderOverview(root) {
+    if (!state.cut.length) {
+      emptyState(root, 'No design yet.', 'Describe a piece in the chat or pick a starter — the plan builds itself.');
+      return;
+    }
+    const sum = state.integrity.summary;
+    const plan = state.stockPlan;
+    const boards = plan ? plan.boards.length + plan.sheets.length : 0;
+    const partCount = state.cut.reduce((n, r) => n + r.qty, 0);
+    const verdict = sum.fails ? 'fail' : sum.advisories ? 'advisory' : 'pass';
+    const verdictText = sum.fails
+      ? 'This design does not yet pass the required strength checks.'
+      : sum.advisories
+        ? 'This design passes the required strength checks, with notes worth reading.'
+        : 'This design passes the required strength checks.';
+    const cards = [
+      { label: 'Parts to cut', value: String(partCount), go: 'cut', aria: 'Open the cut list' },
+      { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : String(boards), go: 'stock', aria: 'Open the buying plan' },
+      { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'bom', aria: 'Open materials and pricing' },
+      { label: 'Safety', value: verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
+    ];
+    const grid = el('div', 'overview-grid');
+    for (const c of cards) {
+      const b = el('button', 'overview-card' + (c.stamp ? ' verdict-' + c.stamp : ''));
+      b.type = 'button';
+      b.setAttribute('aria-label', `${c.label}: ${c.value}. ${c.aria}`);
+      b.innerHTML = `<span class="ov-value${c.stamp ? ' stamp ' + c.stamp : ''}">${esc(c.value)}</span><span class="ov-label">${esc(c.label)}</span>`;
+      b.onclick = () => selectTab(c.go);
+      grid.append(b);
+    }
+    root.append(el('h3', '', 'Overview'));
+    root.append(el('p', 'lede', verdictText + (sum.fails ? '' : ' Every number below comes from the same engineering pass.')));
+    root.append(grid);
+    // One clear next action, derived from where the project actually stands.
+    const pct = progressPct();
+    const next = sum.fails
+      ? { label: 'Review safety first', go: () => selectTab('integrity') }
+      : pct > 0 && pct < 100
+        ? { label: `Keep building — ${pct}% done`, go: enterBuildMode }
+        : pct >= 100
+          ? { label: 'Build complete — review or share it', go: () => { openShare(); } }
+          : { label: 'Check the cut list, then head to the shop', go: () => selectTab('cut') };
+    const row = el('div', 'overview-next');
+    const nb = el('button', 'btn primary', esc(next.label));
+    nb.onclick = next.go;
+    row.append(nb);
+    root.append(row);
   }
 
   /* ---------------- provenance dialog (stretch: number provenance) ---------------- */
@@ -13492,7 +13653,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       <span class="stat">strength ${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span>
       <span class="stat">${esc(j.level)}</span><br>
       ${esc(j.bestFor)}<br><em>Watch for:</em> ${esc(j.failure)}<br>
-      <em>Tools:</em> ${esc(j.tools.join(', '))}</span></span>`;
+      <em>Tools:</em> ${esc(j.tools.join(', '))}<br>
+      <button type="button" class="learn-link" data-reflink="joinery" data-refquery="${esc(j.label)}">Learn why in the Shop reference</button></span></span>`;
   }
 
   function renderAssembly(root) {
@@ -13582,7 +13744,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     sel.innerHTML = `<option value="arid">Arid climate — ΔMC 2%</option><option value="temperate">Temperate indoor — ΔMC 4%</option><option value="humid">Humid climate — ΔMC 6%</option>`;
     sel.value = state.prefs4.climate;
     sel.onchange = () => { state.prefs4.climate = sel.value; Store.savePrefs(state.prefs4); recompute(); };
-    climate.append(el('span', '', 'Seasonal movement assumes'), sel);
+    climate.append(el('span', '', 'Seasonal movement assumes'), sel,
+      el('button', 'learn-link', 'Learn why wood moves'));
+    const learnMove = climate.querySelector('.learn-link');
+    learnMove.type = 'button';
+    learnMove.dataset.reflink = 'wood';
+    learnMove.dataset.refquery = 'movement';
     target.append(climate);
 
     if (integ.surfaces.length) {
@@ -13622,7 +13789,7 @@ var BB = globalThis.BB = globalThis.BB || {};
             if (merge(f.patch, 'fix', [f.label])) {
               const chips = Structural.integrityDiff(before, state.integrity);
               botSay(`Applied fix: ${f.label}.`, chips, { noChange: !chips.length });
-              state.tab = 'integrity'; renderTabs(); renderPanel(); focusPanelHeading();
+              selectTab('integrity'); focusPanelHeading();
             }
           };
           row.append(b);
@@ -13872,6 +14039,43 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     $('chatPeek').textContent = next;
   }
+
+  /* ---------------- AI connection badge ----------------
+   * Persistent, and TRUTHFUL: states change only on evidence — a zero-token
+   * probe of the same-origin proxy (`POST {}` → 400 means the route exists
+   * AND holds a key, because the key check precedes body validation; 503
+   * means unconfigured), the presence of window.claude, or the observed
+   * outcome of a real send. Never an optimistic guess. */
+  function setAIState(mode, detail) {
+    const badge = $('aiBadge');
+    if (!badge) return;
+    badge.dataset.state = mode;
+    const label = mode === 'online' ? 'AI online'
+      : mode === 'offline' ? 'Offline · basic edits'
+        : 'AI · checking…';
+    $('aiBadgeLabel').textContent = label;
+    badge.title = detail || (mode === 'online'
+      ? 'Connected to the design service — full natural-language design and photo input.'
+      : mode === 'offline'
+        ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
+        : 'Checking the design service…');
+  }
+  async function probeAI() {
+    setAIState('checking');
+    const claudeHost = typeof window.claude !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
+    if (navigator.onLine === false) { setAIState('offline', 'You are offline. Basic edits keep working.'); return; }
+    try {
+      const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (r.status === 400) { setAIState('online'); return; }               // proxy present, key configured
+      if (r.status === 503) {                                               // proxy present, no key
+        setAIState(claudeHost ? 'online' : 'offline', claudeHost ? undefined : 'AI proxy not configured (no API key on the server). Basic edits still work.');
+        return;
+      }
+      setAIState(claudeHost ? 'online' : 'offline');                        // 404/405: no proxy here
+    } catch (e) {
+      setAIState(claudeHost ? 'online' : 'offline');
+    }
+  }
   function botSay(text, chips, opts) {
     opts = opts || {};
     let html = `<div class="bubble">${esc(text)}</div>`;
@@ -13999,13 +14203,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = Spec.describeDiff(realDiffs);
+      // The badge reflects what actually just happened — the strongest
+      // evidence there is about the connection state.
+      setAIState(out.local ? 'offline' : 'online');
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
       ].filter(Boolean).join(' ') || null;
       if (out.failReport) {
-        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Integrity tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
-        state.tab = 'integrity'; renderTabs(); renderPanel();
+        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
+        selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
         const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Integrity tab.` : '';
@@ -14388,7 +14595,29 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
+  const heroCards = [];    // [{card, starterIndex}] — hero starters share the same thumbs
   let galleryThumbs = null; // rendered thumbs, kept so every re-render gets them back
+  function loadStarter(g, r) {
+    hideHints(); // a loaded design replaces the first-run prompts
+    state.dismissed.clear();
+    state.project = null;   // a starter begins a fresh project
+    state.turns = [];
+    commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
+    state.engine.frame();
+    // First starter ever: the piece assembles itself once — the pipeline
+    // dramatized in one shot. Reduced motion snaps it (engine-side).
+    if (!state.prefs4.seenHero) {
+      state.prefs4.seenHero = true;
+      Store.savePrefs(state.prefs4);
+      state.engine.heroAssemble();
+    }
+    botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
+    if (!state.prefs4.seenCoach) {
+      state.prefs4.seenCoach = true;
+      Store.savePrefs(state.prefs4);
+      botSay('First build tips: 1) Check the Buy tab before you shop. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Safety tab shows red, fix that before you build.', []);
+    }
+  }
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
@@ -14402,31 +14631,37 @@ var BB = globalThis.BB = globalThis.BB || {};
         <span class="g-meta">${fmt(r.spec.overall.width)} × ${fmt(r.spec.overall.depth)} × ${fmt(r.spec.overall.height)} · ${esc(K.WOOD_SPECIES[r.spec.wood.species].label)}</span>`;
       card.onclick = () => {
         closeScrim('galleryScrim');
-        hideHints(); // a loaded design replaces the first-run prompts
-        state.dismissed.clear();
-        state.project = null;   // a starter begins a fresh project
-        state.turns = [];
-        commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
-        state.engine.frame();
-        // First starter ever: the piece assembles itself once — the pipeline
-        // dramatized in one shot. Reduced motion snaps it (engine-side).
-        if (!state.prefs4.seenHero) {
-          state.prefs4.seenHero = true;
-          Store.savePrefs(state.prefs4);
-          state.engine.heroAssemble();
-        }
-        botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
-        if (!state.prefs4.seenCoach) {
-          state.prefs4.seenCoach = true;
-          Store.savePrefs(state.prefs4);
-          botSay('First build tips: 1) Check the Stock tab before you buy. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Integrity tab shows red, fix that before you build.', []);
-        }
+        loadStarter(g, r);
       };
       grid.append(card);
       galleryCards.push({ card, model: r.model, spec: r.spec });
     }
     // The grid rebuilds on every open; without this the idle pass's work
     // would vanish after the first close (the new shell opens on demand).
+    if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
+  }
+
+  /* Three polished starters ride the hero — the same specs, pipeline, and
+   * idle-rendered thumbnails as the gallery; skeletons until the thumbs land
+   * (an honest empty sheet, never fabricated imagery). */
+  const HERO_STARTER_INDEXES = [0, 3, 4]; // dining table, bookshelf, nightstand
+  function renderHeroStarters() {
+    const wrap = $('heroStarters');
+    if (!wrap) return;
+    wrap.textContent = '';
+    heroCards.length = 0;
+    for (const i of HERO_STARTER_INDEXES) {
+      const g = Gallery.STARTERS[i];
+      if (!g) continue;
+      const r = runPipeline(g.spec);
+      const card = el('button', 'hero-starter');
+      card.innerHTML = `<span class="g-fallback" aria-hidden="true">${BB.Icons.svg('board', 22)}</span>
+        <span class="hs-name">${esc(r.spec.meta.name)}</span>`;
+      card.setAttribute('aria-label', `Start from the ${r.spec.meta.name}`);
+      card.onclick = () => loadStarter(g, r);
+      wrap.append(card);
+      heroCards.push({ card, starterIndex: i });
+    }
     if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
   }
 
@@ -14443,17 +14678,19 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function patchGalleryThumbs(thumbs) {
     galleryThumbs = thumbs;
-    galleryCards.forEach(({ card }, i) => {
-      if (!thumbs[i]) return;
+    const swap = (card, thumb) => {
+      if (!thumb) return;
       const fallback = card.querySelector('.g-fallback');
       if (!fallback) return;
       const img = document.createElement('img');
       img.className = 'g-thumb';
       img.alt = '';
-      img.src = thumbs[i];
+      img.src = thumb;
       fallback.replaceWith(img);
       requestAnimationFrame(() => img.classList.add('on'));
-    });
+    };
+    galleryCards.forEach(({ card }, i) => swap(card, thumbs[i]));
+    heroCards.forEach(({ card, starterIndex }) => swap(card, thumbs[starterIndex]));
   }
   async function galleryThumbsPass() {
     try {
@@ -14741,6 +14978,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderBuildChecklists();
     trapFocus($('buildMode')); // keyboard users land on the shop surface
     requestWakeLock();
+    renderReadiness(); // Build takes aria-current in the mode nav
   }
   function exitBuildMode() {
     if (!state.buildMode) return;
@@ -14750,6 +14988,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     releaseFocus($('buildMode'));
     releaseWakeLock();
     scheduleAutosave();
+    renderReadiness(); // the underlying mode resumes aria-current
   }
 
   function toggleProgress(map, key, btn) {
@@ -14969,77 +15208,65 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- shell: readiness strip ----------------
-   * Design → Validate → Plans → Build, every state DERIVED from what the
-   * pipeline already knows — nothing stored, nothing to get stale. Each step
-   * is a button that jumps to its surface. */
-  function readinessSteps() {
+  /* ---------------- shell: modes ----------------
+   * The journey IS the navigation: Design → Plan → Build. Each mode button
+   * carries a state dot DERIVED from what the pipeline already knows —
+   * nothing stored, nothing to get stale. Build stays the existing
+   * full-screen surface layered over whichever mode it was entered from. */
+  function setMode(m, opts) {
+    if (m === 'build') { enterBuildMode(); return; }
+    state.mode = m === 'plan' ? 'plan' : 'design';
+    document.body.dataset.mode = state.mode;
+    if (!(opts && opts.silent)) syncHash();
+    renderReadiness();
+    if (state.mode === 'plan') { renderTabs(); renderPanel(); }
+  }
+  function modeStates() {
     const sum = state.integrity.summary;
     const designed = !!state.project || state.history.snapshots.length > 1;
     const stockTrouble = state.stockPlan && state.stockPlan.errors.length > 0;
     const pct = progressPct();
-    return [
-      {
-        label: 'Design', state: designed ? 'done' : 'todo',
-        aria: designed ? 'Design captured — open the chat to refine it' : 'Start here — describe a piece, or pick a starter',
-        go: focusChat
+    return {
+      design: {
+        state: designed ? 'done' : 'todo',
+        aria: designed ? 'Design mode — the 3D model and chat' : 'Start here — describe a piece, or pick a starter'
       },
-      {
-        label: 'Validate',
-        state: sum.fails ? 'fail' : sum.advisories ? 'attn' : 'done',
-        aria: sum.fails ? `${sum.fails} failing structural check${sum.fails > 1 ? 's' : ''} — open the integrity report`
-          : sum.advisories ? `Checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''} — open the integrity report`
-            : 'All structural checks pass — open the integrity report',
-        go: () => selectTab('integrity')
+      plan: {
+        state: sum.fails ? 'fail' : sum.advisories || stockTrouble ? 'attn' : state.cut.length ? 'done' : 'todo',
+        aria: sum.fails ? `Plan mode — ${sum.fails} failing safety check${sum.fails > 1 ? 's' : ''}`
+          : sum.advisories ? `Plan mode — checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`
+            : `Plan mode — cut list, buying, assembly, safety`
       },
-      {
-        label: 'Plans',
-        state: state.cut.length ? (stockTrouble ? 'attn' : 'done') : 'todo',
-        aria: state.cut.length ? `Plans ready — ${state.cut.length} part${state.cut.length > 1 ? 's' : ''} in the cut list` : 'Plans appear once the design has parts',
-        go: () => selectTab('cut')
-      },
-      {
-        label: 'Build',
-        state: pct >= 100 ? 'done' : pct > 0 ? 'active' : 'todo',
-        aria: pct >= 100 ? 'Build complete — open build mode' : pct > 0 ? `${pct}% built — back to build mode` : 'Open build mode when you head to the shop',
-        go: enterBuildMode
+      build: {
+        state: pct >= 100 ? 'done' : pct > 0 ? 'attn' : 'todo',
+        aria: pct >= 100 ? 'Build complete' : pct > 0 ? `Build mode — ${pct}% built` : 'Build mode — the full-screen shop companion'
       }
-    ];
+    };
   }
   function renderReadiness() {
-    const navs = [$('readiness'), $('readinessMobile')].filter(Boolean);
-    navs.forEach(nav => { nav.textContent = ''; });
     if (!state.integrity) return;
-    const steps = readinessSteps();
-    const complete = st => st === 'done' || st === 'attn';
-    navs.forEach(nav => {
-      let currentSet = false;
-      steps.forEach((s, i) => {
-        if (i) nav.append(el('span', 'ready-sep', ''));
-        const b = el('button', 'ready-step');
-        b.type = 'button';
-        b.dataset.state = s.state;
-        b.dataset.step = s.label.toLowerCase();
-        b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
-        b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
-        b.title = s.aria;
-        if (!currentSet && !complete(s.state)) {
-          b.setAttribute('aria-current', 'step');
-          currentSet = true;
-        }
-        b.onclick = s.go;
-        nav.append(b);
-      });
-    });
+    const states = modeStates();
+    for (const m of ['design', 'plan', 'build']) {
+      const b = $(m === 'build' ? 'buildModeBtn' : 'mode-' + m);
+      if (!b) continue;
+      const s = states[m];
+      b.dataset.state = s.state;
+      const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
+      if (current) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+      b.setAttribute('aria-label', s.aria);
+      b.title = s.aria;
+    }
   }
 
-  /* ---------------- shell: welcome (first run, never blocking) ---------------- */
+  /* ---------------- shell: first-run hero (never blocking) ---------------- */
   function showWelcome(hasProjects) {
-    $('welcomeResumeName').textContent = hasProjects ? 'Open a project' : 'Import a design';
+    $('welcomeResumeName').textContent = hasProjects ? 'Open a saved design' : 'Open a saved design';
     $('welcomeResumeCaption').textContent = hasProjects
       ? 'Pick up where you left off — plans and build progress included.'
       : 'Paste a BB4: share code to pick up a design from anywhere.';
     $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
+    renderHeroStarters();
     $('welcomeOverlay').hidden = false;
   }
   function hideWelcome() {
@@ -15052,7 +15279,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const REF_ENTRIES = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
   const REF_TABS = REF_ENTRIES.map(x => x[0]);
   function syncHash() {
-    const path = state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    const path = state.mode === 'design'
+      ? 'design'
+      : state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
     const h = '#' + path + `;split=${state.prefs4.ui.split};chat=${state.prefs4.ui.chatCollapsed ? 1 : 0}`;
     if (location.hash !== h) {
       try { history.replaceState(null, '', h); } catch (e) { /* sandboxed frame: tabs still work, hash doesn't */ }
@@ -15062,9 +15291,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const raw = (location.hash || '').replace(/^#/, '');
     const bits = raw.split(';');
     const parts = (bits.shift() || '').split('/');
-    if (!TABS.includes(parts[0])) return false;
-    state.tab = parts[0];
-    if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    if (parts[0] === 'design') {
+      setMode('design', { silent: true });
+    } else if (TABS.includes(parts[0])) {
+      state.mode = 'plan';
+      document.body.dataset.mode = 'plan';
+      state.tab = parts[0];
+      if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    } else return false;
     bits.forEach(bit => {
       const eq = bit.indexOf('=');
       if (eq < 0) return;
@@ -15080,14 +15314,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     return true;
   }
 
-  /* ---------------- tabs ---------------- */
-  const TABS = ['cut', 'stock', 'bom', 'assembly', 'integrity', 'reference'];
+  /* ---------------- tabs (Plan sub-navigation) ----------------
+   * Reference is deliberately not a peer destination: its tab stays hidden
+   * until a "Learn why" link or the More menu opens it. */
+  const TABS = ['overview', 'cut', 'stock', 'bom', 'assembly', 'integrity', 'reference'];
   function selectTab(t) {
     state.tab = t;
+    if (state.mode !== 'plan') setMode('plan');
     renderTabs();
     renderPanel();
   }
   function renderTabs() {
+    $('tab-reference').hidden = state.tab !== 'reference';
     for (const t of TABS) {
       $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
       $('tab-' + t).tabIndex = state.tab === t ? 0 : -1;
@@ -15112,12 +15350,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       $('tab-' + t).addEventListener('click', () => selectTab(t));
     }
     bar.addEventListener('keydown', e => {
-      const i = TABS.indexOf(state.tab);
+      // Hidden reference never enters the arrow-key cycle.
+      const cycle = state.tab === 'reference' ? TABS : TABS.filter(t => t !== 'reference');
+      const i = cycle.indexOf(state.tab);
       let next = null;
-      if (e.key === 'ArrowRight') next = TABS[(i + 1) % TABS.length];
-      if (e.key === 'ArrowLeft') next = TABS[(i + TABS.length - 1) % TABS.length];
-      if (e.key === 'Home') next = TABS[0];
-      if (e.key === 'End') next = TABS[TABS.length - 1];
+      if (e.key === 'ArrowRight') next = cycle[(i + 1) % cycle.length];
+      if (e.key === 'ArrowLeft') next = cycle[(i + cycle.length - 1) % cycle.length];
+      if (e.key === 'Home') next = cycle[0];
+      if (e.key === 'End') next = cycle[cycle.length - 1];
       if (next) {
         e.preventDefault();
         selectTab(next);
@@ -15194,7 +15434,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('bmPbPrev', 'prev', 'Prev');
     set('bmPbNext', 'next', 'Next', true);
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
-    $('exportBtn').innerHTML = `Export ${icon('caret', 13)}`;
   }
 
   async function boot() {
@@ -15265,9 +15504,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
     applyRender();
+    document.body.dataset.mode = state.mode; // design until a hash says otherwise
     setChatCollapsed(state.prefs4.ui.chatCollapsed, { persist: false });
     setSplit(state.prefs4.ui.split, { persist: false });
     bindSplitter();
+    // The AI badge earns its state from a zero-token probe, then from every
+    // real send; connectivity flips re-probe.
+    probeAI();
+    window.addEventListener('online', probeAI);
+    window.addEventListener('offline', probeAI);
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -15363,11 +15608,22 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
     $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
-    /* chat fold + welcome paths */
+    /* chat fold + hero paths */
     $('chatCollapse').onclick = () => setChatCollapsed(true);
     $('chatRail').onclick = () => { setChatCollapsed(false); $('chatText').focus(); };
     $('welcomeClose').onclick = hideWelcome;
-    $('welcomeDescribe').onclick = () => { hideWelcome(); focusChat(); };
+    /* The hero prompt IS the chat pipeline — one path for every input. */
+    const heroSubmit = () => {
+      const t = $('heroText').value.trim();
+      if (!t) { hideWelcome(); focusChat(); return; }
+      hideWelcome();
+      sendMessage(t);
+    };
+    $('heroSend').onclick = heroSubmit;
+    $('heroText').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); heroSubmit(); }
+    });
+    $('welcomePhoto').onclick = () => $('photoInput').click();
     $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
     $('welcomeResume').onclick = () => {
       hideWelcome();
@@ -15434,22 +15690,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       return m;
     };
-    const menu = bindMenu('exportBtn', 'exportMenu');
+    // One menu owns everything quiet: dialogs, export, reference, settings.
+    // Share and Build stay out as the only strong actions (with the mode nav).
     const moreMenu = bindMenu('moreBtn', 'moreMenu');
-    const moreExportMirror = $('moreExportMirror');
-    if (moreExportMirror) {
-      moreExportMirror.textContent = '';
-      menu.querySelectorAll('[data-export]').forEach(b => moreExportMirror.append(b.cloneNode(true)));
-      moreExportMirror.hidden = !moreExportMirror.children.length;
-      if ($('moreExportSep')) $('moreExportSep').hidden = !moreExportMirror.children.length;
-    }
-    menu.querySelectorAll('[data-export]').forEach(b => {
-      b.addEventListener('click', () => {
-        closeMenu('exportBtn', menu);
-        $('exportBtn').focus(); // menu pattern: activation returns focus to the button
-        doExport(b.dataset.export);
-      });
-    });
     // Picking a dialog from More closes the menu; the units row stays open
     // so the seg gives instant feedback.
     moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
@@ -15458,6 +15701,19 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (b.dataset.export) { doExport(b.dataset.export); return; }
         if (!trapStack.length) $('moreBtn').focus(); // unless a dialog already took focus
       });
+    });
+    $('referenceBtn').onclick = () => selectTab('reference');
+    /* mode navigation */
+    $('mode-design').onclick = () => setMode('design');
+    $('mode-plan').onclick = () => setMode('plan');
+    /* "Learn why" links anywhere in the app open the reference on the right
+     * shelf — the Shop Reference relocated from peer tab to contextual door. */
+    document.addEventListener('click', e => {
+      const link = e.target.closest('[data-reflink]');
+      if (!link) return;
+      state.refTab = link.dataset.reflink;
+      if (link.dataset.refquery !== undefined) state.refQuery = link.dataset.refquery;
+      selectTab('reference');
     });
 
     /* chat — no form element (artifact rules); Enter and the button both send */
@@ -15622,16 +15878,21 @@ var BB = globalThis.BB = globalThis.BB || {};
         focusChat();
       } else if (!typing && (e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        const i = TABS.indexOf(state.tab);
-        const next = e.key === ']' ? TABS[(i + 1) % TABS.length] : TABS[(i - 1 + TABS.length) % TABS.length];
-        selectTab(next);
+        // Bracket keys walk the Plan sub-tabs (and pull you into Plan mode
+        // first); the hidden reference tab stays out of the cycle.
+        if (state.mode !== 'plan') { setMode('plan'); }
+        else {
+          const cycle = TABS.filter(t => t !== 'reference' || state.tab === 'reference');
+          const i = cycle.indexOf(state.tab);
+          const next = e.key === ']' ? cycle[(i + 1) % cycle.length] : cycle[(i - 1 + cycle.length) % cycle.length];
+          selectTab(next);
+        }
       } else if (e.key === 'Escape') {
         // Close the topmost overlay only — one layer per press. Build mode
         // is the bottom layer: it exits last, never before an open modal.
         const prov = $('provPop');
         if (prov && !prov.hidden) { hideProv(); return; }
         if (!$('vpHelp').hidden) { setVpHelp(false); $('vpHelpBtn').focus(); return; }
-        if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
         if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
         const scrims = [...document.querySelectorAll('.scrim.open')];
         if (scrims.length) { closeScrim(scrims[scrims.length - 1]); return; }
@@ -15651,7 +15912,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
       preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
-      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness
+      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness,
+      setMode, probeAI, setAIState
     };
 
     // Viewport guidance speaks the input language it sees, and steps aside

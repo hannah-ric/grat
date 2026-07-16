@@ -73,6 +73,10 @@ const clickMoreCtl = async sel => {
   ok(await page.isVisible('#welcomeOverlay'), 'welcome paths show on first run');
   ok(!(await page.isVisible('#galleryScrim.open')), 'no modal blocks the bench on boot');
   ok(await page.$$eval('#welcomeOverlay .welcome-card', b => b.length) === 3, 'welcome offers three entry paths');
+  ok(await page.evaluate(() => document.body.dataset.mode === 'design'), 'first run opens in Design mode - the model is the hero');
+  ok(await page.isVisible('#heroText'), 'hero leads with a real prompt field');
+  ok(await page.$$eval('#heroStarters .hero-starter', b => b.length) === 3, 'hero offers three ready starters');
+  await page.click('#mode-plan');
   await page.click('#tab-stock');
   ok(await page.evaluate(() => __bb.state.tab === 'stock'), 'bench interactive behind the welcome card');
   await page.click('#tab-cut');
@@ -115,6 +119,8 @@ const clickMoreCtl = async sel => {
   await page.waitForSelector('.msg.bot .chip', { timeout: 8000 });
   const chip = await page.locator('.msg.bot:last-child .chip:not(.caveat)').first().textContent();
   ok(/height 24 in → 22 1\/16 in/.test(chip), `diff chip shows code-computed change in display units (${chip.trim()})`);
+  ok(await page.evaluate(() => document.getElementById('aiBadge').dataset.state === 'offline'),
+    'AI badge tells the truth: no service here, offline basic edits');
   ok(await page.evaluate(() => __bb.state.spec.overall.height === 559.6), 'spec height merged to 559.6 mm internally');
 
   // Ambiguous prompt → clarifying question with tappable answers.
@@ -351,9 +357,12 @@ const clickMoreCtl = async sel => {
   await page.click('#jointClose');
   await page.waitForTimeout(150);
   ok(await page.evaluate(() => !BB.JointView._live()), 'closing the inspector disposes its scene');
-  // Reference-tab demo: every joint learnable before it is used.
-  await page.click('#tab-reference');
+  // Reference demo (via the More menu - no longer a peer tab): every joint
+  // learnable before it is used.
+  await clickMoreCtl('#referenceBtn');
   await page.waitForSelector('.ref-search');
+  ok(await page.evaluate(() => !document.getElementById('tab-reference').hidden),
+    'reference tab appears only while reference is open');
   await page.click('.ref-tabs .ref-tab:nth-child(3)');
   await page.waitForSelector('.joint-demo');
   ok(await page.evaluate(() => document.querySelectorAll('.joint-demo').length === Object.keys(BB.K.JOINERY).length),
@@ -364,7 +373,7 @@ const clickMoreCtl = async sel => {
   await page.click('#jointClose');
 
   // Shop reference searchable.
-  await page.click('#tab-reference');
+  await clickMoreCtl('#referenceBtn');
   await page.waitForSelector('.ref-search');
   await page.fill('.ref-search', 'dovetail');
   await page.click('.ref-tabs .ref-tab:nth-child(3)');
@@ -817,30 +826,32 @@ const clickMoreCtl = async sel => {
   }), 'viewport controls merged into a single toolbar');
 
   // Menu-button keyboard pattern: ArrowDown opens + enters, arrows cycle.
-  await page.focus('#exportBtn');
+  // (Export lives inside More now - one quiet menu, per the shell redesign.)
+  await page.focus('#moreBtn');
   await page.keyboard.press('ArrowDown');
   const menuKb = await page.evaluate(() => ({
-    open: document.getElementById('exportMenu').classList.contains('open'),
-    first: document.activeElement.dataset.export
+    open: document.getElementById('moreMenu').classList.contains('open'),
+    first: document.activeElement.id
   }));
-  ok(menuKb.open && menuKb.first === 'print', 'ArrowDown opens the export menu onto its first item');
+  ok(menuKb.open && menuKb.first === 'historyBtn', 'ArrowDown opens the More menu onto its first item');
   await page.keyboard.press('ArrowDown');
-  ok(await page.evaluate(() => document.activeElement.dataset.export === 'svg'), 'arrow keys cycle menu items');
+  ok(await page.evaluate(() => document.activeElement.id === 'projectsBtn'), 'arrow keys cycle menu items');
+  ok(await page.evaluate(() => !!document.querySelector('#moreMenu [data-export="print"]')),
+    'export actions live inside the More menu');
   await page.keyboard.press('Escape');
-  ok(await page.evaluate(() => !document.getElementById('exportMenu').classList.contains('open')), 'Escape closes the open menu');
+  ok(await page.evaluate(() => !document.getElementById('moreMenu').classList.contains('open')), 'Escape closes the open menu');
 
-  // Focus trap + restore: open Share from the export menu, Tab stays inside,
-  // Escape hands focus back to the menu item that opened it.
-  await page.click('#exportBtn');
-  await page.click('#exportMenu [data-export="share"]');
+  // Focus trap + restore: open Share (a strong top-bar action), Tab stays
+  // inside, Escape hands focus back to the button that opened it.
+  await page.click('#shareBtn');
   await page.waitForSelector('#shareScrim.open');
   const inTrap = await page.evaluate(() => !!document.activeElement.closest('#shareScrim'));
   await page.keyboard.press('Shift+Tab');
   const wrapped = await page.evaluate(() => !!document.activeElement.closest('#shareScrim'));
   ok(inTrap && wrapped, 'share dialog traps focus (Shift+Tab wraps inside the dialog)');
   await page.keyboard.press('Escape');
-  ok(await page.evaluate(() => document.activeElement && document.activeElement.id === 'exportBtn'),
-    'closing the dialog restores focus to the menu button that opened it');
+  ok(await page.evaluate(() => document.activeElement && document.activeElement.id === 'shareBtn'),
+    'closing the dialog restores focus to the control that opened it');
 
   // Provenance is a real dialog with a close control and focus restore.
   await page.click('#tab-cut');
@@ -859,7 +870,7 @@ const clickMoreCtl = async sel => {
     'cut dimensions have accessible names');
 
   // Reference tabs: roving tabindex + arrow keys.
-  await page.click('#tab-reference');
+  await clickMoreCtl('#referenceBtn');
   await page.waitForSelector('.ref-tabs');
   await page.focus('.ref-tab[aria-selected="true"]');
   await page.keyboard.press('ArrowRight');
@@ -1072,20 +1083,27 @@ const clickMoreCtl = async sel => {
   ok(splitDrag < 58, `pointer drag moves the split and persists (${splitDrag}%)`);
   await page.evaluate(() => __bb.setSplit(58));
 
-  // Readiness strip: four derived steps, clickable, tracking live state.
-  const ready = await page.evaluate(() => [...document.querySelectorAll('#readiness .ready-step')].map(b => b.dataset.step + ':' + b.dataset.state));
-  ok(ready.length === 4 && ready[0] === 'design:done', `readiness strip derives four steps (${ready.join(' ')})`);
-  await page.click('#readiness .ready-step[data-step="validate"]');
-  ok(await page.evaluate(() => __bb.state.tab === 'integrity'), 'Validate step jumps to the integrity report');
-  await page.click('#readiness .ready-step[data-step="plans"]');
-  ok(await page.evaluate(() => __bb.state.tab === 'cut'), 'Plans step jumps to the cut list');
-  const readyBuild = await page.evaluate(() => {
+  // Mode nav: three derived segments (Design / Plan / Build), states live.
+  const modes = await page.evaluate(() => [...document.querySelectorAll('#modeNav .mode-btn')].map(b => b.dataset.mode + ':' + b.dataset.state));
+  ok(modes.length === 3 && modes[0] === 'design:done', `mode nav derives three segments (${modes.join(' ')})`);
+  await page.click('#mode-design');
+  ok(await page.evaluate(() => document.body.dataset.mode === 'design'
+    && getComputedStyle(document.querySelector('.tabs')).display === 'none'
+    && /^#design(;|$)/.test(location.hash)),
+    'Design mode gives the stage to the model and mirrors into the hash');
+  await page.click('#mode-plan');
+  ok(await page.evaluate(() => document.body.dataset.mode === 'plan'
+    && getComputedStyle(document.querySelector('.tabs')).display !== 'none'),
+    'Plan mode brings the sub-tabs back');
+  const modeBuild = await page.evaluate(() => {
     __bb.enterBuildMode();
+    const current = document.getElementById('buildModeBtn').getAttribute('aria-current') === 'page';
     document.querySelector('.bm-check[aria-pressed="false"]').click();
     __bb.exitBuildMode();
-    return document.querySelector('#readiness .ready-step[data-step="build"]').dataset.state;
+    return { current, state: document.getElementById('buildModeBtn').dataset.state };
   });
-  ok(readyBuild === 'active', 'Build step turns active once shop progress lands');
+  ok(modeBuild.current && modeBuild.state === 'attn',
+    'Build segment holds aria-current in build mode and turns attn once progress lands');
 
   // URL-restorable tabs: hash mirrors the tab, external hash edits apply,
   // and a deep link survives reload — reference subtab included.
@@ -1135,13 +1153,13 @@ const clickMoreCtl = async sel => {
     topbarH: document.querySelector('.topbar').getBoundingClientRect().height,
     toolbarH: document.querySelector('.viewport-toolbar').getBoundingClientRect().height,
     brandHidden: getComputedStyle(document.querySelector('.brand-name')).display === 'none',
-    shortCta: getComputedStyle(document.querySelector('.build-cta .cta-short')).display !== 'none'
+    shortCta: getComputedStyle(document.querySelector('#buildModeBtn .mode-label')).display !== 'none'
   }));
   ok(mobileShell.topbarH <= 64, `mobile header stays one row (${Math.round(mobileShell.topbarH)}px, redesign spec: 56\u201364px)`);
   // Touch targets ≥40 px may wrap the toolbar onto a second row on narrow phones —
   // that is preferred over unreadably small controls at the bench.
   ok(mobileShell.toolbarH <= 120, `mobile viewport toolbar stays compact (${Math.round(mobileShell.toolbarH)}px)`);
-  ok(mobileShell.brandHidden && mobileShell.shortCta, 'wordmark yields and Build CTA shortens on phones');
+  ok(mobileShell.brandHidden && mobileShell.shortCta, 'wordmark yields and Build keeps its word on phones');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 

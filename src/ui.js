@@ -24,7 +24,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     cut: [], bomData: { items: [], total: 0 }, steps: [],
     integrity: null, stockPlan: null,
     history: null, engine: null,
-    tab: 'cut', refTab: 'wood', refQuery: '',
+    mode: 'design',
+    tab: 'overview', refTab: 'wood', refQuery: '',
     dismissed: new Set(),
     selected: null,
     playbackIndex: -1,
@@ -353,13 +354,67 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
-    if (state.tab === 'cut') renderCut(inner);
+    if (state.tab === 'overview') renderOverview(inner);
+    else if (state.tab === 'cut') renderCut(inner);
     else if (state.tab === 'stock') renderStock(inner);
     else if (state.tab === 'bom') renderBom(inner);
     else if (state.tab === 'assembly') renderAssembly(inner);
     else if (state.tab === 'integrity') renderIntegrity(inner);
     else renderReference(inner);
     wireScrollableTables(inner);
+  }
+
+  /* ---------------- Plan overview ----------------
+   * Four honest numbers straight from the computed state, then ONE next
+   * action. Everything here is a pure read of what the pipeline already
+   * derived — no new math, no stored copies. */
+  function renderOverview(root) {
+    if (!state.cut.length) {
+      emptyState(root, 'No design yet.', 'Describe a piece in the chat or pick a starter — the plan builds itself.');
+      return;
+    }
+    const sum = state.integrity.summary;
+    const plan = state.stockPlan;
+    const boards = plan ? plan.boards.length + plan.sheets.length : 0;
+    const partCount = state.cut.reduce((n, r) => n + r.qty, 0);
+    const verdict = sum.fails ? 'fail' : sum.advisories ? 'advisory' : 'pass';
+    const verdictText = sum.fails
+      ? 'This design does not yet pass the required strength checks.'
+      : sum.advisories
+        ? 'This design passes the required strength checks, with notes worth reading.'
+        : 'This design passes the required strength checks.';
+    const cards = [
+      { label: 'Parts to cut', value: String(partCount), go: 'cut', aria: 'Open the cut list' },
+      { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : String(boards), go: 'stock', aria: 'Open the buying plan' },
+      { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'bom', aria: 'Open materials and pricing' },
+      { label: 'Safety', value: verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
+    ];
+    const grid = el('div', 'overview-grid');
+    for (const c of cards) {
+      const b = el('button', 'overview-card' + (c.stamp ? ' verdict-' + c.stamp : ''));
+      b.type = 'button';
+      b.setAttribute('aria-label', `${c.label}: ${c.value}. ${c.aria}`);
+      b.innerHTML = `<span class="ov-value${c.stamp ? ' stamp ' + c.stamp : ''}">${esc(c.value)}</span><span class="ov-label">${esc(c.label)}</span>`;
+      b.onclick = () => selectTab(c.go);
+      grid.append(b);
+    }
+    root.append(el('h3', '', 'Overview'));
+    root.append(el('p', 'lede', verdictText + (sum.fails ? '' : ' Every number below comes from the same engineering pass.')));
+    root.append(grid);
+    // One clear next action, derived from where the project actually stands.
+    const pct = progressPct();
+    const next = sum.fails
+      ? { label: 'Review safety first', go: () => selectTab('integrity') }
+      : pct > 0 && pct < 100
+        ? { label: `Keep building — ${pct}% done`, go: enterBuildMode }
+        : pct >= 100
+          ? { label: 'Build complete — review or share it', go: () => { openShare(); } }
+          : { label: 'Check the cut list, then head to the shop', go: () => selectTab('cut') };
+    const row = el('div', 'overview-next');
+    const nb = el('button', 'btn primary', esc(next.label));
+    nb.onclick = next.go;
+    row.append(nb);
+    root.append(row);
   }
 
   /* ---------------- provenance dialog (stretch: number provenance) ---------------- */
@@ -675,7 +730,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       <span class="stat">strength ${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span>
       <span class="stat">${esc(j.level)}</span><br>
       ${esc(j.bestFor)}<br><em>Watch for:</em> ${esc(j.failure)}<br>
-      <em>Tools:</em> ${esc(j.tools.join(', '))}</span></span>`;
+      <em>Tools:</em> ${esc(j.tools.join(', '))}<br>
+      <button type="button" class="learn-link" data-reflink="joinery" data-refquery="${esc(j.label)}">Learn why in the Shop reference</button></span></span>`;
   }
 
   function renderAssembly(root) {
@@ -765,7 +821,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     sel.innerHTML = `<option value="arid">Arid climate — ΔMC 2%</option><option value="temperate">Temperate indoor — ΔMC 4%</option><option value="humid">Humid climate — ΔMC 6%</option>`;
     sel.value = state.prefs4.climate;
     sel.onchange = () => { state.prefs4.climate = sel.value; Store.savePrefs(state.prefs4); recompute(); };
-    climate.append(el('span', '', 'Seasonal movement assumes'), sel);
+    climate.append(el('span', '', 'Seasonal movement assumes'), sel,
+      el('button', 'learn-link', 'Learn why wood moves'));
+    const learnMove = climate.querySelector('.learn-link');
+    learnMove.type = 'button';
+    learnMove.dataset.reflink = 'wood';
+    learnMove.dataset.refquery = 'movement';
     target.append(climate);
 
     if (integ.surfaces.length) {
@@ -805,7 +866,7 @@ var BB = globalThis.BB = globalThis.BB || {};
             if (merge(f.patch, 'fix', [f.label])) {
               const chips = Structural.integrityDiff(before, state.integrity);
               botSay(`Applied fix: ${f.label}.`, chips, { noChange: !chips.length });
-              state.tab = 'integrity'; renderTabs(); renderPanel(); focusPanelHeading();
+              selectTab('integrity'); focusPanelHeading();
             }
           };
           row.append(b);
@@ -1055,6 +1116,43 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     $('chatPeek').textContent = next;
   }
+
+  /* ---------------- AI connection badge ----------------
+   * Persistent, and TRUTHFUL: states change only on evidence — a zero-token
+   * probe of the same-origin proxy (`POST {}` → 400 means the route exists
+   * AND holds a key, because the key check precedes body validation; 503
+   * means unconfigured), the presence of window.claude, or the observed
+   * outcome of a real send. Never an optimistic guess. */
+  function setAIState(mode, detail) {
+    const badge = $('aiBadge');
+    if (!badge) return;
+    badge.dataset.state = mode;
+    const label = mode === 'online' ? 'AI online'
+      : mode === 'offline' ? 'Offline · basic edits'
+        : 'AI · checking…';
+    $('aiBadgeLabel').textContent = label;
+    badge.title = detail || (mode === 'online'
+      ? 'Connected to the design service — full natural-language design and photo input.'
+      : mode === 'offline'
+        ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
+        : 'Checking the design service…');
+  }
+  async function probeAI() {
+    setAIState('checking');
+    const claudeHost = typeof window.claude !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
+    if (navigator.onLine === false) { setAIState('offline', 'You are offline. Basic edits keep working.'); return; }
+    try {
+      const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (r.status === 400) { setAIState('online'); return; }               // proxy present, key configured
+      if (r.status === 503) {                                               // proxy present, no key
+        setAIState(claudeHost ? 'online' : 'offline', claudeHost ? undefined : 'AI proxy not configured (no API key on the server). Basic edits still work.');
+        return;
+      }
+      setAIState(claudeHost ? 'online' : 'offline');                        // 404/405: no proxy here
+    } catch (e) {
+      setAIState(claudeHost ? 'online' : 'offline');
+    }
+  }
   function botSay(text, chips, opts) {
     opts = opts || {};
     let html = `<div class="bubble">${esc(text)}</div>`;
@@ -1182,13 +1280,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = Spec.describeDiff(realDiffs);
+      // The badge reflects what actually just happened — the strongest
+      // evidence there is about the connection state.
+      setAIState(out.local ? 'offline' : 'online');
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
       ].filter(Boolean).join(' ') || null;
       if (out.failReport) {
-        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Integrity tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
-        state.tab = 'integrity'; renderTabs(); renderPanel();
+        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
+        selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
         const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Integrity tab.` : '';
@@ -1571,7 +1672,29 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   const galleryCards = []; // [{card, model, spec}] — the idle thumbnail pass reads these
+  const heroCards = [];    // [{card, starterIndex}] — hero starters share the same thumbs
   let galleryThumbs = null; // rendered thumbs, kept so every re-render gets them back
+  function loadStarter(g, r) {
+    hideHints(); // a loaded design replaces the first-run prompts
+    state.dismissed.clear();
+    state.project = null;   // a starter begins a fresh project
+    state.turns = [];
+    commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
+    state.engine.frame();
+    // First starter ever: the piece assembles itself once — the pipeline
+    // dramatized in one shot. Reduced motion snaps it (engine-side).
+    if (!state.prefs4.seenHero) {
+      state.prefs4.seenHero = true;
+      Store.savePrefs(state.prefs4);
+      state.engine.heroAssemble();
+    }
+    botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
+    if (!state.prefs4.seenCoach) {
+      state.prefs4.seenCoach = true;
+      Store.savePrefs(state.prefs4);
+      botSay('First build tips: 1) Check the Buy tab before you shop. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Safety tab shows red, fix that before you build.', []);
+    }
+  }
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
@@ -1585,31 +1708,37 @@ var BB = globalThis.BB = globalThis.BB || {};
         <span class="g-meta">${fmt(r.spec.overall.width)} × ${fmt(r.spec.overall.depth)} × ${fmt(r.spec.overall.height)} · ${esc(K.WOOD_SPECIES[r.spec.wood.species].label)}</span>`;
       card.onclick = () => {
         closeScrim('galleryScrim');
-        hideHints(); // a loaded design replaces the first-run prompts
-        state.dismissed.clear();
-        state.project = null;   // a starter begins a fresh project
-        state.turns = [];
-        commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
-        state.engine.frame();
-        // First starter ever: the piece assembles itself once — the pipeline
-        // dramatized in one shot. Reduced motion snaps it (engine-side).
-        if (!state.prefs4.seenHero) {
-          state.prefs4.seenHero = true;
-          Store.savePrefs(state.prefs4);
-          state.engine.heroAssemble();
-        }
-        botSay(`Loaded ${r.spec.meta.name} — ${r.model.parts.length} parts, plans ready. Tell me what to change.`, []);
-        if (!state.prefs4.seenCoach) {
-          state.prefs4.seenCoach = true;
-          Store.savePrefs(state.prefs4);
-          botSay('First build tips: 1) Check the Stock tab before you buy. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Integrity tab shows red, fix that before you build.', []);
-        }
+        loadStarter(g, r);
       };
       grid.append(card);
       galleryCards.push({ card, model: r.model, spec: r.spec });
     }
     // The grid rebuilds on every open; without this the idle pass's work
     // would vanish after the first close (the new shell opens on demand).
+    if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
+  }
+
+  /* Three polished starters ride the hero — the same specs, pipeline, and
+   * idle-rendered thumbnails as the gallery; skeletons until the thumbs land
+   * (an honest empty sheet, never fabricated imagery). */
+  const HERO_STARTER_INDEXES = [0, 3, 4]; // dining table, bookshelf, nightstand
+  function renderHeroStarters() {
+    const wrap = $('heroStarters');
+    if (!wrap) return;
+    wrap.textContent = '';
+    heroCards.length = 0;
+    for (const i of HERO_STARTER_INDEXES) {
+      const g = Gallery.STARTERS[i];
+      if (!g) continue;
+      const r = runPipeline(g.spec);
+      const card = el('button', 'hero-starter');
+      card.innerHTML = `<span class="g-fallback" aria-hidden="true">${BB.Icons.svg('board', 22)}</span>
+        <span class="hs-name">${esc(r.spec.meta.name)}</span>`;
+      card.setAttribute('aria-label', `Start from the ${r.spec.meta.name}`);
+      card.onclick = () => loadStarter(g, r);
+      wrap.append(card);
+      heroCards.push({ card, starterIndex: i });
+    }
     if (galleryThumbs) patchGalleryThumbs(galleryThumbs);
   }
 
@@ -1626,17 +1755,19 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function patchGalleryThumbs(thumbs) {
     galleryThumbs = thumbs;
-    galleryCards.forEach(({ card }, i) => {
-      if (!thumbs[i]) return;
+    const swap = (card, thumb) => {
+      if (!thumb) return;
       const fallback = card.querySelector('.g-fallback');
       if (!fallback) return;
       const img = document.createElement('img');
       img.className = 'g-thumb';
       img.alt = '';
-      img.src = thumbs[i];
+      img.src = thumb;
       fallback.replaceWith(img);
       requestAnimationFrame(() => img.classList.add('on'));
-    });
+    };
+    galleryCards.forEach(({ card }, i) => swap(card, thumbs[i]));
+    heroCards.forEach(({ card, starterIndex }) => swap(card, thumbs[starterIndex]));
   }
   async function galleryThumbsPass() {
     try {
@@ -1924,6 +2055,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderBuildChecklists();
     trapFocus($('buildMode')); // keyboard users land on the shop surface
     requestWakeLock();
+    renderReadiness(); // Build takes aria-current in the mode nav
   }
   function exitBuildMode() {
     if (!state.buildMode) return;
@@ -1933,6 +2065,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     releaseFocus($('buildMode'));
     releaseWakeLock();
     scheduleAutosave();
+    renderReadiness(); // the underlying mode resumes aria-current
   }
 
   function toggleProgress(map, key, btn) {
@@ -2152,77 +2285,65 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- shell: readiness strip ----------------
-   * Design → Validate → Plans → Build, every state DERIVED from what the
-   * pipeline already knows — nothing stored, nothing to get stale. Each step
-   * is a button that jumps to its surface. */
-  function readinessSteps() {
+  /* ---------------- shell: modes ----------------
+   * The journey IS the navigation: Design → Plan → Build. Each mode button
+   * carries a state dot DERIVED from what the pipeline already knows —
+   * nothing stored, nothing to get stale. Build stays the existing
+   * full-screen surface layered over whichever mode it was entered from. */
+  function setMode(m, opts) {
+    if (m === 'build') { enterBuildMode(); return; }
+    state.mode = m === 'plan' ? 'plan' : 'design';
+    document.body.dataset.mode = state.mode;
+    if (!(opts && opts.silent)) syncHash();
+    renderReadiness();
+    if (state.mode === 'plan') { renderTabs(); renderPanel(); }
+  }
+  function modeStates() {
     const sum = state.integrity.summary;
     const designed = !!state.project || state.history.snapshots.length > 1;
     const stockTrouble = state.stockPlan && state.stockPlan.errors.length > 0;
     const pct = progressPct();
-    return [
-      {
-        label: 'Design', state: designed ? 'done' : 'todo',
-        aria: designed ? 'Design captured — open the chat to refine it' : 'Start here — describe a piece, or pick a starter',
-        go: focusChat
+    return {
+      design: {
+        state: designed ? 'done' : 'todo',
+        aria: designed ? 'Design mode — the 3D model and chat' : 'Start here — describe a piece, or pick a starter'
       },
-      {
-        label: 'Validate',
-        state: sum.fails ? 'fail' : sum.advisories ? 'attn' : 'done',
-        aria: sum.fails ? `${sum.fails} failing structural check${sum.fails > 1 ? 's' : ''} — open the integrity report`
-          : sum.advisories ? `Checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''} — open the integrity report`
-            : 'All structural checks pass — open the integrity report',
-        go: () => selectTab('integrity')
+      plan: {
+        state: sum.fails ? 'fail' : sum.advisories || stockTrouble ? 'attn' : state.cut.length ? 'done' : 'todo',
+        aria: sum.fails ? `Plan mode — ${sum.fails} failing safety check${sum.fails > 1 ? 's' : ''}`
+          : sum.advisories ? `Plan mode — checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`
+            : `Plan mode — cut list, buying, assembly, safety`
       },
-      {
-        label: 'Plans',
-        state: state.cut.length ? (stockTrouble ? 'attn' : 'done') : 'todo',
-        aria: state.cut.length ? `Plans ready — ${state.cut.length} part${state.cut.length > 1 ? 's' : ''} in the cut list` : 'Plans appear once the design has parts',
-        go: () => selectTab('cut')
-      },
-      {
-        label: 'Build',
-        state: pct >= 100 ? 'done' : pct > 0 ? 'active' : 'todo',
-        aria: pct >= 100 ? 'Build complete — open build mode' : pct > 0 ? `${pct}% built — back to build mode` : 'Open build mode when you head to the shop',
-        go: enterBuildMode
+      build: {
+        state: pct >= 100 ? 'done' : pct > 0 ? 'attn' : 'todo',
+        aria: pct >= 100 ? 'Build complete' : pct > 0 ? `Build mode — ${pct}% built` : 'Build mode — the full-screen shop companion'
       }
-    ];
+    };
   }
   function renderReadiness() {
-    const navs = [$('readiness'), $('readinessMobile')].filter(Boolean);
-    navs.forEach(nav => { nav.textContent = ''; });
     if (!state.integrity) return;
-    const steps = readinessSteps();
-    const complete = st => st === 'done' || st === 'attn';
-    navs.forEach(nav => {
-      let currentSet = false;
-      steps.forEach((s, i) => {
-        if (i) nav.append(el('span', 'ready-sep', ''));
-        const b = el('button', 'ready-step');
-        b.type = 'button';
-        b.dataset.state = s.state;
-        b.dataset.step = s.label.toLowerCase();
-        b.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="ready-label">${esc(s.label)}</span>`;
-        b.setAttribute('aria-label', `${s.label}: ${s.aria}`);
-        b.title = s.aria;
-        if (!currentSet && !complete(s.state)) {
-          b.setAttribute('aria-current', 'step');
-          currentSet = true;
-        }
-        b.onclick = s.go;
-        nav.append(b);
-      });
-    });
+    const states = modeStates();
+    for (const m of ['design', 'plan', 'build']) {
+      const b = $(m === 'build' ? 'buildModeBtn' : 'mode-' + m);
+      if (!b) continue;
+      const s = states[m];
+      b.dataset.state = s.state;
+      const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
+      if (current) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+      b.setAttribute('aria-label', s.aria);
+      b.title = s.aria;
+    }
   }
 
-  /* ---------------- shell: welcome (first run, never blocking) ---------------- */
+  /* ---------------- shell: first-run hero (never blocking) ---------------- */
   function showWelcome(hasProjects) {
-    $('welcomeResumeName').textContent = hasProjects ? 'Open a project' : 'Import a design';
+    $('welcomeResumeName').textContent = hasProjects ? 'Open a saved design' : 'Open a saved design';
     $('welcomeResumeCaption').textContent = hasProjects
       ? 'Pick up where you left off — plans and build progress included.'
       : 'Paste a BB4: share code to pick up a design from anywhere.';
     $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
+    renderHeroStarters();
     $('welcomeOverlay').hidden = false;
   }
   function hideWelcome() {
@@ -2235,7 +2356,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const REF_ENTRIES = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
   const REF_TABS = REF_ENTRIES.map(x => x[0]);
   function syncHash() {
-    const path = state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
+    const path = state.mode === 'design'
+      ? 'design'
+      : state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
     const h = '#' + path + `;split=${state.prefs4.ui.split};chat=${state.prefs4.ui.chatCollapsed ? 1 : 0}`;
     if (location.hash !== h) {
       try { history.replaceState(null, '', h); } catch (e) { /* sandboxed frame: tabs still work, hash doesn't */ }
@@ -2245,9 +2368,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const raw = (location.hash || '').replace(/^#/, '');
     const bits = raw.split(';');
     const parts = (bits.shift() || '').split('/');
-    if (!TABS.includes(parts[0])) return false;
-    state.tab = parts[0];
-    if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    if (parts[0] === 'design') {
+      setMode('design', { silent: true });
+    } else if (TABS.includes(parts[0])) {
+      state.mode = 'plan';
+      document.body.dataset.mode = 'plan';
+      state.tab = parts[0];
+      if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
+    } else return false;
     bits.forEach(bit => {
       const eq = bit.indexOf('=');
       if (eq < 0) return;
@@ -2263,14 +2391,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     return true;
   }
 
-  /* ---------------- tabs ---------------- */
-  const TABS = ['cut', 'stock', 'bom', 'assembly', 'integrity', 'reference'];
+  /* ---------------- tabs (Plan sub-navigation) ----------------
+   * Reference is deliberately not a peer destination: its tab stays hidden
+   * until a "Learn why" link or the More menu opens it. */
+  const TABS = ['overview', 'cut', 'stock', 'bom', 'assembly', 'integrity', 'reference'];
   function selectTab(t) {
     state.tab = t;
+    if (state.mode !== 'plan') setMode('plan');
     renderTabs();
     renderPanel();
   }
   function renderTabs() {
+    $('tab-reference').hidden = state.tab !== 'reference';
     for (const t of TABS) {
       $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
       $('tab-' + t).tabIndex = state.tab === t ? 0 : -1;
@@ -2295,12 +2427,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       $('tab-' + t).addEventListener('click', () => selectTab(t));
     }
     bar.addEventListener('keydown', e => {
-      const i = TABS.indexOf(state.tab);
+      // Hidden reference never enters the arrow-key cycle.
+      const cycle = state.tab === 'reference' ? TABS : TABS.filter(t => t !== 'reference');
+      const i = cycle.indexOf(state.tab);
       let next = null;
-      if (e.key === 'ArrowRight') next = TABS[(i + 1) % TABS.length];
-      if (e.key === 'ArrowLeft') next = TABS[(i + TABS.length - 1) % TABS.length];
-      if (e.key === 'Home') next = TABS[0];
-      if (e.key === 'End') next = TABS[TABS.length - 1];
+      if (e.key === 'ArrowRight') next = cycle[(i + 1) % cycle.length];
+      if (e.key === 'ArrowLeft') next = cycle[(i + cycle.length - 1) % cycle.length];
+      if (e.key === 'Home') next = cycle[0];
+      if (e.key === 'End') next = cycle[cycle.length - 1];
       if (next) {
         e.preventDefault();
         selectTab(next);
@@ -2377,7 +2511,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('bmPbPrev', 'prev', 'Prev');
     set('bmPbNext', 'next', 'Next', true);
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
-    $('exportBtn').innerHTML = `Export ${icon('caret', 13)}`;
   }
 
   async function boot() {
@@ -2448,9 +2581,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     Units.set(state.prefs4.units);
     applyTheme(state.prefs4.theme);
     applyRender();
+    document.body.dataset.mode = state.mode; // design until a hash says otherwise
     setChatCollapsed(state.prefs4.ui.chatCollapsed, { persist: false });
     setSplit(state.prefs4.ui.split, { persist: false });
     bindSplitter();
+    // The AI badge earns its state from a zero-token probe, then from every
+    // real send; connectivity flips re-probe.
+    probeAI();
+    window.addEventListener('online', probeAI);
+    window.addEventListener('offline', probeAI);
 
     // Seed design straight through the pipeline, in the preferred system.
     const seed = Spec.defaultSpec('table');
@@ -2546,11 +2685,22 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
     $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
-    /* chat fold + welcome paths */
+    /* chat fold + hero paths */
     $('chatCollapse').onclick = () => setChatCollapsed(true);
     $('chatRail').onclick = () => { setChatCollapsed(false); $('chatText').focus(); };
     $('welcomeClose').onclick = hideWelcome;
-    $('welcomeDescribe').onclick = () => { hideWelcome(); focusChat(); };
+    /* The hero prompt IS the chat pipeline — one path for every input. */
+    const heroSubmit = () => {
+      const t = $('heroText').value.trim();
+      if (!t) { hideWelcome(); focusChat(); return; }
+      hideWelcome();
+      sendMessage(t);
+    };
+    $('heroSend').onclick = heroSubmit;
+    $('heroText').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); heroSubmit(); }
+    });
+    $('welcomePhoto').onclick = () => $('photoInput').click();
     $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
     $('welcomeResume').onclick = () => {
       hideWelcome();
@@ -2617,22 +2767,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       return m;
     };
-    const menu = bindMenu('exportBtn', 'exportMenu');
+    // One menu owns everything quiet: dialogs, export, reference, settings.
+    // Share and Build stay out as the only strong actions (with the mode nav).
     const moreMenu = bindMenu('moreBtn', 'moreMenu');
-    const moreExportMirror = $('moreExportMirror');
-    if (moreExportMirror) {
-      moreExportMirror.textContent = '';
-      menu.querySelectorAll('[data-export]').forEach(b => moreExportMirror.append(b.cloneNode(true)));
-      moreExportMirror.hidden = !moreExportMirror.children.length;
-      if ($('moreExportSep')) $('moreExportSep').hidden = !moreExportMirror.children.length;
-    }
-    menu.querySelectorAll('[data-export]').forEach(b => {
-      b.addEventListener('click', () => {
-        closeMenu('exportBtn', menu);
-        $('exportBtn').focus(); // menu pattern: activation returns focus to the button
-        doExport(b.dataset.export);
-      });
-    });
     // Picking a dialog from More closes the menu; the units row stays open
     // so the seg gives instant feedback.
     moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
@@ -2641,6 +2778,19 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (b.dataset.export) { doExport(b.dataset.export); return; }
         if (!trapStack.length) $('moreBtn').focus(); // unless a dialog already took focus
       });
+    });
+    $('referenceBtn').onclick = () => selectTab('reference');
+    /* mode navigation */
+    $('mode-design').onclick = () => setMode('design');
+    $('mode-plan').onclick = () => setMode('plan');
+    /* "Learn why" links anywhere in the app open the reference on the right
+     * shelf — the Shop Reference relocated from peer tab to contextual door. */
+    document.addEventListener('click', e => {
+      const link = e.target.closest('[data-reflink]');
+      if (!link) return;
+      state.refTab = link.dataset.reflink;
+      if (link.dataset.refquery !== undefined) state.refQuery = link.dataset.refquery;
+      selectTab('reference');
     });
 
     /* chat — no form element (artifact rules); Enter and the button both send */
@@ -2805,16 +2955,21 @@ var BB = globalThis.BB = globalThis.BB || {};
         focusChat();
       } else if (!typing && (e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        const i = TABS.indexOf(state.tab);
-        const next = e.key === ']' ? TABS[(i + 1) % TABS.length] : TABS[(i - 1 + TABS.length) % TABS.length];
-        selectTab(next);
+        // Bracket keys walk the Plan sub-tabs (and pull you into Plan mode
+        // first); the hidden reference tab stays out of the cycle.
+        if (state.mode !== 'plan') { setMode('plan'); }
+        else {
+          const cycle = TABS.filter(t => t !== 'reference' || state.tab === 'reference');
+          const i = cycle.indexOf(state.tab);
+          const next = e.key === ']' ? cycle[(i + 1) % cycle.length] : cycle[(i - 1 + cycle.length) % cycle.length];
+          selectTab(next);
+        }
       } else if (e.key === 'Escape') {
         // Close the topmost overlay only — one layer per press. Build mode
         // is the bottom layer: it exits last, never before an open modal.
         const prov = $('provPop');
         if (prov && !prov.hidden) { hideProv(); return; }
         if (!$('vpHelp').hidden) { setVpHelp(false); $('vpHelpBtn').focus(); return; }
-        if (menu.classList.contains('open')) { closeMenu('exportBtn', menu); return; }
         if (moreMenu.classList.contains('open')) { closeMenu('moreBtn', moreMenu); return; }
         const scrims = [...document.querySelectorAll('.scrim.open')];
         if (scrims.length) { closeScrim(scrims[scrims.length - 1]); return; }
@@ -2834,7 +2989,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
       preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
-      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness
+      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness,
+      setMode, probeAI, setAIState
     };
 
     // Viewport guidance speaks the input language it sees, and steps aside

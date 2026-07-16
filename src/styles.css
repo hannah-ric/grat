@@ -193,7 +193,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------------- top bar ----------------
    One compact row at every width: the design name yields first, then the
-   readiness strip slims to dots, then the brand wordmark drops. */
+   mode nav slims to dots, then the brand wordmark drops. */
 .topbar {
   display: flex; align-items: center; gap: var(--s2);
   padding: 6px var(--s3);
@@ -224,31 +224,43 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .design-name:hover, .design-name:focus { border-color: var(--line-2); background: var(--panel-2); }
 .topbar-spacer { flex: 1; }
 .topbar-group { display: flex; align-items: center; gap: var(--s1); }
-.build-cta .cta-short { display: none; }
 
-/* ---------------- readiness strip ----------------
-   Derived, never stored: Design → Validate → Plans → Build, each step a
-   real button that jumps to its surface. States paint the dot. */
-.readiness { display: flex; align-items: center; gap: 2px; flex: none; }
-.ready-step {
-  display: inline-flex; align-items: center; gap: 6px;
-  border: 0; background: none; cursor: pointer; border-radius: 999px;
-  padding: 5px 9px; font-size: var(--text-s); font-weight: 600; color: var(--muted);
+/* ---------------- mode navigation ----------------
+   The journey IS the navigation: Design → Plan → Build. One segmented
+   capsule; each segment carries a derived state dot (done = fern,
+   attention = mustard, failing = rust). Build is the filled CTA segment —
+   with Share, the only strong actions in the bar. */
+.mode-nav {
+  display: flex; align-items: center; gap: 2px; flex: none;
+  border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  padding: 3px; background: var(--panel);
+}
+.mode-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 0; background: none; cursor: pointer; border-radius: var(--radius-pill);
+  padding: 7px 14px; min-height: 38px; font-size: var(--text-s); font-weight: 600; color: var(--muted);
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
   white-space: nowrap;
 }
-.ready-step:hover { background: var(--panel-2); color: var(--ink-2); }
-.ready-step .dot {
+.mode-btn:hover { background: var(--panel-2); color: var(--ink-2); }
+.mode-btn[aria-current="page"] { color: var(--ink); background: var(--panel-2); }
+.mode-btn .dot {
   width: 8px; height: 8px; border-radius: 50%; flex: none;
   background: transparent; border: 1.5px solid var(--line-2);
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
-.ready-step[data-state="done"] .dot { background: var(--green); border-color: var(--green); }
-.ready-step[data-state="attn"] .dot { background: var(--amber); border-color: var(--amber); }
-.ready-step[data-state="fail"] .dot { background: var(--brick); border-color: var(--brick); }
-.ready-step[aria-current="step"] { color: var(--ink); background: var(--panel-2); }
-.ready-step[data-state="done"] { color: var(--ink-2); }
-.ready-sep { width: 4px; height: 4px; border-radius: 50%; background: var(--line-2); flex: none; user-select: none; }
+.mode-btn[data-state="done"] .dot { background: var(--green); border-color: var(--green); }
+.mode-btn[data-state="attn"] .dot { background: var(--amber); border-color: var(--amber); }
+.mode-btn[data-state="fail"] .dot { background: var(--brick); border-color: var(--brick); }
+/* Build: the one filled segment — the shop is where this app is headed */
+.mode-btn.build-cta { background: var(--accent); color: var(--accent-ink); font-weight: 650; }
+.mode-btn.build-cta:hover { background: var(--accent); color: var(--accent-ink); filter: brightness(1.08); }
+.mode-btn.build-cta .dot { display: none; }
+.mode-btn.build-cta[aria-current="page"] { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* Share: the quiet-strong companion action */
+.share-cta { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.share-cta:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 
 /* Buttons are atomic-age capsules; the default is a full-size primary target
    (≥ --tap in both axes). .small is the inline/secondary tier — still ≥40px
@@ -292,7 +304,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .menu > button:hover, .menu-group > button:hover { background: var(--panel-2); }
 .menu > button .hint, .menu-group > button .hint { color: var(--ink-2); font-size: var(--text-s); margin-left: auto; }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
-.mobile-export-only { display: none; }
+.menu-group-label {
+  font: 650 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); padding: 6px 12px 2px;
+}
 /* inline control rows inside a menu (units, precision, theme) */
 .menu .menu-row { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) 12px; }
 .menu .menu-row-label { flex: 1; font-size: var(--text-s); font-weight: 550; color: var(--muted); }
@@ -305,6 +320,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------------- bench layout ---------------- */
 .bench { display: flex; flex: 1; min-height: 0; }
 
+/* ---------------- modes ----------------
+   Design: the 3D model is the whole stage — no tabs, no panel, no splitter.
+   Plan: the plans lead; the model keeps a strip above (the splitter still
+   works there). Build mode remains the existing full-screen layer. */
+body[data-mode="design"] .tabs,
+body[data-mode="design"] .panel,
+body[data-mode="design"] .splitter { display: none; }
+body[data-mode="design"] .viewport-wrap { flex: 1 1 auto; }
+body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
+
 .chat {
   width: 340px; flex: none; display: flex; flex-direction: column;
   border-right: 1px solid var(--line); background: var(--panel);
@@ -316,9 +341,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: var(--s2);
 }
 .chat-head h2 { font: 600 var(--text-s)/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; flex: 1; }
-.readiness-mobile { display: none; margin-left: auto; }
-.readiness-mobile .ready-label, .readiness-mobile .ready-sep { display: none; }
-.readiness-mobile .ready-step { padding: 4px; min-width: 24px; justify-content: center; }
+/* AI connection badge: three truthful states, painted only on evidence */
+.ai-badge {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  font-size: var(--text-s); font-weight: 550; color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 3px 10px;
+  white-space: nowrap;
+}
+.ai-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; }
+.ai-badge[data-state="online"] .dot { background: var(--green); }
+.ai-badge[data-state="offline"] .dot { background: var(--amber); }
+.ai-badge[data-state="offline"] { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
+@keyframes badgePulse { 50% { opacity: .35; } }
+.ai-badge[data-state="checking"] .dot { animation: badgePulse 1.2s infinite var(--ease); }
+
 .level-select {
   border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px;
   padding: 4px 8px; font-size: var(--text-s); color: var(--ink-2); cursor: pointer;
@@ -516,16 +552,43 @@ body.drafting .viewport-wrap {
 .advisory-more:hover { color: var(--ink); border-color: var(--muted); }
 .advisory-pill { font-size: var(--text-s); display: inline-flex; align-items: center; gap: 6px; }
 
-/* ---------------- welcome (first run, never blocking) ---------------- */
+/* ---------------- first-run hero (never blocking) ----------------
+   One question over the live model. The bench behind stays interactive. */
 .welcome {
-  position: absolute; z-index: 11; top: 64px; left: 50%; transform: translateX(-50%);
-  width: min(660px, calc(100% - var(--s4) * 2));
+  position: absolute; z-index: 11; top: max(40px, 6vh); left: 50%; transform: translateX(-50%);
+  width: min(780px, calc(100% - var(--s4) * 2));
+  max-height: calc(100% - 120px); overflow-y: auto; overscroll-behavior: contain;
   background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(10px);
-  border: 1px solid var(--line-2); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
-  padding: var(--s3) var(--s3) var(--s2); animation: rise var(--t-slow) var(--ease);
+  border: 1px solid var(--line-2); border-radius: var(--radius-l); box-shadow: var(--shadow-lg);
+  padding: var(--s4) var(--s4) var(--s3); animation: rise var(--t-slow) var(--ease);
 }
-.welcome-head { display: flex; align-items: baseline; gap: var(--s2); }
-.welcome-head h2 { font-family: var(--display); font-weight: 700; font-size: var(--text-l); line-height: var(--leading-heading); margin: 0 0 var(--s2); flex: 1; text-wrap: balance; }
+.welcome-head { display: flex; align-items: flex-start; gap: var(--s2); }
+.welcome-head h2 { flex: 1; margin: 0 0 var(--s3); }
+.hero-title {
+  font-family: var(--display); font-weight: 700; font-size: var(--text-hero);
+  line-height: var(--leading-display); letter-spacing: -.02em; text-wrap: balance;
+}
+.hero-prompt { display: flex; gap: var(--s2); align-items: stretch; margin-bottom: var(--s3); }
+.hero-prompt textarea {
+  flex: 1; resize: none; border: 1px solid var(--line-2); background: var(--paper);
+  border-radius: var(--radius-m); padding: 14px 16px; min-height: 56px;
+  font-size: var(--text-l); line-height: 1.35;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.hero-prompt textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.hero-prompt textarea::placeholder { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-prompt .btn.primary { font-size: var(--text-m); padding: var(--s2) var(--s4); }
+.hero-starters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin-top: var(--s2); }
+.hero-starter { min-width: 0; }
+.hero-starter {
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--paper);
+  padding: var(--s2); cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: var(--s2);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.hero-starter:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+.hero-starter .g-thumb { opacity: 1; }
+.hero-starter .hs-name { font-family: var(--display); font-weight: 650; font-size: var(--text-s); }
 .welcome-paths { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
 .welcome-card {
   text-align: left; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper);
@@ -544,8 +607,6 @@ body.drafting .viewport-wrap {
 .welcome-card .w-icon svg { display: block; width: 22px; height: 22px; }
 .welcome-card .w-name { font-family: var(--display); font-weight: 650; font-size: var(--text-m); }
 .welcome-card .w-caption { color: var(--muted); font-size: var(--text-s); line-height: 1.4; }
-.welcome-note { margin: var(--s2) 0 2px; font-size: var(--text-s); color: var(--muted); text-align: center; }
-@media (max-height: 620px) { .welcome-note { display: none; } }
 
 /* ---------------- viewport help ---------------- */
 .vp-help {
@@ -675,6 +736,14 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .step-body .why-joint { margin-top: var(--s2); }
 .step-play { flex: none; align-self: center; }
 
+.learn-link {
+  border: 0; background: none; cursor: pointer; padding: 0;
+  color: var(--link); font-size: var(--text-s); font-weight: 600;
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.learn-link:hover { text-decoration-style: solid; }
+.why-tip .learn-link { color: color-mix(in srgb, var(--paper) 88%, transparent); display: inline-block; margin-top: 6px; }
+
 .why-joint {
   position: relative; display: inline-block;
 }
@@ -762,8 +831,6 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .units-seg button { flex: none; min-width: 34px; padding: var(--s1) 9px; font-family: var(--mono); }
 #dualBtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
-/* Build mode is the headline feature — the one filled, weighty control */
-.build-cta { font-weight: 650; padding: var(--s2) var(--s3); box-shadow: var(--shadow); }
 
 /* ---------------- history drawer ---------------- */
 .drawer-backdrop {
@@ -877,7 +944,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 
 /* ---------------- tablet ----------------
    Between the phone sheet and the full bench: the chat narrows, paddings
-   tighten, and the readiness strip slims to dots so the header stays one row. */
+   tighten, and the mode nav slims so the header stays one row. */
 @media (min-width: 881px) and (max-width: 1180px) {
   .chat { width: 280px; }
   .chat.collapsed { width: 46px; }
@@ -887,16 +954,11 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .design-name { width: 16ch; }
   .control-card input[type="range"] { width: 84px; }
 }
-/* readiness: labels need the widest desks; dots carry the state elsewhere */
+/* mode nav slims on narrow desks: inactive modes keep only their dot,
+   the current mode and the Build CTA keep their words */
 @media (max-width: 1280px) {
-  .ready-step { padding: 5px 5px; }
-  .ready-step .ready-label { display: none; }
-  .ready-step[aria-current="step"] .ready-label { display: inline; }
-  .ready-sep { display: none; }
-}
-@media (max-width: 660px) {
-  .topbar .readiness { display: none; }
-  .chat-head .readiness-mobile { display: flex; }
+  .mode-btn { padding: 7px 10px; }
+  .mode-btn:not([aria-current="page"]):not(.build-cta) .mode-label { display: none; }
 }
 
 /* ---------------- mobile ---------------- */
@@ -962,23 +1024,30 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .design-name { width: auto; flex: 1 1 96px; min-width: 96px; }
   .topbar .btn { padding: 8px 9px; font-size: var(--text-s); min-height: 40px; }
   .topbar .btn.icon { min-width: 40px; }
-  .build-cta .cta-long { display: none; }
-  .build-cta .cta-short { display: inline; }
-  .welcome { top: 56px; width: min(420px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); overflow-y: auto; overscroll-behavior: contain; }
+  .mode-nav { padding: 2px; }
+  .mode-btn { padding: 6px 9px; min-height: 36px; }
+  /* phones: dots carry Design/Plan; Build alone keeps its word */
+  .mode-btn:not(.build-cta) .mode-label { display: none; }
+  .mode-btn.build-cta .mode-label { display: inline; }
+  .welcome { top: 48px; width: min(440px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); padding: var(--s3); }
   .welcome-paths { grid-template-columns: 1fr; }
   .welcome-card { flex-direction: row; align-items: center; gap: var(--s2); }
   .welcome-card .w-caption { display: none; }
-  .welcome-note { display: none; }
+  .hero-prompt { flex-direction: column; }
+  .hero-prompt textarea { min-height: 64px; font-size: var(--text-m); }
+  .hero-starters { gap: var(--s1); }
+  .hero-starter .hs-name { font-size: var(--text-xs); }
   .playback-bar {
     position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
   }
 }
 @media (max-width: 560px) {
   .save-state { display: none; }
-  .mobile-export-only { display: block; }
-  #exportBtn.mobile-export-hide { display: none; }
-  .design-name { min-width: 96px; }
+  .brand-short { display: none; }
+  .design-name { min-width: 72px; flex-basis: 72px; }
   #redoBtn { display: inline-flex; }
+  /* Share folds into reach of More; Build (mode nav) stays the strong action */
+  .share-cta { display: none; }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -1030,6 +1099,28 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 /* integrity tab dot */
 .integrity-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); vertical-align: 2px; margin-left: 2px; }
 .integrity-dot.fail { background: var(--brick); }
+
+/* ---------------- plan overview ---------------- */
+.overview-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s2); margin: var(--s3) 0;
+}
+.overview-card {
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--paper);
+  padding: var(--s3); cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: var(--s1); min-height: 92px; justify-content: flex-end;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.overview-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+.overview-card .ov-value {
+  font: 650 var(--text-2xl) var(--mono); font-variant-numeric: tabular-nums; color: var(--ink);
+  line-height: 1.1;
+}
+.overview-card .ov-value.stamp { font: 700 var(--text-m) var(--body); letter-spacing: .12em; align-self: flex-start; }
+.overview-card .ov-label { font-size: var(--text-s); color: var(--muted); font-weight: 550; }
+.overview-card.verdict-fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
+.overview-card.verdict-advisory { background: var(--amber-soft); }
+.overview-next { margin-top: var(--s3); }
 
 /* ---------------- integrity panel ---------------- */
 .integrity-summary { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
@@ -1283,10 +1374,16 @@ body.bm-playback .playback-bar { display: none !important; }
 @media (max-width: 400px) {
   .topbar { gap: 2px; }
   .topbar .btn { padding-left: 8px; padding-right: 8px; }
-  .brand-short { display: none; }
   .design-name { min-width: 64px; flex-basis: 64px; }
-  /* the caret is decoration; the 320px header needs its 21px more */
-  #moreBtn svg, #exportBtn svg { display: none; }
+  /* the caret is decoration; the narrow header needs its 21px more */
+  #moreBtn svg { display: none; }
+  .mode-btn { padding: 6px 7px; }
+  /* undo stays; redo rides Ctrl+Shift+Z (documented trade for 320px fit) */
+  #redoBtn { display: none; }
+}
+@media (max-width: 360px) {
+  .design-name { min-width: 56px; flex-basis: 56px; }
+  .mode-btn { padding: 6px 6px; }
 }
 
 /* ---------------- increased contrast ----------------
