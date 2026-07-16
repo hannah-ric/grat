@@ -1205,6 +1205,63 @@ const clickMoreCtl = async sel => {
     return open;
   });
   ok(whyOpens, '"Why this length?" opens the provenance dialog on a phone');
+
+  // Phone Build mode: one board or step at a time — big diagram on a
+  // legibility floor, 56px controls, Next/swipe pager, honest install nudge.
+  await page.evaluate(() => __bb.enterBuildMode());
+  await page.waitForSelector('.bm-task');
+  const pagerShape = await page.evaluate(() => ({
+    columnsHidden: getComputedStyle(document.querySelector('.bm-columns')).display === 'none',
+    oneTask: document.querySelectorAll('.bm-task').length === 1,
+    pos: document.getElementById('bmTaskPos').textContent,
+    nextH: document.getElementById('bmTaskNext').offsetHeight >= 56,
+    checkH: [...document.querySelectorAll('.bm-task .bm-check')].every(b => b.offsetHeight >= 56),
+    noScrollX: document.documentElement.scrollWidth <= innerWidth
+  }));
+  ok(pagerShape.columnsHidden && pagerShape.oneTask, `phone build shows one task at a time (${pagerShape.pos})`);
+  ok(pagerShape.nextH && pagerShape.checkH, 'build pager controls hold the 56px shop floor');
+  ok(pagerShape.noScrollX, 'build mode never pans the page sideways');
+  const fsOK = await page.evaluate(() => {
+    const svg = document.querySelector('.bm-diagram-hero .cut-diagram-svg');
+    if (!svg) return { ok: true, min: null }; // step-first pager (no boards)
+    const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+    const sizes = [...svg.querySelectorAll('text')].map(t => parseFloat(t.getAttribute('font-size')) * scale);
+    return { ok: sizes.every(x => x >= 13.5), min: Math.round(Math.min(...sizes) * 10) / 10 };
+  });
+  ok(fsOK.ok, `every diagram label lands at effective >=14px (min ${fsOK.min})`);
+  const posBefore = await page.evaluate(() => __bb.state.bmTask);
+  await page.click('#bmTaskNext');
+  ok(await page.evaluate(b => __bb.state.bmTask === b + 1, posBefore), 'Next advances the one-task pager');
+  const nudged = await page.evaluate(() => {
+    // Fill every checklist key except one, then check the last box for real —
+    // completion must raise the one-time install nudge through the UI path.
+    const keys = BB.Plans.checklistKeys(__bb.state.stockPlan, __bb.state.cut, __bb.state.steps);
+    const prog = __bb.state.project.progress;
+    keys.cuts.forEach(k => { prog.cuts[k] = true; });
+    keys.steps.forEach(k => { prog.steps[k] = true; });
+    const firstKey = keys.cuts[0];
+    prog.cuts[firstKey] = false;
+    __bb.state.bmTask = 0;
+    __bb.renderReadiness();
+    document.querySelectorAll('#bmPager .bm-check[aria-pressed="false"]').length; // pager may be stale; re-render
+    return (async () => {
+      __bb.state.prefs4.installNudged = false;
+      const el = document.getElementById('bmPager');
+      __bb.exitBuildMode(); __bb.enterBuildMode(); // re-derive pager on fresh progress
+      const btn = document.querySelector('#bmPager .bm-check[aria-pressed="false"]');
+      if (!btn) return { clicked: false };
+      btn.click();
+      return {
+        clicked: true,
+        pct: document.getElementById('bmProgress').textContent,
+        nudge: !document.getElementById('bmInstall').hidden,
+        flag: __bb.state.prefs4.installNudged === true
+      };
+    })();
+  });
+  ok(nudged.clicked && /100%/.test(nudged.pct) && nudged.nudge && nudged.flag,
+    `finishing the build raises the one-time install nudge (${nudged.pct})`);
+  await page.evaluate(() => { document.getElementById('bmInstallDismiss').click(); __bb.exitBuildMode(); });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 

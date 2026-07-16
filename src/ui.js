@@ -41,6 +41,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     prefs4: JSON.parse(JSON.stringify(Store.DEFAULT_PREFS)),
     project: null,                  // {id, progress:{cuts:{},steps:{}}}
     buildMode: false, bmPlayback: false,
+    bmTask: null,                   // phone pager position (derived on entry)
+    installPrompt: null,            // stashed beforeinstallprompt event
     wakeLock: null,
     speciesPick: []
   };
@@ -2127,6 +2129,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function enterBuildMode() {
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
+    state.bmTask = null; // pager re-lands on the first unfinished task
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
     renderBuildChecklists();
@@ -2145,13 +2148,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderReadiness(); // the underlying mode resumes aria-current
   }
 
-  function toggleProgress(map, key, btn) {
+  function toggleProgress(map, key, btn, src) {
     map[key] = !map[key];
     btn.setAttribute('aria-pressed', String(!!map[key]));
     btn.querySelector('.box').innerHTML = map[key] ? BB.Icons.svg('check', 20) : '';
     $('bmProgress').textContent = progressPct() + '% built';
     renderReadiness(); // the Build step tracks shop progress live
     scheduleAutosave();
+    // The two build surfaces stay in step: checking on one re-renders the
+    // OTHER (never the one holding focus).
+    if (src === 'pager') renderBuildChecklists({ columnsOnly: true });
+    else renderBmTask();
+    // First fully-built project: one quiet install suggestion (see nudge).
+    if (progressPct() >= 100) maybeInstallNudge();
   }
 
   function checkButton(label, dims, checked, onToggle) {
@@ -2165,7 +2174,56 @@ var BB = globalThis.BB = globalThis.BB || {};
     return b;
   }
 
-  function renderBuildChecklists() {
+  /* One derivation of the build work-list feeds BOTH surfaces (wide two-
+   * column checklist and the phone one-task pager), so progress keys can
+   * never drift between them. */
+  function checksForBoard(b, bi) {
+    return b.cuts.map((c, ci) => ({ key: cutKey('b', bi, ci, c.name, c.len), label: c.name, dims: fmt(c.len) }));
+  }
+  function checksForSheet(s, si) {
+    return s.placements.map((p, pi) => ({ key: cutKey('s', si, pi, p.name, Math.round(p.w)), label: p.name, dims: `${fmt(p.w)} × ${fmt(p.h)}` }));
+  }
+  function checksForRough() {
+    const out = [];
+    state.cut.filter(r => r.stock !== 'sheet').forEach((r, ri) => {
+      for (let qi = 0; qi < r.qty; qi++) {
+        out.push({
+          key: cutKey('r', ri, qi, r.name, r.L),
+          label: r.qty > 1 ? `${r.name} (${qi + 1} of ${r.qty})` : r.name,
+          dims: `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`
+        });
+      }
+    });
+    return out;
+  }
+  function buildTasks() {
+    const plan = state.stockPlan;
+    const tasks = [];
+    plan.boards.forEach((b, bi) => {
+      if (!b.stockLen) return;
+      tasks.push({
+        kind: 'board', title: `Board ${bi + 1} — ${Units.fmtNominal(b.nominal, b.actual, b.stockLen)}`,
+        svg: () => Packing.boardSVG(b, fmt), largeSvg: () => Packing.boardSVG(b, fmt, { large: true }),
+        checks: checksForBoard(b, bi)
+      });
+    });
+    plan.sheets.forEach((s, si) => {
+      tasks.push({
+        kind: 'sheet', title: `Sheet ${si + 1} — ${fmt(s.thickness)} (${s.fractionLabel})`,
+        svg: () => Packing.sheetSVG(s, fmt), largeSvg: () => Packing.sheetSVG(s, fmt, { large: true }),
+        checks: checksForSheet(s, si)
+      });
+    });
+    if (plan.mode === 'rough') {
+      tasks.push({ kind: 'rough', title: 'Cut list (rough stock)', checks: checksForRough() });
+    }
+    state.steps.forEach((s, i) => {
+      tasks.push({ kind: 'step', title: `Step ${i + 1} — ${s.title}`, stepIndex: i, stepId: s.id, text: s.text });
+    });
+    return tasks;
+  }
+
+  function renderBuildChecklists(opts) {
     const cuts = $('bmCuts');
     const stepsEl = $('bmSteps');
     cuts.textContent = '';
@@ -2182,18 +2240,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       wireDiagramZoom(d, getLargeSvg);
       return d;
     };
+    const checkRows = (group, checks) => {
+      for (const c of checks) {
+        group.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn)));
+      }
+    };
     plan.boards.forEach((b, bi) => {
       if (!b.stockLen) return;
       const group = el('div', 'bm-board');
       const title = `Board ${bi + 1} — ${Units.fmtNominal(b.nominal, b.actual, b.stockLen)}`;
       group.append(el('div', 'bm-board-title', esc(title)));
-      // The same drafting diagram as the Stock tab, at the saw: which piece
+      // The same drafting diagram as the Buy tab, at the saw: which piece
       // comes out of which end of this exact board.
       group.append(diagram(title, Packing.boardSVG(b, fmt), () => Packing.boardSVG(b, fmt, { large: true })));
-      b.cuts.forEach((c, ci) => {
-        const key = cutKey('b', bi, ci, c.name, c.len);
-        group.append(checkButton(c.name, fmt(c.len), prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
-      });
+      checkRows(group, checksForBoard(b, bi));
       cuts.append(group);
     });
     plan.sheets.forEach((s, si) => {
@@ -2201,10 +2261,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const title = `Sheet ${si + 1} — ${fmt(s.thickness)} (${s.fractionLabel})`;
       group.append(el('div', 'bm-board-title', esc(title)));
       group.append(diagram(title, Packing.sheetSVG(s, fmt), () => Packing.sheetSVG(s, fmt, { large: true })));
-      s.placements.forEach((p, pi) => {
-        const key = cutKey('s', si, pi, p.name, Math.round(p.w));
-        group.append(checkButton(p.name, `${fmt(p.w)} × ${fmt(p.h)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
-      });
+      checkRows(group, checksForSheet(s, si));
       cuts.append(group);
     });
     if (plan.mode === 'rough') {
@@ -2212,18 +2269,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       group.append(el('div', 'bm-board-title', 'Cut list (rough stock)'));
       // One check per physical piece, not per quantity batch — you cut them
       // one at a time, you check them one at a time.
-      state.cut.filter(r => r.stock !== 'sheet').forEach((r, ri) => {
-        for (let qi = 0; qi < r.qty; qi++) {
-          const key = cutKey('r', ri, qi, r.name, r.L);
-          const label = r.qty > 1 ? `${r.name} (${qi + 1} of ${r.qty})` : r.name;
-          group.append(checkButton(label, `${fmt(r.L)} × ${fmt(r.W)} × ${fmt(r.T)}`, prog.cuts[key], btn => toggleProgress(prog.cuts, key, btn)));
-        }
-      });
+      checkRows(group, checksForRough());
       cuts.append(group);
     }
     if (!cuts.children.length) cuts.append(el('p', 'sub', 'No cuts — the design has no parts.'));
 
-    // Assembly steps: tap to check; ▶ opens step-synced 3D playback full screen.
+    // Assembly steps: tap to check; play opens step-synced 3D full screen.
     const stepsWrap = el('div', 'bm-steps');
     state.steps.forEach((s, i) => {
       const row = el('div', '');
@@ -2240,6 +2291,84 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     stepsEl.append(stepsWrap);
     $('bmProgress').textContent = progressPct() + '% built';
+    if (!(opts && opts.columnsOnly)) renderBmTask();
+  }
+
+  /* ---------------- phone pager: one board or one step at a time ---------- */
+  function taskDone(t, prog) {
+    if (t.kind === 'step') return !!prog.steps[t.stepId];
+    return t.checks.length > 0 && t.checks.every(c => prog.cuts[c.key]);
+  }
+  function renderBmTask() {
+    const pager = $('bmPager');
+    if (!pager) return;
+    pager.textContent = '';
+    const tasks = buildTasks();
+    if (!tasks.length) { pager.append(el('p', 'sub', 'No cuts or steps — the design has no parts.')); return; }
+    const prog = state.project.progress;
+    if (state.bmTask == null) {
+      const firstOpen = tasks.findIndex(t => !taskDone(t, prog));
+      state.bmTask = firstOpen < 0 ? 0 : firstOpen;
+    }
+    state.bmTask = Math.max(0, Math.min(tasks.length - 1, state.bmTask));
+    const t = tasks[state.bmTask];
+    const card = el('section', 'bm-task');
+    card.setAttribute('aria-label', t.title);
+    card.append(el('div', 'bm-board-title', esc(t.title)));
+    if (t.svg) {
+      const d = el('div', 'bm-diagram bm-diagram-hero');
+      d.dataset.diagramTitle = t.title;
+      d.innerHTML = t.largeSvg();
+      wireDiagramZoom(d, t.largeSvg);
+      card.append(d);
+      card.append(el('p', 'bm-zoom-hint', 'Tap the diagram to enlarge · drag sideways to see the whole board'));
+    }
+    if (t.kind === 'step') {
+      if (t.text) card.append(el('p', 'bm-step-text', esc(t.text)));
+      const row = el('div', 'bm-step-row');
+      const btn = checkButton('Done — ' + t.title.replace(/^Step \d+ — /, ''), null, prog.steps[t.stepId],
+        b => toggleProgress(prog.steps, t.stepId, b, 'pager'));
+      btn.style.flex = '1';
+      const play = el('button', 'bm-step-play', BB.Icons.svg('play', 20));
+      play.setAttribute('aria-label', `Play 3D animation for this step`);
+      play.onclick = () => enterBmPlayback(t.stepIndex);
+      row.append(btn, play);
+      card.append(row);
+    } else {
+      for (const c of t.checks) {
+        card.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn, 'pager')));
+      }
+    }
+    pager.append(card);
+    $('bmTaskPos').textContent = `${state.bmTask + 1} of ${tasks.length}`;
+    $('bmTaskPrev').disabled = state.bmTask === 0;
+    $('bmTaskNext').textContent = state.bmTask === tasks.length - 1 ? 'Done' : 'Next';
+  }
+  function bmTaskGo(delta) {
+    const tasks = buildTasks();
+    if (!tasks.length) return;
+    const next = (state.bmTask || 0) + delta;
+    if (next >= tasks.length) { exitBuildMode(); return; } // "Done" walks out of the shop
+    state.bmTask = Math.max(0, next);
+    renderBmTask();
+    $('bmPager').scrollTop = 0;
+  }
+
+  /* ---------------- install nudge (once, after the first finished build) --- */
+  function maybeInstallNudge() {
+    if (state.prefs4.installNudged || !state.buildMode) return;
+    state.prefs4.installNudged = true;
+    Store.savePrefs(state.prefs4);
+    const box = $('bmInstall');
+    box.hidden = false;
+    $('bmInstallGo').hidden = !state.installPrompt;
+    if (!state.installPrompt) {
+      // No install event on this browser (iOS Safari, or already installed):
+      // say the honest thing instead of a dead button.
+      $('bmInstallText').textContent = /iPhone|iPad/.test(navigator.userAgent)
+        ? 'Nice build. For next time: Share → Add to Home Screen keeps Blueprint Buddy one tap from the shop.'
+        : 'Nice build. Bookmark or install this page and the next project opens straight from the shop.';
+    }
   }
 
   function enterBmPlayback(i) {
@@ -2830,6 +2959,27 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('diagRerun').onclick = runDiagnostics;
     $('buildModeBtn').onclick = enterBuildMode;
     $('bmExit').onclick = exitBuildMode;
+    $('bmTaskPrev').onclick = () => bmTaskGo(-1);
+    $('bmTaskNext').onclick = () => bmTaskGo(1);
+    /* swipe between tasks; vertical scrolling stays native */
+    const swipe = { x: 0, y: 0, id: null };
+    $('bmPager').addEventListener('pointerdown', e => { swipe.id = e.pointerId; swipe.x = e.clientX; swipe.y = e.clientY; });
+    $('bmPager').addEventListener('pointerup', e => {
+      if (e.pointerId !== swipe.id) return;
+      const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+      if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.4) bmTaskGo(dx < 0 ? 1 : -1);
+      swipe.id = null;
+    });
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault(); // saved for the post-build nudge — never unprompted
+      state.installPrompt = e;
+    });
+    $('bmInstallGo').onclick = async () => {
+      const p = state.installPrompt;
+      $('bmInstall').hidden = true;
+      if (p) { try { p.prompt(); await p.userChoice; } catch (e) { /* declined */ } state.installPrompt = null; }
+    };
+    $('bmInstallDismiss').onclick = () => { $('bmInstall').hidden = true; };
     $('bmPbPrev').onclick = () => scrubPlayback(state.playbackIndex - 1);
     $('bmPbNext').onclick = () => scrubPlayback(state.playbackIndex + 1);
     $('bmPbBack').onclick = exitBmPlayback;
@@ -3059,6 +3209,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else if (!typing && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         focusChat();
+      } else if (!typing && state.buildMode && !state.bmPlayback && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        bmTaskGo(e.key === 'ArrowRight' ? 1 : -1);
       } else if (!typing && (e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         // Bracket keys walk the Plan sub-tabs (and pull you into Plan mode

@@ -316,8 +316,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function boardSVG(board, fmt, opts) {
     fmt = fmt || (v => U().fmtLength(v));
-    // Tall enough that labels stay ≥ ~12 CSS px when the SVG is full-bleed
-    // on a 390-wide phone; callers may pass { large: true } for lightbox zoom.
+    // Labels must land ≥14 CSS px wherever builders read them: the default
+    // variant rides a 560px CSS floor (scale ≥ 0.78 → main labels ≥ 20px),
+    // the { large: true } variant rides the phone pager's 760px floor and
+    // the lightbox. Presentation only — the packing math above is untouched.
     const large = opts && opts.large;
     const W = large ? 1080 : 720, H = large ? 180 : 140, pad = large ? 10 : 8;
     const id = 'bbhatch' + (++hatchSeq);
@@ -336,15 +338,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       rects.push(seg(c.len * sx, 'cut', `${c.name} · ${fmt(c.len)}`, `${c.name} — ${fmt(c.len)}${c.note ? ' · ' + c.note : ''}`));
     });
     const offX = x;
-    // Font sizes are SVG user units — on a ~350 px phone the viewBox scales
-    // by ~0.5, so 24 → ~12 CSS px (readable at the saw). Lightbox uses larger.
-    const fsMain = large ? 30 : 24, fsSmall = large ? 24 : 18, fsOff = large ? 26 : 20;
+    // Font sizes are SVG user units; with the CSS min-width floors the
+    // effective size stays ≥14 px at every width (see styles: .cut-diagram-svg).
+    const fsMain = large ? 32 : 26, fsSmall = large ? 26 : 21, fsOff = large ? 28 : 24;
     const parts = rects.map(r => {
       const fill = r.cls === 'cut' ? 'var(--accent-soft)' : r.cls === 'kerf' ? 'var(--line-2)' : 'var(--panel-2)';
       const stroke = r.cls === 'cut' ? 'var(--accent)' : 'var(--line-2)';
       let out = `<rect x="${r.px.toFixed(1)}" y="${pad}" width="${Math.max(0.8, r.w).toFixed(1)}" height="${H - 2 * pad}" fill="${fill}" stroke="${stroke}" stroke-width="1"><title>${escXML(r.title || '')}</title></rect>`;
-      if (r.label && r.w > 70) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsMain}" fill="var(--ink)" font-family="var(--mono)">${escXML(r.label)}</text>`;
-      else if (r.label) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsSmall}" fill="var(--ink-2)" font-family="var(--mono)" transform="rotate(-30 ${(r.px + r.w / 2).toFixed(1)} ${H / 2})">${escXML(r.label.split(' · ')[0].slice(0, 14))}</text>`;
+      // A label renders flat only when it truly fits its segment (mono glyphs
+      // ≈ 0.62 em); otherwise it rotates and truncates to the segment width —
+      // neighboring labels must never overprint each other.
+      const flatFits = r.label && r.w > r.label.length * fsMain * 0.62 + 10;
+      if (flatFits) out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsMain}" fill="var(--ink)" font-family="var(--mono)">${escXML(r.label)}</text>`;
+      else if (r.label) {
+        const chars = Math.max(4, Math.floor(r.w / (fsSmall * 0.5)));
+        out += `<text x="${(r.px + r.w / 2).toFixed(1)}" y="${H / 2 + 5}" text-anchor="middle" font-size="${fsSmall}" fill="var(--ink-2)" font-family="var(--mono)" transform="rotate(-30 ${(r.px + r.w / 2).toFixed(1)} ${H / 2})">${escXML(r.label.split(' · ')[0].slice(0, chars))}</text>`;
+      }
       return out;
     }).join('');
     const offW = W - pad - offX;
@@ -364,7 +373,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const W = large ? 1080 : 720, H = Math.round(W * SH / SW), pad = large ? 5 : 3;
     const id = 'bbhatch' + (++hatchSeq);
     const sx = (W - 2 * pad) / SW, sy = (H - 2 * pad) / SH;
-    const fsName = large ? 22 : 18, fsDims = large ? 18 : 15, fsFoot = large ? 18 : 14;
+    const fsName = large ? 26 : 22, fsDims = large ? 24 : 20, fsFoot = large ? 22 : 18;
     const rects = sheet.placements.map(p => {
       const x = pad + p.x * sx, y = pad + p.y * sy, w = p.w * sx, h = p.h * sy;
       const label = `${p.name}`;
@@ -380,7 +389,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       hatchDef(id) +
       `<rect x="${pad}" y="${pad}" width="${W - 2 * pad}" height="${H - 2 * pad}" fill="url(#${id})" stroke="var(--ink-2)" stroke-width="1.5"/>` +
       guides + rects +
-      `<text x="${W - 8}" y="${H - 8}" text-anchor="end" font-size="${fsFoot}" fill="var(--muted)" font-family="var(--mono)">grain ⟶ · hatched = offcut · dashed = half/quarter cuts</text>` +
+      `<text x="${W - 8}" y="${H - 8}" text-anchor="end" font-size="${fsFoot}" fill="var(--muted)" font-family="var(--mono)">grain runs the long way · hatched = offcut · dashed = half/quarter cuts</text>` +
       `</svg>`;
   }
 

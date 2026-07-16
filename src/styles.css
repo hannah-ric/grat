@@ -47,6 +47,8 @@
   --on-brand: #241A18;
   --seafoam: #94B9AF;
   --fern: #90A583;
+  --seafoam-wash: #E3EDE7;
+  --fern-wash: #E6EADA;
 
   /* type */
   --display: 'Bitter', 'Iowan Old Style', Georgia, serif;
@@ -131,6 +133,8 @@
     --green: #A5C88B;
     --focus: #94B9AF;
     --link: #94B9AF;
+    --seafoam-wash: #22302B;
+    --fern-wash: #262E1F;
     --blueprint-field: #0e2a3d;
     --blueprint-grid: rgba(168, 204, 228, 0.09);
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
@@ -144,6 +148,7 @@
   --amber: #9D8420; --amber-soft: #F1EBD3; --amber-ink: #6E5C0F;
   --brick: #942911; --brick-soft: #F6E4DC; --brick-ink: #6E1D0A;
   --green: #46662C; --focus: #9D8420; --link: #942911;
+  --seafoam-wash: #E3EDE7; --fern-wash: #E6EADA;
   --blueprint-field: #eef3f7; --blueprint-grid: rgba(27, 93, 130, 0.08);
   --shadow: 0 1px 2px color-mix(in oklab, #593837 12%, transparent), 0 8px 24px -12px color-mix(in oklab, #593837 28%, transparent);
   --shadow-lg: 0 2px 4px color-mix(in oklab, #593837 14%, transparent), 0 24px 48px -16px color-mix(in oklab, #593837 36%, transparent);
@@ -155,6 +160,7 @@
   --amber: #C8A63C; --amber-soft: #322813; --amber-ink: #D9BC55;
   --brick: #E47952; --brick-soft: #3A1D14; --brick-ink: #EE9370;
   --green: #A5C88B; --focus: #94B9AF; --link: #94B9AF;
+  --seafoam-wash: #22302B; --fern-wash: #262E1F;
   --blueprint-field: #0e2a3d; --blueprint-grid: rgba(168, 204, 228, 0.09);
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
   --shadow-lg: 0 2px 4px rgba(0, 0, 0, .5), 0 24px 48px -16px rgba(0, 0, 0, .8);
@@ -1336,6 +1342,53 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   background: var(--accent-soft); color: var(--accent); font-size: 20px; cursor: pointer;
 }
 .bm-steps .bm-check { border: 1px solid var(--line-2); border-radius: var(--radius); margin-bottom: var(--s2); }
+
+/* Diagram legibility floor: the SVG never renders narrower than 560px, so
+ * its labels never drop under ~14 CSS px — the box scrolls sideways instead.
+ * Print keeps natural width (the sheet is wide enough already). */
+.bm-diagram, .stock-board { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.bm-diagram .cut-diagram-svg, .stock-board .cut-diagram-svg { min-width: 560px; }
+@media print { .cut-diagram-svg { min-width: 0 !important; } }
+
+/* ---------------- phone build pager: one task at a time ---------------- */
+.bm-pager, .bm-tasknav { display: none; }
+.bm-task .bm-board-title {
+  border-radius: var(--radius-m) var(--radius-m) 0 0;
+  font-size: var(--text-m);
+}
+.bm-diagram-hero { border-left: 1px solid var(--line-2); border-right: 1px solid var(--line-2); }
+.bm-diagram-hero .cut-diagram-svg { min-width: 760px; min-height: 150px; }
+.bm-zoom-hint {
+  margin: 0; padding: 6px var(--s3); font-size: var(--text-s); color: var(--muted);
+  background: var(--paper); border: 1px solid var(--line-2); border-top: 0;
+}
+.bm-step-text { font-size: var(--text-m); line-height: var(--leading-body); color: var(--ink-2); margin: var(--s2) 0; max-width: var(--measure); }
+.bm-step-row { display: flex; gap: 8px; align-items: stretch; margin-top: var(--s2); }
+.bm-tasknav {
+  flex: none; align-items: center; gap: var(--s2);
+  padding: var(--s2) var(--s3) calc(var(--s2) + env(safe-area-inset-bottom, 0px));
+  border-top: 2px solid var(--ink); background: var(--panel);
+}
+.bm-tasknav .bm-taskpos { flex: 1; text-align: center; font: 650 var(--text-s) var(--mono); color: var(--ink-2); white-space: nowrap; }
+.bm-tasknav .bm-big { min-height: 56px; }
+#bmTaskNext { flex: 1; max-width: 55%; }
+.bm-install {
+  flex: none; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  margin: 0 var(--s3) var(--s2); padding: var(--s2) var(--s3);
+  background: var(--fern-wash); border: 1px solid var(--line-2); border-radius: var(--radius-m);
+  font-size: var(--text-s); color: var(--ink-2);
+}
+.bm-install span { flex: 1 1 240px; }
+@media (max-width: 880px) {
+  .build-mode .bm-columns { display: none; }
+  .bm-pager {
+    display: block; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: var(--s3) var(--s3) var(--s4); touch-action: pan-y;
+  }
+  .bm-tasknav { display: flex; }
+  .bm-head { padding: var(--s2) var(--s3); }
+  .bm-exit { padding: 10px 16px; font-size: var(--text-s); min-height: 44px; }
+}
 
 /* build-mode playback: the stage becomes the whole screen */
 body.bm-playback .build-mode { display: none; }

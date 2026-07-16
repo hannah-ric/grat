@@ -231,3 +231,35 @@ Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` **204/204** (nine n
 - "View popover" for camera presets remains deferred (tracked since Phase 2; the toolbar already passes its compactness assertions).
 - Share "link" required inventing nothing server-side: it reuses the existing codec through the existing import gate; from `file://` the sheet says links don't apply rather than minting a dead URL.
 - BOM's separate renderer function remains (called by Buy) — deliberate, so golden/behavior surfaces stay byte-comparable.
+
+---
+
+## Phase 4 — phone-first Build experience
+
+Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` **210/210** (six net-new assertions) · build 1 572 KB.
+
+### Files changed and the specific edits
+
+- **`src/ui.js`**
+  - One derivation of the build work-list (`buildTasks()` + `checksForBoard/Sheet/Rough`) now feeds BOTH build surfaces, so progress keys can never drift: the wide two-column checklist (unchanged for desks) and the new **phone pager** — one board, sheet, or assembly step at a time.
+  - Pager (`renderBmTask`): task title, hero cutting diagram (the `{large}` SVG on a 760px legibility floor, horizontally scrollable), explicit "Tap the diagram to enlarge" hint, the task's big check buttons, step text + 3D play button for assembly tasks. Entry lands on the **first unfinished task**; checking on either surface re-renders the other (never the one holding focus).
+  - Navigation: sticky footer with large Prev / "N of M" / **Next** (56px, primary; the last Next reads "Done" and exits), **swipe** left/right (pan-y preserved for scrolling; reduced-motion unaffected since navigation is a re-render, not an animation), and ArrowLeft/Right while in build mode.
+  - **Install nudge**: `beforeinstallprompt` is stashed (never shown unprompted); the first time a project reaches **100 % built** the pager shows a one-time banner — the real install prompt where the platform offers one, otherwise honest per-platform copy (iOS: "Share → Add to Home Screen"; elsewhere: bookmark/install). Persisted `prefs4.installNudged` keeps it to exactly once.
+- **`src/index.template.html`** — `#bmPager`, `#bmTasknav` (Prev/pos/Next), `#bmInstall` banner added inside build mode; wide-bench columns annotated.
+- **`src/styles.css`** — pager layout ≤880px (columns hidden, pager scrolls, task nav pinned above the safe area, 56px controls); **diagram legibility floors**: default cutting SVGs never render narrower than 560px CSS (`.bm-diagram`, `.stock-board` scroll sideways instead), pager heroes 760px; print keeps natural width; `--seafoam-wash`/`--fern-wash` tokens added to all four scheme blocks (install banner is the first fern-wash consumer).
+- **`src/packing.js` — presentation functions only** (`boardSVG`/`sheetSVG`; the packing math above them is untouched, verified by the golden/audit suites staying green):
+  - Label sizes raised (board main 26/32, rotated 21/26, offcut 24/28; sheet name 22/26, dims 20/24, legend 18/22) — with the CSS floors this lands **every diagram label at ≥14 effective px at every width** (measured 19.7px minimum at 320–430).
+  - Flat labels now render only when they truly fit their segment (mono ≈ 0.62 em), otherwise rotate and truncate **to the segment width** — the screenshot review caught adjacent "Drawer front" labels overprinting; fixed.
+  - The sheet legend's `⟶` arrow became words ("grain runs the long way") — the last non-kbd Unicode symbol in a UI surface.
+
+### Verified working (and how)
+
+- **`npm run test:smoke` 210/210**, including six new phone-Build assertions at 390×844: columns hidden + exactly one task card; 56px control floor; no sideways page pan; **every SVG label ≥14 effective px** (computed from viewBox scale × font-size); Next advances the pager; filling all but one key and checking the last box through the real UI raises the **one-time install nudge at 100 %**.
+- Scripted width sweep in build mode: no horizontal document scroll and 19.7px minimum label size at **320 / 360 / 390 / 430**.
+- Screenshots reviewed at 390px: board task (title, diagram, hint, checks, sticky nav) and the overlap fix confirmed.
+- `npm test` 40/40 — golden outputs and packing math untouched by the presentation-only `packing.js` edits.
+
+### Boundaries and honest gaps
+
+- **Offline**: the app is one self-contained file — once loaded it runs without network (AI degrades to the built-in parser, storage to device/localStorage; the wake lock, checklists, diagrams all work). But there is **no service worker**, so a hard reload while offline depends on the browser's HTTP cache. A real SW would require shipping a second file, which contradicts the repo's founding "one self-contained file" rule — deliberately NOT done; flagged here and in Phase 0. The install nudge (standalone display manifest) mitigates: an installed instance keeps its document cached.
+- The wide-bench build mode intentionally keeps the two-column overview (a 27-inch shop monitor benefits from seeing all boards); "one task at a time" is the phone-first behavior per this phase's title. Both share one work-list derivation and one progress store.

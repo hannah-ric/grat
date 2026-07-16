@@ -434,6 +434,7 @@
       <span class="bm-wake" id="bmWake" title="Screen stays awake while you build"></span>
       <button class="btn bm-exit" id="bmExit">Exit build mode</button>
     </header>
+    <!-- Wide benches see the full board-by-board + assembly overview. -->
     <div class="bm-columns">
       <section class="bm-col" aria-label="Cuts, board by board">
         <h2>Cuts — board by board</h2>
@@ -443,6 +444,19 @@
         <h2>Assembly</h2>
         <div id="bmSteps"></div>
       </section>
+    </div>
+    <!-- Phones work one board or one step at a time: big diagram, big checks,
+         swipe or the big buttons to move on. -->
+    <div class="bm-pager" id="bmPager" aria-live="polite"></div>
+    <nav class="bm-tasknav" aria-label="Build tasks">
+      <button class="btn bm-big" id="bmTaskPrev">Prev</button>
+      <span class="bm-taskpos" id="bmTaskPos" aria-live="polite"></span>
+      <button class="btn primary bm-big" id="bmTaskNext">Next</button>
+    </nav>
+    <div class="bm-install" id="bmInstall" hidden>
+      <span id="bmInstallText">Nice build. Add Blueprint Buddy to your home screen and the next one opens straight from the shop.</span>
+      <button class="btn small primary" id="bmInstallGo" hidden>Add to home screen</button>
+      <button class="btn small ghost" id="bmInstallDismiss" aria-label="Dismiss install suggestion">Not now</button>
     </div>
   </section>
 
