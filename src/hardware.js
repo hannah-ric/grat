@@ -198,9 +198,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     },
     undermount_45: {
       key: 'undermount_45', label: 'Undermount soft-close slides (pair)', price: 30, capacityKg: 45, extension: 1.0, softClose: true,
-      clearances: { widthTotal: 27, heightMin: 19, bottomRecess: 12.7, bottomT: 12, backNotch: true },
+      /* Blum-class spec sheet (TANDEM et al.): the locking devices register
+       * on the box INTERIOR — inside drawer width = opening − 42, whatever
+       * the side thickness (≤ 16). Outside width = that + two box sides. */
+      clearances: { insideWidthMinus: 42, heightMin: 19, bottomRecess: 12.7, bottomT: 12, backNotch: true },
       bestFor: 'Invisible running gear and full interior width — the fine-furniture and kitchen standard. The app builds the box to the slide.',
-      failure: 'They forgive nothing: box width = opening − {27}, depth = slide length exactly, square within 0.5 mm.'
+      failure: 'They forgive nothing: box INSIDE width = opening − {42}, depth = slide length exactly, square within 0.5 mm.'
     },
     heavy_duty_100: {
       key: 'heavy_duty_100', label: 'Heavy-duty locking slides (pair)', price: 45, capacityKg: 100, extension: 1.0, softClose: false, sideClearMM: 12.7,
@@ -555,7 +558,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     return { style: style.key, count: 1, ctcMM: ctc, holes: 2 };
   }
-  const pullScrewLenMM = frontT => Math.round(frontT + 6);
+  /* Pull machine screw: driven from inside the drawer, it crosses the BOX
+   * FRONT and the false front before its thread reaches the pull — size it
+   * for the whole stack, snapped UP to a buyable M4 length (audit FE-H5). */
+  const M4_LENGTHS = [12, 16, 20, 25, 30, 35, 40, 45, 50];
+  const pullScrewLenMM = stackT => {
+    const need = Math.round(stackT + 6);
+    return M4_LENGTHS.find(l => l >= need) || M4_LENGTHS[M4_LENGTHS.length - 1];
+  };
 
   /* Slide picker: by computed load, ask, and fit. The 34 kg class stays
    * the default; heavier computed loads climb the family. */

@@ -449,26 +449,14 @@
    {
     "kind": "fastener",
     "label": "#8 × 50 mm wood screw (pilot 3.2 mm)",
-    "qty": 30,
-    "price": 1.8
-   },
-   {
-    "kind": "fastener",
-    "label": "Figure-8 fasteners + #8 × 16 mm",
-    "qty": 4,
-    "price": 3.2
+    "qty": 36,
+    "price": 2.16
    },
    {
     "kind": "glue",
     "label": "Interior PVA (yellow glue)",
     "qty": 1,
     "price": 8
-   },
-   {
-    "kind": "hardware",
-    "label": "5 mm shelf pins",
-    "qty": 16,
-    "price": 4
    },
    {
     "kind": "hardware",
@@ -483,7 +471,7 @@
     "price": 18
    }
   ],
-  "total": 294.68
+  "total": 287.84
  },
  "steps": [
   "glueup1",

@@ -241,19 +241,18 @@ var BB = globalThis.BB = globalThis.BB || {};
             ? `screws into the front’s top edge — pre-drill, this is end grain`
             : `template-routed mortise in the face — nothing proud`)
           : pull.ctcMM
-            ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`
-            : `one ${fine(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`}`;
+            ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`
+            : `one ${fine(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`}`;
         items.push({ kind: 'hardware', label: pull.count > 1 ? `${pStyle.label} (pair)` : pStyle.label, qty: pull.count, detail: `drawer ${d.index + 1} — ${boreDetail}${subNote}`, price: hp('pull_' + pStyle.key, pStyle.price) * pull.count });
       } else {
         items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
       }
       items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${fine(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
-    const shelfParts = model.parts.filter(p => p.role === 'shelf');
-    if (shelfParts.length && ['bookshelf', 'cabinet'].includes(spec.meta.template)) {
-      // "5 mm shelf pin" IS the trade name in every market — stays literal.
-      items.push({ kind: 'hardware', label: '5 mm shelf pins', qty: shelfParts.length * 4, detail: '4 per adjustable shelf', price: Math.ceil(shelfParts.length * 4 * hp('shelf_pin', 0.25) * 100) / 100 });
-    }
+    // No shelf-pin line: every template shelf is JOINED to the sides (the
+    // model, cut list, and structural engine all treat it as fixed), so pins
+    // would be phantom hardware nothing installs (audit FE-C1/H-02). Pins
+    // return when a genuinely adjustable-shelf option exists in the model.
 
     // Mandatory anti-tip hardware when the stability check demands it — a
     // line item, not a suggestion.
@@ -316,7 +315,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           gearIds, { drawer: d.index }));
       } else if (d.runner === 'undermount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the undermount slides`,
-          `Screw the ${len(d.slideLen)} undermount slides to the case floor of the opening, dead parallel and flush to the front edge. The box was built to the slide — width = opening − ${len(27)}, depth exactly ${len(d.slideLen)}, bottom recessed ${fine(12.7)} — so notch the box back for the hooks and press the locking clips on under the front corners.`,
+          `Screw the ${len(d.slideLen)} undermount slides to the case floor of the opening, dead parallel and flush to the front edge. The box was built to the slide — INSIDE width = opening − ${len(42)} (the locking devices register on the box interior), depth exactly ${len(d.slideLen)}, bottom recessed ${fine(12.7)} — so notch the box back for the hooks and press the locking clips on under the front corners.`,
           gearIds, { drawer: d.index }));
       } else {
         const sp = K.WOOD_SPECIES[spec.wood.species];
@@ -347,9 +346,9 @@ var BB = globalThis.BB = globalThis.BB || {};
           ? `Screw the edge pull to the front’s TOP EDGE, centered — pre-drill every hole, this is end grain and it splits without pilots.${pSub}`
           : `Rout the flush-pull mortise with the maker’s template, centered on the front — freehand walls show through the finish forever.${pSub}`;
       } else if (pull.ctcMM) {
-        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). M4 screws, length = front + ${len(6)}.${pSub}`;
+        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). Bore through BOTH the false front and the box front behind it: the M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} screws drive from inside the box and cross both.${pSub}`;
       } else {
-        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : ', M4 screw from inside'}. Every front in the stack shares one centerline.${pSub}`;
+        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : `, M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} from inside — through the box front too`}. Every front in the stack shares one centerline.${pSub}`;
       }
       out.push(step(`dr${n}_pull`, `Drawer ${n}: ${pEff === 'none_touch' ? 'fit the touch latch' : 'add the pull'}`,
         pullText, ids('pull'), { drawer: d.index }));
@@ -406,6 +405,32 @@ var BB = globalThis.BB = globalThis.BB || {};
       'Square one end of each part, then cut to the exact cut-list length from that end. Let the wood rest a day after milling if it came in wet or tense.', []));
   }
 
+  /* Purchased-vs-plan thickness (audit FE-H9): dimensional mode buys the
+   * nearest nominal AT OR OVER a part — 5/4 (25 mm) stock for a 20 mm apron
+   * — and "rip and crosscut" alone leaves parts 5 mm over plan. Any gap
+   * beyond 0.5 mm earns an explicit thicknessing step and the planer in the
+   * tool wall. (Rough mode already mills; laminations already plane.) */
+  function thicknessingNeeded(stockPlan, cut) {
+    if (!stockPlan || stockPlan.mode === 'rough') return [];
+    const tByName = new Map(cut.map(r => [r.name, r.T]));
+    const jobs = new Map();
+    const add = (nom, partName, toT) => {
+      const n = K.LUMBER.NOMINALS[nom];
+      // ≤ 1.5 mm is a clean-up skim any glue-up gets anyway; a real gap
+      // (25 → 20 aprons, 89 → 70 legs) is a milling operation to call out.
+      if (!n || !isFinite(toT) || n.t - toT <= 1.5) return;
+      const key = `${n.t}|${toT}`;
+      if (!jobs.has(key)) jobs.set(key, { fromT: n.t, toT, names: new Set() });
+      jobs.get(key).names.add(partName);
+    };
+    for (const g of stockPlan.glueups || []) add(g.nominal, g.name, g.T);
+    for (const b of stockPlan.boards || []) {
+      if (!b.stockLen) continue;
+      for (const c of b.cuts || []) add(b.nominal, c.name, tByName.get(c.name));
+    }
+    return [...jobs.values()];
+  }
+
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -448,6 +473,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         out.push(step('lam' + (i + 1), `Laminate: ${l.name.toLowerCase()}${l.qty > 1 ? ` (× ${l.qty})` : ''}`,
           `Face-laminate ${l.qty > 1 ? `${l.qty} blanks, each ` : ''}${l.n} × ${l.nominal} layers with the crowns opposed, clamp from the center outward on both faces, and plane to ${fmtL(l.T)} once cured — equal passes off both faces so it stays straight.`, []));
       });
+      const thick = thicknessingNeeded(opts.stockPlan, cutList(spec, model));
+      if (thick.length) {
+        const names = tj => [...tj.names].slice(0, 4).join(', ') + (tj.names.size > 4 ? ', …' : '');
+        out.push(step('thickness', 'Bring stock to plan thickness',
+          `The buy list is the nearest nominal OVER some parts: mill ${thick.map(tj => `${fmtL(tj.fromT)} stock down to ${fmtL(tj.toT)} (${names(tj)})`).join('; ')} — rip close, then plane or drum-sand with equal passes off both faces so nothing cups. Panels after their glue-up, sticks before any joinery.`, []));
+      }
     }
 
     if (t === 'custom') {
@@ -479,15 +510,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (shelves.length) out.push(step('s2', 'Add the shelves', `Fit each shelf with ${caP}, working bottom to top.`, shelves));
       if (has('back_1')) out.push(step('s3', 'Fit the back', 'Square the case to the back panel and fasten it — the back is what keeps everything square.', ['back_1']));
     } else if (t === 'cabinet') {
-      out.push(step('s1', 'Build the carcass', `Join the bottom between the sides with ${caP}.`, ids('side_1', 'side_2', 'bottom_1')));
+      /* One carcass glue-up: with mortise-&-tenon (or doweled) rails the
+       * sides cannot spread to seat the rails once the bottom is glued —
+       * bottom, sides, and every front rail go together (audit FE-H3). */
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
-      if (rails.length) out.push(step('s2', 'Install the drawer rails', `Join each ${U().fmtLength(20)} × ${U().fmtLength(60)} rail into the sides with ${frP}, spaced for the drawer openings.`, rails));
+      out.push(step('s1', 'Build the carcass — one glue-up',
+        `Dry-fit the bottom AND all ${rails.length} drawer rails between the sides first — once the sides are glued they cannot spread to seat the rails. Then glue it all in one clamp-up: bottom to sides with ${caP}, each ${U().fmtLength(20)} × ${U().fmtLength(60)} rail into the sides with ${frP}, spaced for the drawer openings. Check the diagonals before the glue sets.`,
+        ids('side_1', 'side_2', 'bottom_1').concat(rails)));
+      const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
+      const housedShelf = ['dado', 'sliding_dovetail', 'rabbet'].includes(spec.joinery.case);
+      if (shelves.length) out.push(step('s2', 'Fit the shelves',
+        `Fit each shelf with ${caP} now, while the back is open${housedShelf ? ' — a housed shelf slides in from the back and CANNOT go in after the back panel is on' : ''}.`, shelves));
       if (has('back_1')) out.push(step('s3', 'Fit the back', 'Fasten the back panel — square the carcass to it first.', ['back_1']));
       if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
-      const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
-      if (shelves.length) out.push(step('s6', 'Add the shelves',
-        `Drill the 32 mm system for the pins: rows of ${U().fmtSmall(5)} holes, ${U().fmtLength(9)} deep, at ${U().fmtLength(32)} pitch, ${U().fmtLength(37)} in from each edge — one drilled story stick indexes every row off the case bottom so the shelves can never rock. Set the shelves on their pins.`, shelves));
       drawerSteps(spec, model, out, opts);
     } else if (t === 'nightstand') {
       out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
@@ -509,8 +545,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     safetyStep(spec, model, integrity, opts.stockPlan, out);
     sandingStep(spec, out);
     finishingStep(spec, out);
-    // Attach joint metadata for playback highlighting.
-    for (const s of out) s.joints = jointsFor(model, s.partIds).slice(0, 8);
+    /* Attach joint metadata: a joint belongs to the step that MAKES it — the
+     * first step whose part list contains the joint's attached member — so
+     * fastening notes and playback glow never teach another step's joinery
+     * (audit FE-H6: the slide step used to inherit the rails' dowel setout,
+     * and the case step taught the shelf screws while the top's own
+     * attachment note never surfaced). */
+    const seenJoints = new Set();
+    const jKey = j => `${j.type}|${j.a}|${j.b}`;
+    for (const s of out) {
+      const ids = new Set(s.partIds || []);
+      const mine = model.joints.filter(j => ids.has(j.a) && !seenJoints.has(jKey(j)));
+      for (const j of mine) seenJoints.add(jKey(j));
+      s.joints = mine.slice(0, 8);
+    }
     // Fastener locations & joinery setout, from the engine — the same numbers
     // the BOM counted (audit F-S3-1).
     if (BB.Fasteners) {
@@ -547,6 +595,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (stockPlan && ((stockPlan.glueups || []).length || (stockPlan.laminations || []).length)) {
       tools.add('Glue + cauls (panel glue-up)');
       if ((stockPlan.laminations || []).length) tools.add('Hand plane or thickness planer (laminations)');
+    }
+    if (stockPlan && thicknessingNeeded(stockPlan, cutList(spec, model)).length) {
+      tools.add('Thickness planer or drum sander (stock bought over plan thickness)');
     }
     if (model.drawers && model.drawers.length) tools.add('Shims + spacers (drawer fitting)');
     const fin = K.FINISHES.find(f => f.key === spec.finish);

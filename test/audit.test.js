@@ -667,7 +667,9 @@ section('KB-5 hardware is a pure function of the corrected spec');
     drawers: { count: 2, frontStyle: 'inset', runner: 'undermount_slides' }
   });
   for (const d of um.model.drawers) {
-    eq(d.opening.w - d.box.w, 27, `drawer ${d.index + 1}: box width = opening − 27`);
+    // Blum-class spec sheet (audit FE-H8): the locking devices register on
+    // the box INTERIOR — inside width = opening − 42, whatever the sides.
+    eq(d.opening.w - (d.box.w - 2 * d.box.t), 42, `drawer ${d.index + 1}: INSIDE width = opening − 42 (Blum-class)`);
     eq(d.opening.h - d.box.h, 19, `drawer ${d.index + 1}: 19 mm height clearance`);
     eq(d.box.d, d.slideLen, `drawer ${d.index + 1}: box depth = slide length exactly`);
     const bot = um.model.parts.find(p => p.id === `dr${d.index + 1}_bottom`);
@@ -743,6 +745,280 @@ section('KB-5 hardware is a pure function of the corrected spec');
   ok(cupCyl.r === 17.5 && cupCyl.len === 13, 'cup view is a true 35 × 13 cup');
   const rjLabel = BB.Joinery3D.buildJoint('hw_rule_joint', null, null, x => x + 'mm').labels[0];
   ok(/22mm.*5mm.*3mm.*14mm/.test(rjLabel.replace(/[^0-9a-z.]/gi, '')) || /14/.test(rjLabel), 'rule-joint view teaches r = t − fillet − pin height');
+}
+
+/* ================= FE-C2 (2026-07 front-end audit): screw length bounded by the joint path ================= */
+section('FE-C2 screw length never exceeds the wood it crosses');
+{
+  // Cabinet wood runner: 19 mm runner face-screwed to an 18 mm sheet side.
+  // The old fixed #8 × 50 exited the show face by ~13 mm.
+  const wr = pipeline({
+    meta: { name: 'WR', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 700, depth: 450, height: 900 },
+    structure: { toeKick: true, backPanel: true, shelfCount: 0 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'wood_runners' }
+  });
+  const rj = wr.model.joints.find(j => /runner/.test(j.a));
+  ok(rj, 'cabinet wood-runner joint exists');
+  const runner = wr.model.parts.find(p => p.id === rj.a), side = wr.model.parts.find(p => p.id === rj.b);
+  const lay = Fasteners.layoutForJoint(wr.spec, wr.model, rj);
+  const len = lay && lay.fasteners.length ? parseInt((lay.fasteners[0].spec.match(/× (\d+)/) || [])[1], 10) : NaN;
+  const pathA = runner.size.w, pathB = side.size.w; // contact along x
+  ok(isFinite(len) && len <= pathA + pathB - 3,
+    `cabinet runner screw ${len} mm stays inside ${pathA}+${pathB} mm of wood (≤ path − 3)`);
+  ok(len < 50, `cabinet runner screw shortened from the fixed 50 (got ${len})`);
+
+  // Nightstand wood runner: 44 mm runner onto a 20 mm apron — a capped screw
+  // alone leaves ≤ 6 mm of bite, so the setout must counterbore for thread.
+  const nswr = pipeline({
+    meta: { name: 'NSWR', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }
+  });
+  const nrj = nswr.model.joints.find(j => /runner/.test(j.a));
+  const nrunner = nswr.model.parts.find(p => p.id === nrj.a), napron = nswr.model.parts.find(p => p.id === nrj.b);
+  const nlay = Fasteners.layoutForJoint(nswr.spec, nswr.model, nrj);
+  const nlen = parseInt((nlay.fasteners[0].spec.match(/× (\d+)/) || [])[1], 10);
+  const cbore = nlay.fasteners[0].counterboreMM || 0;
+  const bite = nlen - (nrunner.size.w - cbore);
+  ok(nlen <= nrunner.size.w + napron.size.d - 3 + 0.01 || nlen <= nrunner.size.w + 20 - 3,
+    `nightstand runner screw ${nlen} mm never exits the apron`);
+  ok(bite >= 8 && bite <= 20 - 3, `runner screw bites ${bite} mm into the 20 mm apron (counterbore ${cbore} mm)`);
+  ok(cbore > 0 && /counterbore/i.test(nlay.text), 'thick-runner setout instructs the counterbore');
+
+  // Bookshelf case screws were CORRECT (through the 19 side into deep end
+  // grain) — they must stay #8 × 50, and the text must name the true
+  // through-member (you screw through the side, not through the shelf).
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const sj = bs.model.joints.find(j => /^shelf/.test(j.a) && /^side/.test(j.b));
+  const slay = Fasteners.layoutForJoint(bs.spec, bs.model, sj);
+  ok(/× 50 mm/.test(slay.fasteners[0].spec), 'bookshelf case screw stays #8 × 50 (end-grain depth is real)');
+  ok(/through side into shelf/i.test(slay.text), 'setout names the true through-member (side, not shelf)');
+}
+
+/* ================= FE-H1 (2026-07 front-end audit): figure-8s only where a top can float ================= */
+section('FE-H1 captured tops keep case joinery; overhanging tops float');
+{
+  // Bookshelf: the top is CAPTURED between the sides (contact on a horizontal
+  // axis). It must be fastened like the bottom — case screws — not given
+  // figure-8s the steps never install.
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const counts = Fasteners.countFor(bs.spec, bs.model);
+  ok(!counts.some(c => c.kind === 'figure8'), 'bookshelf BOM carries no figure-8s');
+  const tj = bs.model.joints.find(j => j.a === 'top_1' && /^side/.test(j.b));
+  const tlay = Fasteners.layoutForJoint(bs.spec, bs.model, tj);
+  ok(tlay.fasteners.length && tlay.fasteners.every(f => f.kind === 'screw'),
+    'captured bookshelf top is screwed like the bottom');
+  ok(/through side into top/i.test(tlay.text), 'top setout screws through the side into the top');
+
+  // Overhanging solid tops still float: nightstand top on aprons, cabinet
+  // top over the sides — both sit ON their mates (vertical contact).
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const naj = ns.model.joints.find(j => j.a === 'top_1');
+  ok(Fasteners.layoutForJoint(ns.spec, ns.model, naj).fasteners.every(f => f.kind === 'figure8'),
+    'nightstand top still floats on figure-8s');
+  const cab = pipeline({
+    meta: { name: 'CAB', template: 'cabinet', level: 'advanced', units: 'mm' },
+    overall: { width: 762, depth: 457.2, height: 914.4 },
+    structure: { toeKick: true, backPanel: true, shelfCount: 1 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const cj = cab.model.joints.find(j => j.a === 'top_1' && /^side/.test(j.b));
+  ok(cj && Fasteners.layoutForJoint(cab.spec, cab.model, cj).fasteners.every(f => f.kind === 'figure8'),
+    'cabinet top (solid, overhanging sheet sides) still floats on figure-8s');
+}
+
+/* ================= FE-H5 (2026-07 front-end audit): pull screws cross the whole stack ================= */
+section('FE-H5 pull screws reach through box front + false front');
+{
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const d = ns.model.drawers[0];
+  const stack = d.box.t + d.front.t; // the M4 crosses BOTH before reaching the pull
+  const lenMM = BB.HW.pullScrewLenMM(stack);
+  ok(lenMM >= stack + 5, `pull screw ${lenMM} mm engages ≥ 5 mm past the ${stack} mm stack`);
+  ok([12, 16, 20, 25, 30, 35, 40, 45, 50].includes(lenMM), `pull screw ${lenMM} mm is a buyable M4 length`);
+  const bom = Plans.bom(ns.spec, ns.model, {});
+  const pullLine = bom.items.find(i => /pull/i.test(i.label) && /M4/.test(i.detail || ''));
+  ok(pullLine && new RegExp(`M4 × ${lenMM} mm`).test(pullLine.detail), 'BOM pull line carries the stack-length M4');
+  const steps = Plans.assembly(ns.spec, ns.model, null, {});
+  const pullStep = steps.find(s => /pull/i.test(s.title));
+  ok(pullStep && new RegExp(`M4 × ${lenMM} mm`).test(pullStep.text) && /box front/i.test(pullStep.text),
+    'pull step names the stack-length screw and why');
+}
+
+/* ================= FE-H7 (2026-07 front-end audit): pocket screws escalate for 2× stock ================= */
+section('FE-H7 pocket screws match the stock they join');
+{
+  const mk = t => ({ id: 'r' + t, name: 'Rail', role: 'rail', group: 'frame', size: { w: 600, h: 76, d: t }, pos: { x: 0, y: 0, z: 0 } });
+  const model = { parts: [Object.assign(mk(38), { id: 'a' }), Object.assign(mk(38), { id: 'b', pos: { x: 0, y: 0, z: 38 } })], joints: [] };
+  const lay = Fasteners.layoutForJoint({}, model, { type: 'pocket_screws', a: 'a', b: 'b' });
+  ok(/63 mm coarse pocket screw/.test(lay.text) && !/32 mm coarse/.test(lay.text),
+    '38 mm (2×) stock gets the 63 mm pocket screw the knowledge base documents');
+  const thin = { parts: [Object.assign(mk(19), { id: 'a' }), Object.assign(mk(19), { id: 'b', pos: { x: 0, y: 0, z: 19 } })], joints: [] };
+  const lay19 = Fasteners.layoutForJoint({}, thin, { type: 'pocket_screws', a: 'a', b: 'b' });
+  ok(/32 mm coarse pocket screw/.test(lay19.text), '19 mm stock keeps the 32 mm pocket screw');
+}
+
+/* ================= FE-C1/H2/H3/H4 (2026-07 front-end audit): one shelf system, one carcass glue-up ================= */
+section('FE-C1 shelves have one story: model, steps, and BOM agree');
+{
+  const cab = pipeline({
+    meta: { name: 'CAB', template: 'cabinet', level: 'advanced', units: 'mm' },
+    overall: { width: 762, depth: 457.2, height: 914.4 },
+    structure: { toeKick: true, backPanel: true, shelfCount: 1 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const bom = Plans.bom(cab.spec, cab.model, {});
+  ok(!bom.items.some(i => /shelf pin/i.test(i.label)), 'cabinet BOM buys no pins for a shelf the model joins with dados (C-01)');
+  const steps = Plans.assembly(cab.spec, cab.model, null, {});
+  ok(!steps.some(s => /pins|32 mm system/i.test(s.text)), 'no pin-drilling step for a fixed shelf (C-01/H-04)');
+  // H-03: with mortise-&-tenon rails, the rails must be part of the single
+  // carcass glue-up — they cannot be seated once the sides are glued.
+  const s1 = steps.find(s => s.id === 's1');
+  const railIds = cab.model.parts.filter(p => p.role === 'rail').map(p => p.id);
+  ok(railIds.every(id => s1.partIds.includes(id)), 'drawer rails glue up WITH the carcass (H-03)');
+  ok(/dry-fit/i.test(s1.text), 'carcass step demands the dry-fit first');
+  ok(!steps.some(s => /Install the drawer rails/.test(s.title)), 'no separate post-glue rail step remains');
+  // C-01 fit math: the shelf's cut length minus its two dado depths must
+  // exactly equal the interior width — it fits ITS OWN joinery.
+  const shelfRow = Plans.cutList(cab.spec, cab.model).find(r => r.name === 'Shelf');
+  const interior = cab.spec.overall.width - 2 * cab.spec.structure.sideThickness;
+  near(shelfRow.L - shelfRow.allowance, interior, 0.11, 'shelf length = interior + dado allowance (fits its dados)');
+  // H-04: the shelf goes in while the back is still open.
+  const shelfIdx = steps.findIndex(s => (s.partIds || []).some(id => /^shelf/.test(id)));
+  const backIdx = steps.findIndex(s => (s.partIds || []).includes('back_1'));
+  ok(shelfIdx > -1 && backIdx > -1 && shelfIdx < backIdx, 'shelf step comes before the back closes the case');
+
+  // H-02: bookshelf — fixed, screwed shelves must not buy phantom pins.
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const bbom = Plans.bom(bs.spec, bs.model, {});
+  ok(!bbom.items.some(i => /shelf pin/i.test(i.label)), 'bookshelf BOM buys no pins for butt-screwed shelves (H-02)');
+}
+
+/* ================= FE-H6 (2026-07 front-end audit): a step teaches only its own joints ================= */
+section('FE-H6 fastening notes belong to the step that makes the joint');
+{
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const steps = Plans.assembly(ns.spec, ns.model, null, {});
+  const byId = id => steps.find(s => s.id === id);
+  ok(!/dowel|pocket hole/i.test(byId('dr1_runners').text), 'slide-mounting step carries no rail-joint setout');
+  ok(/dowel|pocket hole/i.test(byId('s2').text), 'the rail step itself still teaches its frame joints');
+  ok((byId('dr1_runners').joints || []).length === 0, 'slide step claims no joints (slides are not joinery)');
+  ok(!/rabbet/i.test(byId('dr1_hang').text), 'hang-the-box step does not re-teach the box joint');
+  ok(!/figure-8/i.test(byId('s1').text), 'side-frame step carries no top-attachment note');
+  ok(/figure-8/i.test(byId('s4').text), 'the top step itself carries the figure-8 setout');
+
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const bsteps = Plans.assembly(bs.spec, bs.model, null, {});
+  const bs1 = bsteps.find(s => s.id === 's1'), bs2 = bsteps.find(s => s.id === 's2');
+  ok(/through side into (top|bottom)/i.test(bs1.text), 'case step teaches the top/bottom screws');
+  ok(!/into shelf/i.test(bs1.text), 'case step does not teach the shelf screws');
+  ok(/into shelf/i.test(bs2.text), 'shelf step teaches the shelf screws');
+  // Playback metadata follows the same rule: no joint appears on two steps.
+  const seen = new Set();
+  let dup = false;
+  for (const s of bsteps) for (const j of (s.joints || [])) {
+    const k = `${j.type}|${j.a}|${j.b}`;
+    if (seen.has(k)) dup = true;
+    seen.add(k);
+  }
+  ok(!dup, 'no joint is claimed by two steps');
+}
+
+/* ================= FE-H9 (2026-07 front-end audit): over-thick purchases get a thicknessing step ================= */
+section('FE-H9 bought thickness reaches plan thickness on the bench');
+{
+  // Nightstand aprons/rails are 20 mm; the optimizer correctly buys 5/4
+  // (25 mm actual) — the plan must say "plane to 20" and list the planer.
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const cut = Plans.cutList(ns.spec, ns.model);
+  const stock = Packing.planStock(ns.spec, ns.model, cut, {});
+  const buysOverThick = (stock.glueups || []).some(g => K.LUMBER.NOMINALS[g.nominal] && K.LUMBER.NOMINALS[g.nominal].t > g.T + 1.5)
+    || (stock.boards || []).some(b => b.stockLen && (b.cuts || []).some(c => {
+      const row = cut.find(r => r.name === c.name);
+      return row && K.LUMBER.NOMINALS[b.nominal] && K.LUMBER.NOMINALS[b.nominal].t > row.T + 1.5;
+    }));
+  ok(buysOverThick, 'fixture really buys thicker stock than the plan (else this test is vacuous)');
+  const steps = Plans.assembly(ns.spec, ns.model, null, { stockPlan: stock });
+  const th = steps.find(s => s.id === 'thickness');
+  ok(th, 'a bring-to-thickness step exists');
+  ok(th && /25 mm/.test(th.text) && /20 mm/.test(th.text), 'it names the real from/to thicknesses');
+  const s1i = steps.findIndex(s => s.id === 's1');
+  ok(th && steps.indexOf(th) < s1i, 'thicknessing happens before joinery/assembly');
+  const tools = Plans.toolList(ns.spec, ns.model, stock);
+  ok(tools.some(t => /planer|drum sander/i.test(t)), 'tool list gains the planer/drum sander');
+
+  // Control: a bookshelf whose parts land on exact nominals gets NO step.
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const bcut = Plans.cutList(bs.spec, bs.model);
+  const bstock = Packing.planStock(bs.spec, bs.model, bcut, {});
+  const bsteps = Plans.assembly(bs.spec, bs.model, null, { stockPlan: bstock });
+  ok(!bsteps.some(s => s.id === 'thickness'), 'exact-nominal buys add no thicknessing step');
+  ok(!Plans.toolList(bs.spec, bs.model, bstock).some(t => /planer|drum sander/i.test(t)), 'and no planer in tools');
+}
+
+/* ================= FE-H10/H11 (2026-07 front-end audit): offline parser honesty ================= */
+section('FE-H10/H11 offline parser: negation and drawer honesty');
+{
+  const ns = Spec.correctSpec({ meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' } });
+  // H-11: "no ash please" switched the build TO White Ash. A negated species
+  // is a rejection — ask, never ack.
+  const neg = AI.localModel('no ash please', ns);
+  ok(neg.kind === 'question', '"no ash please" asks instead of acking');
+  ok(!(neg.patch && neg.patch.wood), 'no species patch rides a negated mention');
+  ok(/not\s+(white\s+)?ash/i.test(neg.question || ''), 'the refusal names the rejected wood');
+  ok(AI.localModel("don't use oak", ns).kind === 'question', 'negated oak asks too');
+  const pos = AI.localModel('make it oak instead of walnut', ns);
+  ok(pos.kind === 'diff' && pos.patch.wood.species === 'red_oak', 'positive species requests still work');
+  const mixed = AI.localModel('no ash, use walnut', ns);
+  ok(mixed.kind === 'diff' && mixed.patch.wood && mixed.patch.wood.species === 'walnut',
+    'rejection plus request applies the request');
+
+  // H-10: drawers on a drawerless template — honest refusal, and the clarify
+  // chips never offer an action the template cannot take.
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table', level: 'beginner', units: 'mm' } });
+  const dr = AI.localModel('add a drawer', table);
+  ok(dr.kind === 'question' && /nightstand|cabinet/i.test(dr.question || ''), 'drawer ask on a table is refused honestly');
+  const fb = AI.localModel('do something nice', table);
+  ok(fb.kind === 'question' && !(fb.options || []).some(o => /drawer/i.test(o)), 'clarify chips drop "Add a drawer" on a table');
+  const fbNs = AI.localModel('do something nice', ns);
+  ok((fbNs.options || []).some(o => /drawer/i.test(o)), 'nightstand keeps the drawer chip');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

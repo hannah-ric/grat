@@ -348,7 +348,7 @@ BlueprintBuddyImport.build
             const text = pu.holes === 0
               ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
               : pu.ctcMM
-                ? `${pu.holes} × ${U.fmtSmall(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.front.t))}.`
+                ? `${pu.holes} × ${U.fmtSmall(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
                 : `One ${U.fmtSmall(eff.boreDia || 5)} bore, centered on the shared centerline.`;
             hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
           } else if (eff) {
