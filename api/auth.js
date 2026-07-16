@@ -27,6 +27,7 @@
 
 const crypto = require('crypto');
 const S = require('./_session.js');
+const E = require('./_entitlements.js');
 
 const PROVIDERS = {
   google: {
@@ -131,10 +132,15 @@ module.exports = async function handler(req, res) {
   // Status probe — the ONE call the client always makes. Never errors.
   if (q.get('me')) {
     const sess = S.sessionFrom(req);
+    let billing = null;
+    if (sess) {
+      try { billing = await E.statusFor(sess.uid); } catch (error) { billing = null; }
+    }
     return sendJSON(res, 200, {
       user: sess ? { name: sess.name, provider: sess.p, avatar: sess.av || null } : null,
       providers: providersAvailable(),
-      storage: storageConfigured()
+      storage: storageConfigured(),
+      billing
     });
   }
 

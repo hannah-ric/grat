@@ -24,56 +24,12 @@
  */
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const S = require('./_session.js');
+const KV = require('./_kv.js');
 
 const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/;
 const MAX_VALUE_BYTES = 400 * 1024; // biggest honest doc: project w/ 20 revisions + thumb
 const MAX_BODY_BYTES = MAX_VALUE_BYTES + 4096;
-
-/* ---------------- backends ---------------- */
-function restBackend() {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  const command = async cmd => {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(cmd)
-    });
-    const data = await r.json();
-    if (data && data.error) throw new Error(String(data.error));
-    return data ? data.result : null;
-  };
-  return {
-    get: key => command(['GET', key]),
-    set: (key, value) => command(['SET', key, value]),
-    del: key => command(['DEL', key])
-  };
-}
-
-/* Dev-only file store: one JSON map on disk. Sync IO keeps it trivially
- * consistent for a single dev server; never used on Vercel. */
-function fileBackend() {
-  const file = process.env.BB_KV_FILE;
-  if (!file) return null;
-  const read = () => {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return {}; }
-  };
-  const write = map => {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(map));
-  };
-  return {
-    get: async key => { const m = read(); return m[key] !== undefined ? m[key] : null; },
-    set: async (key, value) => { const m = read(); m[key] = value; write(m); return 'OK'; },
-    del: async key => { const m = read(); delete m[key]; write(m); return 1; }
-  };
-}
-
-const backend = () => restBackend() || fileBackend();
 
 /* ---------------- plumbing ---------------- */
 function sendJSON(res, status, obj) {
@@ -106,7 +62,7 @@ function readBody(req) {
 module.exports = async function handler(req, res) {
   const sess = S.sessionFrom(req);
   if (!sess) return sendJSON(res, 401, { error: 'auth_required' });
-  const kv = backend();
+  const kv = KV.backend();
   if (!kv) return sendJSON(res, 503, { error: 'storage_unconfigured' });
 
   const url = new URL(req.url, 'http://localhost');

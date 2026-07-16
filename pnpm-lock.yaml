@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      stripe:
+        specifier: ^22.3.2
+        version: 22.3.2
     devDependencies:
       playwright:
         specifier: ^1.49.1
@@ -29,6 +33,15 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  stripe@22.3.2:
+    resolution: {integrity: sha512-O13QOvgEIQvDlTy6Ubb5kB980wpbhmoZNsgCXKILjCMZS67f+bW+6w99k3gnSi/N1lkryoj1WYdpGT5Wc5edjg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
 snapshots:
 
   fsevents@2.3.2:
@@ -41,3 +54,5 @@ snapshots:
       playwright-core: 1.61.1
     optionalDependencies:
       fsevents: 2.3.2
+
+  stripe@22.3.2: {}

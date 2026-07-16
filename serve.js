@@ -68,6 +68,8 @@ if (process.env.BB_DEV_LOGIN === '1' && !process.env.AUTH_SECRET) {
 const chat = require('./api/chat.js');
 const auth = require('./api/auth.js');
 const store = require('./api/store.js');
+const billing = require('./api/billing.js');
+const stripeWebhook = require('./api/stripe-webhook.js');
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
@@ -79,6 +81,8 @@ http.createServer((req, res) => {
   if (url.pathname === '/api/chat') return chat(req, res);
   if (url.pathname === '/api/auth') return auth(req, res);
   if (url.pathname === '/api/store') return store(req, res);
+  if (url.pathname === '/api/billing') return billing(req, res);
+  if (url.pathname === '/api/stripe-webhook') return stripeWebhook(req, res);
 
   // Static: mirror how Vercel serves outputDirectory dist/.
   const rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);

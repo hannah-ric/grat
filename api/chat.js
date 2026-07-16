@@ -15,6 +15,9 @@
  */
 'use strict';
 
+const S = require('./_session.js');
+const E = require('./_entitlements.js');
+
 const DEFAULT_MODEL = 'claude-sonnet-5';
 const MAX_TOKENS_CAP = 1024;   // client asks for 1000; the proxy grants no more than this
 const MAX_MESSAGES = 32;       // 6 verbatim turns + digest + continuations, with headroom
@@ -60,6 +63,20 @@ module.exports = async function handler(req, res) {
     return sendJSON(res, 503, errBody('AI proxy not configured: set ANTHROPIC_API_KEY in the environment.'));
   }
 
+  const session = S.sessionFrom(req);
+  if (session) {
+    try {
+      const account = await E.statusFor(session.uid);
+      if (account.usage.aiMessages >= account.entitlements.aiMonthlyLimit) {
+        return sendJSON(res, 402, {
+          type: 'error',
+          error: { type: 'usage_limit', message: 'Monthly AI message limit reached.' },
+          billing: account
+        });
+      }
+    } catch (error) { /* storage outage must not break AI */ }
+  }
+
   let body;
   try { body = await readBody(req); }
   catch (e) { return sendJSON(res, 400, errBody(e.message)); }
@@ -97,5 +114,8 @@ module.exports = async function handler(req, res) {
   let data;
   try { data = await upstream.json(); }
   catch (e) { return sendJSON(res, 502, errBody('upstream returned non-JSON (' + upstream.status + ')')); }
+  if (upstream.ok && session) {
+    try { await E.incrementAI(session.uid); } catch (error) { /* usage metering is best-effort */ }
+  }
   return sendJSON(res, upstream.status, data);
 };
