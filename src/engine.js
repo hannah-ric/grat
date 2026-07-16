@@ -59,14 +59,17 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* Everything a theme touches in-scene, in one table. Wood stays wood in
      * both themes; what changes is ink, labels, bounce light, and shadows. */
+    /* Selection speaks Showroom seafoam (deepened for ink duty by day, raw
+     * after hours); tappable joint dots speak rust — the action color. The
+     * machinist-blue selection family is retired; blue lives only in DRAFT. */
     const THEMES = {
       light: {
-        edge: 0x2a2018, edgeSel: 0x2f7fae, dim: 0x7a614a,
+        edge: 0x2a2018, edgeSel: 0x447e6e, joint: 0x942911, dim: 0x7a614a,
         hemiSky: 0xfff6e8, hemiGround: 0x9a8a76, hemiI: 0.8, sunI: 1.25, fillI: 0.45, shadowOp: 0.2,
         label: { bg: 'rgba(250,247,242,0.92)', stroke: 'rgba(90,70,50,0.35)', ink: '#4a3826' }
       },
       dark: {
-        edge: 0xefe2cc, edgeSel: 0x6fb0d6, dim: 0xcbb695,
+        edge: 0xefe2cc, edgeSel: 0x94b9af, joint: 0xe47952, dim: 0xcbb695,
         hemiSky: 0xcabfa8, hemiGround: 0x2e2921, hemiI: 0.7, sunI: 1.1, fillI: 0.35, shadowOp: 0.3,
         label: { bg: 'rgba(30,26,20,0.92)', stroke: 'rgba(210,190,160,0.35)', ink: '#ede5d6' }
       }
@@ -188,7 +191,7 @@ var BB = globalThis.BB = globalThis.BB || {};
      * change through this one shared uniform color. If a future three build
      * renames the chunk, the unmatched replace leaves the material unpatched
      * — selection still shows via its edge lines, nothing breaks. */
-    const rimColor = new THREE.Color(0x2f7fae);
+    const rimColor = new THREE.Color(0x447e6e);
     function patchRim(m) {
       m.onBeforeCompile = shader => {
         shader.uniforms.uBBRim = { value: rimColor };
@@ -232,8 +235,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.28 });
     const edgeMatFaint = new THREE.LineBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.05 });
-    const selEdgeMat = new THREE.LineBasicMaterial({ color: 0x2f7fae, transparent: true, opacity: 0.95 });
-    const hoverEdgeMat = new THREE.LineBasicMaterial({ color: 0x2f7fae, transparent: true, opacity: 0.6 });
+    const selEdgeMat = new THREE.LineBasicMaterial({ color: 0x447e6e, transparent: true, opacity: 0.95 });
+    const hoverEdgeMat = new THREE.LineBasicMaterial({ color: 0x447e6e, transparent: true, opacity: 0.6 });
 
     /* Blueprint mode: flat paper fills — the existing per-mesh edge overlays
      * become the ink lines, at full weight. Pooled per (bucket, theme). */
@@ -532,7 +535,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* ---------------- joint highlight (playback) ---------------- */
     const jointGeo = new THREE.SphereGeometry(1, 18, 14);
-    const jointMat = new THREE.MeshBasicMaterial({ color: 0x2f7fae, transparent: true, opacity: 0.55, depthTest: false });
+    const jointMat = new THREE.MeshBasicMaterial({ color: 0x942911, transparent: true, opacity: 0.55, depthTest: false });
     function showJoints(joints) {
       while (jointGroup.children.length) jointGroup.remove(jointGroup.children[0]);
       E.hoverDot = null;
@@ -891,7 +894,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       edgeMat.color.set(th.edge); edgeMatFaint.color.set(th.edge); selEdgeMat.color.set(th.edgeSel);
       draftEdge.color.set(dr.ink); draftEdgeFaint.color.set(dr.ink); draftSelEdge.color.set(dr.ink);
       hoverEdgeMat.color.set(th.edgeSel);
-      jointMat.color.set(th.edgeSel);
+      jointMat.color.set(th.joint); // joint dots are action targets: rust, not selection seafoam
       rimColor.set(th.edgeSel); // the rim uniform is shared — every selected material re-inks
       // Flat-tier selected materials carry a plain emissive; re-ink those too
       // (textured keys end '|t' and are rim-driven, so endsWith targets flat).

@@ -31,12 +31,12 @@
     <nav class="readiness" id="readiness" aria-label="Design readiness"></nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
-      <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
-      <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
+      <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"></button>
     </div>
     <div class="topbar-group">
       <div class="menu-wrap">
-        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More ▾</button>
+        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More</button>
         <div id="moreMenu" class="menu" role="menu" inert>
           <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
@@ -53,7 +53,7 @@
               <button id="unitsIn" aria-pressed="true" title="Display in inches">in</button>
               <button id="unitsMm" aria-pressed="false" title="Display in millimetres">mm</button>
             </div>
-            <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false">⇄</button>
+            <button id="dualBtn" class="btn icon" title="Show both units everywhere" aria-label="Show both units" aria-pressed="false"></button>
           </div>
           <div class="menu-row" id="precisionRow">
             <span class="menu-row-label">Precision</span>
@@ -81,7 +81,7 @@
         </div>
       </div>
       <div class="menu-wrap">
-        <button id="exportBtn" class="btn mobile-export-hide" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+        <button id="exportBtn" class="btn mobile-export-hide" aria-haspopup="menu" aria-expanded="false">Export</button>
         <div id="exportMenu" class="menu" role="menu" inert>
           <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
           <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
@@ -144,21 +144,21 @@
         <div class="welcome" id="welcomeOverlay" role="region" aria-label="Ways to start" hidden>
           <div class="welcome-head">
             <h2 id="welcomeTitle">Where should we start?</h2>
-            <button class="btn icon ghost" id="welcomeClose" aria-label="Dismiss welcome">✕</button>
+            <button class="btn icon ghost" id="welcomeClose" aria-label="Dismiss welcome"></button>
           </div>
           <div class="welcome-paths">
             <button class="welcome-card" id="welcomeDescribe">
-              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 5.5h14a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 16.5h-7l-4.5 3v-3H4A2.5 2.5 0 0 1 1.5 14V8A2.5 2.5 0 0 1 4 5.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 5.5h14a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 18 16.5h-7l-4.5 3v-3H4A2.5 2.5 0 0 1 1.5 14V8A2.5 2.5 0 0 1 4 5.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
               <span class="w-name">Describe it</span>
               <span class="w-caption">Type a piece in plain words — or drop in a photo — and full plans appear.</span>
             </button>
             <button class="welcome-card" id="welcomeStarter">
-              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 17h12M6 15.5 12.5 5 17 15.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 17h12M6 15.5 12.5 5 17 15.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
               <span class="w-name">Pick a starter</span>
               <span class="w-caption">Six proven designs, plans ready instantly. Refine any of them in chat.</span>
             </button>
             <button class="welcome-card" id="welcomeResume">
-              <span class="w-emoji" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M14 4.5h4v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 13.5 18 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 12v4a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16V8A2.5 2.5 0 0 1 6.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M14 4.5h4v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 13.5 18 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 12v4a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16V8A2.5 2.5 0 0 1 6.5 5.5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span class="w-name" id="welcomeResumeName">Import a design</span>
               <span class="w-caption" id="welcomeResumeCaption">Paste a BB4: share code to pick up a design from anywhere.</span>
             </button>
@@ -169,7 +169,7 @@
         <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
             <h3 id="inspName">Part</h3>
-            <button class="btn icon ghost" id="inspClose" aria-label="Close inspector">✕</button>
+            <button class="btn icon ghost" id="inspClose" aria-label="Close inspector"></button>
           </div>
           <div class="inspector-dims" id="inspDims"></div>
           <div class="inspector-body" id="inspBody"></div>
@@ -191,7 +191,7 @@
               <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
             </div>
             <span class="vt-sep" aria-hidden="true"></span>
-            <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">⤢ Fit</button>
+            <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">Fit</button>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="btn small ghost" id="vpHelpBtn" aria-label="Viewport controls help" aria-haspopup="dialog" aria-expanded="false">?</button>
           </div>
@@ -200,7 +200,7 @@
             <dl>
               <div><dt>Orbit</dt><dd>drag · arrow keys</dd></div>
               <div><dt>Zoom</dt><dd>scroll or pinch · <kbd>+</kbd> <kbd>−</kbd></dd></div>
-              <div><dt>Reframe</dt><dd><kbd>Home</kbd> or ⤢ Fit</dd></div>
+              <div><dt>Reframe</dt><dd><kbd>Home</kbd> or Fit</dd></div>
               <div><dt>Inspect a part</dt><dd>click / tap it</dd></div>
               <div><dt>Isolate &amp; frame</dt><dd>double-click · <kbd>F</kbd></dd></div>
               <div><dt>Joint close-up</dt><dd>tap a glowing dot (playback)</dd></div>
@@ -222,11 +222,11 @@
         </div>
 
         <div class="playback-bar" id="playbackBar" hidden>
-          <button class="btn icon" id="pbPrev" aria-label="Previous step">‹</button>
+          <button class="btn icon" id="pbPrev" aria-label="Previous step"></button>
           <span class="step-count" id="pbCount">1/9</span>
           <span class="step-label" id="pbLabel">Step</span>
-          <button class="btn icon" id="pbReplay" aria-label="Replay step">↺</button>
-          <button class="btn icon" id="pbNext" aria-label="Next step">›</button>
+          <button class="btn icon" id="pbReplay" aria-label="Replay step"></button>
+          <button class="btn icon" id="pbNext" aria-label="Next step"></button>
           <button class="btn small" id="pbExit">Exit</button>
         </div>
 
@@ -254,7 +254,7 @@
     <div class="drawer-head">
       <h2 id="historyTitle">Revisions</h2>
       <button class="btn small" id="compareBtn" disabled>Compare</button>
-      <button class="btn icon ghost" id="historyClose" aria-label="Close history">✕</button>
+      <button class="btn icon ghost" id="historyClose" aria-label="Close history"></button>
     </div>
     <div class="drawer-body" id="historyList"></div>
     <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
@@ -322,7 +322,7 @@
     <div class="modal modal-wide">
       <div class="drawer-head" style="margin-bottom:var(--s3)">
         <h2 id="diagramTitle">Cutting diagram</h2>
-        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">✕</button>
+        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram"></button>
       </div>
       <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
       <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
@@ -423,9 +423,9 @@
   </section>
 
   <div class="bm-playbar" id="bmPlaybar" hidden>
-    <button class="btn bm-big" id="bmPbPrev">‹ Prev</button>
+    <button class="btn bm-big" id="bmPbPrev">Prev</button>
     <span class="bm-pblabel" id="bmPbLabel"></span>
-    <button class="btn bm-big" id="bmPbNext">Next ›</button>
+    <button class="btn bm-big" id="bmPbNext">Next</button>
     <button class="btn primary bm-big" id="bmPbBack">Back to checklist</button>
   </div>
 
@@ -433,7 +433,7 @@
     <div class="modal joint-modal">
       <div class="joint-head">
         <h2 id="jointTitle">Joint inspector</h2>
-        <button class="btn icon ghost" id="jointClose" aria-label="Close joint inspector">✕</button>
+        <button class="btn icon ghost" id="jointClose" aria-label="Close joint inspector"></button>
       </div>
       <div class="joint-canvas-wrap">
         <canvas id="jointCanvas" tabindex="0" aria-label="3D joint close-up. Drag to orbit, scroll to zoom."></canvas>

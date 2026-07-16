@@ -211,7 +211,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!show) return;
     if (a.user) {
       const row = el('div', 'menu-account');
-      row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : '<span class="account-avatar fallback" aria-hidden="true">●</span>'}
+      row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="account-avatar fallback" aria-hidden="true">${BB.Icons.svg('user', 14)}</span>`}
         <span class="account-name">${esc(a.user.name)}</span>
         <span class="hint">${a.cloud ? 'cloud sync on' : 'signed in'}</span>`;
       area.append(row);
@@ -279,7 +279,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!state.dismissed.has(a.id)) items.push({ error: false, text: a.text, id: a.id });
     }
     if (mobileAdvisoryMq.matches && items.length && !state.advisoriesExpanded) {
-      const pill = el('button', 'advisory-more advisory-pill', `${items.some(it => it.error) ? '🛑' : '⚠️'} ${items.length}`);
+      const pill = el('button', 'advisory-more advisory-pill',
+        `${BB.Icons.svg(items.some(it => it.error) ? 'stop' : 'warn', 14)} ${items.length}`);
       pill.setAttribute('aria-expanded', 'false');
       pill.setAttribute('aria-label', `Show ${items.length} advisory message${items.length === 1 ? '' : 's'}`);
       pill.onclick = () => { state.advisoriesExpanded = true; renderAdvisories(report); };
@@ -289,7 +290,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const visible = state.advisoriesExpanded ? items : items.slice(0, ADVISORY_CAP);
     for (const it of visible) {
       const chip = el('div', 'advisory' + (it.error ? ' error' : ''));
-      chip.append(el('span', 'adv-icon', it.error ? '🛑' : '⚠️'));
+      chip.append(el('span', 'adv-icon', BB.Icons.svg(it.error ? 'stop' : 'warn', 14)));
       chip.append(el('span', '', esc(it.text)));
       if (!it.error) {
         const x = el('button', 'dismiss', BB.Icons.svg('close', 13));
@@ -367,7 +368,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const pop = $('provPop');
     const lines = Prov.forCutRow(state.spec, state.model, row);
     pop.innerHTML = `<div class="prov-head"><h5>${esc(row.name)} — where these numbers come from</h5>
-      <button type="button" class="prov-close" aria-label="Close provenance">✕</button></div>` +
+      <button type="button" class="prov-close" aria-label="Close provenance">${BB.Icons.svg('close', 13)}</button></div>` +
       lines.map(l => `<div class="prov-line"><b>${esc(l.dim)}</b><span>${esc(l.formula)}</span></div>`).join('') +
       `<div class="prov-foot">computed internally in metric</div>`;
     pop.hidden = false;
@@ -414,7 +415,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     scrim.innerHTML = `<div class="modal modal-wide">
       <div class="drawer-head" style="margin-bottom:var(--s3)">
         <h2 id="diagramTitle">Cutting diagram</h2>
-        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">✕</button>
+        <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">${BB.Icons.svg('close')}</button>
       </div>
       <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
       <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
@@ -466,7 +467,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
-      <td style="color:var(--muted);font-size:12.5px">${esc(r.note || '')}</td></tr>`).join('');
+      <td style="color:var(--muted);font-size:var(--text-s)">${esc(r.note || '')}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
     scroll.querySelectorAll('.prov-btn').forEach(b => {
       b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
@@ -618,7 +619,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const rows = state.bomData.items.map(i => `<tr>
       <td><span class="kind-tag">${esc(i.kind)}</span></td>
       <td>${esc(i.label)}</td><td class="num">${i.qty}</td>
-      <td style="color:var(--muted);font-size:12.5px">${esc(i.detail || '')}</td>
+      <td style="color:var(--muted);font-size:var(--text-s)">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
     root.append(scroll);
@@ -739,7 +740,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(el('h3', '', 'Structural integrity'));
     const summary = el('div', 'integrity-summary');
     summary.innerHTML = `<span class="stamp ${overall}">${overall}</span>
-      <span style="font-size:13px;color:var(--muted)">${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory</span>`;
+      <span style="font-size:var(--text-s);color:var(--muted)">${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory</span>`;
     root.append(summary);
     let target = root;
     if (beginner) {
@@ -927,14 +928,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td class="num">${s.moe.toFixed(1)}</td><td class="num">${s.mor}</td><td class="num">${s.sg.toFixed(2)}</td>
         <td class="num movement-${s.movement}">${s.ct.toFixed(5)}</td>
         <td class="num">${'$'.repeat(s.costTier)}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
     } else if (state.refTab === 'ergo') {
       head = '<th>Measure</th><th class="num">Range</th><th>Applies to</th><th>Note</th>';
       rows = K.ERGONOMICS.filter(r => hit(r.label, r.note)).map(r => `<tr>
         <td><strong>${esc(r.label)}</strong></td>
         <td class="num">${isFinite(r.max) ? `${fmt(r.min)} – ${fmt(r.max)}` : `≥ ${fmt(r.min)}`}</td>
         <td>${esc(r.appliesTo.join(', '))}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
       head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
@@ -943,9 +944,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td><span class="dots">${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span></td>
         <td><span class="dots">${'●'.repeat(j.difficulty)}${'○'.repeat(5 - j.difficulty)}</span></td>
         <td>${esc(j.level)}</td>
-        <td style="font-size:12.5px">${esc(j.bestFor)}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(j.failure)}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
+        <td style="font-size:var(--text-s)">${esc(j.bestFor)}</td>
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(j.failure)}</td>
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
     } else if (state.refTab === 'hardware') {
       // The hardware repository: when, why, how, where — quantities and
       // ratings are computed by code (BB.HW rules), the table teaches the
@@ -981,9 +982,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         const body2 = list.filter(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))).map(x => `<tr>
           <td><strong>${esc(Units.fmtTemplate(x.label))}</strong><br><span class="kind-tag">${esc(gLabel)}</span></td>
           <td>${view3d[x.key] ? `<button type="button" class="btn small ghost joint-demo" data-joint="${esc(view3d[x.key])}" title="See it in 3D">${BB.Icons.svg('ruler', 13)} 3D</button>` : ''}</td>
-          <td class="num" style="font-size:12px">${esc(classOf(x))}</td>
-          <td style="font-size:12.5px">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
-          <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
+          <td class="num" style="font-size:var(--text-s)">${esc(classOf(x))}</td>
+          <td style="font-size:var(--text-s)">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
+          <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
         return body2;
       }).join('');
     } else if (state.refTab === 'lumber') {
@@ -998,15 +999,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       rows = [...f.screws, ...f.dowels, ...f.hardware].filter(x => hit(x.label, x.use)).map(x => `<tr>
         <td><strong>${esc(Units.fmtTemplate(x.label))}</strong></td>
         <td class="num">${x.pilot ? esc(fmtS(x.pilot)) + ' pilot' : (x.price ? '~$' + x.price : '—')}</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
       rows += K.FINISHES.filter(x => hit(x.label, x.blurb)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}${x.exterior ? ' <span class="kind-tag">exterior</span>' : ''}</td>
         <td class="num">${x.coats} coats · ${x.recoatHrs} h recoat · ${x.cureDays} d cure</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(x.blurb)}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(x.blurb)}</td></tr>`).join('');
       rows += K.GLUES.filter(x => hit(x.label, x.blurb, x.water)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}</td>
         <td class="num">open ${x.openMin} min · clamp ${x.clampMin} min · ${x.cureHrs} h full</td>
-        <td style="font-size:12.5px;color:var(--muted)">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
+        <td style="font-size:var(--text-s);color:var(--muted)">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
     }
     if (!rows) {
       body.append(el('div', 'empty-state', `<span class="big">No matches in the reference.</span>Try a different word — “dovetail”, “walnut”, “pilot”…`));
@@ -1318,7 +1319,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(dim('Depth', 'overall.depth', 200, 1200));
       body.append(dim('Height', 'overall.height', 120, 2400));
     } else {
-      body.append(el('p', '', '<span style="font-size:12.5px;color:var(--muted)">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
+      body.append(el('p', '', '<span style="font-size:var(--text-s);color:var(--muted)">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
     if (part.role === 'leg') body.append(dim('Leg thickness', 'structure.legThickness', 32, 100));
     if (part.role === 'apron' || part.role === 'rail') body.append(dim('Apron height', 'structure.apronHeight', 60, 160));
@@ -1578,7 +1579,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const g of Gallery.STARTERS) {
       const r = runPipeline(g.spec);
       const card = el('button', 'gallery-card');
-      card.innerHTML = `<span class="g-emoji">${g.emoji}</span>
+      card.innerHTML = `<span class="g-fallback" aria-hidden="true">${BB.Icons.svg('board', 26)}</span>
         <span class="g-name">${esc(r.spec.meta.name)}</span>
         <span class="g-caption">${esc(g.caption)}</span>
         <span class="g-meta">${fmt(r.spec.overall.width)} × ${fmt(r.spec.overall.depth)} × ${fmt(r.spec.overall.height)} · ${esc(K.WOOD_SPECIES[r.spec.wood.species].label)}</span>`;
@@ -1615,7 +1616,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* Real 3D thumbnails for the starter cards, rendered by a throwaway
    * mini-engine after boot settles. Cached in storage keyed by a hash of the
    * starter specs, so repeat boots skip GL work entirely. Failures leave the
-   * emoji cards — this pass is decoration, never load-bearing. */
+   * skeleton cards — this pass is decoration, never load-bearing. */
   const THUMBS_KEY = 'gallery:thumbs:v1';
   function startersHash() {
     const s = JSON.stringify(Gallery.STARTERS.map(g => g.spec));
@@ -1627,13 +1628,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     galleryThumbs = thumbs;
     galleryCards.forEach(({ card }, i) => {
       if (!thumbs[i]) return;
-      const emoji = card.querySelector('.g-emoji');
-      if (!emoji) return;
+      const fallback = card.querySelector('.g-fallback');
+      if (!fallback) return;
       const img = document.createElement('img');
       img.className = 'g-thumb';
       img.alt = '';
       img.src = thumbs[i];
-      emoji.replaceWith(img);
+      fallback.replaceWith(img);
       requestAnimationFrame(() => img.classList.add('on'));
     });
   }
@@ -1660,7 +1661,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       canvas.remove();
       patchGalleryThumbs(thumbs);
       await Store.set(THUMBS_KEY, { hash, thumbs });
-    } catch (e) { /* emoji cards remain */ }
+    } catch (e) { /* skeleton cards remain */ }
   }
 
   /* ---------------- My Projects (Phase 4 item 2) ---------------- */
@@ -1685,7 +1686,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const card = el('div', 'project-card' + (state.project && state.project.id === row.id ? ' current' : ''));
       const thumb = row.thumb
         ? `<img class="p-thumb" src="${row.thumb}" alt="">`
-        : `<div class="p-thumb empty" aria-hidden="true">▦</div>`;
+        : `<div class="p-thumb empty" aria-hidden="true">${BB.Icons.svg('board', 22)}</div>`;
       card.innerHTML = `${thumb}
         <span class="p-name">${esc(row.name)}</span>
         <span class="p-meta">${esc(row.dims || '')}</span>
@@ -1842,7 +1843,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const maxSag = Math.max(...cols.map(c => c.sagMargin || 0));
     const cell = (v, isBest, suffix) => `<td class="num${isBest ? ' species-best' : ''}">${v}${suffix || ''}</td>`;
     wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
-      `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} →</button></th>`).join('')}</tr></thead><tbody>
+      `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody>
       <tr><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
       <tr><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
       <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span style="color:var(--muted)">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
@@ -1937,7 +1938,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function toggleProgress(map, key, btn) {
     map[key] = !map[key];
     btn.setAttribute('aria-pressed', String(!!map[key]));
-    btn.querySelector('.box').textContent = map[key] ? '✓' : '';
+    btn.querySelector('.box').innerHTML = map[key] ? BB.Icons.svg('check', 20) : '';
     $('bmProgress').textContent = progressPct() + '% built';
     renderReadiness(); // the Build step tracks shop progress live
     scheduleAutosave();
@@ -1947,7 +1948,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const b = el('button', 'bm-check');
     b.type = 'button';
     b.setAttribute('aria-pressed', String(!!checked));
-    b.innerHTML = `<span class="box" aria-hidden="true">${checked ? '✓' : ''}</span>
+    b.innerHTML = `<span class="box" aria-hidden="true">${checked ? BB.Icons.svg('check', 20) : ''}</span>
       <span class="bm-check-label">${esc(label)}</span>
       ${dims ? `<span class="bm-check-dims">${esc(dims)}</span>` : ''}`;
     b.onclick = () => onToggle(b);
@@ -2021,7 +2022,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       row.style.alignItems = 'stretch';
       const btn = checkButton(`${i + 1}. ${s.title}`, null, prog.steps[s.id], b => toggleProgress(prog.steps, s.id, b));
       btn.style.flex = '1';
-      const play = el('button', 'bm-step-play', '▶');
+      const play = el('button', 'bm-step-play', BB.Icons.svg('play', 20));
       play.setAttribute('aria-label', `Play 3D animation for step ${i + 1}`);
       play.onclick = () => enterBmPlayback(i);
       row.append(btn, play);
@@ -2197,7 +2198,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     navs.forEach(nav => {
       let currentSet = false;
       steps.forEach((s, i) => {
-        if (i) nav.append(el('span', 'ready-sep', '›'));
+        if (i) nav.append(el('span', 'ready-sep', ''));
         const b = el('button', 'ready-step');
         b.type = 'button';
         b.dataset.state = s.state;
@@ -2368,6 +2369,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('historyClose', 'close', undefined);
     set('jointClose', 'close', undefined);
     set('diagramClose', 'close', undefined);
+    set('welcomeClose', 'close', undefined);
     set('frameBtn', 'fit', 'Fit');
     set('pbPrev', 'prev');
     set('pbNext', 'next');

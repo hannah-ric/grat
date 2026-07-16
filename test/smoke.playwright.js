@@ -1015,8 +1015,8 @@ const clickMoreCtl = async sel => {
   /* ================= Phase E: shell redesign ================= */
 
   // Compact header: one row on desktop.
-  ok(await page.evaluate(() => document.querySelector('.topbar').getBoundingClientRect().height <= 58),
-    'desktop header is one compact row');
+  ok(await page.evaluate(() => document.querySelector('.topbar').getBoundingClientRect().height <= 64),
+    'desktop header is one compact row (redesign spec: 56\u201364px app bar)');
 
   // Collapsible chat: fold to the rail, bench width goes to the stage;
   // unread replies light the rail dot; expanding restores and focuses chat.
@@ -1137,7 +1137,7 @@ const clickMoreCtl = async sel => {
     brandHidden: getComputedStyle(document.querySelector('.brand-name')).display === 'none',
     shortCta: getComputedStyle(document.querySelector('.build-cta .cta-short')).display !== 'none'
   }));
-  ok(mobileShell.topbarH <= 56, `mobile header stays one row (${Math.round(mobileShell.topbarH)}px)`);
+  ok(mobileShell.topbarH <= 64, `mobile header stays one row (${Math.round(mobileShell.topbarH)}px, redesign spec: 56\u201364px)`);
   // Touch targets ≥40 px may wrap the toolbar onto a second row on narrow phones —
   // that is preferred over unreadably small controls at the bench.
   ok(mobileShell.toolbarH <= 120, `mobile viewport toolbar stays compact (${Math.round(mobileShell.toolbarH)}px)`);

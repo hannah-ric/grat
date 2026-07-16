@@ -104,3 +104,52 @@ Inline data-URI manifest + `theme-color` exist (N8). **No service worker anywher
 8. **Six-tab names** — exactly as the review guessed: Cut list, Stock, Materials, Assembly, Integrity, Shop reference.
 
 Nothing in the prompt referenced a file or feature that does not exist.
+
+---
+
+## Phase 1 — visual foundation
+
+Date: 2026-07-16 · `npm test` 40/40 · `npm run test:smoke` 189/189 · build 1 538 KB.
+
+### Files changed and the specific edits
+
+- **`src/styles.css`**
+  - Token system extended with the brand-system §3–4 scales: `--text-xs…-4xl` + `--text-hero` (40→64px, the prompt's hero range), additive `--leading-*`, `--measure: 66ch`, fluid `--space-3xs…-2xl`; the legacy `--s1…--s7` now **alias** the nearest fluid step so every existing rule scales without a rewrite. Shape tokens `--radius-s/m/l/pill` (4/10/18/999); `--tap: 44px`.
+  - Body: fixed `15px/1.5` → `var(--text-m)` (16→18px fluid) with additive leading.
+  - ~150 declarations swept from raw px to tokens: buttons/tabs/chips/tables/captions/labels → ≥`--text-s` (14→15); panel headings → `--text-xl` (23→32, prompt range 24–32 at the 1440 end, 23 at the 360 end — see conflicts); modal `h2` → `--text-xl`; ledes and long text get `max-width: var(--measure)`.
+  - All inputs (`textarea`, design name, steppers, selects, price fields) ≥ `--text-m` = 16px — also removes the iOS focus-zoom jump.
+  - Component primitives: `.btn` is now a **capsule** with `min-height: var(--tap)`; `.btn.small` is the inline tier (32px, 40px under coarse pointers); `.chip`/`.kind-tag`/`code.inline` → 4px drafting radius; cards (`.gallery-card`, `.check-card`, `.stock-board`, `.snap`, `.project-card`, `.help-block`, `.step-item`, `.table-scroll`, `.advisory`…) → 10px; dialogs/menus stay 18px (`--radius-lg` alias moved 16→18). `.stamp` → 14px + `rotate(-1.2deg)`. `.panel h3` gets the mustard 3px double rule.
+  - Accessibility blocks appended: `prefers-contrast: more` (hairlines 55% ink, rules full ink, muted promoted — `:root, :root[data-theme]` so explicit themes are also hardened) and `forced-colors: active` (color-is-content elements opt out; buttons/tabs keep borders).
+  - Mobile: topbar icon buttons 40px min-width ≤880; ≤400px drops the brand mono­gram and menu carets so the header fits 320px; gallery skeleton styles; ready-sep is now a CSS dot.
+- **`src/engine.js`** — selection unified to Showroom: `THEMES.light.edgeSel 0x2f7fae → 0x447e6e` (seafoam deepened for ink duty), `THEMES.dark.edgeSel 0x6fb0d6 → 0x94b9af` (raw seafoam), new per-theme `joint` slot (`0x942911` light / `0xe47952` dark) so playback joint dots speak rust (action) instead of selection blue; initial `rimColor`/`selEdgeMat`/`hoverEdgeMat`/`jointMat` constants re-inked; `applyInkColors()` routes `jointMat` from `th.joint`. Blueprint `DRAFT` palette untouched (the deliberate blue).
+- **`src/icons.js`** — five new drafting-style paths: `warn`, `stop`, `check`, `user`, `arrow`.
+- **`src/ui.js`** — every emoji/stray glyph replaced with `BB.Icons`: advisory pill + per-advisory icon (was 🛑/⚠️), account avatar fallback (●), provenance close (✕), project empty thumb (▦), build checkboxes (✓ ×2), build step play (▶), species column (→), dynamic diagram-scrim close (✕); readiness separator is an empty styled span (was ›); gallery cards use a `g-fallback` skeleton (board icon on a dashed sheet) instead of emoji, and the thumbnail pass swaps `.g-fallback`; 15 inline sub-14px styles → `var(--text-s)`; `applyIcons()` also covers `welcomeClose`.
+- **`src/gallery.js`** — the six now-unconsumed `emoji:` fields removed from STARTERS (data cleanup, no behavior).
+- **`src/index.template.html`** — 17 pre-boot Unicode glyphs stripped (↶ ↷ ▾ ✕ ⤢ ‹ › ↺ ⇄, "⤢ Fit" copy); `w-emoji` class renamed `w-icon`.
+- **`test/smoke.playwright.js`** — two header-height assertions updated from the old design's 58/56px to the redesign's specified 56–64px app bar (measured: 61px desktop, 57px phone). This is the only test change; reason documented here.
+
+### Verified working (and how)
+
+- `npm test` 40/40; **`npm run test:smoke` 189/189** after the threshold update.
+- Playwright verification script (scratchpad, headless Chromium against `dist/`):
+  - **Contrast, light/dark** (WCAG 2.2 ratios computed from resolved tokens): ink/paper **14.77 / 15.31**, ink-2/paper 9.17 / 9.61, muted/panel 5.19 / 5.13, CTA ink/rust **7.61 / 6.05**, link/paper 7.26 / 8.55, advisory 5.49 / 7.78, error 9.25 / 6.62, save-green 6.35 / 9.06, focus vs paper **3.26 / 8.55** (≥3:1 non-text), on-brand on seafoam 7.94, on fern 6.39, rust tab text on panel 7.85 / 5.77. All pass AA (text ≥4.5, non-text ≥3).
+  - **Text floor**: full text-node sweep at 1440px — every visible element ≥14px except `.snap-source` (13px), a deliberate supplementary badge (see policy below).
+  - **Touch targets**: all `.btn:not(.small)`, tabs, send, Build CTA ≥44px by `offsetHeight`. (First sweep flagged three at "43px" — false positives from closed-state `scale(.985)` menu/modal transforms; re-measured with `offsetHeight` = 44. `#photoBtn` was genuinely 42px from an old override — fixed.)
+  - **No horizontal document scroll at 320 / 360 / 390 / 430** (`scrollWidth == innerWidth`). The first sweep caught real overflow (410px topbar at ≤390) introduced by the 44px buttons — fixed via mobile icon compaction, then re-verified.
+  - Screenshots (desktop light/dark, phone 320/390) reviewed: capsule buttons, rust CTA, mustard double rules, walnut dark mode, SVG welcome icons all render as intended.
+
+### Policy decision (documented, per the 14px rule)
+
+`--text-xs` (12→13px) is retained **only** for supplementary uppercase badges/kickers whose information is duplicated or purely taxonomic: `.snap-source` (revision source tag beside the full title), `.kind-tag`, `.price-group` header, `.diag-group` header, provenance kickers, `.integrity-disclaimer`, `kbd` key caps, menu-item hints were promoted to 14 anyway. Everything a builder must read — dimensions, tables incl. headers, buttons, chips, captions, stamps (now 14px), labels — sits at ≥14px effective. Print stylesheet sizes (10–12px) are untouched: paper, not screen.
+
+### Not done / deferred
+
+- Chat placeholder still wraps in the narrow column — clipped to one clean ellipsis line for now; the Phase 3 composer redesign owns the real fix.
+- Warm 3D *lighting* (cool `0xdfe8ff` fill light in engine + jointview) deferred to Phase 5 per the prompt's phase split ("warm 3D lighting and selection" is Phase 5; selection done now).
+- `--seafoam`/`--fern` CSS tokens now have 3D counterparts but still few CSS consumers; Phase 2/3 surfaces (selection washes, success states) will consume them.
+- Gallery thumbnails cached from before the selection-color change may show the old blue rim if a part was selected when snapped — cache key hashes specs only. Not worth a cache bust; thumbnails regenerate when starters change.
+
+### Prompt-vs-reality notes for this phase
+
+- "Panel headings: 24 to 32px": the shared fluid scale gives 23→32px (`--text-xl`); at 360px wide it renders 23px, 1px under the prompt's lower bound, in exchange for one coherent modular scale (the brand-system ramp). Accepted as the closest on-scale step.
+- The two smoke-test header assertions encoded the pre-redesign 50px bar; the redesign prompt itself specifies 56–64px, so the assertions were updated to the new spec rather than shrinking controls below the 44px floor.
