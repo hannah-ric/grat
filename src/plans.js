@@ -241,8 +241,8 @@ var BB = globalThis.BB = globalThis.BB || {};
             ? `screws into the front’s top edge — pre-drill, this is end grain`
             : `template-routed mortise in the face — nothing proud`)
           : pull.ctcMM
-            ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`
-            : `one ${fine(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.front.t))}`}`;
+            ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`
+            : `one ${fine(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`}`;
         items.push({ kind: 'hardware', label: pull.count > 1 ? `${pStyle.label} (pair)` : pStyle.label, qty: pull.count, detail: `drawer ${d.index + 1} — ${boreDetail}${subNote}`, price: hp('pull_' + pStyle.key, pStyle.price) * pull.count });
       } else {
         items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
@@ -347,9 +347,9 @@ var BB = globalThis.BB = globalThis.BB || {};
           ? `Screw the edge pull to the front’s TOP EDGE, centered — pre-drill every hole, this is end grain and it splits without pilots.${pSub}`
           : `Rout the flush-pull mortise with the maker’s template, centered on the front — freehand walls show through the finish forever.${pSub}`;
       } else if (pull.ctcMM) {
-        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). M4 screws, length = front + ${len(6)}.${pSub}`;
+        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). Bore through BOTH the false front and the box front behind it: the M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} screws drive from inside the box and cross both.${pSub}`;
       } else {
-        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : ', M4 screw from inside'}. Every front in the stack shares one centerline.${pSub}`;
+        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : `, M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} from inside — through the box front too`}. Every front in the stack shares one centerline.${pSub}`;
       }
       out.push(step(`dr${n}_pull`, `Drawer ${n}: ${pEff === 'none_touch' ? 'fit the touch latch' : 'add the pull'}`,
         pullText, ids('pull'), { drawer: d.index }));

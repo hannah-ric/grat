@@ -838,5 +838,27 @@ section('FE-H1 captured tops keep case joinery; overhanging tops float');
     'cabinet top (solid, overhanging sheet sides) still floats on figure-8s');
 }
 
+/* ================= FE-H5 (2026-07 front-end audit): pull screws cross the whole stack ================= */
+section('FE-H5 pull screws reach through box front + false front');
+{
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const d = ns.model.drawers[0];
+  const stack = d.box.t + d.front.t; // the M4 crosses BOTH before reaching the pull
+  const lenMM = BB.HW.pullScrewLenMM(stack);
+  ok(lenMM >= stack + 5, `pull screw ${lenMM} mm engages ≥ 5 mm past the ${stack} mm stack`);
+  ok([12, 16, 20, 25, 30, 35, 40, 45, 50].includes(lenMM), `pull screw ${lenMM} mm is a buyable M4 length`);
+  const bom = Plans.bom(ns.spec, ns.model, {});
+  const pullLine = bom.items.find(i => /pull/i.test(i.label) && /M4/.test(i.detail || ''));
+  ok(pullLine && new RegExp(`M4 × ${lenMM} mm`).test(pullLine.detail), 'BOM pull line carries the stack-length M4');
+  const steps = Plans.assembly(ns.spec, ns.model, null, {});
+  const pullStep = steps.find(s => /pull/i.test(s.title));
+  ok(pullStep && new RegExp(`M4 × ${lenMM} mm`).test(pullStep.text) && /box front/i.test(pullStep.text),
+    'pull step names the stack-length screw and why');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

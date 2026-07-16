@@ -555,7 +555,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     return { style: style.key, count: 1, ctcMM: ctc, holes: 2 };
   }
-  const pullScrewLenMM = frontT => Math.round(frontT + 6);
+  /* Pull machine screw: driven from inside the drawer, it crosses the BOX
+   * FRONT and the false front before its thread reaches the pull — size it
+   * for the whole stack, snapped UP to a buyable M4 length (audit FE-H5). */
+  const M4_LENGTHS = [12, 16, 20, 25, 30, 35, 40, 45, 50];
+  const pullScrewLenMM = stackT => {
+    const need = Math.round(stackT + 6);
+    return M4_LENGTHS.find(l => l >= need) || M4_LENGTHS[M4_LENGTHS.length - 1];
+  };
 
   /* Slide picker: by computed load, ask, and fit. The 34 kg class stays
    * the default; heavier computed loads climb the family. */
