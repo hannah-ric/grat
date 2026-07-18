@@ -1093,6 +1093,28 @@ section('M-01 pilot and bore callouts are real drill sizes, never decimal inches
   Units.set({ system: 'metric', precision: 16, dual: false });
 }
 
+/* ================= M-11 (2026-07 productization): abrasives from the finish schedule ================= */
+section('M-11 tool-list abrasives derive from the actual finish schedule');
+{
+  const base = { meta: { name: 'Fin', template: 'table', level: 'beginner', units: 'mm' } };
+  const grits = tools => tools.filter(t => /grit/i.test(t)).join(' · ') || 'none';
+  // Hardwax oil: its own 120/150/180 ladder, NO between-coat pad, no phantom 220.
+  const hw = pipeline({ ...base, finish: 'hardwax_oil' });
+  const hwTools = Plans.toolList(hw.spec, hw.model, null);
+  ok(hwTools.some(t => /120 \/ 150 \/ 180/.test(t)), 'hardwax lists its own 120/150/180 ladder — got ' + grits(hwTools));
+  ok(!hwTools.some(t => /220/.test(t)), 'no phantom 220 grit when the schedule lacks it');
+  ok(!hwTools.some(t => /between/i.test(t)), 'no between-coat pad when the schedule has none');
+  // Film finish (wipe-on poly): 120/180 prep plus the 320 between-coat pad.
+  const wp = pipeline({ ...base, finish: 'wipe_poly' });
+  const wpTools = Plans.toolList(wp.spec, wp.model, null);
+  ok(wpTools.some(t => /120 \/ 180/.test(t) && !/220/.test(t)), 'wipe-on poly lists its 120/180 prep ladder — got ' + grits(wpTools));
+  ok(wpTools.some(t => /320/.test(t) && /between/i.test(t)), 'film finish lists its 320 between-coat pad');
+  // Danish oil keeps its full ladder from the same table.
+  const dan = pipeline({ ...base, finish: 'danish_oil' });
+  const danTools = Plans.toolList(dan.spec, dan.model, null);
+  ok(danTools.some(t => /120 \/ 180 \/ 220/.test(t)), 'danish oil keeps its 120/180/220 ladder');
+}
+
 /* ================= M-13 (2026-07 productization): compare weight skips hardware ================= */
 section('M-13 species-compare weight never weighs steel hardware as wood');
 {

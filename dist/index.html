@@ -8103,11 +8103,21 @@ var BB = globalThis.BB = globalThis.BB || {};
    */
   const BASE_TOOLS = [
     'Tape measure', 'Combination square', 'Table saw or circular saw with a guide',
-    'Drill/driver', 'Bar or pipe clamps', 'Sandpaper (120 / 180 / 220 grit)'
+    'Drill/driver', 'Bar or pipe clamps'
   ];
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   function toolList(spec, model, stockPlan) {
     const tools = new Set(BASE_TOOLS);
+    // Abrasives from the ACTUAL finish schedule (audit M-11): the prep grit
+    // ladder plus the between-coat abrasive, straight from K.FINISHES —
+    // never a hardcoded 120/180/220 that contradicts the finishing steps.
+    const finSched = K.FINISHES.find(f => f.key === spec.finish);
+    const prepGrits = finSched && finSched.prep && finSched.prep.grits && finSched.prep.grits.length
+      ? finSched.prep.grits : [120, 180, 220];
+    tools.add(`Sandpaper (${prepGrits.join(' / ')} grit)`);
+    if (finSched && finSched.prep && finSched.prep.betweenGrit) {
+      tools.add(`${finSched.prep.betweenGrit}-grit pad (between coats)`);
+    }
     for (const t of new Set(model.joints.map(j => j.type))) {
       for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(cap(tool));
     }
