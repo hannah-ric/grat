@@ -243,6 +243,36 @@ section('wire diff-based refinement');
   const cheat = AI.apply(AI.classify(AI.extractJSON('{"j":{"b":7},"e":"x"}')),
     Spec.correctSpec({ meta: { template: 'nightstand', level: 'beginner' } }));
   ok(cheat.spec.joinery.box !== 'half_blind_dovetail', 'AI cannot smuggle advanced joints past a beginner level');
+
+  // A4: "p" and "c" are independent diff keys on a custom piece.
+  {
+    const cbase = Spec.correctSpec(Spec.defaultSpec('custom'));
+    // p-only: the existing connection graph must survive the merge.
+    const wireP = Codec.encode(cbase).p;
+    const pOnly = Codec.decodePartial({ p: wireP });
+    ok(pOnly && pOnly.custom && Array.isArray(pOnly.custom.parts) && !('connections' in pOnly.custom),
+      'p-only diff carries parts and NO connections key');
+    const pApplied = AI.apply({ kind: 'diff', patch: pOnly, explain: '' }, cbase);
+    eq(pApplied.spec.custom.connections.length, 2, 'p-only diff preserves the existing connection graph');
+    const pr = pipeline(pApplied.spec);
+    eq(pr.report.errors.filter(e => e.id.startsWith('float_')).length, 0, 'p-only edit leaves no free-floating parts');
+    // c-only: a joint upgrade decodes to a connections patch (was null).
+    const cOnly = Codec.decodePartial({ c: [[1, 0, 3], [2, 0, 3]] }); // JNT 3 = dado
+    ok(cOnly && cOnly.custom && !cOnly.custom.parts && cOnly.custom.connections.length === 2,
+      'c-only diff decodes to a connections patch, no parts key');
+    ok(!(cOnly.meta && cOnly.meta.template), 'c-only diff never stamps the template');
+    const cbaseInt = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: 'intermediate' } }));
+    const cApplied = AI.apply({ kind: 'diff', patch: cOnly, explain: '' }, cbaseInt);
+    eq(cApplied.spec.custom.parts.length, 3, 'parts untouched by a c-only diff');
+    ok(cApplied.spec.custom.connections.every(cn => cn.joint === 'dado'),
+      'c-only joint upgrade lands in the corrected graph');
+    ok(cApplied.chips.length > 0, 'the c-only change is visible in the code-computed diff');
+    // Stale connection ids after a part-count shrink are dropped, not fatal.
+    const shrink = Codec.decodePartial({ p: wireP.slice(0, 2) });
+    const sApplied = AI.apply({ kind: 'diff', patch: shrink, explain: '' }, cbase);
+    ok(sApplied.spec.custom.connections.every(cn => ['p1', 'p2'].includes(cn.a) && ['p1', 'p2'].includes(cn.b)),
+      'connections referencing removed parts are dropped by correction');
+  }
 }
 
 /* ---------------- local model ---------------- */

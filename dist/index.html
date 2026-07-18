@@ -9425,14 +9425,24 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
       }
     }
+    /* Custom-grammar diffs stay surgical (A4): "p" and "c" are independent
+     * keys. A p-only diff must NOT wipe the existing connection graph
+     * (deepMerge clones arrays wholesale — omitting the key preserves it;
+     * correctCustom drops connections referencing removed parts), and a
+     * c-only diff (joint upgrades) must decode instead of nulling the turn. */
+    const mapConns = (list, max) => list
+      .filter(c => Array.isArray(c) && Number.isInteger(c[0]) && Number.isInteger(c[1]) &&
+        c[0] >= 0 && c[1] >= 0 && (max == null || (c[0] < max && c[1] < max)))
+      .map(c => ({ a: 'p' + (c[0] + 1), b: 'p' + (c[1] + 1), joint: at(JNT, c[2], 'butt_screws') }));
     if (Array.isArray(w.p)) {
       const parts = w.p.map(decodePart).filter(Boolean);
-      const conns = (Array.isArray(w.c) ? w.c : [])
-        .filter(c => Array.isArray(c) && c[0] >= 0 && c[1] >= 0 && c[0] < parts.length && c[1] < parts.length)
-        .map(c => ({ a: 'p' + (c[0] + 1), b: 'p' + (c[1] + 1), joint: at(JNT, c[2], 'butt_screws') }));
-      patch.custom = { parts, connections: conns };
+      patch.custom = { parts };
+      if (Array.isArray(w.c)) patch.custom.connections = mapConns(w.c, parts.length);
       patch.meta = patch.meta || {};
       patch.meta.template = 'custom';
+    } else if (Array.isArray(w.c)) {
+      // Ids map to p1..pN of the CURRENT parts; correctCustom validates them.
+      patch.custom = { connections: mapConns(w.c, null) };
     }
     // Drop empty sub-objects so the merge stays surgical.
     for (const k of Object.keys(patch)) {

@@ -236,6 +236,27 @@ const summarize = (name, r, ig, extra) => {
     ok(bomb.spec.custom && bomb.spec.custom.parts.length <= 40, 'the 500-part bomb truncates to the cap', bomb.spec.custom && bomb.spec.custom.parts.length);
   }
 
+  /* ---------- custom-grammar partial diffs stay surgical (A4) ---------- */
+  {
+    const cbase = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: 'intermediate' } }));
+    // p-only diff (material/dimension edit): the connection graph must survive.
+    const wireP = Codec.encode(cbase).p.map(a => a.slice());
+    wireP.forEach(a => { a[11] = 1; }); // STK 1 = sheet, an all-parts material flip
+    const pRes = AI.apply(AI.classify(AI.extractJSON(JSON.stringify({ p: wireP, e: 'ply' }))), cbase);
+    const pR = pipeline(pRes.spec);
+    out.cases.push({ name: 'custom p-only diff', conns: pRes.spec.custom.connections.length, errors: pR.report.errors.map(e => e.id) });
+    console.log(`\n■ custom p-only diff: connections kept=${pRes.spec.custom.connections.length}, errors=${pR.report.errors.length}`);
+    ok(pRes.spec.custom.connections.length === 2, 'p-only diff commits with the connection graph intact', pRes.spec.custom.connections);
+    ok(!pR.report.errors.some(e => e.id.startsWith('float_')), 'no "appears in no connection" errors from a material edit', pR.report.errors);
+    // c-only diff (joint upgrade): decodes and changes the corrected joints.
+    const cRes = AI.apply(AI.classify(AI.extractJSON('{"c":[[1,0,3],[2,0,3]],"e":"dado the legs in"}')), cbase);
+    out.cases.push({ name: 'custom c-only diff', joints: cRes.spec.custom.connections.map(c => c.joint) });
+    console.log(`■ custom c-only diff: joints=${cRes.spec.custom.connections.map(c => c.joint).join(',')}`);
+    ok(cRes.spec.custom.connections.length === 2 && cRes.spec.custom.connections.every(c => c.joint === 'dado'),
+      'c-only joint upgrade decodes, applies, and changes the corrected joints', cRes.spec.custom.connections);
+    ok(cRes.spec.custom.parts.length === 3, 'c-only diff leaves the parts untouched', cRes.spec.custom.parts.length);
+  }
+
   /* ---------- share-code round trip ---------- */
   {
     const r = pipeline({
