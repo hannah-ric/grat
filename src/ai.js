@@ -587,6 +587,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* Code-built marker pair appended to the retained turns after a rejected
+   * (unbuildable) proposal (B9). Without it the rejected diff sits in the
+   * conversation looking accepted, and a later turn silently builds on it —
+   * observed live as an all-ply material flip riding an unrelated edit.
+   * Same pattern as the digest context pair in buildMessages. */
+  function rejectionMarker(errors) {
+    const brief = (errors || []).slice(0, 2).map(e => (e && e.text) || String(e)).join(' ');
+    return [
+      { role: 'user', content: '[context] That proposal was REJECTED — validation failed' + (brief ? ': ' + brief : '.') + ' The committed design is UNCHANGED; do not build on the rejected values.' },
+      { role: 'assistant', content: '{"e":"understood, design unchanged"}' }
+    ];
+  }
+
   /* Structured critique for the propose-validate-revise loop (novel pieces). */
   function buildCritique(failedChecks) {
     const lines = failedChecks.slice(0, 10).map(c => `- ${c.title}: ${c.explain} (${c.value}; required: ${c.threshold})`);
@@ -673,7 +686,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.AI = {
     systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
-    setTransport, callModel, buildMessages, buildCritique, downscaleImage,
+    setTransport, callModel, buildMessages, buildCritique, rejectionMarker, downscaleImage,
     supportsImages, hasRemote, VISION_PROMPT,
     unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
     MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT

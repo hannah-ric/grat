@@ -1425,7 +1425,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       r = runPipeline(applied.spec);
     }
     if (r.report.errors.length) {
-      state.turns = turns.slice(-24);
+      // The rejected proposal stays in the turns — mark it as rejected so a
+      // later turn can't silently treat the failed diff as accepted (B9).
+      state.turns = turns.concat(AI.rejectionMarker(r.report.errors)).slice(-24);
       botSay(`I couldn't get a buildable design from that: ${r.report.errors.slice(0, 2).map(e => e.text).join(' ')} Your last valid design is untouched.`, []);
       return null;
     }

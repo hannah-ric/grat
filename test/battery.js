@@ -257,6 +257,41 @@ const summarize = (name, r, ig, extra) => {
     ok(cRes.spec.custom.parts.length === 3, 'c-only diff leaves the parts untouched', cRes.spec.custom.parts.length);
   }
 
+  /* ---------- rejected proposals leave a marker in the conversation (B9) ---------- */
+  {
+    const base = Spec.correctSpec(Spec.defaultSpec('table'));
+    // The model proposes an unbuildable custom piece (two jointed parts that
+    // never touch). PRIM slab=3, rail=1; part = [PRIM,x,y,z,l,w,t,rx,ry,rz,GRAIN,STK,LB,SURF,role].
+    const badWire = {
+      N: {
+        v: 4, n: 'Bad', t: 6, l: 0, u: 1, o: [600, 300, 500], m: 3, s: {}, j: [1, 0, 1], f: 0, d: 0,
+        p: [[3, 0, 250, 0, 600, 300, 19, 0, 0, 0, 0, 0, 1, 2, 'top'],
+          [1, 0, 480, 900, 400, 60, 20, 0, 0, 0, 0, 0, 0, 0, 'rail']],
+        c: [[0, 1, 2]]
+      }, e: 'floating rail'
+    };
+    AI.setTransport(async () => ({ text: JSON.stringify(badWire), stopReason: 'end_turn' }));
+    const res = await AI.respond('add a floating rail', base, { turns: [] });
+    const applied = AI.apply(res.reply, base);
+    const r = pipeline(applied.spec);
+    ok(r.report.errors.length > 0, 'B9 fixture really is unbuildable', r.report.errors.map(e => e.id));
+    // The app's unbuildable path (ui.js aiPipeline / harness runner): the
+    // rejected exchange stays in the turns, followed by the code-built marker.
+    const kept = res.turns.concat(AI.rejectionMarker(r.report.errors)).slice(-24);
+    let seen = null;
+    AI.setTransport(async (system, messages) => { seen = messages; return { text: '{"e":"ok"}', stopReason: 'end_turn' }; });
+    await AI.respond('make it walnut', base, { turns: kept });
+    AI.setTransport(null);
+    const marked = !!seen && seen.some(m => m.role === 'user' && /REJECTED/.test(m.content) && /UNCHANGED/.test(m.content));
+    out.cases.push({ name: 'rejection marker', errors: r.report.errors.length, marked });
+    console.log(`\n■ rejection marker (B9): unbuildable errors=${r.report.errors.length}, next-turn marker seen=${marked}`);
+    ok(marked, 'the next turn\'s messages carry the rejection marker', seen && seen.map(m => m.role + ': ' + String(m.content).slice(0, 60)));
+    ok(seen.some(m => m.role === 'assistant' && /floating rail/.test(String(m.content))),
+      'the rejected reply itself is still in context (the marker explains it)');
+    // A buildable turn never gains a marker — the marker is rejection-only.
+    ok(!res.turns.some(m => /REJECTED/.test(String(m.content))), 'respond() itself never injects the marker');
+  }
+
   /* ---------- share-code round trip ---------- */
   {
     const r = pipeline({
