@@ -1093,6 +1093,43 @@ section('M-01 pilot and bore callouts are real drill sizes, never decimal inches
   Units.set({ system: 'metric', precision: 16, dual: false });
 }
 
+/* ================= L-02 (2026-07 productization): fallback formatters use the boundary ================= */
+section('L-02 3D-view fallback formatters route through BB.Units; no raw mm concatenation');
+{
+  // Positive: both fallbacks default to the ONE display boundary. jointview
+  // is browser-coupled (THREE/DOM), so its check stays at source level —
+  // the repo convention for DOM-coupled modules.
+  const j3d = fs.readFileSync(path.join(__dirname, '..', 'src', 'joinery3d.js'), 'utf8');
+  const jv = fs.readFileSync(path.join(__dirname, '..', 'src', 'jointview.js'), 'utf8');
+  ok(/fmt \|\| BB\.Units\.fmtLength/.test(j3d), 'joinery3d fallback is BB.Units.fmtLength');
+  ok(/fmt \|\| BB\.Units\.fmtLength/.test(jv), 'jointview fallback is BB.Units.fmtLength');
+  ok(!/\+ ' mm'/.test(j3d), 'joinery3d builds no raw mm strings');
+  ok(!/\+ ' mm'/.test(jv), 'jointview builds no raw mm strings');
+  // Functional (joinery3d is browser-free): with no fmt, labels render in
+  // the CURRENT display system — imperial shows fractions, never "N mm".
+  Units.set({ system: 'imperial', precision: 16, dual: false });
+  const r = pipeline({
+    meta: { name: 'JV', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 2, backPanel: true }
+  });
+  const shelf = r.model.parts.find(p => p.role === 'shelf');
+  const side = r.model.parts.find(p => p.role === 'side');
+  const data = BB.Joinery3D.buildJoint('dado', shelf, side);
+  ok(data.labels.length > 0 && data.labels.every(l => !/\d\s?mm\b/.test(l)),
+    'default joint labels follow the display preference — got: ' + data.labels.join(' | ').slice(0, 90));
+  Units.set({ system: 'metric', precision: 16, dual: false });
+  // Repo convention: raw "+ ' mm'" string-building lives ONLY in units.js
+  // (the boundary itself), knowledge.js (AI digests — the wire speaks mm by
+  // contract), and selftest.js (diagnostics read out internal mm truth).
+  const allowed = new Set(['units.js', 'knowledge.js', 'selftest.js']);
+  const offenders = [];
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'src')).filter(x => x.endsWith('.js'))) {
+    if (allowed.has(f)) continue;
+    if (/\+ ' mm'/.test(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'))) offenders.push(f);
+  }
+  eq(offenders, [], 'no raw mm concatenation outside the boundary + documented exemptions');
+}
+
 /* ================= M-11 (2026-07 productization): abrasives from the finish schedule ================= */
 section('M-11 tool-list abrasives derive from the actual finish schedule');
 {

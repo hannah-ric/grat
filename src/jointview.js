@@ -57,7 +57,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     ensureRenderer();
     close(); // dispose any previous scene
 
-    const fmt = opts.fmt || (v => Math.round(v) + ' mm');
+    const fmt = opts.fmt || BB.Units.fmtLength; // display boundary, never a raw mm string (audit L-02)
     const data = BB.Joinery3D.buildJoint(type, partA, partB, fmt);
 
     const scene = new THREE.Scene();

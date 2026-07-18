@@ -160,7 +160,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function buildJoint(type, partA, partB, fmt) {
-    fmt = fmt || (v => Math.round(v) + ' mm');
+    // Default to the ONE display boundary (audit L-02) — a raw mm string
+    // here would ignore the user's unit preference.
+    fmt = fmt || BB.Units.fmtLength;
     if (/^hw_/.test(type)) return buildHardwareView(type, fmt);
     const A = section(partA), B = section(partB);
     const tA = A.t, wA = A.w, tB = B.t, wB = B.w;
