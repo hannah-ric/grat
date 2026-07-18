@@ -28,6 +28,16 @@ const S = require('./_session.js');
 const KV = require('./_kv.js');
 
 const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/;
+// The store namespaces every document as bb:{uid}:{doc}. api/_entitlements.js
+// uses that SAME per-uid keyspace for authoritative billing/usage records —
+// bb:{uid}:subscription and bb:{uid}:usage:ai:<month> (and usage:tokens:<month>).
+// A store write to one of those names would alias an entitlement key and let a
+// signed-in user self-grant Pro or reset their own AI meter (E-01/E-02). Reserve
+// the entitlement roots so they can never be reached through this endpoint. We do
+// NOT ban colons (client docs are projects:index / prices:v1 / prefs:v2 /
+// project:* / thumb:*) nor rename the user keyspace — only these exact roots and
+// their subkeys are off-limits, for reads, writes, and deletes alike.
+const RESERVED_DOC = /^(subscription|usage)(:|$)/;
 const MAX_VALUE_BYTES = 400 * 1024; // biggest honest doc: project w/ 20 revisions + thumb
 const MAX_BODY_BYTES = MAX_VALUE_BYTES + 4096;
 
@@ -68,6 +78,9 @@ module.exports = async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const doc = url.searchParams.get('doc') || '';
   if (!DOC_RE.test(doc)) return sendJSON(res, 400, { error: 'bad doc name' });
+  // Reserved entitlement keys behave as if the doc name were invalid — a plain
+  // 4xx, identical for GET/PUT/POST/DELETE, before any backend access.
+  if (RESERVED_DOC.test(doc)) return sendJSON(res, 400, { error: 'reserved doc name' });
   const key = `bb:${sess.uid}:${doc}`;
 
   try {

@@ -250,6 +250,51 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- store: reserved entitlement keys ---------------- */
+  section('store: entitlement keys are not user-writable via /api/store (E-01/E-02)');
+  {
+    const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    const cookie = uid => ({ cookie: S.sessionCookieFor({ uid, name: 'T', provider: 'google' }, fakeReq('/')).split(';')[0] });
+    const is4xx = code => code >= 400 && code < 500;
+
+    // E-01: PUT doc=subscription must NOT alias the entitlements subscription key.
+    eq((await E.statusFor('google:atk')).plan, 'free', 'attacker starts on Free');
+    let res = fakeRes();
+    await store(fakeReq('/api/store?doc=subscription', { method: 'PUT', headers: cookie('google:atk'), body: { value: JSON.stringify({ status: 'active', interval: 'year', currentPeriodEnd: '2099-01-01' }) } }), res);
+    ok(is4xx(res.statusCode), 'PUT doc=subscription is refused (4xx), not written');
+    eq((await E.statusFor('google:atk')).plan, 'free', 'plan stays Free — no self-grant to Pro');
+
+    // Reserved names are rejected identically for GET and DELETE.
+    res = fakeRes();
+    await store(fakeReq('/api/store?doc=subscription', { headers: cookie('google:atk') }), res);
+    ok(is4xx(res.statusCode), 'GET doc=subscription is refused (4xx)');
+    res = fakeRes();
+    await store(fakeReq('/api/store?doc=subscription', { method: 'DELETE', headers: cookie('google:atk') }), res);
+    ok(is4xx(res.statusCode), 'DELETE doc=subscription is refused (4xx)');
+
+    // E-02: PUT doc=usage:ai:<month> must NOT reset the AI meter.
+    for (let i = 0; i < 5; i++) await E.incrementAI('google:atk');
+    const month = (await E.getUsage('google:atk')).month;
+    res = fakeRes();
+    await store(fakeReq('/api/store?doc=usage:ai:' + month, { method: 'PUT', headers: cookie('google:atk'), body: { value: '0' } }), res);
+    ok(is4xx(res.statusCode), 'PUT doc=usage:* is refused (4xx)');
+    eq((await E.getUsage('google:atk')).aiMessages, 5, 'AI meter unchanged — cap is not self-resettable');
+    // The general form (any usage: subkey) is covered, e.g. token counters.
+    res = fakeRes();
+    await store(fakeReq('/api/store?doc=usage:tokens:' + month, { method: 'PUT', headers: cookie('google:atk'), body: { value: '0' } }), res);
+    ok(is4xx(res.statusCode), 'PUT doc=usage:tokens:* is refused (4xx) too');
+
+    // Legitimate colon-bearing user docs are UNAFFECTED (no colon ban, keyspace intact).
+    for (const doc of ['projects:index', 'prices:v1', 'prefs:v2', 'project:p123', 'thumb:p123']) {
+      res = fakeRes();
+      await store(fakeReq('/api/store?doc=' + doc, { method: 'PUT', headers: cookie('google:atk'), body: { value: '[]' } }), res);
+      eq(res.statusCode, 200, `user doc "${doc}" still writable`);
+    }
+    rmkv();
+    cleanEnv();
+  }
+
   /* ---------------- entitlements: plans + usage ---------------- */
   section('entitlements: Free/Pro plans + usage metering');
   {
