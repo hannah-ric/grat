@@ -349,6 +349,67 @@ section('custom composition diffs are human-readable chips (B5)');
   ok(grownChips.some(c => /joined .*stretcher/.test(c) || /connections added/.test(c)), 'a new connection is announced');
 }
 
+/* ---------------- ack reconciliation (A2, merges B4/C4) ---------------- */
+section('ack reconciliation: the bot never claims what the spec lacks (A2)');
+{
+  const none = { patch: {}, ignored: [] };
+
+  // req1 live case: "splayed legs" claimed on a legless bookshelf.
+  const shelf = Spec.correctSpec({ meta: { template: 'bookshelf', level: 'advanced' }, wood: { species: 'walnut' } });
+  const a1 = Spec.reconcileAck('Walnut case bookshelf with splayed solid legs and open sides for a bold mid-century look.', shelf, ['species Red Oak → Black Walnut'], none);
+  ok(/no legs in this design/.test(a1), `legless bookshelf ack corrected — got "${a1}"`);
+  ok(!/delivered wood/.test(a1), 'the true species claim (walnut) is not flagged');
+
+  // req4-b-2 live case: "Three drawers ... hard maple" over a 2-drawer soft-maple cabinet.
+  const cab = Spec.correctSpec({ meta: { template: 'cabinet', level: 'intermediate' }, wood: { species: 'soft_maple' }, drawers: { count: 2 } });
+  const a2 = Spec.reconcileAck('Sized at workbench height with a thick 44mm hard maple top. Three drawers organize small hardware.', cab, ['drawer count null → 2'], none);
+  ok(/2 drawers/.test(a2), `drawer count corrected — got "${a2}"`);
+  ok(/soft maple/.test(a2), `species corrected to the delivered soft maple — got "${a2}"`);
+
+  // A bare "maple" when the delivered wood IS a maple is not a contradiction.
+  const a2b = Spec.reconcileAck('A sturdy maple workbench top.', cab, ['x'], none);
+  ok(!/Actually:/.test(a2b), `generic "maple" over soft maple passes — got "${a2b}"`);
+
+  // B4 live case (B-base2-t2): the requested depth reverted mid-pipeline.
+  const table = Spec.correctSpec(Spec.defaultSpec('table'));
+  const a3 = Spec.reconcileAck('Grew the top 50.8 mm deeper.', table, [], { patch: { overall: { depth: table.overall.depth + 50.8 } }, ignored: [] });
+  ok(/depth is .* not the proposed/.test(a3), `reverted dimension surfaced — got "${a3}"`);
+
+  // A requested change that changed nothing at all is said so.
+  const a4 = Spec.reconcileAck('Lowered it 4 inches.', table, [], { patch: { overall: { height: table.overall.height } }, ignored: [] });
+  ok(/nothing in the delivered design actually changed/.test(a4), `false "changed" ack corrected — got "${a4}"`);
+
+  // C4: ignored wire keys are named.
+  const a5 = Spec.reconcileAck('Angled the legs 10 degrees.', table, [], { patch: { overall: { height: table.overall.height } }, ignored: ['legs', 'angle'] });
+  ok(/ignored: legs, angle/.test(a5), `ignored keys caveat — got "${a5}"`);
+
+  // Mechanism words: a phantom hinge claim is corrected...
+  const a6 = Spec.reconcileAck('The lid is hinged at the back for easy access.', shelf, ['x'], none);
+  ok(/nothing hinges, folds, or pivots/.test(a6), `phantom hinge corrected — got "${a6}"`);
+  // ...but honest negation is never "corrected"...
+  const a7 = Spec.reconcileAck('The lid is glued fixed — a true hinged lid isn’t expressible here.', shelf, ['x'], none);
+  ok(!/Actually:/.test(a7), `honest hinge negation passes — got "${a7}"`);
+  // ...and a genuine kd_bolt lift-off survives.
+  const kd = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: 'advanced' } }));
+  kd.custom.connections[0].joint = 'kd_bolt';
+  const a8 = Spec.reconcileAck('The top lifts off after removing the KD bolts.', kd, ['x'], none);
+  ok(!/permanently fastened/.test(a8), `kd_bolt lift-off claim passes — got "${a8}"`);
+
+  // A truthful ack passes through byte-identical.
+  const low = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('table'), { overall: { height: 700 } }));
+  const clean = Spec.reconcileAck('Lowered the top to 700 mm.', low, ['height 29 in → 27 9/16 in'], { patch: { overall: { height: 700 } }, ignored: [] });
+  eq(clean, 'Lowered the top to 700 mm.', 'a truthful ack passes through unchanged');
+
+  // C4 codec half: an out-of-range enum index is dropped, never a silent
+  // reset to the wire default.
+  ok(Codec.decodePartial({ m: 99 }) === null, 'a diff of only an out-of-range enum decodes to null');
+  const p2 = Codec.decodePartial({ m: 99, o: { h: 700 } });
+  ok(p2.overall.height === 700 && !p2.wood, 'out-of-range species index is dropped, not reset to default');
+  // classify records unknown wire keys for the ack caveat.
+  const rIgn = AI.classify({ o: { h: 700 }, legs: 'angled', e: 'x' });
+  eq(rIgn.ignored, ['legs'], 'classify lists unknown wire keys as ignored');
+}
+
 /* ---------------- local model ---------------- */
 section('local intent parser');
 {

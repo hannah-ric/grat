@@ -226,9 +226,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Ids map to p1..pN of the CURRENT parts; correctCustom validates them.
       patch.custom = { connections: mapConns(w.c, null) };
     }
-    // Drop empty sub-objects so the merge stays surgical.
+    // Drop values that decoded to undefined (out-of-range enum indexes) so a
+    // bad index can never silently reset a field to its default (C4), then
+    // drop empty sub-objects so the merge stays surgical.
     for (const k of Object.keys(patch)) {
-      if (patch[k] && typeof patch[k] === 'object' && !Array.isArray(patch[k]) && !Object.keys(patch[k]).length) delete patch[k];
+      const v = patch[k];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const kk of Object.keys(v)) if (v[kk] === undefined) delete v[kk];
+        if (!Object.keys(v).length) delete patch[k];
+      } else if (v === undefined) delete patch[k];
     }
     return Object.keys(patch).length ? patch : null;
   }

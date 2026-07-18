@@ -1400,6 +1400,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay(res.reply.text, [], { noChange: true });
       return null;
     }
+    // What the shown reply asked for, so the ack can be reconciled against
+    // what actually survived correction/validation/critique (A2/B4/C4).
+    const requested = res.reply.kind === 'diff'
+      ? { patch: res.reply.patch, ignored: res.reply.ignored || [] }
+      : { patch: { overall: res.reply.spec && res.reply.spec.overall, drawers: res.reply.spec && res.reply.spec.drawers }, ignored: res.reply.ignored || [] };
     let applied = AI.apply(res.reply, state.spec);
     let turns = res.turns;
     let r = runPipeline(applied.spec);
@@ -1452,7 +1457,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, local: !!res.local, unconfigured: !!res.unconfigured };
+    return { final, failReport, explain, requested, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -1505,7 +1510,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else {
         const summary = state.integrity.summary;
         const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Safety tab.` : '';
-        botSay((out.explain || 'Updated.') + integLine, chips, { noChange: !chips.length, caveat });
+        // The ack is never the model's word alone: reconcile it against the
+        // committed spec and append the code-built truth (A2).
+        const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
+        botSay(ack + integLine, chips, { noChange: !chips.length, caveat });
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {

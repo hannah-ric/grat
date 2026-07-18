@@ -123,7 +123,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain' && k !== 'i' && k !== 'info') wireDiff[k] = obj[k];
     const patch = Codec().decodePartial(wireDiff);
     if (!patch) return null;
-    return { kind: 'diff', patch, explain: explain || 'Updated.' };
+    // Wire keys outside the documented schema decode to nothing — record them
+    // so the ack can say what was ignored instead of implying it landed (C4).
+    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c'];
+    const ignored = Object.keys(wireDiff).filter(k => !KNOWN.includes(k));
+    return { kind: 'diff', patch, explain: explain || 'Updated.', ignored };
   }
 
   /* ---------------- local intent parser (offline fallback) ----------------

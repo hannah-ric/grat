@@ -308,6 +308,129 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
+  /* ---------------- ack reconciliation (A2, merges B4/C4) ----------------
+   * The chat ack is the model's FIRST "explain", shown after correction,
+   * validation-refinement, and critique rounds may have changed or reverted
+   * what it describes. Code — never the model — checks the enumerated
+   * contradiction classes seen live and appends the code-built truth:
+   *   - a species word that isn't the delivered wood ("hard maple" over soft maple)
+   *   - a drawer-count numeral vs the delivered drawers ("three drawers" over 2)
+   *   - leg words on a legless design ("splayed legs" on a bookshelf)
+   *   - mechanism words (hinge/fold/pivot/lift-off) no artifact contains
+   *   - a requested dimension that did not survive to the final spec (B4)
+   *   - a requested change that changed nothing (the false-ack surface)
+   * plus a caveat naming wire keys the codec ignored (C4).
+   * Pure: (explain, correctedSpec, chips, requested) -> ack text.
+   * requested = { patch: verbose patch of the shown reply, ignored: [keys] }. */
+  function reconcileAck(explain, spec, chips, requested) {
+    let text = String(explain || '').trim();
+    if (!text || !spec) return text;
+    const low = ' ' + text.toLowerCase().replace(/[’]/g, "'") + ' ';
+    const fixes = [];
+    // A mention is honest when its own clause already negates it ("no hinges",
+    // "a hinged lid isn't expressible") — never "correct" honesty.
+    const NEG = /\b(no|not|never|without|can't|cannot|isn't|aren't|won't|doesn't|don't|instead of|rather than|unable|lacks?|omit(?:ted|s)?)\b/;
+    const clauseAt = i => {
+      const before = low.slice(0, i).split(/[,.;:!?()]|\s[—–-]\s/).pop();
+      const after = low.slice(i).split(/[,.;:!?()]|\s[—–-]\s/)[0];
+      return before + after;
+    };
+    const mentioned = rx => {
+      const m = rx.exec(low);
+      return m ? !NEG.test(clauseAt(m.index)) : false;
+    };
+    const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
+
+    // 1. Species words vs the delivered wood (solid or sheet).
+    {
+      const actual = K.WOOD_SPECIES[spec.wood && spec.wood.species];
+      const sheetSp = K.WOOD_SPECIES[spec.wood && spec.wood.sheetSpecies];
+      const okNames = []
+        .concat(actual ? [actual.label.toLowerCase()].concat(actual.aliases || []) : [])
+        .concat(sheetSp ? [sheetSp.label.toLowerCase()].concat(sheetSp.aliases || []) : []);
+      const candidates = [];
+      for (const s of Object.values(K.WOOD_SPECIES)) {
+        if (spec.wood && (s.key === spec.wood.species || s.key === spec.wood.sheetSpecies)) continue;
+        for (const nm of [s.label.toLowerCase()].concat(s.aliases || [])) candidates.push(nm);
+      }
+      candidates.sort((x, y) => y.length - x.length); // "hard maple" beats "maple"
+      for (const nm of candidates) {
+        if (!mentioned(rxWord(nm))) continue;
+        // A generic word inside the real species' name ("maple" when the
+        // delivered wood is soft maple) is not a contradiction.
+        if (okNames.some(o => o.includes(nm) || nm.includes(o))) break;
+        if (actual) fixes.push('the delivered wood is ' + actual.label.toLowerCase());
+        break;
+      }
+    }
+
+    // 2. Drawer-count numerals vs the delivered drawers.
+    let drawerFixed = false;
+    {
+      const m = /\b(\d+|one|two|three|four)\s+drawers?\b/.exec(low);
+      if (m && !NEG.test(clauseAt(m.index))) {
+        const WORDS = { one: 1, two: 2, three: 3, four: 4 };
+        const n = WORDS[m[1]] || parseInt(m[1], 10);
+        const have = spec.drawers ? spec.drawers.count : 0;
+        if (isFinite(n) && n !== have) {
+          fixes.push(have ? 'the delivered design has ' + have + ' drawer' + (have === 1 ? '' : 's') : 'no drawers in this design');
+          drawerFixed = true;
+        }
+      }
+    }
+
+    // 3. Leg words on a legless design.
+    {
+      let hasLegs = ['table', 'desk', 'bench', 'nightstand'].includes(spec.meta && spec.meta.template);
+      if (spec.meta && spec.meta.template === 'custom' && spec.custom) {
+        hasLegs = (spec.custom.parts || []).some(p => /leg/.test(p.role || '') || p.primitive === 'post' || p.primitive === 'cylinder');
+      }
+      if (!hasLegs && mentioned(/\blegs?\b/)) fixes.push('no legs in this design');
+    }
+
+    // 4. Mechanism words no artifact can contain (kd_bolt is the only
+    // non-permanent joint, so an honest lift-off claim needs one).
+    {
+      const hasKD = ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'kd_bolt') ||
+        ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'kd_bolt');
+      if (mentioned(/\b(hinged?|hinges|pivot(?:s|ing)?|fold(?:s|ing|able)?(?:[\s-](?:down|out|up|flat))?)\b/)) {
+        fixes.push('nothing hinges, folds, or pivots in this plan — every connection is fixed' + (hasKD ? ' or bolted (kd_bolt)' : ''));
+      } else if (!hasKD && mentioned(/\blifts?[\s-]?off\b/)) {
+        fixes.push('the lid/top is permanently fastened — no lift-off connection exists in this plan');
+      }
+    }
+
+    // 5. Requested values that did not survive to the delivered spec (B4).
+    const patch = requested && requested.patch;
+    if (patch && patch.overall && spec.overall) {
+      for (const dim of ['width', 'depth', 'height']) {
+        const want = patch.overall[dim];
+        if (typeof want !== 'number' || !isFinite(want)) continue;
+        const got = spec.overall[dim];
+        if (typeof got === 'number' && Math.abs(want - got) > 5) {
+          fixes.push(dim + ' is ' + U().fmtLength(got) + ', not the proposed ' + U().fmtLength(want));
+        }
+      }
+    }
+    if (!drawerFixed && patch && patch.drawers && typeof patch.drawers.count === 'number') {
+      const have = spec.drawers ? spec.drawers.count : 0;
+      if (patch.drawers.count !== have) {
+        fixes.push(have ? 'the delivered design has ' + have + ' drawer' + (have === 1 ? '' : 's') : 'no drawers in this design');
+      }
+    }
+
+    // 6. A requested change that changed nothing at all.
+    if ((!chips || !chips.length) && !fixes.length && patch && Object.keys(patch).length) {
+      fixes.push('nothing in the delivered design actually changed');
+    }
+
+    let out = text;
+    if (fixes.length) out = out.replace(/[.\s]*$/, '') + '. Actually: ' + fixes.join('; ') + '.';
+    const ign = requested && Array.isArray(requested.ignored) ? requested.ignored.filter(Boolean) : [];
+    if (ign.length) out += ' (I couldn’t express and ignored: ' + ign.slice(0, 4).join(', ') + '.)';
+    return out;
+  }
+
   function snap(v, table) {
     let best = table[0];
     for (const t of table) if (Math.abs(t - v) < Math.abs(best - v)) best = t;
@@ -928,7 +1051,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
-    defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
+    defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck,
     correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
     customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom
   };
