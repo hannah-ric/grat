@@ -8336,8 +8336,11 @@ var BB = globalThis.BB = globalThis.BB || {};
 </svg>`;
   }
 
-  /* One-page drawing sheet: three elevations + a title block. */
-  function sheetSVG(spec, model, fmt) {
+  /* One-page drawing sheet: three elevations + a title block. Origin is
+   * runtime state passed in by the caller (audit A-11) — the sheet stays a
+   * pure function of its arguments. */
+  function sheetSVG(spec, model, fmt, opts) {
+    const host = String((opts && opts.origin) || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
     const views = ['front', 'side', 'top'];
     const inner = views.map((v, i) =>
       `<svg x="${(i % 2) * 50}%" y="${i < 2 ? 0 : 46}%" width="50%" height="46%" preserveAspectRatio="xMidYMid meet">${elevationSVG(spec, model, v, fmt)}</svg>`
@@ -8362,7 +8365,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     <text x="724" y="980">${escText(dims)} · ${escText(sp ? sp.label : spec.wood.species)}</text>
     <text class="sub" x="1180" y="958">BLUEPRINT BUDDY</text>
     <text class="sub" x="1180" y="980">NOT HIDDEN-LINE · ${escText(String(spec.meta.level).toUpperCase())} BUILD</text>
-  </g>
+  </g>${host ? `
+  <text class="tb-origin" x="16" y="986" style="fill: var(--muted); font-size: 12px;">Made with Blueprint Buddy — ${escText(host)}</text>` : ''}
 </svg>`;
   }
   const escText = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -8868,7 +8872,12 @@ BlueprintBuddyImport.build
    * A display surface like the print sheet: dimensions in the current
    * display units AND raw millimetres, so the same file works at the bench
    * and in other software. RFC-4180 quoting; CRLF for spreadsheet apps. */
-  function toCSV(spec, cut) {
+  /* App origin for export footers (audit A-11). Origin is RUNTIME state, so
+   * callers pass it in — the exporters stay pure functions of their
+   * arguments. Rendered as a clean host/path, never a protocol URL. */
+  const originHost = o => String(o || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+  function toCSV(spec, cut, opts) {
     const U = BB.Units;
     const q = s => '"' + String(s).replace(/"/g, '""') + '"';
     const rows = [[
@@ -8882,6 +8891,8 @@ BlueprintBuddyImport.build
         r.L, r.W, r.T, q(mat), q(r.stock), q(r.grain), q(r.note || '')
       ].join(','));
     }
+    const host = originHost(opts && opts.origin);
+    if (host) rows.push(q('Made with Blueprint Buddy — ' + host));
     return rows.join('\r\n') + '\r\n';
   }
 
@@ -8895,10 +8906,11 @@ BlueprintBuddyImport.build
   };
   const printSVG = svg => String(svg).replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PRINT_COLORS[v] || '#333');
 
-  function printHTML(spec, model, cut, bomData, steps, stock) {
+  function printHTML(spec, model, cut, bomData, steps, stock, opts) {
     // The print sheet is a display surface: it follows the current display
     // preference via BB.Units (unlike the geometry exports above).
     const U = BB.Units;
+    const host = originHost(opts && opts.origin);
     const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
     const dim = v => U.fmtLength(v);
     const sp = BB.K.WOOD_SPECIES[spec.wood.species];
@@ -9004,7 +9016,8 @@ BlueprintBuddyImport.build
     <h2>Assembly</h2>
     <ol class="print-steps">${stepBlocks}</ol>
     <p class="print-sub">${esc(BB.K.DESIGN_BASIS)}</p>
-  </section>`;
+  </section>${host ? `
+  <footer class="print-sub">Made with Blueprint Buddy — ${esc(host)}</footer>` : ''}`;
   }
 
   /* Blob download (browser only). */
@@ -9335,7 +9348,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     return 'BB4:' + b64url(JSON.stringify(encode(spec)));
   }
   function fromShareCode(code) {
-    const trimmed = String(code || '').trim();
+    let trimmed = String(code || '').trim();
+    // Share LINKS carry the code in the #d= hash with a trailing ref marker
+    // (audit A-11): accept a pasted full link or a code+marker — strip the
+    // wrapper, keep the code. Plain codes pass through untouched.
+    const hash = trimmed.match(/#d=([^&\s]+)/);
+    if (hash) trimmed = hash[1];
+    trimmed = trimmed.split('&')[0];
+    if (/%[0-9A-Fa-f]{2}/.test(trimmed)) {
+      try { trimmed = decodeURIComponent(trimmed); } catch (e) { /* not URL-encoded after all */ }
+    }
     const m = trimmed.match(/^BB(\d+):([A-Za-z0-9_-]+)$/);
     if (!m) return { error: 'Not a Blueprint Buddy share code — it should start with “BB4:”.' };
     let wire;
@@ -15796,11 +15818,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (res.error) { $('importMsg').textContent = res.error; return; }
     closeScrim('shareScrim');
   }
+  /* The app's own URL for export footers and share links (audit A-11).
+   * Runtime state stays HERE — the exporters receive it as an argument and
+   * remain pure. Empty on file:// and sandboxed hosts. */
+  function appOrigin() {
+    return location.origin && location.origin !== 'null'
+      ? (location.origin + location.pathname).replace(/index\.html?$/, '')
+      : '';
+  }
   /* The share LINK is the same self-contained code riding the URL hash —
-   * no server, works wherever the app is hosted. */
+   * no server, works wherever the app is hosted. The ref marker attributes
+   * shared-link arrivals; import tolerates and strips it (Codec). */
   function shareLink() {
     return location.origin && location.origin !== 'null'
-      ? location.origin + location.pathname + '#d=' + encodeURIComponent(Codec.toShareCode(state.spec))
+      ? location.origin + location.pathname + '#d=' + encodeURIComponent(Codec.toShareCode(state.spec)) + '&ref=share'
       : null; // file:// has no shareable origin — the sheet says so honestly
   }
 
@@ -16478,16 +16509,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (kind === 'json') {
       Exports.download(name + '.designspec.json', JSON.stringify(state.spec, null, 2), 'application/json');
     } else if (kind === 'csv') {
-      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut), 'text/csv');
+      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut, { origin: appOrigin() }), 'text/csv');
       botSay('Exported the cut list as CSV — display units and raw millimetres side by side, ready for a spreadsheet.', []);
     } else if (kind === 'svg') {
-      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt)), 'image/svg+xml');
+      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt, { origin: appOrigin() })), 'image/svg+xml');
       botSay('Exported the drawing sheet — front, side, and plan elevations with dimensions, plus a title block. Opens in any browser or vector editor.', []);
     } else if (kind === 'share') {
       openShareSheet();
     } else if (kind === 'print') {
       const root = $('printRoot');
-      root.innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan);
+      root.innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan, { origin: appOrigin() });
       // Release the sheet's inline-SVG DOM (~26 KB) once the dialog closes,
       // rather than leaving it parked in the document until the next print.
       const cleanup = () => { root.textContent = ''; window.removeEventListener('afterprint', cleanup); };

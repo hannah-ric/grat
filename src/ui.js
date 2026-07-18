@@ -2079,11 +2079,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (res.error) { $('importMsg').textContent = res.error; return; }
     closeScrim('shareScrim');
   }
+  /* The app's own URL for export footers and share links (audit A-11).
+   * Runtime state stays HERE — the exporters receive it as an argument and
+   * remain pure. Empty on file:// and sandboxed hosts. */
+  function appOrigin() {
+    return location.origin && location.origin !== 'null'
+      ? (location.origin + location.pathname).replace(/index\.html?$/, '')
+      : '';
+  }
   /* The share LINK is the same self-contained code riding the URL hash —
-   * no server, works wherever the app is hosted. */
+   * no server, works wherever the app is hosted. The ref marker attributes
+   * shared-link arrivals; import tolerates and strips it (Codec). */
   function shareLink() {
     return location.origin && location.origin !== 'null'
-      ? location.origin + location.pathname + '#d=' + encodeURIComponent(Codec.toShareCode(state.spec))
+      ? location.origin + location.pathname + '#d=' + encodeURIComponent(Codec.toShareCode(state.spec)) + '&ref=share'
       : null; // file:// has no shareable origin — the sheet says so honestly
   }
 
@@ -2761,16 +2770,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (kind === 'json') {
       Exports.download(name + '.designspec.json', JSON.stringify(state.spec, null, 2), 'application/json');
     } else if (kind === 'csv') {
-      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut), 'text/csv');
+      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut, { origin: appOrigin() }), 'text/csv');
       botSay('Exported the cut list as CSV — display units and raw millimetres side by side, ready for a spreadsheet.', []);
     } else if (kind === 'svg') {
-      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt)), 'image/svg+xml');
+      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt, { origin: appOrigin() })), 'image/svg+xml');
       botSay('Exported the drawing sheet — front, side, and plan elevations with dimensions, plus a title block. Opens in any browser or vector editor.', []);
     } else if (kind === 'share') {
       openShareSheet();
     } else if (kind === 'print') {
       const root = $('printRoot');
-      root.innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan);
+      root.innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan, { origin: appOrigin() });
       // Release the sheet's inline-SVG DOM (~26 KB) once the dialog closes,
       // rather than leaving it parked in the document until the next print.
       const cleanup = () => { root.textContent = ''; window.removeEventListener('afterprint', cleanup); };

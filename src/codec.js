@@ -242,7 +242,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     return 'BB4:' + b64url(JSON.stringify(encode(spec)));
   }
   function fromShareCode(code) {
-    const trimmed = String(code || '').trim();
+    let trimmed = String(code || '').trim();
+    // Share LINKS carry the code in the #d= hash with a trailing ref marker
+    // (audit A-11): accept a pasted full link or a code+marker — strip the
+    // wrapper, keep the code. Plain codes pass through untouched.
+    const hash = trimmed.match(/#d=([^&\s]+)/);
+    if (hash) trimmed = hash[1];
+    trimmed = trimmed.split('&')[0];
+    if (/%[0-9A-Fa-f]{2}/.test(trimmed)) {
+      try { trimmed = decodeURIComponent(trimmed); } catch (e) { /* not URL-encoded after all */ }
+    }
     const m = trimmed.match(/^BB(\d+):([A-Za-z0-9_-]+)$/);
     if (!m) return { error: 'Not a Blueprint Buddy share code — it should start with “BB4:”.' };
     let wire;

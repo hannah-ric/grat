@@ -356,6 +356,46 @@ section('local intent parser');
   }
 }
 
+/* ---------------- lead-gen origin on export surfaces (A-11) ---------------- */
+section('exports carry the app origin; share links carry a ref marker (A-11)');
+{
+  const r = pipeline({
+    meta: { name: 'Origin NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const cut = Plans.cutList(r.spec, r.model);
+  const ORIGIN = 'https://blueprint.example.app/';
+  // Origin is runtime state — it must be PASSED IN; the exporters stay pure.
+  const csv = Exports.toCSV(r.spec, cut, { origin: ORIGIN });
+  const lastLine = csv.trim().split('\r\n').pop();
+  ok(/Blueprint Buddy/.test(lastLine) && /blueprint\.example\.app/.test(lastLine), 'CSV footer row names the app and its origin');
+  ok(!/Made with|example\.app/.test(Exports.toCSV(r.spec, cut)), 'no origin argument → no footer (pure function of its arguments)');
+
+  const fmt = v => BB.Units.fmtLength(v);
+  ok(/blueprint\.example\.app/.test(BB.Drafting.sheetSVG(r.spec, r.model, fmt, { origin: ORIGIN })),
+    'drawing sheet carries the origin in its title-block footer');
+  ok(!/example\.app/.test(BB.Drafting.sheetSVG(r.spec, r.model, fmt)), 'sheet without origin unchanged');
+
+  const integ = Structural.computeIntegrity(r.spec, r.model, {});
+  const plan = Packing.planStock(r.spec, r.model, cut, {});
+  const bom = Plans.bom(r.spec, r.model, { integrity: integ, stock: plan });
+  const steps = Plans.assembly(r.spec, r.model, integ, { stockPlan: plan });
+  const html = Exports.printHTML(r.spec, r.model, cut, bom, steps, plan, { origin: ORIGIN });
+  ok(/Made with Blueprint Buddy[^<]*blueprint\.example\.app/.test(html), 'print sheet footer carries the origin');
+
+  // Share links append a ref marker; import tolerates and strips it.
+  const code = Codec.toShareCode(r.spec);
+  const link = 'https://blueprint.example.app/#d=' + encodeURIComponent(code) + '&ref=share';
+  const back = Codec.fromShareCode(link);
+  ok(!back.error && back.spec && back.spec.meta.name === 'Origin NS', 'a full share link with the ref marker imports');
+  const back2 = Codec.fromShareCode(code + '&ref=share');
+  ok(!back2.error && !!back2.spec, 'code + ref marker imports (marker stripped)');
+  ok(!Codec.fromShareCode(code).error, 'plain codes still import');
+  ok(!!Codec.fromShareCode('BB4:!!!').error && !!Codec.fromShareCode('hello').error, 'garbage still rejected');
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok(/encodeURIComponent\(Codec\.toShareCode\(state\.spec\)\) \+ '&ref=/.test(uiSrc), 'shareLink appends the ref marker');
+}
+
 /* ---------------- history ---------------- */
 section('history');
 {

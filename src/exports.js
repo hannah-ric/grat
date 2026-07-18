@@ -266,7 +266,12 @@ BlueprintBuddyImport.build
    * A display surface like the print sheet: dimensions in the current
    * display units AND raw millimetres, so the same file works at the bench
    * and in other software. RFC-4180 quoting; CRLF for spreadsheet apps. */
-  function toCSV(spec, cut) {
+  /* App origin for export footers (audit A-11). Origin is RUNTIME state, so
+   * callers pass it in — the exporters stay pure functions of their
+   * arguments. Rendered as a clean host/path, never a protocol URL. */
+  const originHost = o => String(o || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+  function toCSV(spec, cut, opts) {
     const U = BB.Units;
     const q = s => '"' + String(s).replace(/"/g, '""') + '"';
     const rows = [[
@@ -280,6 +285,8 @@ BlueprintBuddyImport.build
         r.L, r.W, r.T, q(mat), q(r.stock), q(r.grain), q(r.note || '')
       ].join(','));
     }
+    const host = originHost(opts && opts.origin);
+    if (host) rows.push(q('Made with Blueprint Buddy — ' + host));
     return rows.join('\r\n') + '\r\n';
   }
 
@@ -293,10 +300,11 @@ BlueprintBuddyImport.build
   };
   const printSVG = svg => String(svg).replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PRINT_COLORS[v] || '#333');
 
-  function printHTML(spec, model, cut, bomData, steps, stock) {
+  function printHTML(spec, model, cut, bomData, steps, stock, opts) {
     // The print sheet is a display surface: it follows the current display
     // preference via BB.Units (unlike the geometry exports above).
     const U = BB.Units;
+    const host = originHost(opts && opts.origin);
     const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
     const dim = v => U.fmtLength(v);
     const sp = BB.K.WOOD_SPECIES[spec.wood.species];
@@ -402,7 +410,8 @@ BlueprintBuddyImport.build
     <h2>Assembly</h2>
     <ol class="print-steps">${stepBlocks}</ol>
     <p class="print-sub">${esc(BB.K.DESIGN_BASIS)}</p>
-  </section>`;
+  </section>${host ? `
+  <footer class="print-sub">Made with Blueprint Buddy — ${esc(host)}</footer>` : ''}`;
   }
 
   /* Blob download (browser only). */
