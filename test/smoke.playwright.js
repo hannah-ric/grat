@@ -994,6 +994,29 @@ const clickMoreCtl = async sel => {
   await page.screenshot({ path: SHOTS + '/17-diagnostics.png' });
   await page.click('#diagClose');
 
+  // M-16: diagnostics must be reachable by keyboard, not pointer-only —
+  // the logo target carries button semantics and Enter opens the panel.
+  const diagKb = await page.evaluate(() => {
+    const logo = document.getElementById('brandLogo');
+    return {
+      buttonSemantics: logo.tagName === 'BUTTON' || (logo.getAttribute('role') === 'button' && logo.getAttribute('tabindex') === '0'),
+      aria: logo.getAttribute('aria-label') || '',
+      h1Intact: !!document.querySelector('h1.brand-name') && !document.querySelector('h1.brand-name').closest('[role="button"], button')
+    };
+  });
+  ok(diagKb.buttonSemantics, 'logo diagnostics target has button semantics');
+  ok(/diagnostic/i.test(diagKb.aria), `logo names its diagnostics action for assistive tech (got "${diagKb.aria}")`);
+  ok(diagKb.h1Intact, 'the h1 wordmark stays outside the button (heading not flattened)');
+  await page.focus('#brandLogo');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+  ok(await page.isVisible('#diagScrim.open'), 'Enter on the focused logo opens diagnostics');
+  await page.evaluate(() => { if (document.getElementById('diagScrim').classList.contains('open')) document.getElementById('diagClose').click(); });
+  // Camera presets announce their views, not bare letters.
+  const presetAria = await page.evaluate(() => ['viewFront', 'viewSide', 'viewTop', 'viewIso'].map(id => document.getElementById(id).getAttribute('aria-label') || ''));
+  ok(/front elevation/i.test(presetAria[0]) && /side elevation/i.test(presetAria[1]) && /plan|top/i.test(presetAria[2]) && /perspective/i.test(presetAria[3]),
+    `camera presets carry real names (${presetAria.join(' | ') || 'none'})`);
+
   // Photo downscale: never send a raw camera image (1024 px long edge, JPEG).
   const ds = await page.evaluate(async () => {
     const c = document.createElement('canvas');

@@ -295,6 +295,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: relative;
 }
 .brand { display: flex; align-items: center; gap: 9px; flex: none; padding-right: var(--s2); }
+/* the glyph is a real (quiet) button so diagnostics open by keyboard (M-16) */
+.brand-button {
+  display: inline-flex; align-items: center; gap: 9px;
+  border: 0; background: none; padding: 0; color: inherit; cursor: default;
+}
 .brand svg { display: block; }
 .brand-short {
   display: none;

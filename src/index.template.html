@@ -27,13 +27,18 @@
 
 <div id="app">
   <header class="topbar">
-    <div class="brand" id="brandLogo" title="Blueprint Buddy (hold to open diagnostics)">
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-        <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
-        <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
-        <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
-      </svg>
-      <span class="brand-short" aria-hidden="true">BB</span>
+    <div class="brand">
+      <!-- A real button so diagnostics open by keyboard too (M-16); the h1
+           wordmark stays OUTSIDE it so the heading is never flattened. -->
+      <button type="button" class="brand-button" id="brandLogo" aria-label="Open diagnostics"
+        title="Blueprint Buddy (hold, or press Enter, to open diagnostics)">
+        <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+          <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+          <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+        </svg>
+        <span class="brand-short" aria-hidden="true">BB</span>
+      </button>
       <h1 class="brand-name">Blueprint<span>Buddy</span></h1>
     </div>
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
@@ -227,10 +232,10 @@
                 <div class="menu-row">
                   <span class="menu-row-label">Camera</span>
                   <div class="seg view-seg" role="group" aria-label="Camera view">
-                    <button id="viewFront" title="Front elevation (orthographic)">F</button>
-                    <button id="viewSide" title="Side elevation (orthographic)">S</button>
-                    <button id="viewTop" title="Plan view (orthographic)">T</button>
-                    <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+                    <button id="viewFront" title="Front elevation (orthographic)" aria-label="Front elevation" aria-pressed="false">F</button>
+                    <button id="viewSide" title="Side elevation (orthographic)" aria-label="Side elevation" aria-pressed="false">S</button>
+                    <button id="viewTop" title="Plan view (orthographic)" aria-label="Top plan view" aria-pressed="false">T</button>
+                    <button id="viewIso" title="Perspective view" aria-label="Perspective view" aria-pressed="true">Iso</button>
                   </div>
                 </div>
                 <div class="menu-row">

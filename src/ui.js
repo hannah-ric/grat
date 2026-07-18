@@ -2264,15 +2264,20 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function bindLogoLongPress() {
     const logo = $('brandLogo');
+    const openDiag = () => { openScrim('diagScrim'); runDiagnostics(); };
     let timer = null;
     const start = e => {
-      timer = setTimeout(() => { openScrim('diagScrim'); runDiagnostics(); }, 650);
+      timer = setTimeout(openDiag, 650);
     };
     const cancel = () => { clearTimeout(timer); timer = null; };
     logo.addEventListener('pointerdown', start);
     logo.addEventListener('pointerup', cancel);
     logo.addEventListener('pointerleave', cancel);
     logo.addEventListener('pointercancel', cancel);
+    // Keyboard reachability (M-16): the logo is a real button, so Enter and
+    // Space arrive as a click with detail 0 — those open directly. Pointer
+    // taps (detail ≥ 1) keep the deliberate long-press requirement.
+    logo.addEventListener('click', e => { if (e.detail === 0) openDiag(); });
     logo.addEventListener('contextmenu', e => e.preventDefault());
   }
 
