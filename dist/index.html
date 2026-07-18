@@ -13910,7 +13910,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     installPrompt: null,            // stashed beforeinstallprompt event
     wakeLock: null,
     speciesPick: [],
-    capBannerDismissed: false       // session-scoped: dismissed project-cap banner stays down
+    capBannerDismissed: false,      // session-scoped: dismissed project-cap banner stays down
+    userSplitTouched: false         // session-scoped: a touched splitter is never auto-fought (X-07)
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
   const darkMq = matchMedia('(prefers-color-scheme: dark)');
@@ -16504,12 +16505,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!dragging) return;
       dragging = false;
       sp.classList.remove('dragging');
+      if (moved) state.userSplitTouched = true; // their split now (X-07)
       Store.savePrefs(state.prefs4);
       syncHash();
       if (touchTap) {
         const now = performance.now();
         if (now - lastTouchTapAt <= 300) {
           lastTouchTapAt = 0;
+          state.userSplitTouched = true;
           setSplit(SPLIT_DEFAULT);
         } else {
           lastTouchTapAt = now;
@@ -16518,7 +16521,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     sp.addEventListener('pointerup', endDrag);
     sp.addEventListener('pointercancel', endDrag);
-    sp.addEventListener('dblclick', () => setSplit(SPLIT_DEFAULT));
+    sp.addEventListener('dblclick', () => { state.userSplitTouched = true; setSplit(SPLIT_DEFAULT); });
     sp.addEventListener('keydown', e => {
       const cur = state.prefs4.ui.split;
       let next = null;
@@ -16529,7 +16532,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       else if (e.key === 'Home') next = SPLIT_MIN;
       else if (e.key === 'End') next = SPLIT_MAX;
       else if (e.key === 'Enter') next = SPLIT_DEFAULT;
-      if (next !== null) { e.preventDefault(); setSplit(next); }
+      if (next !== null) { e.preventDefault(); state.userSplitTouched = true; setSplit(next); }
     });
   }
 
@@ -16538,10 +16541,26 @@ var BB = globalThis.BB = globalThis.BB || {};
    * carries a state dot DERIVED from what the pipeline already knows —
    * nothing stored, nothing to get stale. Build stays the existing
    * full-screen surface layered over whichever mode it was entered from. */
+  /* Plan mode on a phone must show real plan content (X-07): entering Plan
+   * at ≤560px auto-shifts the splitter so the panel holds at least 40% of
+   * the viewport height. A splitter the user touched this session always
+   * wins — the shift never fights a live choice, and it is session-visual
+   * only (persist:false), exactly like a hash-carried split. */
+  function autoSplitForPlanPhone() {
+    if (state.userSplitTouched || !matchMedia('(max-width: 560px)').matches) return;
+    const stageH = $('stage').getBoundingClientRect().height;
+    if (stageH <= 0) return;
+    const want = Math.round(window.innerHeight * 0.4);
+    const tabsH = $('tabBar').offsetHeight || 44;
+    const maxPct = Math.floor(((stageH - tabsH - 9 - want) / stageH) * 100);
+    const target = Math.max(SPLIT_MIN, Math.min(state.prefs4.ui.split, maxPct));
+    if (target < state.prefs4.ui.split) setSplit(target, { persist: false });
+  }
   function setMode(m, opts) {
     if (m === 'build') { enterBuildMode(); return; }
     state.mode = m === 'plan' ? 'plan' : 'design';
     document.body.dataset.mode = state.mode;
+    if (state.mode === 'plan') autoSplitForPlanPhone();
     if (!(opts && opts.silent)) syncHash();
     renderReadiness();
     if (state.mode === 'plan') { renderTabs(); renderPanel(); }
@@ -16885,6 +16904,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.history = History.createHistory(r.spec, 'seed');
     state.engine.snapNow();
     applyHash(); // a deep-linked tab survives the reload
+    if (state.mode === 'plan') autoSplitForPlanPhone(); // deep-linked Plan gets the phone floor too (X-07)
     renderAll();
     renderHints();
     renderGallery();

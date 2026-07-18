@@ -1381,6 +1381,40 @@ const clickMoreCtl = async sel => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
 
+  /* ================= X-07: Plan mode on a phone shows real content ============ */
+  // Entering Plan at ≤560px auto-shifts the splitter so the panel holds at
+  // least 40% of the viewport — the first plan row is readable without a
+  // drag. A splitter the user has touched this session always wins.
+  const planPhone = await page.evaluate(() => {
+    __bb.state.userSplitTouched = false;
+    __bb.setSplit(58, { persist: false });
+    __bb.setMode('design');
+    __bb.selectTab('cut'); // enters Plan through the same gate as the mode nav
+    document.getElementById('panel-main').scrollTop = 0; // fresh entry (earlier tests scrolled it)
+    const panel = document.getElementById('panel-main').getBoundingClientRect();
+    const firstRow = document.querySelector('#panel-main .cut-card, #panel-main tbody tr');
+    const sheetTop = document.getElementById('chatPanel').getBoundingClientRect().top;
+    const r = firstRow ? firstRow.getBoundingClientRect() : null;
+    return {
+      panelShare: panel.height / innerHeight,
+      rowVisible: !!r && r.top >= panel.top - 1 && r.bottom <= Math.min(sheetTop, innerHeight) + 1,
+      debug: { panelTop: Math.round(panel.top), panelBottom: Math.round(panel.bottom), row: r && [Math.round(r.top), Math.round(r.bottom)], sheetTop: Math.round(sheetTop), expanded: document.getElementById('chatPanel').classList.contains('expanded') }
+    };
+  });
+  ok(planPhone.panelShare >= 0.39, `entering Plan on a phone gives the panel ≥40% of the viewport (got ${Math.round(planPhone.panelShare * 100)}%)`);
+  ok(planPhone.rowVisible, `the first plan row is visible without a drag (${JSON.stringify(planPhone.debug)})`);
+  const dragWins = await page.evaluate(() => {
+    __bb.state.userSplitTouched = true;
+    __bb.setSplit(58, { persist: false });
+    __bb.setMode('design');
+    __bb.setMode('plan');
+    const split = __bb.state.prefs4.ui.split;
+    __bb.state.userSplitTouched = false;
+    __bb.setSplit(58, { persist: false });
+    return split;
+  });
+  ok(dragWins === 58, `a user-touched splitter is never auto-fought (${dragWins}%)`);
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 
