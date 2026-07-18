@@ -5230,6 +5230,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       corners.set(p.id, cs);
       minY.set(p.id, Math.min(...cs.map(c => c[1])));
     }
+    // World-axis bounds per part, for gap messages the model (and user) can
+    // act on numerically (A9).
+    const aabbOf = id => {
+      const cs = corners.get(id);
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      for (const c of cs) for (let ax = 0; ax < 3; ax++) {
+        min[ax] = Math.min(min[ax], c[ax]); max[ax] = Math.max(max[ax], c[ax]);
+      }
+      return { min, max };
+    };
 
     // 1. The floor plane is real: nothing passes through it, something rests on it.
     let globalMinY = Infinity;
@@ -5283,7 +5293,23 @@ var BB = globalThis.BB = globalThis.BB || {};
             const grown = Geo.partOBB(p);
             grown.e = grown.e.map(e => e + AUDIT.CONTACT_GAP);
             if (Geo.obbPenetration(grown, boxes.get(q.id)) == null) {
-              errors.push({ id: 'geom_gap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) are joined on paper but never touch — that joint can’t be built.` });
+              // Name the axis, the separation, and both parts' nearest faces
+              // (A9) — a purely verbal message gave the model nothing to fix.
+              const A = aabbOf(p.id), B = aabbOf(q.id);
+              let bestAx = 0, bestGap = -Infinity;
+              for (let ax = 0; ax < 3; ax++) {
+                const g = Math.max(B.min[ax] - A.max[ax], A.min[ax] - B.max[ax]);
+                if (g > bestGap) { bestGap = g; bestAx = ax; }
+              }
+              const AXIS = ['x', 'y', 'z'];
+              const geom = bestGap > 0.05
+                ? (() => {
+                  const aFirst = A.max[bestAx] <= B.min[bestAx];
+                  const [loP, loB, hiP, hiB] = aFirst ? [p, A, q, B] : [q, B, p, A];
+                  return ` They are ${fine(bestGap)} apart along ${AXIS[bestAx]}: “${loP.name}” ends at ${AXIS[bestAx]}=${fine(loB.max[bestAx])}, “${hiP.name}” starts at ${AXIS[bestAx]}=${fine(hiB.min[bestAx])} — move one so the faces meet.`;
+                })()
+                : '';
+              errors.push({ id: 'geom_gap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) are joined on paper but never touch — that joint can’t be built.${geom}` });
             }
           }
         } else if (!sameDrawer(p, q)) {

@@ -920,6 +920,15 @@ section('geometric buildability audit');
   gapped.custom.connections.push({ a: 'p9', b: gapped.custom.parts[2].id, joint: 'butt_screws' });
   const gappedR = pipeline(gapped);
   ok(gappedR.report.errors.some(e => e.id.startsWith('geom_gap:')), 'joined-on-paper-but-never-touching is a blocking error');
+  // A9: the gap message carries geometry the model (and user) can act on —
+  // axis, separation distance, and both parts' nearest-face positions.
+  {
+    const gapErr = gappedR.report.errors.find(e => e.id.startsWith('geom_gap:'));
+    ok(/apart along [xyz]/.test(gapErr.text), `gap error names the axis — got "${gapErr.text}"`);
+    ok(/ends at [xyz]=/.test(gapErr.text) && /starts at [xyz]=/.test(gapErr.text),
+      `gap error names both parts' nearest faces — got "${gapErr.text}"`);
+    ok(/[\d.]+ (in|mm)/.test(gapErr.text), 'gap error carries formatted numbers');
+  }
 
   // Two internally-connected clusters are two pieces of furniture, not one.
   const splitR = pipeline({
