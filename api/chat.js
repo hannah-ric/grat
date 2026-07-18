@@ -28,8 +28,13 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024; // one downscaled photo is ~300 KB base6
  * so no one can burn the owner's Anthropic key unmetered or dodge the Free cap
  * by signing out (A4b). The IP hash keeps raw addresses out of KV keys. */
 function anonMeterId(req) {
-  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  const ip = fwd || (req.socket && req.socket.remoteAddress) || 'unknown';
+  // Never trust X-Forwarded-For: its leftmost hop is client-supplied, so an
+  // attacker rotates it to mint fresh 25-msg + burst buckets on the owner key
+  // (E-03). x-real-ip is set by Vercel to the verified client IP and is not
+  // forgeable there; behind serve.js (direct connections) it is absent and the
+  // socket address is authoritative. Prefer x-real-ip, then the direct socket.
+  const realIp = String((req.headers && req.headers['x-real-ip']) || '').trim();
+  const ip = realIp || (req.socket && req.socket.remoteAddress) || 'unknown';
   return 'ip:' + crypto.createHash('sha256').update('bb-anon:' + ip).digest('hex').slice(0, 24);
 }
 

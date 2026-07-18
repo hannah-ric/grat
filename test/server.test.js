@@ -410,17 +410,32 @@ function objectBodyReq(url, bodyObj, headers) {
     process.env.ANTHROPIC_API_KEY = 'sk-test';
     const realFetch = globalThis.fetch;
     globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) });
-    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-forwarded-for': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+    // Vercel sets x-real-ip to the verified client IP; serve.js hands the direct
+    // socket. anonMeterId must key off those, never the client-forgeable XFF.
+    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+
+    // (E-03) The meter identity must derive from a non-forgeable source. An
+    // attacker who rotates the leftmost X-Forwarded-For must NOT mint fresh
+    // 25-msg + burst buckets on the owner-funded key.
+    {
+      const spoofA = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.7', 'x-forwarded-for': '1.1.1.1' }, socket: { remoteAddress: '10.0.0.9' } });
+      const spoofB = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.7', 'x-forwarded-for': '2.2.2.2' }, socket: { remoteAddress: '10.0.0.9' } });
+      eq(spoofA, spoofB, 'rotating X-Forwarded-For cannot mint a fresh bucket — x-real-ip is the identity');
+      const sockA = chat.anonMeterId({ headers: { 'x-forwarded-for': '1.1.1.1' }, socket: { remoteAddress: '10.9.8.7' } });
+      const sockB = chat.anonMeterId({ headers: { 'x-forwarded-for': '9.9.9.9' }, socket: { remoteAddress: '10.9.8.7' } });
+      eq(sockA, sockB, 'with no x-real-ip, the direct socket address is the identity, not XFF');
+      ok(spoofA !== chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.8' }, socket: {} }), 'genuinely different real IPs still get distinct buckets');
+    }
 
     // (a) an anonymous call is proxied AND metered by hashed IP — no more free-for-all
     let res = fakeRes();
     await chat(chatReq('203.0.113.10'), res);
     eq(res.statusCode, 200, 'anonymous chat is proxied');
-    eq((await E.getUsage(chat.anonMeterId({ headers: { 'x-forwarded-for': '203.0.113.10' }, socket: {} }))).aiMessages, 1,
+    eq((await E.getUsage(chat.anonMeterId({ headers: { 'x-real-ip': '203.0.113.10' }, socket: {} }))).aiMessages, 1,
       'anonymous usage is metered by IP (signing out no longer resets to unlimited)');
 
     // (b) once an anon IP hits the Free cap, the proxy refuses with 402
-    const meterB = chat.anonMeterId({ headers: { 'x-forwarded-for': '203.0.113.20' }, socket: {} });
+    const meterB = chat.anonMeterId({ headers: { 'x-real-ip': '203.0.113.20' }, socket: {} });
     for (let i = 0; i < E.FREE.aiMonthlyLimit; i++) await E.incrementAI(meterB);
     res = fakeRes();
     await chat(chatReq('203.0.113.20'), res);
