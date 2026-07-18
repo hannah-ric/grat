@@ -548,8 +548,22 @@ const clickMoreCtl = async sel => {
   ok(gear.slides === 2 * gear.slideDrawers, `slide pair per slide-mounted drawer in the model (${gear.slides}/${gear.slideDrawers})`);
   ok(!gear.inCut, 'metal slides never reach the cut list');
 
-  // Accounts: on a static host (no /api/auth) the section stays hidden.
-  ok(await page.evaluate(() => document.getElementById('accountArea').hidden === true), 'account section hidden with no providers configured');
+  // Accounts: on a true static host (no providers, no billing evidence) the
+  // section stays hidden. The smoke shim's granted billing IS billing
+  // evidence, so with it present the persistent plans surface shows (A-05) —
+  // rendered explicitly here because the boot render races the shim's grant.
+  const acct = await page.evaluate(() => {
+    const real = BB.Store.auth().billing;
+    BB.Store.setBilling(null);
+    __bb.renderAccount();
+    const bare = document.getElementById('accountArea').hidden;
+    BB.Store.setBilling(real);
+    __bb.renderAccount();
+    const withBilling = document.getElementById('accountArea').hidden;
+    return { bare, withBilling };
+  });
+  ok(acct.bare === true, 'account section hidden with no providers and no billing evidence');
+  ok(acct.withBilling === false, 'billing evidence shows the persistent plans surface (A-05)');
 
   // Integrity tab: checks, movement, tappable fix through the pipeline.
   await page.click('#tab-integrity');
@@ -1344,6 +1358,36 @@ const clickMoreCtl = async sel => {
   ok(/Upgrade/i.test(meter.free.text), 'the meter carries an Upgrade affordance for Free');
   ok(meter.free.areaShown && meter.free.menuHasPlans, 'billing-configured origin gets a persistent Plans entry in More');
   ok(!meter.restored.visible, 'meter hides again when usage is zero/unknown');
+
+  /* ================= X-04: the Build gate announces itself ================= */
+  // Free users get a visible + aria-communicated Pro lock on the Build mode
+  // button, so the paywall is announced BEFORE the tap; activation still
+  // opens the pricing dialog, never a bare dead-end.
+  const lock = await page.evaluate(() => {
+    const real = BB.Store.auth().billing;
+    BB.Store.setBilling({ plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 0 } });
+    if (__bb.renderAccount) __bb.renderAccount();
+    __bb.renderReadiness();
+    const lockEl = document.getElementById('buildModeLock');
+    const btn = document.getElementById('buildModeBtn');
+    const free = {
+      lockVisible: !!lockEl && !lockEl.hidden && !!lockEl.querySelector('svg'),
+      aria: btn.getAttribute('aria-label') || ''
+    };
+    btn.click();
+    const dlg = document.querySelector('.pricing-dialog');
+    free.modal = !!(dlg && dlg.open);
+    free.buildEntered = __bb.state.buildMode;
+    if (dlg && dlg.open) dlg.close();
+    BB.Store.setBilling(real);
+    if (__bb.renderAccount) __bb.renderAccount();
+    __bb.renderReadiness();
+    return { free, pro: { lockVisible: !!lockEl && !lockEl.hidden } };
+  });
+  ok(lock.free.lockVisible, 'free users see a visible Pro lock glyph on the Build button');
+  ok(/\bPro\b/.test(lock.free.aria), `Build button aria announces the Pro gate before the tap (got "${lock.free.aria}")`);
+  ok(lock.free.modal && !lock.free.buildEntered, 'activating locked Build still opens the pricing dialog, not the shop');
+  ok(!lock.pro.lockVisible, 'Pro entitlement clears the lock affordance');
 
   /* ================= A-04: the Free project-cap loop ================= */
   // At the 3-project cap the autosave path must stay calm AND honest: the
