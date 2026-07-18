@@ -410,6 +410,23 @@ section('ack reconciliation: the bot never claims what the spec lacks (A2)');
   eq(rIgn.ignored, ['legs'], 'classify lists unknown wire keys as ignored');
 }
 
+/* ---------------- integrity line on every commit source (A3) ---------------- */
+section('integrity line rides every commit source when checks fail (A3)');
+{
+  eq(Spec.integrityLine({ fails: 5, advisories: 3 }, {}),
+    ' Integrity: 5 failing checks — see the Safety tab before building.',
+    'text-flow ack carries the failing-check line');
+  eq(Spec.integrityLine({ fails: 1, advisories: 0 }, {}),
+    ' Integrity: 1 failing check — see the Safety tab before building.',
+    'singular phrasing for one failure');
+  eq(Spec.integrityLine({ fails: 0, advisories: 2 }, {}), '', 'no scare line when nothing fails (text flows)');
+  ok(/all checks pass/.test(Spec.integrityLine({ fails: 0, advisories: 0 }, { photo: true })),
+    'photo flows keep the full report line even when clean');
+  ok(/2 advisory/.test(Spec.integrityLine({ fails: 0, advisories: 2 }, { photo: true })),
+    'photo flows still surface advisories');
+  eq(Spec.integrityLine(null, {}), '', 'no summary, no line');
+}
+
 /* ---------------- local model ---------------- */
 section('local intent parser');
 {

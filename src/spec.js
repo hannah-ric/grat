@@ -431,6 +431,21 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
+  /* Integrity honesty line for the chat ack (A3): a failing verdict is never
+   * hidden behind a cheerful blurb, whatever the commit source. Photo flows
+   * keep their fuller phrasing (proportions were estimated, so even a clean
+   * report is worth stating). */
+  function integrityLine(summary, opts) {
+    if (!summary) return '';
+    if (opts && opts.photo) {
+      const t = summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass';
+      return ` Integrity: ${t} — full report in the Safety tab.`;
+    }
+    return summary.fails
+      ? ` Integrity: ${summary.fails} failing check${summary.fails > 1 ? 's' : ''} — see the Safety tab before building.`
+      : '';
+  }
+
   function snap(v, table) {
     let best = table[0];
     for (const t of table) if (Math.abs(t - v) < Math.abs(best - v)) best = t;
@@ -1051,7 +1066,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
-    defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck,
+    defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck, integrityLine,
     correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
     customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom
   };

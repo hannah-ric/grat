@@ -1509,7 +1509,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
-        const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Safety tab.` : '';
+        // Failing checks always make the ack, not just photo flows (A3);
+        // photos keep their fuller phrasing.
+        const integLine = Spec.integrityLine(summary, { photo: !!image });
         // The ack is never the model's word alone: reconcile it against the
         // committed spec and append the code-built truth (A2).
         const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
