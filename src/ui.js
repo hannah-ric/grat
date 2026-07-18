@@ -264,11 +264,39 @@ var BB = globalThis.BB = globalThis.BB || {};
    * actually offers accounts (providers configured server-side) — a static
    * host or claude.ai shows nothing at all. */
   const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
+  /* Billing is "configured" when the origin gave us any billing evidence: a
+   * billing payload (fetched or pushed by the chat proxy) or sign-in
+   * providers. Static hosts and claude.ai stay quiet as before (A-05). */
+  function billingConfigured(a) {
+    return !!(a.billing || (a.providers && a.providers.length));
+  }
+  /* Compact AI-allowance meter (A-05): rendered only when billing is real AND
+   * usage is known (> 0) — Free users see the wall coming instead of slamming
+   * into it. Lives under the chat input, the quietest surface next to where
+   * the messages are spent. */
+  function renderUsageMeter() {
+    const box = $('aiUsage');
+    if (!box) return;
+    const b = BB.Billing.status();
+    const limit = b.entitlements && b.entitlements.aiMonthlyLimit;
+    const used = b.usage && b.usage.aiMessages;
+    const show = billingConfigured(Store.auth()) && typeof used === 'number' && used > 0 && !!limit;
+    box.hidden = !show;
+    if (!show) { box.textContent = ''; return; }
+    const left = Math.max(0, limit - used);
+    box.innerHTML = `<span class="ai-usage-count">${left} of ${limit}</span> AI messages left this month` +
+      (b.plan === 'free' ? ` · <button type="button" class="learn-link" id="aiUsageUpgrade">Upgrade</button>` : '');
+    box.title = 'AI messages are metered per calendar month. A single design refinement can use several messages as the model iterates.';
+    const up = $('aiUsageUpgrade');
+    if (up) up.onclick = () => BB.Billing.open();
+  }
   function renderAccount() {
     const area = $('accountArea'), sep = $('accountSep');
     if (!area) return;
+    renderUsageMeter();
     const a = Store.auth();
-    const show = !!(a.user || (a.providers.length && a.storage));
+    const configured = billingConfigured(a);
+    const show = !!(a.user || (a.providers.length && a.storage) || configured);
     area.hidden = !show;
     sep.hidden = !show;
     area.textContent = '';
@@ -296,6 +324,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         b.setAttribute('role', 'menuitem');
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
+      }
+      // Persistent plans surface (A-05): upgrading must be findable before
+      // the paywall, not only at it.
+      if (configured) {
+        const plans = el('button', '', '<span>Plans &amp; pricing</span><span class="hint">upgrade</span>');
+        plans.setAttribute('role', 'menuitem');
+        plans.onclick = () => BB.Billing.open();
+        area.append(plans);
       }
     }
   }
@@ -1333,6 +1369,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // (429) — act on it instead of pretending we went offline.
     if (res.usageLimit) {
       if (res.billing) Store.setBilling(res.billing);
+      renderAccount(); // meter + plans surface reflect the fresh numbers (A-05)
       const limit = (res.billing && res.billing.entitlements && res.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
       BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
       return null;
@@ -1444,7 +1481,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // evidence there is about the connection state. A keyless proxy (503)
       // reads "AI not configured", never plain offline (audit L-14).
       setAIState(out.local ? (out.unconfigured ? 'unconfigured' : 'offline') : 'online');
-      if (!out.local && Store.auth().user) BB.Billing.refresh();
+      if (!out.local && Store.auth().user) BB.Billing.refresh().then(() => renderAccount());
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
@@ -3406,7 +3443,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
       preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
       setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness,
-      setMode, probeAI, setAIState
+      setMode, probeAI, setAIState, renderAccount
     };
 
     // Viewport guidance speaks the input language it sees, and steps aside

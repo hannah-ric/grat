@@ -150,6 +150,9 @@
           <textarea id="chatText" rows="1" placeholder="Describe a change…" aria-label="Message"></textarea>
           <button type="button" class="btn primary" id="sendBtn" aria-label="Send">Send</button>
         </div>
+        <!-- AI-allowance meter (A-05): shows once billing is configured and
+             usage is known, so Free users see the wall before they hit it. -->
+        <div class="ai-usage" id="aiUsage" hidden></div>
         <div class="hint-prompts" id="hintPrompts"></div>
       </div>
     </aside>

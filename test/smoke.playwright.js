@@ -1316,6 +1316,35 @@ const clickMoreCtl = async sel => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 
+  /* ================= A-05: usage meter + persistent upgrade surface ============ */
+  // A billing-configured origin shows Free users the wall BEFORE they hit it:
+  // a compact remaining-messages meter by the chat input, and a persistent
+  // Plans entry in the More menu — not only the paywall dialog.
+  const meter = await page.evaluate(() => {
+    const grab = () => {
+      const m = document.getElementById('aiUsage');
+      return {
+        visible: !!m && !m.hidden,
+        text: m ? m.textContent : '',
+        areaShown: !document.getElementById('accountArea').hidden,
+        menuHasPlans: !!document.querySelector('#accountArea [role="menuitem"]')
+      };
+    };
+    const real = BB.Store.auth().billing;
+    BB.Store.setBilling({ plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 7 } });
+    if (__bb.renderAccount) __bb.renderAccount();
+    const free = grab();
+    BB.Store.setBilling(real);
+    if (__bb.renderAccount) __bb.renderAccount();
+    const restored = grab();
+    return { free, restored };
+  });
+  ok(meter.free.visible && /18 of 25/.test(meter.free.text),
+    `free user with known usage sees the remaining-messages meter (got "${meter.free.text.trim()}")`);
+  ok(/Upgrade/i.test(meter.free.text), 'the meter carries an Upgrade affordance for Free');
+  ok(meter.free.areaShown && meter.free.menuHasPlans, 'billing-configured origin gets a persistent Plans entry in More');
+  ok(!meter.restored.visible, 'meter hides again when usage is zero/unknown');
+
   /* ================= A-04: the Free project-cap loop ================= */
   // At the 3-project cap the autosave path must stay calm AND honest: the
   // pricing dialog opens at most ONCE per session, the save indicator says
@@ -1402,6 +1431,7 @@ const clickMoreCtl = async sel => {
   ok(cap403.saveText === 'not saved — project limit',
     `server project_limit 403 paints the same explicit state (got "${cap403.saveText}")`);
   ok(cap403.banner, 'server project_limit 403 raises the same passive banner');
+
 
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });
