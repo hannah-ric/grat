@@ -413,6 +413,25 @@ section('exports carry the app origin; share links carry a ref marker (A-11)');
   ok(/encodeURIComponent\(Codec\.toShareCode\(state\.spec\)\) \+ '&ref=/.test(uiSrc), 'shareLink appends the ref marker');
 }
 
+/* ---------------- L-01: cleat stock from the ONE sheet table ---------------- */
+section('french cleat ply comes from the standard sheet-thickness table (L-01)');
+{
+  const r = pipeline({
+    meta: { name: 'Cleat', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 2, backPanel: true }
+  });
+  const side = r.model.parts.find(p => p.role === 'side');
+  const mate = r.model.parts.find(p => p.role === 'top' || p.role === 'shelf');
+  const lay = BB.Fasteners.layoutForJoint(r.spec, r.model, { type: 'french_cleat', a: side.id, b: mate.id });
+  ok(lay && lay.cleat, 'french cleat layout carries cleat data');
+  ok(lay && lay.cleat && K.SHEET_THICKNESS.includes(lay.cleat.plyMM),
+    `cleat ply is ON the sheet-thickness table — got ${lay && lay.cleat && lay.cleat.plyMM}`);
+  eq(lay && lay.cleat && lay.cleat.plyMM, K.SHEET_THICKNESS[2], 'cleat ply is the standard 18 mm sheet');
+  ok(lay && lay.text.includes('rip ' + BB.Units.fmtLength(K.SHEET_THICKNESS[2]) + ' ply')
+    && !lay.text.includes('rip ' + BB.Units.fmtLength(19) + ' ply'),
+    'the rip instruction names the same stock the table sells');
+}
+
 /* ---------------- history ---------------- */
 section('history');
 {

@@ -335,7 +335,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         break;
       }
       case 'french_cleat': {
-        // 19 mm ply ripped at 45°; a screw into every stud at ≤ 400 mm centers.
+        // Standard sheet stock ripped at 45° — the thickest entry in the ONE
+        // sheet-thickness table (18), never a hand-typed 19 that nothing
+        // sells (audit L-01). A screw into every stud at ≤ 400 mm centers.
+        const plyMM = K.SHEET_THICKNESS[K.SHEET_THICKNESS.length - 1];
         const cleatLen = Math.max(300, Math.round(runMM * 2 / 3));
         const c = CATALOG.butt_screw;
         const nS = Math.max(2, Math.floor(cleatLen / 400) + 1);
@@ -343,8 +346,8 @@ var BB = globalThis.BB = globalThis.BB || {};
           const along = nS === 1 ? cleatLen / 2 : RULES.edgeMM + (cleatLen - 2 * RULES.edgeMM) * i / (nS - 1);
           out.fasteners.push({ kind: 'screw', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, cleatLen - along) });
         }
-        out.cleat = { lengthMM: cleatLen, plyMM: 19 };
-        out.text = `French cleat: rip ${len(19)} ply at 45°; the wall half runs ${len(cleatLen)} (≥ ⅔ of the case) with ${nS} × ${fmtSpec(c)} — one into EVERY stud at ≤ ${len(400)} centers, bevel up and toward the wall. Pilot ${drill(c.pilotMM)}. Never drywall alone.`;
+        out.cleat = { lengthMM: cleatLen, plyMM };
+        out.text = `French cleat: rip ${len(plyMM)} ply at 45°; the wall half runs ${len(cleatLen)} (≥ ⅔ of the case) with ${nS} × ${fmtSpec(c)} — one into EVERY stud at ≤ ${len(400)} centers, bevel up and toward the wall. Pilot ${drill(c.pilotMM)}. Never drywall alone.`;
         break;
       }
       case 'kd_bolt': {
