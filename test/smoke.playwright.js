@@ -1430,6 +1430,36 @@ const clickMoreCtl = async sel => {
   });
   ok(dragWins === 58, `a user-touched splitter is never auto-fought (${dragWins}%)`);
 
+  /* ================= P1-1: redo reachable on touch ================= */
+  // The topbar redo folds away at phone widths; touch users (who have no
+  // Ctrl+Shift+Z) get an actionable Redo in the More menu instead.
+  ok(await page.evaluate(() => getComputedStyle(document.getElementById('redoBtn')).display === 'none'),
+    'topbar redo is folded away at 390px');
+  const redoTouch = await page.evaluate(() => {
+    const before = __bb.state.spec.overall.height;
+    __bb.merge({ overall: { height: before + 30 } }, 'manual');
+    const changed = __bb.state.spec.overall.height;
+    document.getElementById('undoBtn').click();
+    const afterUndo = __bb.state.spec.overall.height;
+    document.getElementById('moreBtn').click();
+    const item = document.getElementById('menuRedoBtn');
+    const visible = !!item && item.getClientRects().length > 0 && !item.disabled;
+    if (item) item.click();
+    const out = {
+      distinct: changed !== before,
+      undone: afterUndo === before,
+      visible,
+      redone: __bb.state.spec.overall.height === changed,
+      menuClosed: !document.getElementById('moreMenu').classList.contains('open')
+    };
+    if (!out.menuClosed) document.getElementById('moreBtn').click();
+    document.getElementById('undoBtn').click(); // leave the design as we found it
+    return out;
+  });
+  ok(redoTouch.distinct && redoTouch.undone, 'undo/redo probe setup holds (edit landed, undo reverted)');
+  ok(redoTouch.visible, 'More menu offers an enabled Redo at phone widths');
+  ok(redoTouch.redone && redoTouch.menuClosed, 'the menu Redo restores the undone change and closes the menu');
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 

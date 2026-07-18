@@ -1241,9 +1241,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
     position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
   }
 }
-/* Share/Import inside More exists for the widths where the topbar CTA folds
-   away (X-05); wider screens keep the dedicated Share button instead. */
-.menu .menu-share-item { display: none; }
+/* Share/Import and Redo inside More exist for the widths where their topbar
+   controls fold away (X-05, P1-1); wider screens keep the dedicated buttons. */
+.menu .menu-share-item, .menu .menu-redo-item { display: none; }
 @media (max-width: 560px) {
   .save-state { display: none; }
   .save-dot:not([hidden]) { display: inline-block; }
@@ -1255,7 +1255,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   /* Share folds into reach of More (the menu-share-item entry); Build (mode
      nav) stays the strong action */
   .share-cta { display: none; }
-  .menu .menu-share-item { display: flex; }
+  .menu .menu-share-item, .menu .menu-redo-item { display: flex; }
 }
 
 /* ---------------- reduced motion ---------------- */

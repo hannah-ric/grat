@@ -356,6 +356,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
+    // The phone-width More-menu redo (P1-1) mirrors the topbar button's state.
+    const menuRedo = $('menuRedoBtn');
+    if (menuRedo) menuRedo.disabled = !state.history.canRedo();
   }
 
   /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
@@ -3077,8 +3080,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     else setTimeout(() => galleryThumbsPass(), 1200);
 
     /* top bar */
+    const doRedo = () => { const s = state.history.redo(); if (s) restoreTo(s); };
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
-    $('redoBtn').onclick = () => { const s = state.history.redo(); if (s) restoreTo(s); };
+    $('redoBtn').onclick = doRedo;
+    $('menuRedoBtn').onclick = doRedo; // phone-width redo (P1-1) — same history path
     $('historyBtn').onclick = openHistoryDrawer;
     $('historyClose').onclick = closeHistoryDrawer;
     $('historyBackdrop').onclick = closeHistoryDrawer;

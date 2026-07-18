@@ -1259,9 +1259,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
     position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
   }
 }
-/* Share/Import inside More exists for the widths where the topbar CTA folds
-   away (X-05); wider screens keep the dedicated Share button instead. */
-.menu .menu-share-item { display: none; }
+/* Share/Import and Redo inside More exist for the widths where their topbar
+   controls fold away (X-05, P1-1); wider screens keep the dedicated buttons. */
+.menu .menu-share-item, .menu .menu-redo-item { display: none; }
 @media (max-width: 560px) {
   .save-state { display: none; }
   .save-dot:not([hidden]) { display: inline-block; }
@@ -1273,7 +1273,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   /* Share folds into reach of More (the menu-share-item entry); Build (mode
      nav) stays the strong action */
   .share-cta { display: none; }
-  .menu .menu-share-item { display: flex; }
+  .menu .menu-share-item, .menu .menu-redo-item { display: flex; }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -1782,6 +1782,9 @@ body.bm-playback .playback-bar { display: none !important; }
       <div class="menu-wrap">
         <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More</button>
         <div id="moreMenu" class="menu" role="menu" inert>
+          <!-- ≤560px folds the topbar redo away; touch has no Ctrl+Shift+Z,
+               so redo stays reachable here (P1-1). -->
+          <button role="menuitem" id="menuRedoBtn" class="menu-redo-item"><span>Redo</span><span class="hint">last undone change</span></button>
           <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
@@ -14228,6 +14231,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
+    // The phone-width More-menu redo (P1-1) mirrors the topbar button's state.
+    const menuRedo = $('menuRedoBtn');
+    if (menuRedo) menuRedo.disabled = !state.history.canRedo();
   }
 
   /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
@@ -16949,8 +16955,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     else setTimeout(() => galleryThumbsPass(), 1200);
 
     /* top bar */
+    const doRedo = () => { const s = state.history.redo(); if (s) restoreTo(s); };
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
-    $('redoBtn').onclick = () => { const s = state.history.redo(); if (s) restoreTo(s); };
+    $('redoBtn').onclick = doRedo;
+    $('menuRedoBtn').onclick = doRedo; // phone-width redo (P1-1) — same history path
     $('historyBtn').onclick = openHistoryDrawer;
     $('historyClose').onclick = closeHistoryDrawer;
     $('historyBackdrop').onclick = closeHistoryDrawer;
