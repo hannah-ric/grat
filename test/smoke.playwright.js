@@ -1607,6 +1607,31 @@ const clickMoreCtl = async sel => {
   ok(sticky.pinned, `thead pins to the panel top after a 300px scroll (drifted ${sticky.drift}px instead)`);
   ok(sticky.rowsUnder, 'rows scroll under the pinned header');
 
+  /* ================= M-15: first-run welcome reads import-first ============ */
+  // With no saved projects the third path is IMPORT (paste a code you were
+  // given), not "open a saved design" you don't have — and its action lands
+  // focus in the paste box, not on the export code.
+  const welcomeImport = await page.evaluate(() => {
+    __bb.showWelcome(false);
+    const name = document.getElementById('welcomeResumeName').textContent;
+    document.getElementById('welcomeResume').click();
+    const out = {
+      name,
+      shareOpen: document.getElementById('shareScrim').classList.contains('open'),
+      focusId: document.activeElement ? document.activeElement.id : ''
+    };
+    if (out.shareOpen) document.getElementById('shareClose').click();
+    __bb.hideWelcome();
+    __bb.showWelcome(true);
+    out.withProjects = document.getElementById('welcomeResumeName').textContent;
+    __bb.hideWelcome();
+    return out;
+  });
+  ok(welcomeImport.name === 'Import a design', `no-projects welcome reads import-first (got "${welcomeImport.name}")`);
+  ok(welcomeImport.shareOpen && welcomeImport.focusId === 'importCode',
+    `the import action opens Share with focus in the paste box (focus on "${welcomeImport.focusId}")`);
+  ok(welcomeImport.withProjects === 'Open a saved design', 'the has-projects welcome keeps "Open a saved design"');
+
 
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });

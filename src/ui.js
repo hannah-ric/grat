@@ -2755,7 +2755,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- shell: first-run hero (never blocking) ---------------- */
   function showWelcome(hasProjects) {
-    $('welcomeResumeName').textContent = hasProjects ? 'Open a saved design' : 'Open a saved design';
+    // No saved projects: the third path is IMPORT (paste a code someone gave
+    // you) — "open a saved design" would name a thing that doesn't exist yet
+    // and land export-first (M-15).
+    $('welcomeResumeName').textContent = hasProjects ? 'Open a saved design' : 'Import a design';
     $('welcomeResumeCaption').textContent = hasProjects
       ? 'Pick up where you left off — plans and build progress included.'
       : 'Paste a BB4: share code to pick up a design from anywhere.';
