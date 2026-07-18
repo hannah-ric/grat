@@ -1203,15 +1203,19 @@ var BB = globalThis.BB = globalThis.BB || {};
   function setAIState(mode, detail) {
     const label = mode === 'online' ? 'AI online'
       : mode === 'offline' ? 'Offline · basic edits'
-        : 'AI · checking…';
+        : mode === 'unconfigured' ? 'AI not configured'
+          : 'AI · checking…';
     const barLabel = mode === 'online' ? 'Online'
       : mode === 'offline' ? 'Offline'
-        : '…';
+        : mode === 'unconfigured' ? 'AI not configured'
+          : '…';
     const title = detail || (mode === 'online'
       ? 'Connected to the design service — full natural-language design and photo input.'
       : mode === 'offline'
         ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
-        : 'Checking the design service…');
+        : mode === 'unconfigured'
+          ? 'The server has no AI key configured — a deploy issue, not your connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser.'
+          : 'Checking the design service…');
     const badge = $('aiBadge');
     if (badge) {
       badge.dataset.state = mode;
@@ -1236,8 +1240,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     try {
       const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       if (r.status === 400) { setAIState('online'); return; }               // proxy present, key configured
-      if (r.status === 503) {                                               // proxy present, no key
-        setAIState(claudeHost ? 'online' : 'offline', claudeHost ? undefined : 'AI proxy not configured (no API key on the server). Basic edits still work.');
+      if (r.status === 503) {                                               // proxy present, no key (L-14)
+        setAIState(claudeHost ? 'online' : 'unconfigured');
         return;
       }
       setAIState(claudeHost ? 'online' : 'offline');                        // 404/405: no proxy here
@@ -1349,7 +1353,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, local: !!res.local };
+    return { final, failReport, explain, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -1388,8 +1392,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = Spec.describeDiff(realDiffs);
       // The badge reflects what actually just happened — the strongest
-      // evidence there is about the connection state.
-      setAIState(out.local ? 'offline' : 'online');
+      // evidence there is about the connection state. A keyless proxy (503)
+      // reads "AI not configured", never plain offline (audit L-14).
+      setAIState(out.local ? (out.unconfigured ? 'unconfigured' : 'offline') : 'online');
       if (!out.local && Store.auth().user) BB.Billing.refresh();
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,

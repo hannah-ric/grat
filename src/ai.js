@@ -358,6 +358,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   // bundled dev server; absent on claude.ai, where it dies on first touch
   // and the direct transport takes over. Browser-only.
   let proxyDead = typeof window === 'undefined';
+  // A proxy that EXISTS but answered 503 (no ANTHROPIC_API_KEY on the server)
+  // is a broken deploy, not ordinary offline — remembered for the session so
+  // the UI can say "AI not configured" instead of the generic offline label
+  // (audit L-14).
+  let proxyUnconfigured = false;
 
   async function proxyTransport(system, messages) {
     let response;
@@ -373,6 +378,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // upstream errors and leave the proxy alive for the next message.
     if (response.status === 404 || response.status === 405 || response.status === 503) {
       proxyDead = true;
+      if (response.status === 503) proxyUnconfigured = true; // route exists, key missing (L-14)
       throw new Error('proxy unavailable (' + response.status + ')');
     }
     // Usage limit (402) and rate limit (429) are AUTHORITATIVE, not transport
@@ -524,7 +530,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // sees them — the model proposes intent and never converts units.
     userText = BB.Units.normalizeLengthText(userText);
     const onStatus = opts.onStatus || (() => {});
-    if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true };
+    if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
 
     const system = systemPrompt(spec);
     const turns = opts.turns || [];
@@ -564,7 +570,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
       if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
-      return { reply: localModel(userText, spec), turns, local: true };
+      return { reply: localModel(userText, spec), turns, local: true, unconfigured: proxyUnconfigured };
     }
   }
 
@@ -640,6 +646,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
     setTransport, callModel, buildMessages, buildCritique, downscaleImage,
     supportsImages, hasRemote, VISION_PROMPT,
+    unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
     MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT
   };
 })();

@@ -469,6 +469,8 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .ai-badge[data-state="online"] .dot { background: var(--green); }
 .ai-badge[data-state="offline"] .dot { background: var(--amber); }
 .ai-badge[data-state="offline"] { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
+.ai-badge[data-state="unconfigured"] .dot { background: var(--brick); }
+.ai-badge[data-state="unconfigured"] { color: var(--brick); border-color: color-mix(in srgb, var(--brick) 40%, transparent); background: var(--brick-soft); }
 @keyframes badgePulse { 50% { opacity: .35; } }
 .ai-badge[data-state="checking"] .dot { animation: badgePulse 1.2s infinite var(--ease); }
 /* phones: the chat sheet hides this badge when collapsed — mirror it in the bar */
@@ -9748,6 +9750,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   // bundled dev server; absent on claude.ai, where it dies on first touch
   // and the direct transport takes over. Browser-only.
   let proxyDead = typeof window === 'undefined';
+  // A proxy that EXISTS but answered 503 (no ANTHROPIC_API_KEY on the server)
+  // is a broken deploy, not ordinary offline — remembered for the session so
+  // the UI can say "AI not configured" instead of the generic offline label
+  // (audit L-14).
+  let proxyUnconfigured = false;
 
   async function proxyTransport(system, messages) {
     let response;
@@ -9763,6 +9770,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // upstream errors and leave the proxy alive for the next message.
     if (response.status === 404 || response.status === 405 || response.status === 503) {
       proxyDead = true;
+      if (response.status === 503) proxyUnconfigured = true; // route exists, key missing (L-14)
       throw new Error('proxy unavailable (' + response.status + ')');
     }
     // Usage limit (402) and rate limit (429) are AUTHORITATIVE, not transport
@@ -9914,7 +9922,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // sees them — the model proposes intent and never converts units.
     userText = BB.Units.normalizeLengthText(userText);
     const onStatus = opts.onStatus || (() => {});
-    if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true };
+    if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
 
     const system = systemPrompt(spec);
     const turns = opts.turns || [];
@@ -9954,7 +9962,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
       if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
-      return { reply: localModel(userText, spec), turns, local: true };
+      return { reply: localModel(userText, spec), turns, local: true, unconfigured: proxyUnconfigured };
     }
   }
 
@@ -10030,6 +10038,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
     setTransport, callModel, buildMessages, buildCritique, downscaleImage,
     supportsImages, hasRemote, VISION_PROMPT,
+    unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
     MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT
   };
 })();
@@ -14911,15 +14920,19 @@ var BB = globalThis.BB = globalThis.BB || {};
   function setAIState(mode, detail) {
     const label = mode === 'online' ? 'AI online'
       : mode === 'offline' ? 'Offline · basic edits'
-        : 'AI · checking…';
+        : mode === 'unconfigured' ? 'AI not configured'
+          : 'AI · checking…';
     const barLabel = mode === 'online' ? 'Online'
       : mode === 'offline' ? 'Offline'
-        : '…';
+        : mode === 'unconfigured' ? 'AI not configured'
+          : '…';
     const title = detail || (mode === 'online'
       ? 'Connected to the design service — full natural-language design and photo input.'
       : mode === 'offline'
         ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
-        : 'Checking the design service…');
+        : mode === 'unconfigured'
+          ? 'The server has no AI key configured — a deploy issue, not your connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser.'
+          : 'Checking the design service…');
     const badge = $('aiBadge');
     if (badge) {
       badge.dataset.state = mode;
@@ -14944,8 +14957,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     try {
       const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       if (r.status === 400) { setAIState('online'); return; }               // proxy present, key configured
-      if (r.status === 503) {                                               // proxy present, no key
-        setAIState(claudeHost ? 'online' : 'offline', claudeHost ? undefined : 'AI proxy not configured (no API key on the server). Basic edits still work.');
+      if (r.status === 503) {                                               // proxy present, no key (L-14)
+        setAIState(claudeHost ? 'online' : 'unconfigured');
         return;
       }
       setAIState(claudeHost ? 'online' : 'offline');                        // 404/405: no proxy here
@@ -15057,7 +15070,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, local: !!res.local };
+    return { final, failReport, explain, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -15096,8 +15109,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = Spec.describeDiff(realDiffs);
       // The badge reflects what actually just happened — the strongest
-      // evidence there is about the connection state.
-      setAIState(out.local ? 'offline' : 'online');
+      // evidence there is about the connection state. A keyless proxy (503)
+      // reads "AI not configured", never plain offline (audit L-14).
+      setAIState(out.local ? (out.unconfigured ? 'unconfigured' : 'offline') : 'online');
       if (!out.local && Store.auth().user) BB.Billing.refresh();
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,

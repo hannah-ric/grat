@@ -459,6 +459,8 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .ai-badge[data-state="online"] .dot { background: var(--green); }
 .ai-badge[data-state="offline"] .dot { background: var(--amber); }
 .ai-badge[data-state="offline"] { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
+.ai-badge[data-state="unconfigured"] .dot { background: var(--brick); }
+.ai-badge[data-state="unconfigured"] { color: var(--brick); border-color: color-mix(in srgb, var(--brick) 40%, transparent); background: var(--brick-soft); }
 @keyframes badgePulse { 50% { opacity: .35; } }
 .ai-badge[data-state="checking"] .dot { animation: badgePulse 1.2s infinite var(--ease); }
 /* phones: the chat sheet hides this badge when collapsed — mirror it in the bar */

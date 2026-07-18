@@ -879,8 +879,49 @@ section('word-number lengths and storage driver honesty');
   delete globalThis.localStorage;
 }
 
+/* L-14: a keyless proxy (/api/chat → 503) is a DISTINCT state — the app must
+ * never present a broken AI deploy as ordinary offline. Fresh vm contexts get
+ * a stubbed browser + fetch so the real transport ladder runs. */
+async function testKeylessProxyState() {
+  section('AI transport: keyless proxy (503) ≠ offline (L-14)');
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const load = globals => {
+    const ctx = vm.createContext(globals);
+    for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, { filename: 'L14-' + f });
+    return ctx.BB;
+  };
+  // Proxy present but unconfigured: /api/chat answers 503.
+  const keyless = load({
+    console, window: {}, document: {},
+    fetch: async () => ({ status: 503, ok: false, json: async () => ({ error: { message: 'no key' } }) })
+  });
+  const hasFlag = typeof keyless.AI.unconfigured === 'function';
+  ok(hasFlag && keyless.AI.unconfigured() === false, 'AI.unconfigured() exists and starts false');
+  const spec503 = keyless.Spec.correctSpec({ meta: { template: 'table' } });
+  const r1 = await keyless.AI.respond('make it walnut', spec503, { turns: [] });
+  ok(r1.local === true && r1.reply && r1.reply.kind === 'diff', 'keyless proxy still answers via the local parser');
+  eq(r1.unconfigured, true, '503 surfaces the distinct unconfigured state');
+  ok(hasFlag && keyless.AI.unconfigured() === true, 'the session remembers the keyless proxy');
+  const r2 = await keyless.AI.respond('make it pine', spec503, { turns: [] });
+  eq(r2.unconfigured, true, 'unconfigured persists on the hasRemote fast path');
+  // Genuine offline: the network itself is down — NOT "not configured".
+  const offline = load({
+    console, window: {}, document: {},
+    fetch: async () => { throw new Error('network down'); }
+  });
+  const rOff = await offline.AI.respond('make it walnut', offline.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(rOff.local === true && !rOff.unconfigured, 'a dead network is plain offline, never "not configured"');
+  ok(typeof offline.AI.unconfigured === 'function' && offline.AI.unconfigured() === false,
+    'offline context never claims unconfigured');
+  // Badge honesty (source level — ui.js is browser-coupled).
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok(/AI not configured/.test(uiSrc), 'badge has a distinct "AI not configured" label');
+  ok(/out\.unconfigured/.test(uiSrc), 'send path threads the unconfigured state to the badge');
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
+  await testKeylessProxyState();
   section('self-test suite (headless run)');
   const results = await BB.SelfTest.run();
   for (const r of results) {
