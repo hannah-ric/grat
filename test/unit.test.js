@@ -604,6 +604,37 @@ section('local intent parser');
     const smug = AI.localModel('two drawers like a cabinet has', spec);
     ok(smug.kind === 'question' || !/drawer/.test((smug.explain || '') + JSON.stringify(smug.patch || {})),
       'drawers on a table are refused, never acked');
+    ok(smug.kind !== 'new', 'a feature-noun phrase head ("two drawers like a cabinet") never creates the cabinet');
+
+    // A8: the six-word descriptor allowance — reference request 1 verbatim.
+    const funky = AI.localModel('a super funky mid century modern bookshelf', spec);
+    eq(funky.kind, 'new', 'req1: five descriptors still read as a creation');
+    eq(funky.kind === 'new' && funky.spec.meta.template, 'bookshelf', 'req1: creates a bookshelf offline');
+
+    // A8: "workbench" creates a worktop-height table — reference request 4 verbatim.
+    const wb = AI.localModel('a workbench for someone who does woodworking and stained glass with organization integrated for both', spec);
+    eq(wb.kind, 'new', 'req4: workbench request creates offline');
+    eq(wb.kind === 'new' && wb.spec.meta.template, 'table', 'req4: workbench lands on the table template');
+    ok(wb.kind === 'new' && /workbench/i.test(wb.spec.meta.name), `req4: the piece is workbench-named — got "${wb.kind === 'new' ? wb.spec.meta.name : ''}"`);
+    const ergoWb = K.ergoRow('workbench_height');
+    ok(wb.kind === 'new' && wb.spec.overall.height >= ergoWb.min && wb.spec.overall.height <= ergoWb.max,
+      `req4: height comes from the workbench ergonomics row — got ${wb.kind === 'new' ? wb.spec.overall.height : '?'}`);
+    // Refining THE workbench never recreates it, and explicit heights win.
+    const wbSpec = Spec.correctSpec(wb.kind === 'new' ? wb.spec : spec);
+    eq(AI.localModel('make the workbench a bit deeper', wbSpec).kind, 'diff', 'refining the named workbench stays a refinement');
+    const wbTall = AI.localModel('a workbench 1000mm tall', spec);
+    ok(wbTall.kind === 'new' && wbTall.spec.overall.height === 1000, 'an explicit height beats the ergonomics default');
+
+    // A8: an unparseable creation-shaped request gets a creation-phrased
+    // fallback naming what offline CAN build — not the edit question.
+    const murph = AI.localModel('a murphy bed with zero hardware', spec);
+    eq(murph.kind, 'question', 'req3 offline: still a question');
+    ok(/rough out/.test(murph.question) && /workbench/.test(murph.question) && /cabinet/.test(murph.question),
+      `req3 offline: fallback names the buildable templates — got "${murph.question}"`);
+    // Edit-shaped no-parse keeps the edit question.
+    const fancy = AI.localModel('make it fancier', spec);
+    ok(fancy.kind === 'question' && /didn’t catch a change/.test(fancy.question),
+      'a back-referencing no-parse keeps the edit-phrased question');
 
     // Negation guard intact (FE-H10/H11): a negated template noun never creates.
     ok(AI.localModel('not a nightstand', spec).kind !== 'new', 'negated template noun never creates');

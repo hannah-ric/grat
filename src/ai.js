@@ -181,7 +181,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // New design? Longest template word first: "bedside table" must win
     // over "table".
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -189,14 +189,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     // A creation verb creates — and so does a bare noun-phrase description
     // (audit X-01): the hero placeholder "A walnut nightstand with two
     // drawers" names a piece with no verb at all. A description leads with
-    // the template noun (an article plus at most three descriptor words),
-    // never refers back to the current piece, and is not negated
-    // ("not a nightstand").
-    const bareDescription = !!tmplWord &&
+    // the template noun (an article plus up to six descriptor words — "a
+    // super funky mid century modern bookshelf" is five, A8), never refers
+    // back to the current piece, and is not negated ("not a nightstand").
+    const bdMatch = tmplWord &&
+      new RegExp('^((?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,6}?)' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').exec(t.trim());
+    const bareDescription = !!bdMatch &&
       !/\b(it|its|this|that|my|mine)\b/.test(t) &&
       !negated(t, rxWord(tmplWord)) &&
-      new RegExp('^(?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,3}?' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').test(t.trim());
-    const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && wantTemplate !== spec.meta.template;
+      // Feature nouns before the template word mean the phrase's head is the
+      // FEATURE, not the piece ("two drawers like a cabinet has") — never a
+      // creation (audit X-01 drawer smuggling stays refused).
+      !/\b(drawers?|shel(?:f|ves)|doors?)\b/.test(bdMatch[1] || '');
+    // A8: "workbench" lands on the table template, so asking for one while a
+    // plain table is on the bench must still CREATE — unless the current
+    // design already IS the workbench being refined (name carries the word).
+    const differentPiece = wantTemplate !== spec.meta.template ||
+      (tmplWord === 'workbench' && !/workbench/i.test((spec.meta && spec.meta.name) || ''));
+    const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && differentPiece;
 
     // Ambiguity checks first.
     if (/\b(bigger|larger|smaller)\b/.test(t) && !/\b(wide|width|deep|depth|tall|height|high|%|percent)\b/.test(t)) {
@@ -337,13 +347,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (creating) {
+      // A workbench is a table at working height: the WORD itself implies the
+      // height, from the ergonomics table (A8) — an explicit height still wins.
+      if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
+        const row = K.ergoRow('workbench_height');
+        if (row) set('overall.height', Math.round((row.min + row.max) / 2));
+      }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
-      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || wantTemplate : 'New ' + wantTemplate;
+      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord : 'New ' + tmplWord;
       merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
-      return { kind: 'new', spec: merged, explain: `Roughed out a ${wantTemplate} to standard proportions${drawerNote} — refine away.` };
+      return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }
 
     // A rejected species with nothing else asked: say so and ask which wood
@@ -355,6 +371,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (!Object.keys(patch).length) {
+      // A8: a creation-shaped request (no back-reference to the current
+      // piece) that didn't parse gets a creation-phrased answer naming what
+      // the offline parser CAN rough out — not the edit-phrased question.
+      const creationShaped = !/\b(it|its|this|that|my|mine)\b/.test(t) &&
+        (/\b(build|make|design|create)\b/.test(t) || /^(?:an?|the)\b/.test(t.trim()) || !!tmplWord);
+      if (creationShaped) {
+        return {
+          kind: 'question',
+          question: 'Offline I can rough out a table, desk, bench, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
+          options: ['A walnut nightstand with two drawers', 'A workbench', 'A bookshelf']
+        };
+      }
       return {
         kind: 'question',
         question: 'I didn’t catch a change I can make there. Try a dimension, species, joinery level, drawers, or finish — what should move?',
