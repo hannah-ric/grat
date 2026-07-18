@@ -675,11 +675,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     try {
-      let { text } = await callModel(system, baseMessages, onStatus);
+      const first = await callModel(system, baseMessages, onStatus);
+      let text = first.text;
+      let stopReason = first.stopReason;
       let parsed = classify(extractJSON(text));
       if (!parsed) {
-        // The single validation retry. Truncation never lands here — the
-        // continuation protocol already stitched partial outputs together.
+        // The single validation retry. A stitched-but-still-truncated reply
+        // CAN land here when the continuation ceiling is exhausted (C15) —
+        // the failure is then named as truncation, never "invalid JSON".
         onStatus('Re-asking for valid JSON');
         const retryMessages = [...baseMessages,
           { role: 'assistant', content: text || '(empty)' },
@@ -687,6 +690,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const second = await callModel(system, retryMessages, onStatus);
         parsed = classify(extractJSON(second.text));
         if (parsed) text = second.text;
+        else stopReason = second.stopReason;
       }
       if (parsed) {
         const newTurns = [...turns,
@@ -694,7 +698,19 @@ var BB = globalThis.BB = globalThis.BB || {};
           { role: 'assistant', content: text }];
         return { reply: parsed, turns: newTurns, local: false };
       }
-      return { reply: null, turns, error: 'The model never produced a valid design reply.' };
+      // C15: the failed exchange stays in the returned turns (capped) so the
+      // conversation remembers what was asked and attempted, and truncation
+      // exhaustion is named instead of the generic invalid-reply line.
+      const failTurns = [...turns,
+        { role: 'user', content: typeof userContent === 'string' ? userContent : userText + ' [photo]' },
+        { role: 'assistant', content: (String(text || '(no reply)')).slice(0, 1500) }];
+      const truncated = stopReason === 'max_tokens';
+      return {
+        reply: null, turns: failTurns, truncated,
+        error: truncated
+          ? 'That reply kept overflowing the response limit even after ' + (MAX_CONTINUATIONS + 1) + ' parts, so I couldn’t finish it. Try asking for a simpler piece, or split the request into smaller steps.'
+          : 'The model never produced a valid design reply.'
+      };
     } catch (err) {
       // Usage/rate limits are authoritative server answers, not outages — never
       // mask them behind the offline parser.

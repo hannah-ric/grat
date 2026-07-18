@@ -1486,6 +1486,48 @@ async function testTransportTTL() {
   ok(r404.local === true, 'a 404 (route truly absent) stays permanent — no TTL retry');
 }
 
+/* C15: when continuations exhaust and the stitched reply still parses to
+ * null, the error names TRUNCATION and the failed exchange stays in the
+ * returned turns (P7 4-chunk mock: the retry restarts from scratch and can
+ * never finish either). */
+async function testTruncationExhaustion() {
+  section('respond(): continuation exhaustion names truncation and keeps the exchange (C15)');
+  const novel = Spec.correctSpec(BB.SelfTest.bigComposition());
+  const wire = JSON.stringify({ N: Codec.encode(novel), e: 'oversized rack' });
+  const CH = Math.ceil(wire.length / 4);
+  const chunks = [0, 1, 2, 3].map(i => wire.slice(i * CH, (i + 1) * CH));
+  let call = 0, calls = 0;
+  AI.setTransport(async (system, messages) => {
+    calls++;
+    const last = messages[messages.length - 1];
+    if (/not valid wire-format JSON/.test(String(last.content))) call = 0; // model restarts on the retry
+    const i = Math.min(call, 3); call++;
+    // 4 chunks but only 1+2 continuations allowed: the 3rd call still says
+    // max_tokens, so the stitched text is 3/4 of the wire and unparseable.
+    return { text: chunks[i], stopReason: 'max_tokens' };
+  });
+  const base = Spec.correctSpec(Spec.defaultSpec('table'));
+  const res = await AI.respond('a forty part rack', base, { turns: [] });
+  AI.setTransport(null);
+  ok(res.reply === null && !!res.error, 'exhaustion still fails closed');
+  ok(res.truncated === true, 'the result is marked truncated');
+  ok(/overflow|response limit/i.test(res.error) && !/never produced a valid design reply/.test(res.error),
+    `the error names truncation, not the generic invalid-reply line — got "${res.error}"`);
+  eq(res.turns.length, 2, 'the failed user message and attempt stay in the returned turns');
+  ok(res.turns[0].role === 'user' && /forty part rack/.test(res.turns[0].content), 'the user message is retained');
+  ok(res.turns[1].role === 'assistant' && res.turns[1].content.length <= 1500, 'the attempt is retained, capped');
+  eq(calls, 6, 'hard-fails after 6 transport calls (3 + retry 3)');
+  // A plain invalid reply (no truncation) keeps the generic line.
+  AI.setTransport(async () => ({ text: 'no json here', stopReason: 'end_turn' }));
+  const res2 = await AI.respond('gibberish', base, { turns: [] });
+  AI.setTransport(null);
+  ok(!res2.truncated && /never produced a valid design reply/.test(res2.error), 'non-truncated failures keep the generic line');
+  // ui.js parity: the error path adopts the returned turns.
+  const uiSrc2 = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok(/if \(res\.error\) \{\n\s+\/\/ C15/.test(uiSrc2) && /res\.turns\.slice\(-24\)/.test(uiSrc2),
+    'ui.js adopts the failed exchange into state.turns on error');
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
   await testKeylessProxyState();
@@ -1493,6 +1535,7 @@ async function testTransportTTL() {
   await testMidRoundInfo();
   await testFetchTimeout();
   await testTransportTTL();
+  await testTruncationExhaustion();
   section('self-test suite (headless run)');
   const results = await BB.SelfTest.run();
   for (const r of results) {

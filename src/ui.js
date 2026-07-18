@@ -1388,7 +1388,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       return null;
     }
     if (res.rateLimited) { botSay('Too many messages in a row — give it a few seconds, then try again.', []); return null; }
-    if (res.error) { botSay(res.error, []); return null; }
+    if (res.error) {
+      // C15: the failed exchange stays in conversation memory (respond returns
+      // it in turns), so the next message doesn't act as if it never happened.
+      if (res.turns) state.turns = res.turns.slice(-24);
+      botSay(res.error, []);
+      return null;
+    }
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
       askQuestion(res.reply);
