@@ -103,6 +103,7 @@ module.exports = async function handler(req, res) {
 
   const session = S.sessionFrom(req);
   const meterId = session ? session.uid : anonMeterId(req);
+  const tokenBudget = parseInt(process.env.AI_MONTHLY_TOKEN_BUDGET, 10) || 0; // 0 / unset = disabled
   if (!burstOK(meterId)) {
     return sendJSON(res, 429, { type: 'error', error: { type: 'rate_limited', message: 'Too many requests — please slow down.' } });
   }
@@ -116,6 +117,19 @@ module.exports = async function handler(req, res) {
       });
     }
   } catch (error) { Log.report('chat', 'status_lookup_failed', error); /* storage outage must not break AI — the burst guard still applies */ }
+
+  // Optional monthly output-token spend ceiling (E-07a). Enforced PRE-upstream on
+  // the same durable KV meter pattern, so a runaway spend can't reach Anthropic.
+  // A distinct 429 that src/ai.js already surfaces gracefully (rate-limited) —
+  // never a silent drop to the offline parser. Fails open on a storage hiccup.
+  if (tokenBudget > 0) {
+    try {
+      const spent = await E.getTokenUsage(meterId);
+      if (spent.tokens >= tokenBudget) {
+        return sendJSON(res, 429, { type: 'error', error: { type: 'token_budget', message: 'Monthly AI usage limit reached — please try again next month.' } });
+      }
+    } catch (error) { Log.report('chat', 'token_budget_lookup_failed', error); }
+  }
 
   let body;
   try { body = await readBody(req); }
@@ -157,6 +171,12 @@ module.exports = async function handler(req, res) {
   catch (e) { Log.report('chat', 'upstream_non_json', upstream.status); return sendJSON(res, 502, errBody('upstream returned non-JSON (' + upstream.status + ')')); }
   if (upstream.ok) {
     try { await E.incrementAI(meterId); } catch (error) { Log.report('chat', 'meter_increment_failed', error); /* usage metering is best-effort */ }
+    if (tokenBudget > 0) {
+      // Count actual output tokens when the response reports them; otherwise fall
+      // back to the granted ceiling so an untracked response still spends budget.
+      const spent = (data && data.usage && Number(data.usage.output_tokens)) || payload.max_tokens;
+      try { await E.addTokens(meterId, spent); } catch (error) { Log.report('chat', 'token_meter_failed', error); }
+    }
   } else {
     Log.report('chat', 'upstream_error', upstream.status);
   }

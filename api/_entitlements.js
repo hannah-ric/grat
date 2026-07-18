@@ -16,6 +16,7 @@ const ACTIVE_STATUSES = new Set(['active', 'trialing']);
 
 const subscriptionKey = uid => `bb:${uid}:subscription`;
 const usageKey = (uid, month) => `bb:${uid}:usage:ai:${month}`;
+const tokenUsageKey = (uid, month) => `bb:${uid}:usage:tokens:${month}`;
 const monthId = (date = new Date()) => date.toISOString().slice(0, 7);
 const secondsUntilMonthEnd = () => {
   const now = new Date();
@@ -52,6 +53,27 @@ async function incrementAI(uid) {
   return count;
 }
 
+/* Optional monthly output-token spend meter (drives api/chat's AI_MONTHLY_TOKEN_BUDGET
+ * ceiling, E-07a). Keyed under the reserved usage: namespace so it is not
+ * user-writable via /api/store (E-02). Expires with the calendar month like the
+ * message meter. Disabled sites never call these, so no counter is written. */
+async function getTokenUsage(uid) {
+  const kv = KV.backend();
+  const month = monthId();
+  if (!kv || !uid) return { month, tokens: 0 };
+  return { month, tokens: Number(await kv.get(tokenUsageKey(uid, month)) || 0) };
+}
+
+async function addTokens(uid, n) {
+  const kv = KV.backend();
+  const amount = Math.max(0, Math.floor(Number(n) || 0));
+  if (!kv || !uid || amount === 0 || !kv.incrby) return 0;
+  const key = tokenUsageKey(uid, monthId());
+  const total = Number(await kv.incrby(key, amount));
+  if (total === amount && kv.expire) await kv.expire(key, secondsUntilMonthEnd());
+  return total;
+}
+
 async function statusFor(uid) {
   const [subscription, usage] = await Promise.all([getSubscription(uid), getUsage(uid)]);
   const isPro = !!(subscription && ACTIVE_STATUSES.has(subscription.status));
@@ -69,4 +91,4 @@ async function statusFor(uid) {
   };
 }
 
-module.exports = { FREE, PRO, ACTIVE_STATUSES, getSubscription, setSubscription, getUsage, incrementAI, statusFor };
+module.exports = { FREE, PRO, ACTIVE_STATUSES, getSubscription, setSubscription, getUsage, incrementAI, getTokenUsage, addTokens, statusFor };

@@ -505,6 +505,54 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- chat: optional monthly token spend ceiling (E-07a) ---------------- */
+  section('chat: optional monthly token spend ceiling (E-07a)');
+  {
+    const rmkv = useTempKV();
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    process.env.AI_MONTHLY_TOKEN_BUDGET = '150';
+    const realFetch = globalThis.fetch;
+    let upstreamCalls = 0;
+    globalThis.fetch = async () => { upstreamCalls++; return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 100 } }) }; };
+    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+    const meter = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.61' }, socket: {} });
+
+    // First call under budget → proxied AND meters the 100 output tokens.
+    let res = fakeRes();
+    await chat(chatReq('198.51.100.61'), res);
+    eq(res.statusCode, 200, 'first call under the token budget is proxied');
+    eq((await E.getTokenUsage(meter)).tokens, 100, 'output tokens from the Anthropic response are metered');
+
+    // Second call still under budget → proxied, counter accrues to 200.
+    res = fakeRes();
+    await chat(chatReq('198.51.100.61'), res);
+    eq(res.statusCode, 200, 'second call still under budget is proxied');
+    eq((await E.getTokenUsage(meter)).tokens, 200, 'token counter accrues across calls');
+
+    // Third call: 200 >= 150 → refused PRE-upstream with a distinct 429.
+    upstreamCalls = 0;
+    res = fakeRes();
+    await chat(chatReq('198.51.100.61'), res);
+    eq(res.statusCode, 429, 'over the token budget → 429 (client tolerates it as rate-limited)');
+    eq(upstreamCalls, 0, 'the ceiling is enforced PRE-upstream — no Anthropic call is made');
+    ok(json(res).error && /budget|limit/i.test(json(res).error.message || ''), 'the 429 carries a distinct budget message');
+
+    // Disabled by default: unset env var → no ceiling, no token counting.
+    delete process.env.AI_MONTHLY_TOKEN_BUDGET;
+    res = fakeRes();
+    await chat(chatReq('198.51.100.62'), res);
+    eq(res.statusCode, 200, 'unset budget → disabled (current behavior)');
+    eq((await E.getTokenUsage(chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.62' }, socket: {} }))).tokens, 0, 'no token counting when the budget is unset');
+
+    // Honest copy: the pricing dialog states a request can span several messages.
+    const billingSrc = fs.readFileSync(path.join(__dirname, '../src/billing.js'), 'utf8');
+    ok(/several AI messages|use several|several messages/i.test(billingSrc), 'pricing copy states a complex request may use several AI messages');
+
+    globalThis.fetch = realFetch;
+    rmkv();
+    cleanEnv();
+  }
+
   /* ---------------- env audit + production readiness (A-03) ---------------- */
   section('env audit: AI + OAuth advisories and qualified readiness (A-03)');
   {

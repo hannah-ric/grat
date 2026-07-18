@@ -24,6 +24,7 @@ function restBackend() {
       : command(['SET', key, value]),
     del: key => command(['DEL', key]),
     incr: key => command(['INCR', key]),
+    incrby: (key, n) => command(['INCRBY', key, String(n)]),
     expire: (key, seconds) => command(['EXPIRE', key, String(seconds)])
   };
 }
@@ -61,6 +62,13 @@ function fileBackend() {
       map[key] = current + 1;
       write(map);
       return current + 1;
+    },
+    incrby: async (key, n) => {
+      const map = read();
+      const next = Number(unwrap(map, key) || 0) + Number(n);
+      map[key] = next;
+      write(map);
+      return next;
     },
     expire: async (key, seconds) => {
       const map = read();
