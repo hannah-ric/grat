@@ -1448,12 +1448,51 @@ async function testFetchTimeout() {
   ok(lgRes.local === false, 'hosts without AbortSignal.timeout still transport');
 }
 
+/* C7: a single transient fetch rejection benches the proxy for a TTL, not
+ * forever — restored connectivity brings the model back without a reload. */
+async function testTransportTTL() {
+  section('AI transport: network death is a TTL bench, not forever (C7)');
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  let failures = 1;
+  const ctx = vm.createContext({
+    console, window: {}, document: {},
+    fetch: async () => {
+      if (failures > 0) { failures--; throw new Error('network blip'); }
+      return { status: 200, ok: true, json: async () => ({ content: [{ type: 'text', text: '{"o":{"h":700},"e":"ok"}' }], stop_reason: 'end_turn' }) };
+    }
+  });
+  for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, { filename: 'C7-' + f });
+  const B = ctx.BB;
+  const spec7 = B.Spec.correctSpec({ meta: { template: 'table' } });
+  const r1 = await B.AI.respond('make it walnut', spec7, { turns: [] });
+  ok(r1.local === true, 'the blip itself degrades that message to the local parser');
+  const r2 = await B.AI.respond('make it pine', spec7, { turns: [] });
+  ok(r2.local === true, 'within the TTL the proxy stays benched (no hammering a dead network)');
+  // The TTL elapses (fake the clock inside the context — ai.js reads Date.now()).
+  vm.runInContext('(() => { const real = Date.now.bind(Date); Date.now = () => real() + 31000; })()', ctx);
+  const r3 = await B.AI.respond('make it cherry', spec7, { turns: [] });
+  ok(r3.local === false && r3.reply && r3.reply.kind === 'diff',
+    'after the TTL the next message reaches the proxy again — never offline forever');
+  // Permanent deaths stay permanent: a 404 origin never retries.
+  const ctx404 = vm.createContext({
+    console, window: {}, document: {},
+    fetch: async () => ({ status: 404, ok: false, json: async () => ({}) })
+  });
+  for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx404, { filename: 'C7b-' + f });
+  const B4 = ctx404.BB;
+  await B4.AI.respond('make it walnut', B4.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  vm.runInContext('(() => { const real = Date.now.bind(Date); Date.now = () => real() + 31000; })()', ctx404);
+  const r404 = await B4.AI.respond('make it pine', B4.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(r404.local === true, 'a 404 (route truly absent) stays permanent — no TTL retry');
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
   await testKeylessProxyState();
   await testNamePhrasing();
   await testMidRoundInfo();
   await testFetchTimeout();
+  await testTransportTTL();
   section('self-test suite (headless run)');
   const results = await BB.SelfTest.run();
   for (const r of results) {
