@@ -1021,6 +1021,30 @@ section('FE-H10/H11 offline parser: negation and drawer honesty');
   ok((fbNs.options || []).some(o => /drawer/i.test(o)), 'nightstand keeps the drawer chip');
 }
 
+/* ================= M-13 (2026-07 productization): compare weight skips hardware ================= */
+section('M-13 species-compare weight never weighs steel hardware as wood');
+{
+  // provenance.js is browser-free; it is loaded here ad hoc because the
+  // shared SRC list predates it.
+  vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'provenance.js'), 'utf8'), { filename: 'provenance.js' });
+  const r = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }, structure: { shelfCount: 1 }
+  });
+  const hwParts = r.model.parts.filter(p => p.hardware);
+  ok(hwParts.length >= 4, 'the 2-drawer model renders metal slide hardware parts');
+  // Hand-summed wood-only mass, mirroring the engine's density fallback —
+  // the same exclusion structural.js uses for its COG mass (:569).
+  const sgOf = p => (K.WOOD_SPECIES[p.material] || K.WOOD_SPECIES[r.spec.wood.species] || K.WOOD_SPECIES.pine).sg;
+  const woodOnly = r.model.parts.filter(p => !p.hardware && p.role !== 'pull')
+    .reduce((kg, p) => kg + p.size.w * p.size.h * p.size.d * 1e-9 * sgOf(p) * 1000 * (p.prim === 'cylinder' ? Math.PI / 4 : 1), 0);
+  const w = BB.Compare.weightKg(r.spec, r.model);
+  near(w, woodOnly, 1e-9, 'weightKg equals the wood-only mass — steel slides never weighed as walnut');
+  const cols = BB.Compare.compareSpecies(r.spec, ['walnut'], {});
+  near(cols[0].weightKg, Math.round(woodOnly * 10) / 10, 1e-9, 'the compare column carries the wood-only weight');
+}
+
 /* ================= M-18 (2026-07 productization): mandatory-anchor rollup tier ================= */
 section('M-18 mandatory-anchor designs roll up "safe only when anchored", never plain advisory');
 {

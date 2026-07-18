@@ -119,7 +119,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   function weightKg(spec, model) {
     let kg = 0;
     for (const p of model.parts) {
-      if (p.role === 'pull') continue;
+      // Skip ALL hardware (metal slides, pulls) — never weighed as wood
+      // (audit M-13); same exclusion as the structural COG mass model.
+      if (p.role === 'pull' || p.hardware) continue;
       const sg = (K.WOOD_SPECIES[p.material] || K.WOOD_SPECIES[spec.wood.species] || K.WOOD_SPECIES.pine).sg;
       const volFactor = p.prim === 'cylinder' ? Math.PI / 4 : 1;
       kg += p.size.w * p.size.h * p.size.d * 1e-9 * sg * 1000 * volFactor;
