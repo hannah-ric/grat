@@ -481,6 +481,30 @@ function objectBodyReq(url, bodyObj, headers) {
       'signed-out upgrade no longer closes the dialog before (maybe) redirecting');
   }
 
+  /* ---------------- observability: structured error reporting (E-08) ---------------- */
+  section('observability: a backend failure emits one structured error line (E-08)');
+  {
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    process.env.KV_REST_API_URL = 'https://kv.example.com';
+    process.env.KV_REST_API_TOKEN = 'tok';
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error('ECONNREFUSED kv down'); }; // KV outage
+    const captured = [];
+    const realErr = console.error;
+    console.error = (...a) => { captured.push(a.map(String).join(' ')); };
+    const c = S.sessionCookieFor({ uid: 'google:obs', name: 'O', provider: 'google' }, fakeReq('/')).split(';')[0];
+    const res = fakeRes();
+    try { await store(fakeReq('/api/store?doc=projects:index', { headers: { cookie: c } }), res); }
+    finally { console.error = realErr; globalThis.fetch = realFetch; }
+    eq(res.statusCode, 502, 'a KV outage surfaces as 502, not a crash');
+    const lines = captured.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+    const line = lines.find(o => o && o.scope === 'store');
+    ok(!!line, 'a structured JSON error line was emitted to stderr on the KV failure');
+    ok(line && typeof line.ts === 'string' && !!line.event && ('detail' in line),
+      'the line carries ts + scope + event + detail');
+    cleanEnv();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exitCode = 1;
 })().catch(e => { console.error('server tests crashed:', e); process.exitCode = 1; });

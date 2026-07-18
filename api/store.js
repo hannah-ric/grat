@@ -26,6 +26,7 @@
 
 const S = require('./_session.js');
 const KV = require('./_kv.js');
+const Log = require('./_log.js');
 
 const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/;
 // The store namespaces every document as bb:{uid}:{doc}. api/_entitlements.js
@@ -104,6 +105,7 @@ module.exports = async function handler(req, res) {
     res.setHeader('Allow', 'GET, PUT, POST, DELETE');
     return sendJSON(res, 405, { error: 'method not allowed' });
   } catch (e) {
+    Log.report('store', 'kv_error', e);
     return sendJSON(res, 502, { error: 'storage backend error: ' + e.message });
   }
 };

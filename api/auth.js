@@ -29,6 +29,7 @@ const crypto = require('crypto');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
 const Env = require('./_env-check.js');
+const Log = require('./_log.js');
 
 // Audit env vars once at cold start so missing keys surface immediately in logs.
 Env.audit();
@@ -138,7 +139,7 @@ module.exports = async function handler(req, res) {
     const sess = S.sessionFrom(req);
     let billing = null;
     if (sess) {
-      try { billing = await E.statusFor(sess.uid); } catch (error) { billing = null; }
+      try { billing = await E.statusFor(sess.uid); } catch (error) { Log.report('auth', 'billing_lookup_failed', error); billing = null; }
     }
     return sendJSON(res, 200, {
       user: sess ? { name: sess.name, provider: sess.p, avatar: sess.av || null } : null,
@@ -184,6 +185,7 @@ module.exports = async function handler(req, res) {
       const user = await exchangeCode(st.p, q.get('code'), req);
       return redirect(res, '/', [S.sessionCookieFor(user, req), clearState]);
     } catch (e) {
+      Log.report('auth', 'oauth_callback_failed', e);
       return redirect(res, '/?login=failed', [clearState]);
     }
   }

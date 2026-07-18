@@ -18,6 +18,7 @@
 const crypto = require('crypto');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
+const Log = require('./_log.js');
 
 const DEFAULT_MODEL = 'claude-sonnet-5';
 const MAX_TOKENS_CAP = 1024;   // client asks for 1000; the proxy grants no more than this
@@ -114,7 +115,7 @@ module.exports = async function handler(req, res) {
         billing: account
       });
     }
-  } catch (error) { /* storage outage must not break AI — the burst guard still applies */ }
+  } catch (error) { Log.report('chat', 'status_lookup_failed', error); /* storage outage must not break AI — the burst guard still applies */ }
 
   let body;
   try { body = await readBody(req); }
@@ -147,14 +148,17 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify(payload)
     });
   } catch (e) {
+    Log.report('chat', 'upstream_unreachable', e);
     return sendJSON(res, 502, errBody('upstream unreachable: ' + e.message));
   }
 
   let data;
   try { data = await upstream.json(); }
-  catch (e) { return sendJSON(res, 502, errBody('upstream returned non-JSON (' + upstream.status + ')')); }
+  catch (e) { Log.report('chat', 'upstream_non_json', upstream.status); return sendJSON(res, 502, errBody('upstream returned non-JSON (' + upstream.status + ')')); }
   if (upstream.ok) {
-    try { await E.incrementAI(meterId); } catch (error) { /* usage metering is best-effort */ }
+    try { await E.incrementAI(meterId); } catch (error) { Log.report('chat', 'meter_increment_failed', error); /* usage metering is best-effort */ }
+  } else {
+    Log.report('chat', 'upstream_error', upstream.status);
   }
   return sendJSON(res, upstream.status, data);
 };
