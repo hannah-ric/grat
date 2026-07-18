@@ -877,10 +877,17 @@ body.drafting .viewport-wrap {
 .table-scroll { overflow: visible; border: 1px solid var(--line); border-radius: var(--radius-m); }
 .table-scroll.scrollable { overflow-x: auto; overscroll-behavior-x: contain; }
 table.data { border-collapse: collapse; width: 100%; font-size: var(--text-s); min-width: 560px; }
+/* Sticky column headers (P2-9): sticky lives on the THEAD — sticky on th
+   never pinned against the panel scroller in Chromium (the header rode away
+   with the rows); thead-level sticky pins reliably. */
+table.data thead { position: sticky; top: 0; z-index: 2; }
+/* in the plan panel, pin flush with the panel's top edge so rows never
+   ghost through the padding band above the header */
+.panel table.data thead { top: calc(var(--space-s) * -1); }
 table.data th {
   text-align: left; font: 600 var(--text-s) var(--body); letter-spacing: .05em; text-transform: uppercase;
   color: var(--muted); padding: var(--s2) 14px; border-bottom: 1px solid var(--line-2); background: var(--panel-2);
-  white-space: nowrap; position: sticky; top: 0; z-index: 1;
+  white-space: nowrap;
 }
 table.data td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.data tr:last-child td { border-bottom: 0; }

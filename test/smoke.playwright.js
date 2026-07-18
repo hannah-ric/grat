@@ -1564,6 +1564,34 @@ const clickMoreCtl = async sel => {
     `server project_limit 403 paints the same explicit state (got "${cap403.saveText}")`);
   ok(cap403.banner, 'server project_limit 403 raises the same passive banner');
 
+  /* ================= P2-9: cut-list sticky headers actually stick ============ */
+  // The column headers must pin to the top of the scrolling panel while the
+  // rows scroll under them — measured on a 13-row cut list.
+  const sticky = await page.evaluate(async () => {
+    __bb.merge({ meta: { template: 'cabinet' }, overall: { width: 900, depth: 450, height: 900 }, drawers: { count: 2 }, structure: { shelfCount: 2 } }, 'manual');
+    __bb.selectTab('cut');
+    await new Promise(r => setTimeout(r, 400)); // panel rise animation settles
+    const panel = document.getElementById('panel-main');
+    const thead = document.querySelector('#panel-main thead');
+    const rows = document.querySelectorAll('#panel-main tbody tr').length;
+    panel.scrollTop = 0;
+    const beforeTop = thead.getBoundingClientRect().top;
+    panel.scrollTop = 300;
+    const t = thead.getBoundingClientRect();
+    const p = panel.getBoundingClientRect();
+    const firstRow = document.querySelector('#panel-main tbody tr').getBoundingClientRect();
+    panel.scrollTop = 0;
+    return {
+      rows,
+      pinned: t.top >= p.top - 1 && t.top <= p.top + 40,
+      drift: Math.round(beforeTop - t.top),
+      rowsUnder: firstRow.top < t.bottom
+    };
+  });
+  ok(sticky.rows >= 13, `sticky probe runs on a ${sticky.rows}-row cut list`);
+  ok(sticky.pinned, `thead pins to the panel top after a 300px scroll (drifted ${sticky.drift}px instead)`);
+  ok(sticky.rowsUnder, 'rows scroll under the pinned header');
+
 
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });
