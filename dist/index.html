@@ -1227,14 +1227,19 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
     position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
   }
 }
+/* Share/Import inside More exists for the widths where the topbar CTA folds
+   away (X-05); wider screens keep the dedicated Share button instead. */
+.menu .menu-share-item { display: none; }
 @media (max-width: 560px) {
   .save-state { display: none; }
   .save-dot:not([hidden]) { display: inline-block; }
   .brand-short { display: none; }
   .design-name { min-width: 72px; flex-basis: 72px; }
   #redoBtn { display: inline-flex; }
-  /* Share folds into reach of More; Build (mode nav) stays the strong action */
+  /* Share folds into reach of More (the menu-share-item entry); Build (mode
+     nav) stays the strong action */
   .share-cta { display: none; }
+  .menu .menu-share-item { display: flex; }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -1742,6 +1747,9 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <!-- ≤560px folds the topbar Share CTA away; this entry keeps share
+               codes AND import reachable on phones (X-05). -->
+          <button role="menuitem" id="menuShareBtn" class="menu-share-item" aria-haspopup="dialog"><span>Share / Import</span><span class="hint">codes &amp; links</span></button>
           <div class="menu-sep"></div>
           <div class="menu-group" id="moreExportGroup">
             <div class="menu-group-label">Export</div>
@@ -16899,6 +16907,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       else { openShareSheet(); $('importCode').focus(); }
     };
     $('shareBtn').onclick = openShareSheet;
+    $('menuShareBtn').onclick = openShareSheet; // phone-width Share/Import entry (X-05)
     /* project-cap banner (A-04): passive, dismissible, share-code way out */
     $('capBannerShare').onclick = () => openShareSheet();
     $('capBannerUpgrade').onclick = () => BB.Billing.open();
@@ -16974,7 +16983,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       // Menu-button keyboard pattern: ArrowDown opens and enters the menu,
       // arrows cycle the items, Escape (global handler) closes topmost.
-      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length || m.classList.contains('open'));
+      // Width-hidden entries (e.g. the phone-only Share/Import item) must not
+      // catch keyboard focus: only items with a rendered box participate.
+      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length);
       b.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();

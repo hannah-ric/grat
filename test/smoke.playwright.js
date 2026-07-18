@@ -1292,6 +1292,27 @@ const clickMoreCtl = async sel => {
   ok(nudged.clicked && /100%/.test(nudged.pct) && nudged.nudge && nudged.flag,
     `finishing the build raises the one-time install nudge (${nudged.pct})`);
   await page.evaluate(() => { document.getElementById('bmInstallDismiss').click(); __bb.exitBuildMode(); });
+
+  /* ================= X-05: Share + Import reachable on phones ================= */
+  // ≤560px hides the topbar Share CTA; the More menu must carry a working
+  // Share/Import entry there (the CSS comment's claim, made true).
+  ok(await page.evaluate(() => getComputedStyle(document.getElementById('shareBtn')).display === 'none'),
+    'topbar Share CTA is hidden at 390px');
+  await page.click('#moreBtn');
+  const menuShare = await page.evaluate(() => {
+    const b = document.getElementById('menuShareBtn');
+    return { exists: !!b, visible: !!b && b.getClientRects().length > 0 };
+  });
+  ok(menuShare.exists && menuShare.visible, 'More menu offers a Share / Import entry at phone widths');
+  await page.evaluate(() => { const b = document.getElementById('menuShareBtn'); if (b) b.click(); });
+  await page.waitForTimeout(250);
+  ok(await page.isVisible('#shareScrim.open'), 'the More-menu Share entry opens the share dialog');
+  ok(await page.isVisible('#shareScrim.open #importCode'), 'the import paste box is reachable from the phone entry');
+  await page.evaluate(() => {
+    if (document.getElementById('shareScrim').classList.contains('open')) document.getElementById('shareClose').click();
+    if (document.getElementById('moreMenu').classList.contains('open')) document.getElementById('moreBtn').click();
+  });
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 

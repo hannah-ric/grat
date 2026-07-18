@@ -3078,6 +3078,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       else { openShareSheet(); $('importCode').focus(); }
     };
     $('shareBtn').onclick = openShareSheet;
+    $('menuShareBtn').onclick = openShareSheet; // phone-width Share/Import entry (X-05)
     /* project-cap banner (A-04): passive, dismissible, share-code way out */
     $('capBannerShare').onclick = () => openShareSheet();
     $('capBannerUpgrade').onclick = () => BB.Billing.open();
@@ -3153,7 +3154,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       // Menu-button keyboard pattern: ArrowDown opens and enters the menu,
       // arrows cycle the items, Escape (global handler) closes topmost.
-      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length || m.classList.contains('open'));
+      // Width-hidden entries (e.g. the phone-only Share/Import item) must not
+      // catch keyboard focus: only items with a rendered box participate.
+      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length);
       b.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
