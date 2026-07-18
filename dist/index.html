@@ -9589,7 +9589,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   const WORD_NUMS = { one: 1, a: 1, an: 1, two: 2, three: 3, four: 4 };
 
-  function localModel(text, spec) {
+  function localModel(text, spec, lmOpts) {
+    // The user's own phrasing survives for NAMES (audit X-09): length
+    // pre-normalization ("about 5 feet tall" → "about 1524mm tall") exists
+    // for parsing and the wire, never for what the piece is called. The chat
+    // route normalizes before calling here, so it passes the original via
+    // lmOpts.phrasing; direct callers' raw text is captured before our own
+    // normalization pass.
+    const phrasing = (lmOpts && lmOpts.phrasing) || String(text || '');
     text = BB.Units.normalizeLengthText(text); // idempotent; direct callers get the same guarantee as chat
     const t = ' ' + String(text).toLowerCase().trim() + ' ';
     const patch = {};
@@ -9773,7 +9780,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
-      merged.meta.name = text.length < 40 ? text.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || wantTemplate : 'New ' + wantTemplate;
+      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || wantTemplate : 'New ' + wantTemplate;
       merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
       return { kind: 'new', spec: merged, explain: `Roughed out a ${wantTemplate} to standard proportions${drawerNote} — refine away.` };
@@ -9975,10 +9982,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   async function respond(userText, spec, opts) {
     opts = opts || {};
     // Pre-parse dimension strings to explicit millimetres BEFORE the model
-    // sees them — the model proposes intent and never converts units.
+    // sees them — the model proposes intent and never converts units. The
+    // original phrasing is kept for design names (audit X-09).
+    const phrasing = String(userText || '');
     userText = BB.Units.normalizeLengthText(userText);
     const onStatus = opts.onStatus || (() => {});
-    if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
+    if (!hasRemote()) return { reply: localModel(userText, spec, { phrasing }), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
 
     const system = systemPrompt(spec);
     const turns = opts.turns || [];
@@ -10018,7 +10027,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
       if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
-      return { reply: localModel(userText, spec), turns, local: true, unconfigured: proxyUnconfigured };
+      return { reply: localModel(userText, spec, { phrasing }), turns, local: true, unconfigured: proxyUnconfigured };
     }
   }
 

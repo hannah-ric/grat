@@ -354,6 +354,23 @@ section('local intent parser');
     ok(AI.localModel('not a nightstand', spec).kind !== 'new', 'negated template noun never creates');
     ok(AI.localModel('no ash please', ns).kind === 'question', 'species negation guard still asks');
   }
+
+  // X-09: design names preserve the user's phrasing — never the mm token
+  // that unit pre-normalization writes into the parsed text.
+  {
+    const nm = AI.localModel('A bookshelf about 5 feet tall', spec);
+    eq(nm.kind, 'new', 'bare bookshelf description creates');
+    ok(nm.kind === 'new' && !/\d+\s*mm\b/i.test(nm.spec.meta.name),
+      `name carries no bare mm token — got "${nm.kind === 'new' ? nm.spec.meta.name : ''}"`);
+    ok(nm.kind === 'new' && /5 feet/i.test(nm.spec.meta.name), 'name keeps the user\'s own words');
+    ok(nm.kind === 'new' && Math.abs(nm.spec.overall.height - 1524) < 0.1, 'the height still parses to 1524 mm internally');
+    // The chat route normalizes BEFORE localModel sees the text — the
+    // original phrasing rides an opts channel.
+    const pre = AI.localModel(BB.Units.normalizeLengthText('A bookshelf about 5 feet tall'), spec,
+      { phrasing: 'A bookshelf about 5 feet tall' });
+    ok(pre.kind === 'new' && !/\d+\s*mm\b/i.test(pre.spec.meta.name),
+      `pre-normalized call with phrasing: no mm token — got "${pre.kind === 'new' ? pre.spec.meta.name : ''}"`);
+  }
 }
 
 /* ---------------- lead-gen origin on export surfaces (A-11) ---------------- */
@@ -959,9 +976,22 @@ async function testKeylessProxyState() {
   ok(/out\.unconfigured/.test(uiSrc), 'send path threads the unconfigured state to the badge');
 }
 
+/* X-09 (chat route): respond() normalizes the text for parsing and the wire,
+ * but the created design's NAME keeps the user's phrasing. */
+async function testNamePhrasing() {
+  section('respond(): names keep the user phrasing after normalization (X-09)');
+  const spec = BB.Spec.correctSpec({ meta: { template: 'table' } });
+  const res = await AI.respond('A bookshelf about 5 feet tall', spec, { turns: [] });
+  ok(res.local === true && res.reply && res.reply.kind === 'new', 'headless respond falls back to the local parser');
+  const name = res.reply && res.reply.kind === 'new' ? res.reply.spec.meta.name : '';
+  ok(!/\d+\s*mm\b/i.test(name), `chat-route name carries no bare mm token — got "${name}"`);
+  ok(/5 feet/i.test(name), 'chat-route name keeps "about 5 feet tall"');
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
   await testKeylessProxyState();
+  await testNamePhrasing();
   section('self-test suite (headless run)');
   const results = await BB.SelfTest.run();
   for (const r of results) {
