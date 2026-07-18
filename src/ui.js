@@ -1781,8 +1781,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       ? `${cmp.diffs.length} parameter${cmp.diffs.length > 1 ? 's' : ''} differ${cmp.diffs.length > 1 ? '' : 's'}.`
       : 'These two snapshots are dimensionally identical.';
     const rows = $('compareRows');
-    rows.innerHTML = cmp.diffs.map(d => `<tr>
-      <td>${esc(Spec.PATH_LABELS[d.path] || d.path)}</td>
+    rows.innerHTML = cmp.diffs.map(d => d.text
+      ? `<tr><td colspan="3">${esc(d.text)}</td></tr>`
+      : `<tr>
+      <td>${esc(d.label || Spec.PATH_LABELS[d.path] || d.path)}</td>
       <td class="old num">${esc(Spec.fmtValue(d.path, d.from))}</td>
       <td class="new num">${esc(Spec.fmtValue(d.path, d.to))}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="color:var(--muted)">No differences.</td></tr>';

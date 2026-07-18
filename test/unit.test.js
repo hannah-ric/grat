@@ -307,6 +307,48 @@ section('custom overall-only diff scales the composition (B3)');
   eq(scaledLeg.dim.l, leg.dim.l, 'and keeps its horizontal (l) dim');
 }
 
+/* ---------------- custom composition diffs are human chips (B5) ---------------- */
+section('custom composition diffs are human-readable chips (B5)');
+{
+  const base = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'),
+    { meta: { level: 'intermediate' }, wood: { species: 'walnut' } }));
+
+  // The B-base2-t2 live failure: a diff flipped every part's stock from solid
+  // walnut to baltic-birch sheet and the chips said only "10 items → 10 items".
+  const flipped = Spec.clone(base);
+  for (const p of flipped.custom.parts) p.stock = 'sheet';
+  const flipChips = Spec.describeDiff(Spec.diffSpecs(base, Spec.correctSpec(flipped)));
+  ok(!flipChips.some(c => /\bitems?\b/.test(c)), `no chip is an opaque "N items" count — got ${JSON.stringify(flipChips)}`);
+  ok(flipChips.some(c => /all parts stock Black Walnut → Baltic Birch Ply/.test(c)),
+    `the material flip is named in human terms — got ${JSON.stringify(flipChips)}`);
+
+  // A joint change on a connection is named with the parts and joint labels.
+  const jointed = Spec.clone(base);
+  jointed.custom.connections = jointed.custom.connections.map(c => Object.assign({}, c, { joint: 'dado' }));
+  const jointChips = Spec.describeDiff(Spec.diffSpecs(base, Spec.correctSpec(jointed)));
+  ok(jointChips.some(c => /leg_panel–seat joint .*→ Dado \/ housing/.test(c)),
+    `a connection's joint change is a named chip — got ${JSON.stringify(jointChips)}`);
+
+  // A single part's dimension change renders as a length in display units,
+  // and re-renders when the unit system flips (same contract as template chips).
+  const resized = Spec.clone(base);
+  resized.custom.parts[0].dim.l = 1200;
+  const dimDiffs = Spec.diffSpecs(base, Spec.correctSpec(resized));
+  const dimChips = Spec.describeDiff(dimDiffs);
+  ok(dimChips.some(c => /^seat length .*in → .*in/.test(c)), `part dims render in display units — got ${JSON.stringify(dimChips)}`);
+  BB.Units.set({ system: 'metric' });
+  ok(Spec.describeDiff(dimDiffs).some(c => /^seat length 1100 mm → 1200 mm/.test(c)), 'part dims re-render metric after a units switch');
+  BB.Units.set({ system: 'imperial' });
+
+  // Part-count changes stay visible, and new connections are announced.
+  const grown = Spec.clone(base);
+  grown.custom.parts.push({ id: 'p4', role: 'stretcher', primitive: 'rail', dim: { l: 900, w: 60, t: 20 }, pos: { x: 0, y: 100, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'none' });
+  grown.custom.connections.push({ a: 'p4', b: 'p2', joint: 'butt_screws' });
+  const grownChips = Spec.describeDiff(Spec.diffSpecs(base, Spec.correctSpec(grown)));
+  ok(grownChips.some(c => /composition 3 parts → 4 parts/.test(c)), `part count change is a chip — got ${JSON.stringify(grownChips)}`);
+  ok(grownChips.some(c => /joined .*stretcher/.test(c) || /connections added/.test(c)), 'a new connection is announced');
+}
+
 /* ---------------- local model ---------------- */
 section('local intent parser');
 {

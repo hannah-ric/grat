@@ -4590,9 +4590,107 @@ var BB = globalThis.BB = globalThis.BB || {};
     const out = [];
     for (const p of [...paths].sort()) {
       if (!p) continue;
+      if (p === 'custom' || p.startsWith('custom.')) continue; // summarized part-by-part below (B5)
       const va = get(a, p), vb = get(b, p);
       if (isObj(va) || isObj(vb)) continue;
       if (JSON.stringify(va) !== JSON.stringify(vb)) out.push({ path: p, from: va, to: vb });
+    }
+    out.push(...diffCustom(a, b));
+    return out;
+  }
+
+  /* Custom compositions used to diff as one array leaf ("10 items → 10
+   * items") — a full material flip or a joint change was invisible (B5).
+   * Summarize part- and connection-level changes in human terms instead,
+   * aggregating when the same change hits many parts. Entries may carry
+   * `label` (chip title override) or `text` (a whole pre-built chip); numeric
+   * dim entries keep raw mm so chips re-render on a display-unit switch. */
+  function diffCustom(a, b) {
+    const ca = (a && a.custom) || {};
+    const cb = (b && b.custom) || {};
+    const pa = Array.isArray(ca.parts) ? ca.parts : [];
+    const pb = Array.isArray(cb.parts) ? cb.parts : [];
+    if (!pa.length && !pb.length) return [];
+    const out = [];
+    if (pa.length !== pb.length) {
+      out.push({ path: 'custom.parts', label: 'composition', from: pa.length + ' parts', to: pb.length + ' parts' });
+    }
+    const partName = p => (p.role && p.role !== p.primitive ? p.role : p.id);
+    // A part's material is its stock resolved against that spec's wood choice.
+    const stockLabel = (p, spec) => {
+      const w = (spec && spec.wood) || {};
+      const key = p.stock === 'sheet' ? (w.sheetSpecies || 'baltic_birch') : (w.species || 'red_oak');
+      return (K.WOOD_SPECIES[key] && K.WOOD_SPECIES[key].label) || String(key).replace(/_/g, ' ');
+    };
+    // Per-part field diffs on parts present in both sides (canonical p1..pN
+    // ids match by index). Positions are deliberately skipped: re-grounding
+    // and re-centering shift every part and would drown the real changes.
+    const n = Math.min(pa.length, pb.length);
+    const FIELDS = [
+      { key: 'stock', label: 'stock', get: p => p.stock, fmtFrom: c => stockLabel(c.pa, a), fmtTo: c => stockLabel(c.pb, b) },
+      { key: 'primitive', label: 'primitive', get: p => p.primitive },
+      { key: 'len', label: 'length', get: p => p.dim.l },
+      { key: 'wid', label: 'width', get: p => p.dim.w },
+      { key: 'thk', label: 'thickness', get: p => p.dim.t }
+    ];
+    for (const f of FIELDS) {
+      const changed = [];
+      for (let i = 0; i < n; i++) {
+        if (JSON.stringify(f.get(pa[i])) !== JSON.stringify(f.get(pb[i]))) {
+          changed.push({ pa: pa[i], pb: pb[i] });
+        }
+      }
+      if (!changed.length) continue;
+      const path = 'custom.part.' + f.key; // mm formatting keys off this prefix
+      const vFrom = c => (f.fmtFrom ? f.fmtFrom(c) : f.get(c.pa));
+      const vTo = c => (f.fmtTo ? f.fmtTo(c) : f.get(c.pb));
+      const from0 = vFrom(changed[0]), to0 = vTo(changed[0]);
+      const uniform = changed.every(c => JSON.stringify(vFrom(c)) === JSON.stringify(from0) &&
+        JSON.stringify(vTo(c)) === JSON.stringify(to0));
+      if (uniform && changed.length > 2) {
+        const who = changed.length === n && pa.length === pb.length ? 'all parts' : changed.length + ' parts';
+        out.push({ path, label: who + ' ' + f.label, from: from0, to: to0 });
+      } else if (changed.length <= 4) {
+        for (const c of changed) out.push({ path, label: partName(c.pb) + ' ' + f.label, from: vFrom(c), to: vTo(c) });
+      } else {
+        out.push({ path, text: changed.length + ' parts changed ' + f.label });
+      }
+    }
+    // Connections: joint changes on surviving pairs, plus added/removed pairs.
+    const pairKey = c => (c.a < c.b ? c.a + '|' + c.b : c.b + '|' + c.a);
+    const mapA = new Map(), mapB = new Map();
+    for (const c of (Array.isArray(ca.connections) ? ca.connections : [])) mapA.set(pairKey(c), c);
+    for (const c of (Array.isArray(cb.connections) ? cb.connections : [])) mapB.set(pairKey(c), c);
+    const byIdA = new Map(pa.map(p => [p.id, p])), byIdB = new Map(pb.map(p => [p.id, p]));
+    const connName = (c, byId) => {
+      const x = byId.get(c.a), y = byId.get(c.b);
+      return (x ? partName(x) : c.a) + '–' + (y ? partName(y) : c.b);
+    };
+    const jointChanges = [], added = [], removed = [];
+    for (const [k, cn] of mapB) {
+      const prev = mapA.get(k);
+      if (!prev) added.push(cn);
+      else if (prev.joint !== cn.joint) jointChanges.push({ prev, cn });
+    }
+    for (const [k, cn] of mapA) if (!mapB.has(k)) removed.push(cn);
+    if (jointChanges.length) {
+      const jf0 = jointChanges[0].prev.joint, jt0 = jointChanges[0].cn.joint;
+      const uniformJ = jointChanges.every(j => j.prev.joint === jf0 && j.cn.joint === jt0);
+      if (uniformJ && jointChanges.length > 2) {
+        out.push({ path: 'custom.joint', label: jointChanges.length + ' joints', from: jf0, to: jt0 });
+      } else if (jointChanges.length <= 4) {
+        for (const j of jointChanges) out.push({ path: 'custom.joint', label: connName(j.cn, byIdB) + ' joint', from: j.prev.joint, to: j.cn.joint });
+      } else {
+        out.push({ path: 'custom.joint', text: jointChanges.length + ' joints changed' });
+      }
+    }
+    if (added.length) {
+      if (added.length <= 2) for (const c of added) out.push({ path: 'custom.conn', text: 'joined ' + connName(c, byIdB) + ' (' + fmtValue('custom.joint', c.joint) + ')' });
+      else out.push({ path: 'custom.conn', text: added.length + ' connections added' });
+    }
+    if (removed.length) {
+      if (removed.length <= 2) for (const c of removed) out.push({ path: 'custom.conn', text: 'disconnected ' + connName(c, byIdA) });
+      else out.push({ path: 'custom.conn', text: removed.length + ' connections removed' });
     }
     return out;
   }
@@ -4612,7 +4710,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     'finish': 'finish', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
   };
-  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness)/;
+  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|custom\.part\.(len|wid|thk)$)/;
 
   /* Diff-chip / inspector value rendering. Lengths route through BB.Units —
    * the current display preference, NOT a per-call unit, decides the text. */
@@ -4633,7 +4731,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function describeDiff(diffs) {
     return diffs.map(d => {
-      const label = PATH_LABELS[d.path] || d.path;
+      if (d.text) return d.text; // pre-built chip (custom composition summary)
+      const label = d.label || PATH_LABELS[d.path] || d.path;
       return `${label} ${fmtValue(d.path, d.from)} → ${fmtValue(d.path, d.to)}`;
     });
   }
@@ -15729,8 +15828,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       ? `${cmp.diffs.length} parameter${cmp.diffs.length > 1 ? 's' : ''} differ${cmp.diffs.length > 1 ? '' : 's'}.`
       : 'These two snapshots are dimensionally identical.';
     const rows = $('compareRows');
-    rows.innerHTML = cmp.diffs.map(d => `<tr>
-      <td>${esc(Spec.PATH_LABELS[d.path] || d.path)}</td>
+    rows.innerHTML = cmp.diffs.map(d => d.text
+      ? `<tr><td colspan="3">${esc(d.text)}</td></tr>`
+      : `<tr>
+      <td>${esc(d.label || Spec.PATH_LABELS[d.path] || d.path)}</td>
       <td class="old num">${esc(Spec.fmtValue(d.path, d.from))}</td>
       <td class="new num">${esc(Spec.fmtValue(d.path, d.to))}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="color:var(--muted)">No differences.</td></tr>';
