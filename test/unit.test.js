@@ -48,6 +48,32 @@ section('spec correction');
 
   const noDr = Spec.correctSpec({ meta: { template: 'table' }, drawers: { count: 2 } });
   ok(noDr.drawers === null || noDr.drawers === undefined, 'table never carries drawers');
+
+  // E-04: one correction pass lands every value on its stock table —
+  // correctSpec∘correctSpec === correctSpec across templates × sizes. The
+  // 300×250 footprint is the trap: the geometric leg clamp used to run AFTER
+  // the stock snap and leave an off-table 62 that drifted to 60 on reopen.
+  {
+    const sizes = [
+      { width: 300, depth: 250, height: 400 },
+      { width: 250, depth: 200, height: 120 },
+      { width: 600, depth: 400, height: 750 },
+      { width: 2400, depth: 1200, height: 2400 },
+      { width: 508, depth: 406.4, height: 609.6 },
+      { width: 900, depth: 300, height: 1800 }
+    ];
+    for (const t of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet']) {
+      for (const o of sizes) {
+        const c1 = Spec.correctSpec({ meta: { name: 'Idem', template: t, level: 'intermediate', units: 'mm' }, overall: { ...o } });
+        const c2 = Spec.correctSpec(JSON.parse(JSON.stringify(c1)));
+        const same = JSON.stringify(c1) === JSON.stringify(c2);
+        ok(same, `correction idempotent for ${t} ${o.width}×${o.depth}×${o.height}` +
+          (same ? '' : ` — structure drift ${JSON.stringify(c1.structure)} → ${JSON.stringify(c2.structure)}`));
+        ok(K.POST_THICKNESS.includes(c1.structure.legThickness),
+          `legThickness on the post-stock table for ${t} ${o.width}×${o.depth} — got ${c1.structure.legThickness}`);
+      }
+    }
+  }
 }
 
 /* ---------------- table geometry ---------------- */
