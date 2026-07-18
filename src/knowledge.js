@@ -305,7 +305,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     { key: 'platform_bed_height', label: 'Platform bed height', min: 300, max: 450, axis: 'height', appliesTo: ['platform_bed'], note: 'Mattress top should land {500} to {650} off the floor.' },
     { key: 'media_height', label: 'Media console height', min: 400, max: 600, axis: 'height', appliesTo: ['media_console'], note: 'Screen center near seated eye line, about {1000} to {1100}.' },
     { key: 'media_depth', label: 'Media console depth', min: 420, max: 500, axis: 'depth', appliesTo: ['media_console'], note: 'AV gear wants {420}+ plus cable clearance behind.' },
-    { key: 'floating_shelf_depth', label: 'Floating shelf depth', min: 200, max: 300, axis: 'depth', appliesTo: ['floating_shelf'], note: 'Past {250} deep, use a {32}+ thick shelf and a full-length cleat.' }
+    { key: 'floating_shelf_depth', label: 'Floating shelf depth', min: 200, max: 300, axis: 'depth', appliesTo: ['floating_shelf'], note: 'Past {250} deep, use a {32}+ thick shelf and a full-length cleat.' },
+    /* Bed-size width anchors (AI-review C1): a "for my king bed" implication
+     * needs a real number to resolve against, or end-of-bed pieces ship 600 mm
+     * narrow while claiming king sizing. min–max are US standard mattress
+     * widths — twin 38–39 in, full/double 54–55 in, queen 60 in, king
+     * (Eastern) 76–78 in, California king 72 in; lengths ride the notes.
+     * appliesTo names the bed class ahead of any bed template, same as the
+     * 2026 rows above — validation only fires for templates that exist. */
+    { key: 'twin_bed_width', label: 'Twin bed width', min: 965, max: 990, axis: 'width', appliesTo: ['bed'], note: 'Mattress {965} to {990} wide × {1905} long.' },
+    { key: 'full_bed_width', label: 'Full bed width', min: 1372, max: 1397, axis: 'width', appliesTo: ['bed'], note: 'Mattress {1372} to {1397} wide × {1905} long.' },
+    { key: 'queen_bed_width', label: 'Queen bed width', min: 1524, max: 1524, axis: 'width', appliesTo: ['bed'], note: 'Mattress {1524} wide × {2030} long.' },
+    { key: 'king_bed_width', label: 'King bed width', min: 1930, max: 1980, axis: 'width', appliesTo: ['bed'], note: 'Eastern king mattress {1930} to {1980} wide × {2030} long; an end-of-bed piece matches the mattress width or is a stated narrower choice.' },
+    { key: 'cal_king_bed_width', label: 'California king bed width', min: 1829, max: 1829, axis: 'width', appliesTo: ['bed'], note: 'Mattress {1829} wide × {2134} long.' }
   ];
 
   /* ---------------- 3c. Joinery matrix ----------------
@@ -820,7 +832,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   function knowledgeDigest() {
     const w = Object.values(WOOD_SPECIES).map(s =>
       `${s.key}(janka ${s.janka},move ${s.movement},$${'●'.repeat(s.costTier)})`).join(' ');
-    const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min}–${r.max}mm`).join('; ');
+    // min===max rows (single standard sizes, e.g. queen_bed_width) print one
+    // number — "1524–1524mm" spent tokens saying nothing.
+    const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min === r.max ? r.min : `${r.min}–${r.max}`}mm`).join('; ');
     // strength only: each joint's level already rides the LEVEL MATRIX line —
     // repeating it here spent ~50 prompt tokens saying the same thing twice.
     const j = Object.values(JOINERY).map(x => `${x.key}(str ${x.strength})`).join(' ');

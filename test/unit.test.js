@@ -968,6 +968,15 @@ section('knowledge bases');
   }
   ok(K.ERGONOMICS.some(r => r.key === 'drawer_max_width'), 'drawer ergonomics rows present');
   ok(K.ERGONOMICS.some(r => r.key === 'workbench_height') && K.ERGONOMICS.some(r => r.key === 'coffee_table_height'), '2026 ergonomics anchors present');
+  // C1: bed-size width anchors exist and flow into the digest so "for my king
+  // bed" implications resolve to the real ~1930 mm mattress width.
+  const kingBed = K.ERGONOMICS.find(r => r.key === 'king_bed_width');
+  ok(kingBed && kingBed.axis === 'width' && kingBed.min >= 1900 && kingBed.max <= 2030, 'king bed width row anchors ~1930-1980 mm (C1)');
+  ok(['twin_bed_width', 'full_bed_width', 'queen_bed_width', 'cal_king_bed_width'].every(k => K.ERGONOMICS.some(r => r.key === k)), 'all five bed-size anchors present (C1)');
+  ok(K.knowledgeDigest().includes(`king_bed_width ${kingBed.min}–${kingBed.max}mm`), 'digest carries the king bed anchor (C1)');
+  // Bed rows name a furniture class ahead of any template, so template
+  // validation must not fire on them (appliesTo has no real template).
+  ok(kingBed.appliesTo.every(t => !['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet'].includes(t)), 'bed anchors never target a real template (C1)');
   ok(Object.keys(K.JOINERY).length >= 21, 'twenty-one+ joints (2026 expansion)');
   for (const j of Object.values(K.JOINERY)) {
     ok(j.strength >= 1 && j.strength <= 5 && j.tools.length && j.failure && j.bestFor, `${j.key} row complete`);
@@ -1301,8 +1310,9 @@ section('prompt budget: hard ceiling with measured headroom');
   const sys = AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
   const tokens = Codec.estimateTokens(sys);
   // Ceiling raised 1900 → 2000 for the A5 exclusion-binding line (~80 tokens,
-  // deliberate spend); the guard still catches accidental bloat.
-  ok(tokens <= 2000, `system prompt stays under the 2000-token ceiling (measured ${tokens})`);
+  // deliberate spend), then 2000 → 2040 for the C1 bed-size anchor rows
+  // (~35 tokens); the guard still catches accidental bloat.
+  ok(tokens <= 2040, `system prompt stays under the 2040-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
