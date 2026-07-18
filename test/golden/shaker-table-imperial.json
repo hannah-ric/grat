@@ -92,6 +92,7 @@
  ],
  "integrity": {
   "antiTip": false,
+  "verdict": "advisory",
   "rackScore": 38,
   "tip": {
    "angEmpty": 33.158,

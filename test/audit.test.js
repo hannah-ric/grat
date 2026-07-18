@@ -1021,5 +1021,57 @@ section('FE-H10/H11 offline parser: negation and drawer honesty');
   ok((fbNs.options || []).some(o => /drawer/i.test(o)), 'nightstand keeps the drawer chip');
 }
 
+/* ================= M-18 (2026-07 productization): mandatory-anchor rollup tier ================= */
+section('M-18 mandatory-anchor designs roll up "safe only when anchored", never plain advisory');
+{
+  // The golden walnut nightstand: F2057 open-drawer margin 0.619 — it TIPS in
+  // the regulated scenario — yet has zero failing checks. The rollup must be
+  // the distinct anchor tier, never 'advisory' under a "passes…" headline.
+  const ns = pipeline({
+    meta: { name: 'Two-Drawer Nightstand', template: 'nightstand', level: 'intermediate', units: 'in' },
+    overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+    structure: { topThickness: 19, legThickness: 45, shelfCount: 1 },
+    joinery: { frame: 'dowels', box: 'locking_rabbet' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const ig = Structural.computeIntegrity(ns.spec, ns.model, {});
+  const f = ig.checks.find(c => c.id === 'tip_f2057');
+  ok(f && f.data.marginRatio < 1, 'fixture still tips: F2057 margin < 1');
+  ok(ig.summary.fails === 0, 'the trap is real: zero failing checks, yet it tips');
+  ok(ig.summary.anchorRequired === true, 'summary carries anchorRequired');
+  eq(ig.summary.verdict, 'anchor', 'rollup verdict is the distinct anchor tier');
+  ok(f && f.anchor === true, 'the mandating check is flagged so the UI surfaces it above the fold');
+
+  // Tier order: fail > anchor > advisory > pass. The frozen honest-fail
+  // bookshelf both fails and mandates the anchor — fail wins the headline.
+  const shelf = pipeline({
+    meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, wood: { species: 'ash' },
+    structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true }
+  });
+  const igF = Structural.computeIntegrity(shelf.spec, shelf.model, {});
+  ok(igF.summary.fails > 0 && igF.antiTip, 'honest-fail fixture both fails and mandates the anchor');
+  eq(igF.summary.verdict, 'fail', 'failing checks outrank the anchor tier');
+  const tipChk = igF.checks.find(c => c.id === 'tip');
+  ok(tipChk && tipChk.anchor === true, 'the static tipping mandate is flagged too');
+
+  // Stable pieces never enter the tier, and non-anchor verdicts reduce to the
+  // old rollup exactly.
+  const seed = pipeline({ meta: { name: 'Seed', template: 'table', level: 'beginner', units: 'mm' } });
+  const igS = Structural.computeIntegrity(seed.spec, seed.model, {});
+  ok(!igS.antiTip && igS.summary.verdict !== 'anchor', 'stable designs never enter the anchor tier');
+  eq(igS.summary.verdict, igS.summary.fails ? 'fail' : igS.summary.advisories ? 'advisory' : 'pass',
+    'non-anchor verdicts reduce to the old rollup');
+
+  // UI headline honesty (source level — ui.js is browser-coupled): both the
+  // Overview card and the Safety tab speak the tier, anchor-mandating checks
+  // join the above-the-fold cards (the beginner details-collapse cannot hide
+  // them), and no headline recomputes a rollup that lacks the tier.
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok((uiSrc.match(/safe only when anchored/gi) || []).length >= 2, 'both headline surfaces say "safe only when anchored"');
+  ok(/status === 'fail' \|\| \w+\.anchor/.test(uiSrc), 'above-the-fold check cards include anchor-mandating checks');
+  ok(!/'advisory'\s*:\s*'pass'/.test(uiSrc), 'no ui.js headline recomputes a rollup without the anchor tier');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

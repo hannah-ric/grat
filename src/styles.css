@@ -1326,6 +1326,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 }
 .overview-card.verdict-fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
 .overview-card.verdict-advisory { background: var(--amber-soft); }
+.overview-card.verdict-anchor { border-color: color-mix(in srgb, var(--amber-ink) 45%, transparent); background: var(--amber-soft); }
 .overview-next { margin-top: var(--s3); }
 
 /* ---------------- integrity panel ---------------- */
@@ -1341,6 +1342,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 }
 .stamp.pass { color: var(--green); }
 .stamp.advisory { color: var(--amber-ink); }
+.stamp.anchor { color: var(--amber-ink); } /* distinct tier, text carries it: "anchor required" */
 .stamp.fail { color: var(--brick); }
 .load-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s2) 0; border-bottom: 1px solid var(--line); font-size: var(--text-s); }
 .load-row .span-note { font: 500 var(--text-s) var(--mono); color: var(--muted); margin-left: var(--s2); }

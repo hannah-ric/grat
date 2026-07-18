@@ -456,6 +456,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       const tipCheck = integ.checks.find(c => c.id === 'tip');
       test('structural', 'loaded tipping angle is computed and bounded', tipCheck && integ.tip.angLoaded > 0 && integ.tip.angLoaded < 10, integ.tip && integ.tip.angLoaded.toFixed(1) + '°', '0–10° (top-heavy case)');
 
+      // M-18: a drawered piece that tips with drawers open (F2057 margin < 1)
+      // rolls up the distinct anchor tier — "safe only when anchored" — never
+      // plain advisory under a "passes" headline.
+      const anchorNs = pipeline({
+        meta: { name: 'Anchor Tier', template: 'nightstand', level: 'intermediate' },
+        overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+        drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }, structure: { shelfCount: 1 }
+      });
+      const anchorInteg = Structural.computeIntegrity(anchorNs.spec, anchorNs.model, {});
+      test('structural', 'mandatory-anchor design rolls up the "anchor" tier, not advisory',
+        anchorInteg.antiTip && anchorInteg.summary.fails === 0 && anchorInteg.summary.verdict === 'anchor',
+        `verdict ${anchorInteg.summary.verdict}, antiTip ${anchorInteg.antiTip}`, 'verdict anchor, antiTip true');
+
       const seed = pipeline({ meta: { name: 'Rack Case', template: 'table', level: 'beginner' } });
       const seedInteg = Structural.computeIntegrity(seed.spec, seed.model, {});
       // Hand calc: 8 pocket-screw frame joints × 3.0 + 2 top butt joints × 2.0,

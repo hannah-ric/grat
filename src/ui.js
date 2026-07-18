@@ -407,17 +407,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     const plan = state.stockPlan;
     const boards = plan ? plan.boards.length + plan.sheets.length : 0;
     const partCount = state.cut.reduce((n, r) => n + r.qty, 0);
-    const verdict = sum.fails ? 'fail' : sum.advisories ? 'advisory' : 'pass';
-    const verdictText = sum.fails
+    // Rollup tier from the engine (audit M-18): fail > anchor > advisory > pass.
+    const verdict = sum.verdict;
+    const verdictText = verdict === 'fail'
       ? 'This design does not yet pass the required strength checks.'
-      : sum.advisories
-        ? 'This design passes the required strength checks, with notes worth reading.'
-        : 'This design passes the required strength checks.';
+      : verdict === 'anchor'
+        ? 'This design is safe only when anchored to the wall — the anti-tip anchor is in the BOM and the assembly steps, not optional.'
+        : verdict === 'advisory'
+          ? 'This design passes the required strength checks, with notes worth reading.'
+          : 'This design passes the required strength checks.';
     const cards = [
       { label: 'Parts to cut', value: String(partCount), go: 'cut', aria: 'Open the cut list' },
       { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : String(boards), go: 'stock', aria: 'Open the buying plan' },
       { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'stock', aria: 'Open buying and pricing' },
-      { label: 'Safety', value: verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
+      { label: 'Safety', value: verdict === 'anchor' ? 'ANCHOR REQUIRED' : verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
     ];
     const grid = el('div', 'overview-grid');
     for (const c of cards) {
@@ -845,19 +848,22 @@ var BB = globalThis.BB = globalThis.BB || {};
    * first layer while fixes stay one glance away. */
   function renderIntegrity(root) {
     const integ = state.integrity;
-    const overall = integ.summary.fails ? 'fail' : integ.summary.advisories ? 'advisory' : 'pass';
+    const overall = integ.summary.verdict; // engine rollup (audit M-18): fail > anchor > advisory > pass
     const beginner = state.spec.meta.level === 'beginner';
     root.append(el('h3', '', 'Safety'));
     const summary = el('div', 'integrity-summary');
-    summary.innerHTML = `<span class="stamp ${overall}">${overall}</span>
+    summary.innerHTML = `<span class="stamp ${overall}">${overall === 'anchor' ? 'anchor required' : overall}</span>
       <span class="integrity-plain">${overall === 'pass'
         ? 'This design passes the required strength checks.'
         : overall === 'advisory'
           ? 'This design passes the required strength checks, with notes worth reading below.'
-          : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
+          : overall === 'anchor'
+            ? 'This design is safe only when anchored to the wall. The anti-tip anchor is mandatory — it is in the BOM and the assembly steps, not optional.'
+            : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
     root.append(summary);
-    // Failing checks never hide: plain card + one-tap fixes, above the fold.
-    for (const c of integ.checks.filter(x => x.status === 'fail')) {
+    // Failing checks never hide — and neither does a check that mandates the
+    // wall anchor (audit M-18): plain card, above the fold, at every level.
+    for (const c of integ.checks.filter(x => x.status === 'fail' || x.anchor)) {
       root.append(checkCard(c, { full: !beginner }));
     }
     const details = document.createElement('details');
@@ -919,7 +925,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // The plain tier speaks builder, not engineer: what went wrong and that a
     // one-tap fix exists. The engine's full explanation (creep factors, exact
     // values, thresholds) stays one fold away in "See engineering details".
-    const plainLine = 'This part would not safely carry its expected load as designed. '
+    // Anchor-mandating tipping checks (audit M-18) already explain themselves
+    // in plain language — the generic load sentence would be wrong for them.
+    const plainLine = c.anchor
+      ? c.explain
+      : 'This part would not safely carry its expected load as designed. '
       + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.');
     card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
       (full ? `<div class="check-value">${esc(c.value)}</div>
@@ -2578,8 +2588,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       plan: {
         state: sum.fails ? 'fail' : sum.advisories || stockTrouble ? 'attn' : state.cut.length ? 'done' : 'todo',
         aria: sum.fails ? `Plan mode — ${sum.fails} failing safety check${sum.fails > 1 ? 's' : ''}`
-          : sum.advisories ? `Plan mode — checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`
-            : `Plan mode — cut list, buying, assembly, safety`
+          : sum.verdict === 'anchor' ? 'Plan mode — safe only when anchored to the wall'
+            : sum.advisories ? `Plan mode — checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`
+              : `Plan mode — cut list, buying, assembly, safety`
       },
       build: {
         state: pct >= 100 ? 'done' : pct > 0 ? 'attn' : 'todo',
@@ -2697,6 +2708,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // name carries the same state.
     const integTab = $('tab-integrity');
     if (sum && sum.fails) integTab.setAttribute('aria-label', `Integrity — ${sum.fails} failing check${sum.fails > 1 ? 's' : ''}`);
+    else if (sum && sum.verdict === 'anchor') integTab.setAttribute('aria-label', 'Integrity — safe only when anchored to the wall');
     else if (sum && sum.advisories) integTab.setAttribute('aria-label', `Integrity — ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`);
     else integTab.removeAttribute('aria-label');
     syncHash();

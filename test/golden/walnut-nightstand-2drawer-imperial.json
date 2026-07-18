@@ -195,6 +195,7 @@
  ],
  "integrity": {
   "antiTip": true,
+  "verdict": "anchor",
   "rackScore": 100,
   "tip": {
    "angEmpty": 26.5,

@@ -597,6 +597,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         tip = { angEmpty, angLoaded, ratio, loadKg, massKg: mass };
         checks.push({
           id: 'tip', title: 'Tipping stability',
+          ...(antiTip ? { anchor: true } : {}), // this check mandates the wall anchor (audit M-18)
           status: angLoaded < 5 ? 'fail' : antiTip ? 'advisory' : 'pass',
           value: `tipping angle ${fmtDeg(angLoaded)} loaded · ${fmtDeg(angEmpty)} empty · height/depth ${ratio.toFixed(1)}`,
           threshold: '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
@@ -642,9 +643,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         const status = margin >= 1.5 ? 'pass' : margin >= 1 ? 'advisory' : (inScope ? 'fail' : 'advisory');
         // Anchor mandatory when it actually tips, or when a clothing-storage-
         // height piece runs a thin margin (the regulated scenario).
-        if (margin < 1 || (inScope && margin < 1.5)) antiTip = true;
+        const anchorHere = margin < 1 || (inScope && margin < 1.5);
+        if (anchorHere) antiTip = true;
         checks.push({
           id: 'tip_f2057', title: 'Tipping — drawers open (F2057)',
+          ...(anchorHere ? { anchor: true } : {}), // this check mandates the wall anchor (audit M-18)
           status,
           value: `margin ${margin === Infinity ? '∞' : margin.toFixed(2) + '×'} with all drawers open ⅔ and ${U().fmtPointLoad(TEST_KG)} on the top drawer front`,
           threshold: `≥ 1× to stand, ≥ 1.5× to skip the anchor — aligned with ASTM F2057 / STURDY (${U().fmtPointLoad(TEST_KG)} on an open drawer)`,
@@ -915,12 +918,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    const fails = checks.filter(c => c.status === 'fail').length;
+    const advisories = checks.filter(c => c.status === 'advisory').length;
     const summary = {
       worstSag: worstSag ? { ...worstSag } : null,
       tipLoaded: tip ? tip.angLoaded : null,
       rackScore: rack.score,
-      fails: checks.filter(c => c.status === 'fail').length,
-      advisories: checks.filter(c => c.status === 'advisory').length
+      fails,
+      advisories,
+      anchorRequired: antiTip,
+      /* Rollup tier (audit M-18): a mandatory wall anchor is its own headline
+       * tier — "safe only when anchored" — never rolled into plain advisory
+       * under a "passes the required checks" banner. Order: fail > anchor >
+       * advisory > pass. */
+      verdict: fails ? 'fail' : antiTip ? 'anchor' : advisories ? 'advisory' : 'pass'
     };
     return { checks, surfaces, antiTip, tip, racking: rack, summary };
   }
