@@ -1293,6 +1293,18 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 
 .brand { cursor: default; user-select: none; -webkit-user-select: none; }
 
+/* project-cap banner (A-04): the passive "not saved" surface — amber advisory
+   family, one calm row under the header, dismissible, never a modal */
+.cap-banner {
+  flex: none; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  padding: var(--s1) var(--s3);
+  background: var(--amber-soft); color: var(--amber-ink);
+  border-bottom: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  font-size: var(--text-s); line-height: 1.4; z-index: 25;
+}
+.cap-banner .cap-banner-text { flex: 1 1 240px; }
+.cap-banner .btn.small { flex: none; }
+
 /* integrity tab dot */
 .integrity-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); vertical-align: 2px; margin-left: 2px; }
 .integrity-dot.fail { background: var(--brick); }
@@ -1781,6 +1793,15 @@ body.bm-playback .playback-bar { display: none !important; }
       <button id="shareBtn" class="btn share-cta" aria-haspopup="dialog">Share</button>
     </div>
   </header>
+
+  <!-- Project-cap banner (A-04): raised when an autosave is blocked at the
+       Free saved-project limit — passive, dismissible, never a modal. -->
+  <div class="cap-banner" id="capBanner" role="status" hidden>
+    <span class="cap-banner-text">This design isn&rsquo;t being saved &mdash; you&rsquo;re at the Free saved-project limit.</span>
+    <button class="btn small" id="capBannerShare">Export a share code</button>
+    <button class="btn small ghost" id="capBannerUpgrade">See plans</button>
+    <button class="btn icon ghost" id="capBannerClose" aria-label="Dismiss saving notice"></button>
+  </div>
 
   <main class="bench">
     <aside class="chat" id="chatPanel" aria-label="Design chat">
@@ -10183,6 +10204,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const data = await r.json();
     return data && typeof data.value === 'string' ? data.value : null;
   }
+  let writeDenial = null; // the last remote write the server refused outright (e.g. 403 project_limit)
   async function remoteSet(key, value) {
     const r = await fetch('/api/store?doc=' + encodeURIComponent(key), {
       method: 'PUT', credentials: 'same-origin',
@@ -10190,6 +10212,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       body: JSON.stringify({ value })
     });
     if (r.status === 401 || r.status === 503) { setRemote(false); return false; }
+    if (r.status === 403) {
+      // The server refused this write by policy (A-10: Free project cap).
+      // Record it so the UI can say so instead of implying a cloud save (A-04).
+      try {
+        const data = await r.json();
+        if (data && data.error) writeDenial = { error: data.error, limit: data.limit, key };
+      } catch (e) { /* body optional */ }
+      return false;
+    }
     return r.ok;
   }
   async function remoteDel(key) {
@@ -10538,6 +10569,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Store = {
     get, set, del, hasStorage,
+    consumeWriteDenial: () => { const d = writeDenial; writeDenial = null; return d; },
     isPersistent: () => persistenceMode() !== 'session',
     persistenceMode, init, auth: authState, setBilling, onModeChange,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
@@ -13833,7 +13865,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     bmTask: null,                   // phone pager position (derived on entry)
     installPrompt: null,            // stashed beforeinstallprompt event
     wakeLock: null,
-    speciesPick: []
+    speciesPick: [],
+    capBannerDismissed: false       // session-scoped: dismissed project-cap banner stays down
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
   const darkMq = matchMedia('(prefers-color-scheme: dark)');
@@ -13963,9 +13996,41 @@ var BB = globalThis.BB = globalThis.BB || {};
     paintSavePulse('pending');
     saveTimer = setTimeout(doAutosave, 700);
   }
+  /* Free project cap on the AUTOSAVE path (A-04): the pricing dialog opens at
+   * most once per session from here — every later blocked save paints only the
+   * passive indicator + banner, and nothing is ever lost silently: the state
+   * names the share-code way out. (Interactive paths like Duplicate keep the
+   * ordinary BB.Billing.gateNewProject dialog — those are user-initiated.) */
+  let capModalShown = false;
+  function projectCapBlocked(limit) {
+    paintSaveBlocked(limit);
+    if (!capModalShown) {
+      capModalShown = true;
+      BB.Billing.open(`Free includes ${limit} saved projects, so this design isn't being saved. Export a share code to keep it, or upgrade for unlimited projects.`);
+    }
+  }
+  function paintSaveBlocked(limit) {
+    clearTimeout(saveFlashTimer);
+    const elS = $('saveState');
+    elS.textContent = 'not saved — project limit';
+    elS.title = `You're at the Free limit of ${limit} saved projects, so this design is not being saved. Export a share code (Share) to keep it, or upgrade for unlimited projects.`;
+    elS.classList.remove('pending');
+    elS.classList.add('on', 'err');
+    paintSavePulse('err');
+    const banner = $('capBanner');
+    if (banner && !state.capBannerDismissed) banner.hidden = false;
+  }
+  async function autosaveCapAllows() {
+    const limit = BB.Billing.status().entitlements.projectLimit;
+    if (limit === null || limit === undefined) return true;
+    const projects = await Store.loadIndex();
+    if (projects.length < limit) return true;
+    projectCapBlocked(limit);
+    return false;
+  }
   async function doAutosave() {
     try {
-      if (!state.project && !(await BB.Billing.gateNewProject())) return;
+      if (!state.project && !(await autosaveCapAllows())) return;
       if (!state.project) state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } };
       const revisions = state.history.snapshots.slice(-Store.MAX_REVISIONS).map(s => ({
         ts: s.ts, source: s.source, summary: (s.summary || []).slice(0, 3), wire: Codec.encode(s.spec)
@@ -13978,11 +14043,23 @@ var BB = globalThis.BB = globalThis.BB || {};
         dims: `${fmt(state.spec.overall.width)} × ${fmt(state.spec.overall.depth)} × ${fmt(state.spec.overall.height)}`,
         progressPct: progressPct()
       });
+      // The cloud rung may have refused the doc by policy (server-side Free
+      // cap, A-10) while the local mirror landed — never report that as a
+      // clean save: same visible state as the client-side cap (A-04).
+      const denial = Store.consumeWriteDenial ? Store.consumeWriteDenial() : null;
+      if (denial && denial.error === 'project_limit') {
+        projectCapBlocked(denial.limit || BB.Billing.status().entitlements.projectLimit || 3);
+        return;
+      }
       flashSave(Store.isPersistent());
     } catch (e) { flashSave(false); }
   }
   let saveFlashTimer = null;
   function flashSave(persistent) {
+    // A save landed: the project-cap block (if any) has resolved.
+    const banner = $('capBanner');
+    if (banner) banner.hidden = true;
+    state.capBannerDismissed = false;
     const elS = $('saveState');
     const mode = Store.persistenceMode();
     elS.textContent = !persistent ? 'session only' : mode === 'cloud' ? 'saved · cloud' : 'saved';
@@ -16617,6 +16694,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('pbReplay', 'replay');
     set('bmPbPrev', 'prev', 'Prev');
     set('bmPbNext', 'next', 'Next', true);
+    set('capBannerClose', 'close', undefined);
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
   }
 
@@ -16821,6 +16899,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       else { openShareSheet(); $('importCode').focus(); }
     };
     $('shareBtn').onclick = openShareSheet;
+    /* project-cap banner (A-04): passive, dismissible, share-code way out */
+    $('capBannerShare').onclick = () => openShareSheet();
+    $('capBannerUpgrade').onclick = () => BB.Billing.open();
+    $('capBannerClose').onclick = () => { state.capBannerDismissed = true; $('capBanner').hidden = true; };
     $('copyShareLink').onclick = async () => {
       const ta = $('shareLinkText');
       ta.select();

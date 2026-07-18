@@ -107,6 +107,15 @@
     </div>
   </header>
 
+  <!-- Project-cap banner (A-04): raised when an autosave is blocked at the
+       Free saved-project limit — passive, dismissible, never a modal. -->
+  <div class="cap-banner" id="capBanner" role="status" hidden>
+    <span class="cap-banner-text">This design isn&rsquo;t being saved &mdash; you&rsquo;re at the Free saved-project limit.</span>
+    <button class="btn small" id="capBannerShare">Export a share code</button>
+    <button class="btn small ghost" id="capBannerUpgrade">See plans</button>
+    <button class="btn icon ghost" id="capBannerClose" aria-label="Dismiss saving notice"></button>
+  </div>
+
   <main class="bench">
     <aside class="chat" id="chatPanel" aria-label="Design chat">
       <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat" aria-expanded="false" aria-controls="chatPanel"></button>

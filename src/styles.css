@@ -1283,6 +1283,18 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 
 .brand { cursor: default; user-select: none; -webkit-user-select: none; }
 
+/* project-cap banner (A-04): the passive "not saved" surface — amber advisory
+   family, one calm row under the header, dismissible, never a modal */
+.cap-banner {
+  flex: none; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  padding: var(--s1) var(--s3);
+  background: var(--amber-soft); color: var(--amber-ink);
+  border-bottom: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  font-size: var(--text-s); line-height: 1.4; z-index: 25;
+}
+.cap-banner .cap-banner-text { flex: 1 1 240px; }
+.cap-banner .btn.small { flex: none; }
+
 /* integrity tab dot */
 .integrity-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); vertical-align: 2px; margin-left: 2px; }
 .integrity-dot.fail { background: var(--brick); }

@@ -1295,6 +1295,93 @@ const clickMoreCtl = async sel => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 
+  /* ================= A-04: the Free project-cap loop ================= */
+  // At the 3-project cap the autosave path must stay calm AND honest: the
+  // pricing dialog opens at most ONCE per session, the save indicator says
+  // plainly that nothing is saved (with a working share-code way out), and
+  // later blocked saves surface only the passive indicator/banner.
+  const cap = await page.evaluate(async () => {
+    const FREE = { plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 0 } };
+    const realIdx = await BB.Store.loadIndex();
+    const realProject = __bb.state.project;
+    const realBilling = BB.Store.auth().billing;
+    await BB.Store.set('projects:index', [1, 2, 3].map(i => ({ id: 'seed' + i, name: 'Seed ' + i, updated: Date.now() - i, dims: null, progressPct: 0 })));
+    BB.Store.setBilling(FREE);
+    __bb.state.project = null;
+    const dlg = () => document.querySelector('.pricing-dialog');
+    const banner = () => document.getElementById('capBanner');
+    const snap = () => ({
+      modal: !!(dlg() && dlg().open),
+      saveText: document.getElementById('saveState').textContent,
+      banner: !!(banner() && !banner().hidden)
+    });
+    await __bb.doAutosave();
+    const first = snap();
+    if (dlg() && dlg().open) dlg().close();
+    await __bb.doAutosave();
+    const second = snap();
+    if (dlg() && dlg().open) dlg().close(); // cleanup regardless of outcome
+    let shareOpens = false;
+    const shareBtn = document.getElementById('capBannerShare');
+    if (shareBtn) {
+      shareBtn.click();
+      shareOpens = document.getElementById('shareScrim').classList.contains('open');
+      if (shareOpens) document.getElementById('shareClose').click();
+    }
+    // restore the world for the tests that follow
+    await BB.Store.set('projects:index', realIdx);
+    __bb.state.project = realProject;
+    BB.Store.setBilling(realBilling);
+    if (banner()) banner().hidden = true;
+    return { first, second, shareOpens };
+  });
+  ok(cap.first.modal, 'first blocked autosave at the cap opens the pricing dialog');
+  ok(cap.first.saveText === 'not saved — project limit',
+    `blocked autosave shows an explicit save state (got "${cap.first.saveText}")`);
+  ok(cap.first.banner, 'blocked autosave raises the passive not-saved banner');
+  ok(!cap.second.modal, 'second blocked autosave does NOT re-open the pricing dialog');
+  ok(cap.second.saveText === 'not saved — project limit' && cap.second.banner,
+    'later blocked saves keep the passive indicator only');
+  ok(cap.shareOpens, 'the banner share-code affordance opens the share dialog');
+
+  // (d) A server 403 {error:'project_limit'} on the project-doc write lands in
+  // the SAME visible state — the cloud driver records the denial and the
+  // autosave paints it, never a silent "saved · cloud".
+  const cap403 = await page.evaluate(async () => {
+    const realFetch = window.fetch;
+    const shim = window.storage;
+    const json = (body, status) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    window.fetch = async (url, opts) => {
+      const u = String(url);
+      if (u.startsWith('/api/auth')) return json({ user: { id: 'u1', name: 'Cap Tester' }, providers: ['dev'], storage: true }, 200);
+      if (u.startsWith('/api/store')) {
+        if (opts && opts.method === 'PUT' && u.includes('doc=project%3A')) return json({ error: 'project_limit', limit: 3 }, 403);
+        return json({ value: JSON.stringify([]) }, 200);
+      }
+      return realFetch(url, opts);
+    };
+    try {
+      window.storage = null;                       // force the cloud rung
+      await BB.Store.init({ timeoutMs: 2000 });    // probe succeeds -> remote alive
+      if (!__bb.state.project) __bb.state.project = { id: BB.Store.newId(), progress: { cuts: {}, steps: {} } };
+      await __bb.doAutosave();
+      return {
+        cloud: BB.Store.auth().cloud,
+        saveText: document.getElementById('saveState').textContent,
+        banner: !!(document.getElementById('capBanner') && !document.getElementById('capBanner').hidden)
+      };
+    } finally {
+      window.storage = shim;
+      window.fetch = realFetch;
+      const banner = document.getElementById('capBanner');
+      if (banner) banner.hidden = true;
+    }
+  });
+  ok(cap403.cloud, 'store chain upgraded to cloud for the 403 probe');
+  ok(cap403.saveText === 'not saved — project limit',
+    `server project_limit 403 paints the same explicit state (got "${cap403.saveText}")`);
+  ok(cap403.banner, 'server project_limit 403 raises the same passive banner');
+
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.click('#tab-stock');

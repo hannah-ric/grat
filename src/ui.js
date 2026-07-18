@@ -44,7 +44,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     bmTask: null,                   // phone pager position (derived on entry)
     installPrompt: null,            // stashed beforeinstallprompt event
     wakeLock: null,
-    speciesPick: []
+    speciesPick: [],
+    capBannerDismissed: false       // session-scoped: dismissed project-cap banner stays down
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
   const darkMq = matchMedia('(prefers-color-scheme: dark)');
@@ -174,9 +175,41 @@ var BB = globalThis.BB = globalThis.BB || {};
     paintSavePulse('pending');
     saveTimer = setTimeout(doAutosave, 700);
   }
+  /* Free project cap on the AUTOSAVE path (A-04): the pricing dialog opens at
+   * most once per session from here — every later blocked save paints only the
+   * passive indicator + banner, and nothing is ever lost silently: the state
+   * names the share-code way out. (Interactive paths like Duplicate keep the
+   * ordinary BB.Billing.gateNewProject dialog — those are user-initiated.) */
+  let capModalShown = false;
+  function projectCapBlocked(limit) {
+    paintSaveBlocked(limit);
+    if (!capModalShown) {
+      capModalShown = true;
+      BB.Billing.open(`Free includes ${limit} saved projects, so this design isn't being saved. Export a share code to keep it, or upgrade for unlimited projects.`);
+    }
+  }
+  function paintSaveBlocked(limit) {
+    clearTimeout(saveFlashTimer);
+    const elS = $('saveState');
+    elS.textContent = 'not saved — project limit';
+    elS.title = `You're at the Free limit of ${limit} saved projects, so this design is not being saved. Export a share code (Share) to keep it, or upgrade for unlimited projects.`;
+    elS.classList.remove('pending');
+    elS.classList.add('on', 'err');
+    paintSavePulse('err');
+    const banner = $('capBanner');
+    if (banner && !state.capBannerDismissed) banner.hidden = false;
+  }
+  async function autosaveCapAllows() {
+    const limit = BB.Billing.status().entitlements.projectLimit;
+    if (limit === null || limit === undefined) return true;
+    const projects = await Store.loadIndex();
+    if (projects.length < limit) return true;
+    projectCapBlocked(limit);
+    return false;
+  }
   async function doAutosave() {
     try {
-      if (!state.project && !(await BB.Billing.gateNewProject())) return;
+      if (!state.project && !(await autosaveCapAllows())) return;
       if (!state.project) state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } };
       const revisions = state.history.snapshots.slice(-Store.MAX_REVISIONS).map(s => ({
         ts: s.ts, source: s.source, summary: (s.summary || []).slice(0, 3), wire: Codec.encode(s.spec)
@@ -189,11 +222,23 @@ var BB = globalThis.BB = globalThis.BB || {};
         dims: `${fmt(state.spec.overall.width)} × ${fmt(state.spec.overall.depth)} × ${fmt(state.spec.overall.height)}`,
         progressPct: progressPct()
       });
+      // The cloud rung may have refused the doc by policy (server-side Free
+      // cap, A-10) while the local mirror landed — never report that as a
+      // clean save: same visible state as the client-side cap (A-04).
+      const denial = Store.consumeWriteDenial ? Store.consumeWriteDenial() : null;
+      if (denial && denial.error === 'project_limit') {
+        projectCapBlocked(denial.limit || BB.Billing.status().entitlements.projectLimit || 3);
+        return;
+      }
       flashSave(Store.isPersistent());
     } catch (e) { flashSave(false); }
   }
   let saveFlashTimer = null;
   function flashSave(persistent) {
+    // A save landed: the project-cap block (if any) has resolved.
+    const banner = $('capBanner');
+    if (banner) banner.hidden = true;
+    state.capBannerDismissed = false;
     const elS = $('saveState');
     const mode = Store.persistenceMode();
     elS.textContent = !persistent ? 'session only' : mode === 'cloud' ? 'saved · cloud' : 'saved';
@@ -2828,6 +2873,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('pbReplay', 'replay');
     set('bmPbPrev', 'prev', 'Prev');
     set('bmPbNext', 'next', 'Next', true);
+    set('capBannerClose', 'close', undefined);
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
   }
 
@@ -3032,6 +3078,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       else { openShareSheet(); $('importCode').focus(); }
     };
     $('shareBtn').onclick = openShareSheet;
+    /* project-cap banner (A-04): passive, dismissible, share-code way out */
+    $('capBannerShare').onclick = () => openShareSheet();
+    $('capBannerUpgrade').onclick = () => BB.Billing.open();
+    $('capBannerClose').onclick = () => { state.capBannerDismissed = true; $('capBanner').hidden = true; };
     $('copyShareLink').onclick = async () => {
       const ta = $('shareLinkText');
       ta.select();

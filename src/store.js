@@ -70,6 +70,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const data = await r.json();
     return data && typeof data.value === 'string' ? data.value : null;
   }
+  let writeDenial = null; // the last remote write the server refused outright (e.g. 403 project_limit)
   async function remoteSet(key, value) {
     const r = await fetch('/api/store?doc=' + encodeURIComponent(key), {
       method: 'PUT', credentials: 'same-origin',
@@ -77,6 +78,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       body: JSON.stringify({ value })
     });
     if (r.status === 401 || r.status === 503) { setRemote(false); return false; }
+    if (r.status === 403) {
+      // The server refused this write by policy (A-10: Free project cap).
+      // Record it so the UI can say so instead of implying a cloud save (A-04).
+      try {
+        const data = await r.json();
+        if (data && data.error) writeDenial = { error: data.error, limit: data.limit, key };
+      } catch (e) { /* body optional */ }
+      return false;
+    }
     return r.ok;
   }
   async function remoteDel(key) {
@@ -425,6 +435,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Store = {
     get, set, del, hasStorage,
+    consumeWriteDenial: () => { const d = writeDenial; writeDenial = null; return d; },
     isPersistent: () => persistenceMode() !== 'session',
     persistenceMode, init, auth: authState, setBilling, onModeChange,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
