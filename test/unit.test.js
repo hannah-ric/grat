@@ -275,6 +275,38 @@ section('wire diff-based refinement');
   }
 }
 
+/* ---------------- custom o-only refinement scales in code (B3) ---------------- */
+section('custom overall-only diff scales the composition (B3)');
+{
+  const cbase = Spec.correctSpec(Spec.defaultSpec('custom')); // 1100×350×468
+  const target = cbase.overall.height - 101.6;
+  const reply = AI.classify(AI.extractJSON(JSON.stringify({ o: { h: target }, e: 'Lowered 101.6 mm' })));
+  const applied = AI.apply(reply, cbase);
+  ok(Math.abs(applied.spec.overall.height - target) <= 5,
+    `o-only height diff on a custom piece really resizes — got ${applied.spec.overall.height}, want ≈${target}`);
+  ok(Math.abs(cbase.overall.height - applied.spec.overall.height - 101.6) <= 5,
+    'delivered height dropped ≈101.6 mm (never a silent no-op behind a "changed" ack)');
+  ok(applied.chips.some(c => /^height /.test(c)), 'the height change lands in the code-computed chips');
+  ok(Math.abs(applied.spec.overall.width - cbase.overall.width) <= 2, 'width untouched by a height-only resize');
+  eq(applied.spec.custom.parts.length, cbase.custom.parts.length, 'parts survive the scale');
+  eq(applied.spec.custom.connections.length, cbase.custom.connections.length, 'connections survive the scale');
+  const r = pipeline(applied.spec);
+  eq(r.report.errors.length, 0, 'the scaled composition still builds clean');
+  // A width-only target scales exactly (no thickness snap on that axis here).
+  const wApplied = AI.apply(AI.classify(AI.extractJSON('{"o":{"w":1400},"e":"wider"}')), cbase);
+  eq(wApplied.spec.overall.width, 1400, 'width-only target lands exactly');
+  eq(wApplied.spec.overall.height, cbase.overall.height, 'height untouched by a width-only resize');
+  // scaleCustom is a no-op guard: same-size target returns null, patch falls through.
+  ok(Spec.scaleCustom(cbase, { height: cbase.overall.height }) === null, 'same-size target returns null (nothing to scale)');
+  // Rotated parts map their local dims to the right world axis: the default
+  // custom legs are panels rotated 90° about y — their WIDTH is vertical, so
+  // a height scale must move dim.w, not dim.l.
+  const leg = cbase.custom.parts.find(p => p.rot && p.rot.y === 90);
+  const scaledLeg = Spec.scaleCustom(cbase, { height: cbase.overall.height * 0.5 }).parts.find(p => p.id === leg.id);
+  ok(Math.abs(scaledLeg.dim.w - leg.dim.w * 0.5) <= 0.1, 'rotated panel scales its vertical (w) dim on a height resize');
+  eq(scaledLeg.dim.l, leg.dim.l, 'and keeps its horizontal (l) dim');
+}
+
 /* ---------------- local model ---------------- */
 section('local intent parser');
 {

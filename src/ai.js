@@ -645,7 +645,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (reply.unitsUnspecified && currentSpec && currentSpec.meta) {
         proposed = S.deepMerge(proposed, { meta: { units: currentSpec.meta.units } });
       }
-    } else proposed = S.deepMerge(currentSpec, reply.patch);
+    } else {
+      let patch = reply.patch;
+      // B3: custom overall is derived from part extents, so an overall-only
+      // diff would silently no-op behind a confident ack. Scale the
+      // composition in code (Spec.scaleCustom); the extents-derived overall
+      // then lands naturally, so the overall patch itself is dropped.
+      if (patch && patch.overall && !patch.custom && currentSpec && currentSpec.meta &&
+        currentSpec.meta.template === 'custom' &&
+        !(patch.meta && patch.meta.template && patch.meta.template !== 'custom')) {
+        const scaled = S.scaleCustom(currentSpec, patch.overall);
+        if (scaled) {
+          patch = Object.assign({}, patch, { custom: scaled });
+          delete patch.overall;
+        }
+      }
+      proposed = S.deepMerge(currentSpec, patch);
+    }
     const corrected = S.correctSpec(proposed);
     const diffs = S.diffSpecs(currentSpec, corrected);
     return { spec: corrected, diffs, chips: S.describeDiff(diffs) };

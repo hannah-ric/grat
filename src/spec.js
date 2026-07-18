@@ -383,6 +383,48 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { w: r1(maxX - minX), d: r1(maxZ - minZ), h: r1(maxY) };
   }
 
+  /* Scale a custom composition to a target overall size (B3). Custom overall
+   * is DERIVED from part extents, so an overall-only refinement would be a
+   * silent no-op — instead code scales the composition: positions per world
+   * axis (about the floor plane and x/z center), and each part dim by the
+   * world axis its local dimension dominantly spans (same local axes as
+   * customPartSize, rotated by the part's rot). Thickness re-snaps in
+   * correctCustom. Returns new {parts, connections} or null when there is
+   * nothing to scale. */
+  const SCALE_LOCAL_AXES = {
+    post: { l: [0, 1, 0], w: [1, 0, 0], t: [0, 0, 1] },
+    cylinder: { l: [0, 1, 0], w: [1, 0, 0], t: [1, 0, 0] },
+    slab: { l: [1, 0, 0], w: [0, 0, 1], t: [0, 1, 0] },
+    rail: { l: [1, 0, 0], w: [0, 1, 0], t: [0, 0, 1] },
+    panel: { l: [1, 0, 0], w: [0, 1, 0], t: [0, 0, 1] }
+  };
+  function scaleCustom(spec, target) {
+    if (!spec || !spec.custom || !Array.isArray(spec.custom.parts) || !spec.custom.parts.length) return null;
+    const cur = customExtents(spec.custom.parts);
+    const f = {
+      x: num(target && target.width, 0) > 0 && cur.w > 0 ? clamp(target.width / cur.w, 0.05, 20) : 1,
+      y: num(target && target.height, 0) > 0 && cur.h > 0 ? clamp(target.height / cur.h, 0.05, 20) : 1,
+      z: num(target && target.depth, 0) > 0 && cur.d > 0 ? clamp(target.depth / cur.d, 0.05, 20) : 1
+    };
+    if (Math.abs(f.x - 1) < 1e-4 && Math.abs(f.y - 1) < 1e-4 && Math.abs(f.z - 1) < 1e-4) return null;
+    const out = clone(spec.custom);
+    for (const p of out.parts) {
+      const r = p.rot || { x: 0, y: 0, z: 0 };
+      const R = Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
+      const axes = SCALE_LOCAL_AXES[p.primitive] || SCALE_LOCAL_AXES.rail;
+      const scaled = {};
+      for (const dk of ['l', 'w', 't']) {
+        const v = Geo.mulMV(R, axes[dk]);
+        const ax = Math.abs(v[0]) >= Math.abs(v[1]) - 1e-9 && Math.abs(v[0]) >= Math.abs(v[2]) - 1e-9 ? 'x'
+          : (Math.abs(v[1]) >= Math.abs(v[2]) - 1e-9 ? 'y' : 'z');
+        scaled[dk] = r1(p.dim[dk] * f[ax]);
+      }
+      p.dim = scaled;
+      p.pos = { x: r1(p.pos.x * f.x), y: r1(p.pos.y * f.y), z: r1(p.pos.z * f.z) };
+    }
+    return out;
+  }
+
   /* ---------------- correction ----------------
    * Takes any proposed spec (AI or manual), returns the corrected spec the
    * whole app runs on. Deterministic, idempotent, never throws.
@@ -789,6 +831,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
     correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
-    customPartSize, customExtents, customGrainInfo, endGrainBearing
+    customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom
   };
 })();
