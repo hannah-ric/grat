@@ -1068,10 +1068,9 @@ section('M-01 pilot and bore callouts are real drill sizes, never decimal inches
   for (const raw of probes) {
     const r = pipeline(raw);
     // The fastener engine's full text surface: every joint layout, every
-    // print detail row, the print sheet's joinery/hardware section, and the
-    // BOM's detail fields. (BOM LABELS are golden-frozen display strings —
-    // their pilots keep the historical decimal format pending a deliberate
-    // refreeze, logged as a follow-up finding.)
+    // print detail row, the print sheet in full (including the BOM table),
+    // and every BOM label + detail — the same drill must read the same
+    // everywhere (M-01 completion, deliberate golden refreeze authorized).
     let all = '';
     for (const j of r.model.joints) {
       const lay = Fasteners.layoutForJoint(r.spec, r.model, j);
@@ -1082,11 +1081,10 @@ section('M-01 pilot and bore callouts are real drill sizes, never decimal inches
     const integ = Structural.computeIntegrity(r.spec, r.model, {});
     const plan = Packing.planStock(r.spec, r.model, cut, {});
     const bom = Plans.bom(r.spec, r.model, { integrity: integ, stock: plan });
-    for (const i of bom.items) all += ' ' + (i.detail || '');
+    for (const i of bom.items) all += ' ' + i.label + ' ' + (i.detail || '');
     const steps = Plans.assembly(r.spec, r.model, integ, { stockPlan: plan });
     for (const s of steps) all += ' ' + s.text;
-    const html = Exports.printHTML(r.spec, r.model, cut, bom, steps, plan);
-    all += ' ' + ((html.match(/<h2>Joinery[^]*?<\/section>/) || [''])[0]);
+    all += ' ' + Exports.printHTML(r.spec, r.model, cut, bom, steps, plan);
     const bad = decimalDrill(all);
     ok(bad.length === 0, `${raw.meta.name}: no decimal-inch pilot/bore callout — offenders: ${bad.slice(0, 3).join(' | ')}`);
   }

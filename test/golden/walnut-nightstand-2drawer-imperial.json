@@ -720,7 +720,7 @@
    },
    {
     "kind": "fastener",
-    "label": "#8 × 1 15/16 in wood screw (pilot 0.13 in)",
+    "label": "#8 × 1 15/16 in wood screw (pilot 1/8 in)",
     "qty": 4,
     "price": 0.24
    },
@@ -738,7 +738,7 @@
    },
    {
     "kind": "fastener",
-    "label": "M4 × 5/8 in pan-head screws (pilot 0.12 in)",
+    "label": "M4 × 5/8 in pan-head screws (pilot 1/8 in)",
     "qty": 8,
     "price": 1
    },
@@ -750,7 +750,7 @@
    },
    {
     "kind": "fastener",
-    "label": "#8 × 1 in wood screws (pilot 0.11 in)",
+    "label": "#8 × 1 in wood screws (pilot 7/64 in)",
     "qty": 4,
     "price": 1
    },
@@ -762,7 +762,7 @@
    },
    {
     "kind": "fastener",
-    "label": "M4 × 5/8 in pan-head screws (pilot 0.12 in)",
+    "label": "M4 × 5/8 in pan-head screws (pilot 1/8 in)",
     "qty": 8,
     "price": 1
    },
@@ -774,7 +774,7 @@
    },
    {
     "kind": "fastener",
-    "label": "#8 × 1 in wood screws (pilot 0.11 in)",
+    "label": "#8 × 1 in wood screws (pilot 7/64 in)",
     "qty": 4,
     "price": 1
    },
