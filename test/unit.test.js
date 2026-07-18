@@ -302,6 +302,58 @@ section('local intent parser');
 
   const frac = AI.localModel(`width to 29 1/2"`, spec);
   eq(frac.patch.overall.width, 749.3, 'fractional inches normalized to mm before parsing');
+
+  // X-01: a bare noun-phrase description — the app's own hero placeholder —
+  // is a creation request, and no ack/chip ever names a field the corrected
+  // spec will not actually change.
+  {
+    const hero = AI.localModel('A walnut nightstand with two drawers', spec);
+    eq(hero.kind, 'new', 'hero placeholder: bare noun phrase creates');
+    eq(hero.kind === 'new' && hero.spec.meta.template, 'nightstand', 'hero placeholder: right template');
+    eq(hero.kind === 'new' && hero.spec.wood.species, 'walnut', 'hero placeholder: walnut');
+    eq(hero.kind === 'new' && hero.spec.drawers && hero.spec.drawers.count, 2, 'hero placeholder: two drawers');
+    if (hero.kind === 'new') {
+      const applied = AI.apply(hero, spec);
+      ok(applied.spec.meta.template === 'nightstand' && applied.spec.drawers && applied.spec.drawers.count === 2,
+        'hero placeholder applies as a real 2-drawer nightstand');
+      ok(applied.chips.some(c => /template/.test(c)), 'chips record the template change');
+    }
+
+    const chip = AI.localModel(Gallery.FIRST_RUN_PROMPTS[1], spec); // 'A nightstand with two drawers in cherry'
+    eq(chip.kind, 'new', 'hint chip: bare noun phrase creates');
+    eq(chip.kind === 'new' && chip.spec.meta.template, 'nightstand', 'hint chip: nightstand');
+    eq(chip.kind === 'new' && chip.spec.wood.species, 'cherry', 'hint chip: cherry');
+    eq(chip.kind === 'new' && chip.spec.drawers && chip.spec.drawers.count, 2, 'hint chip: two drawers');
+
+    const bed = AI.localModel('a bedside table in walnut', spec);
+    eq(bed.kind === 'new' && bed.spec.meta.template, 'nightstand', 'multi-word "bedside table" beats "table"');
+
+    // Phantom shelf count: a normalized length token ("about 5 feet tall" →
+    // "about 1524mm tall") must never read as a shelf count — the chips would
+    // then report a change the user never asked for.
+    const bs = Spec.correctSpec({ meta: { template: 'bookshelf' } });
+    const tall = AI.localModel('make the bookshelf about 1524mm tall', bs);
+    eq(tall.kind, 'diff', 'same-template mention refines, never recreates');
+    eq(tall.kind === 'diff' && tall.patch.overall && tall.patch.overall.height, 1524, 'height parsed from the mm token');
+    ok(!(tall.kind === 'diff' && tall.patch.structure && 'shelfCount' in tall.patch.structure),
+      'no phantom shelf count from the mm token');
+    if (tall.kind === 'diff') {
+      const applied = AI.apply(tall, bs);
+      ok(applied.chips.every(c => !/shelf count/.test(c)), 'chips never name a shelf-count change nobody asked for');
+    }
+    const legit = AI.localModel('give it 3 shelves', bs);
+    eq(legit.kind === 'diff' && legit.patch.structure && legit.patch.structure.shelfCount, 3, 'real shelf-count asks still parse');
+
+    // A mentioned-but-not-created template cannot smuggle drawers onto the
+    // current design (correction would strip them → phantom ack).
+    const smug = AI.localModel('two drawers like a cabinet has', spec);
+    ok(smug.kind === 'question' || !/drawer/.test((smug.explain || '') + JSON.stringify(smug.patch || {})),
+      'drawers on a table are refused, never acked');
+
+    // Negation guard intact (FE-H10/H11): a negated template noun never creates.
+    ok(AI.localModel('not a nightstand', spec).kind !== 'new', 'negated template noun never creates');
+    ok(AI.localModel('no ash please', ns).kind === 'question', 'species negation guard still asks');
+  }
 }
 
 /* ---------------- history ---------------- */
