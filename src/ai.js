@@ -717,7 +717,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * live, three sag rounds never once proposed lamination, so the loop
    * shuffled geometry instead of converging. */
   const CRITIQUE_REMEDIES = [
-    [/^sag:/, 'sag: thicken the part, laminate two sheet layers into one thicker slab, add a rail or rib under the span, or shorten the span'],
+    [/^sag:/, 'sag: thicken the part (sheet stock tops out at 18 mm — use solid stock, or laminate by stacking TWO 18 mm sheet slabs as separate touching parts joined edge_glue), add a rail or rib under the span, or shorten the span'],
     [/^str:/, 'strength: use a thicker section or a stronger species'],
     [/^(tip|stand)/, 'tipping/balance: widen the stance or lower the mass'],
     [/^joints/, 'joints: pick a stronger joint allowed by the LEVEL MATRIX']

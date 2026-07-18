@@ -483,8 +483,9 @@ section('buildCritique appends code-owned remedy hints per failing check type (A
 {
   const mk = (id, title) => ({ id, title, explain: 'x', value: 'v', threshold: 't' });
   const sag = AI.buildCritique([mk('sag:p1', 'Sag — worktop')]);
-  ok(/laminate two sheet layers/.test(sag) && /add a rail or rib/.test(sag) && /shorten the span/.test(sag),
+  ok(/laminate by stacking TWO 18 mm sheet slabs/.test(sag) && /add a rail or rib/.test(sag) && /shorten the span/.test(sag),
     `sag failures get thicken/laminate/rail/shorten-span vocabulary — got "${sag.match(/Proven fixes[^\n]*/)}"`);
+  ok(/sheet stock tops out at 18 mm/.test(sag), 'the sag remedy names the sheet-thickness ceiling so lamination is proposed expressibly');
   const str = AI.buildCritique([mk('str:p2', 'Strength — shelf')]);
   ok(/thicker section or a stronger species/.test(str), 'str failures get thicker-section/stronger-species');
   const tip = AI.buildCritique([mk('tip', 'Tipping stability')]);
@@ -495,7 +496,7 @@ section('buildCritique appends code-owned remedy hints per failing check type (A
   ok(/stronger joint allowed by the LEVEL MATRIX/.test(jnt), 'joint failures point at the level matrix');
   // One line per TYPE — five sag fails produce the remedy once.
   const many = AI.buildCritique([mk('sag:p1', 'a'), mk('sag:p2', 'b'), mk('sag:p3', 'c')]);
-  eq((many.match(/laminate two sheet layers/g) || []).length, 1, 'remedy lines dedupe per check type');
+  eq((many.match(/laminate by stacking/g) || []).length, 1, 'remedy lines dedupe per check type');
   // Unmapped check types add no remedy line and never break the critique.
   const other = AI.buildCritique([mk('collide', 'Collision check')]);
   ok(!/Proven fixes/.test(other) && /Fix ONLY these problems/.test(other), 'unmapped types keep the plain critique');
