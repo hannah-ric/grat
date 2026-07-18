@@ -52,6 +52,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
       'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
       'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
+      // A5: a stated exclusion must bind every later choice or be excepted
+      // out loud — never silently reframed (observed: "no metal hardware"
+      // acked over a 78-screw BOM).
+      'EXCLUSIONS: a stated exclusion ("no metal", "zero hardware", "no plywood") binds the WHOLE session — honor it in every joinery/hardware choice (screws/bolts ARE metal; all-wood JNT: dowels, mortise_tenon, loose_tenon, staked_tenon) or state the exception plainly in "e"; never silently reframe.',
       '--- knowledge digest ---',
       K.knowledgeDigest(),
       // Hardware style intent only — every count, rating, and bore is code

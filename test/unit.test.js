@@ -1174,7 +1174,9 @@ section('prompt budget: hard ceiling with measured headroom');
 {
   const sys = AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
   const tokens = Codec.estimateTokens(sys);
-  ok(tokens <= 1900, `system prompt stays under the 1900-token ceiling (measured ${tokens})`);
+  // Ceiling raised 1900 → 2000 for the A5 exclusion-binding line (~80 tokens,
+  // deliberate spend); the guard still catches accidental bloat.
+  ok(tokens <= 2000, `system prompt stays under the 2000-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
@@ -1189,6 +1191,13 @@ section('prompt budget: hard ceiling with measured headroom');
   const info = AI.classify({ i: 'Use wipe-on poly.' });
   eq([info.kind, info.text], ['info', 'Use wipe-on poly.'], 'ANSWER replies classify as info');
   ok(AI.classify({ q: 'which?', a: ['a', 'b'] }).kind === 'question', 'question shape unchanged');
+  // A5: stated exclusions bind the session — the prompt must say so and name
+  // the all-wood joinery escape hatch, or "zero hardware" gets silently
+  // reframed over a screw-filled BOM (observed live: V-a5-2).
+  ok(/EXCLUSIONS:/.test(sys) && /binds the WHOLE session/.test(sys),
+    'system prompt states that stated exclusions bind the whole session');
+  ok(/screws\/bolts ARE metal/.test(sys) && /mortise_tenon/.test(sys) && /never silently reframe/.test(sys),
+    'the exclusion line names metal fasteners as metal, all-wood joints, and forbids silent reframes');
 }
 
 section('word-number lengths and storage driver honesty');
