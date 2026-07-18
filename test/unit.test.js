@@ -442,6 +442,41 @@ section('mid-round replies: info/question/limits are triaged, never burned (C8)'
     'a mid-round transport death (local fallback) bails — the offline parser never speaks for the model');
 }
 
+/* ---------------- assembly walkthrough context (C10, merges B7) ---------------- */
+section('step walkthroughs inject the code-built assembly plan (C10)');
+{
+  const spec = Spec.correctSpec({
+    meta: { name: 'Walk NS', template: 'nightstand', level: 'intermediate', units: 'in' },
+    overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  // The reference numbering: exactly what the Plan tab renders (glue-ups included).
+  const model = Parametric.build(spec);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const cut = Plans.cutList(spec, model);
+  const stock = Packing.planStock(spec, model, cut, {});
+  const steps = Plans.assembly(spec, model, integ, { stockPlan: stock });
+  ok(steps.length >= 5, `fixture has at least 5 assembly steps (got ${steps.length})`);
+
+  const ctx = AI.stepContext('walk me through step 5', spec);
+  ok(!!ctx && /^\[assembly\]/.test(ctx), 'step ask produces an [assembly] context block');
+  ok(ctx.includes(`Step 5 = "${steps[4].title}"`), `block names the REAL step-5 title — got "${String(ctx).slice(0, 200)}"`);
+  ok(ctx.includes(`5. ${steps[4].title}`), 'the numbered title list matches the Plan tab numbering');
+  ok(ctx.includes('user level: intermediate'), 'the user skill level rides the block');
+  ok(steps[4].text ? ctx.includes(steps[4].text.slice(0, 40)) : true, 'the referenced step\'s full text is included');
+
+  // Out-of-range step numbers are answered honestly, not guessed.
+  const over = AI.stepContext('walk me through step 99', spec);
+  ok(!!over && over.includes(`no step 99`) && over.includes(`${steps.length} steps`), 'a step past the end says how many steps exist');
+
+  // Walkthrough phrasing without a number still ships the titles list.
+  const how = AI.stepContext('how do i assemble this?', spec);
+  ok(!!how && how.includes(`1. ${steps[0].title}`), 'general assembly asks get the numbered titles');
+
+  // Ordinary refinements never trigger the injection.
+  eq(AI.stepContext('make it walnut and 2 inches taller', spec), null, 'a plain refinement injects nothing');
+}
+
 /* ---------------- local model ---------------- */
 section('local intent parser');
 {

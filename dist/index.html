@@ -10372,6 +10372,40 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* ---------------- assembly walkthrough context (C10) ----------------
+   * "walk me through step 5": the model never sees the code-built plan, so it
+   * deflects or guesses (observed 4/4). When the user asks for a step or an
+   * assembly walkthrough, inject the plan's REAL numbered step titles — the
+   * same Plans.assembly list the Plan tab renders, glue-ups included, so
+   * "step 5" is the user's step 5 — plus the referenced step's full text and
+   * the spec's skill level. Code-built context, never computation in the
+   * prompt: the founding rule holds. */
+  const STEP_ASK = /\b(?:step\s*\d+|walk me through|talk me through|how do i (?:assemble|build|glue))\b/i;
+  function stepContext(text, spec) {
+    const src = String(text || '');
+    if (!STEP_ASK.test(src) || !BB.Plans || !BB.Parametric || !BB.Structural || !BB.Packing) return null;
+    const num = /\bstep\s*(\d+)\b/i.exec(src);
+    try {
+      const model = BB.Parametric.build(spec);
+      if (!model || !model.parts || !model.parts.length) return null;
+      const integ = BB.Structural.computeIntegrity(spec, model, {});
+      const cut = BB.Plans.cutList(spec, model);
+      const stock = BB.Packing.planStock(spec, model, cut, {});
+      const steps = BB.Plans.assembly(spec, model, integ, { stockPlan: stock });
+      if (!steps || !steps.length) return null;
+      const n = num ? parseInt(num[1], 10) : 0;
+      let block = `[assembly] Code-built plan for this spec (user level: ${spec.meta.level}) — numbered steps: ` +
+        steps.map((s, i) => `${i + 1}. ${s.title}`).join('; ') + '.';
+      if (n >= 1 && n <= steps.length) {
+        const s = steps[n - 1];
+        block += ` Step ${n} = "${s.title}": ${s.text || ''}`;
+      } else if (n > steps.length) {
+        block += ` There is no step ${n} — the plan has ${steps.length} steps.`;
+      }
+      return block + ' Answer from THIS plan at the user\'s level ({"i":...} unless a spec change is asked).';
+    } catch (e) { return null; } // context is best-effort — never block the turn
+  }
+
   /* ---------------- context budget (1b) ----------------
    * turns: [{role:'user'|'assistant', content}] maintained by the UI in wire
    * format. Send the last 6 verbatim; compress everything older into the
@@ -10411,6 +10445,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         ]
       : userText;
     const baseMessages = buildMessages(turns, digest, userContent);
+    // C10: a step/assembly walkthrough ask gets the code-built step list for
+    // THIS committed spec injected as a context pair (same pattern as the
+    // digest pair), so "step 5" means the Plan tab's step 5.
+    const stepCtx = opts.image ? null : stepContext(userText, spec);
+    if (stepCtx) {
+      baseMessages.splice(baseMessages.length - 1, 0,
+        { role: 'user', content: stepCtx },
+        { role: 'assistant', content: '{"e":"ok"}' });
+    }
 
     try {
       let { text } = await callModel(system, baseMessages, onStatus);
@@ -10562,7 +10605,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.AI = {
     systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
-    setTransport, callModel, buildMessages, buildCritique, rejectionMarker, roundDecision, downscaleImage,
+    setTransport, callModel, buildMessages, buildCritique, rejectionMarker, roundDecision, downscaleImage, stepContext,
     supportsImages, hasRemote, VISION_PROMPT,
     unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
     MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT

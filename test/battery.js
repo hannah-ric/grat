@@ -330,6 +330,33 @@ const summarize = (name, r, ig, extra) => {
     ok(okParts, 'all 25 parts reassemble across the seams');
   }
 
+  /* ---------- step walkthrough: the outgoing call carries the code-built plan (C10) ---------- */
+  {
+    const spec = Spec.correctSpec({
+      meta: { name: 'Walk NS', template: 'nightstand', level: 'intermediate', units: 'in' },
+      overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+      drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+    });
+    const r = pipeline(spec);
+    const ig = integ(r);
+    const cut = Plans.cutList(r.spec, r.model);
+    const stock = Packing.planStock(r.spec, r.model, cut, {});
+    const steps = Plans.assembly(r.spec, r.model, ig, { stockPlan: stock });
+    let seen = null;
+    AI.setTransport(async (system, messages) => {
+      seen = messages;
+      return { text: '{"i":"Step 5 walkthrough."}', stopReason: 'end_turn' };
+    });
+    const res = await AI.respond('walk me through step 5', r.spec, { turns: [] });
+    AI.setTransport(null);
+    const block = seen && seen.map(m => String(m.content)).find(c => c.startsWith('[assembly]'));
+    out.cases.push({ name: 'step walkthrough context', hasBlock: !!block, kind: res.reply && res.reply.kind });
+    console.log(`\n■ step walkthrough (C10): [assembly] block sent=${!!block}`);
+    ok(!!block, 'the outgoing messages carry the code-built [assembly] block', seen && seen.map(m => String(m.content).slice(0, 40)));
+    ok(!!block && block.includes(`Step 5 = "${steps[4].title}"`), 'the block names the real step-5 title', block && block.slice(0, 200));
+    ok(res.reply && res.reply.kind === 'info', 'the reply stays an ordinary info answer', res.reply && res.reply.kind);
+  }
+
   /* ---------- ANSWER shape (2026): advice replies are legal wire ---------- */
   {
     AI.setTransport(async () => ({ text: '{"i":"Wipe-on poly: three thin coats, scuff at 320 between. The BOM already lists it."}', stopReason: 'end_turn' }));
