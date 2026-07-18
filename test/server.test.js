@@ -663,6 +663,47 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- chat: prompt caching via system split (C14) ---------------- */
+  section('chat: system prompt splits into a cached prefix + per-call tail (C14)');
+  {
+    const rmkv = useTempKV();
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    const realFetch = globalThis.fetch;
+    let seenPayload = null;
+    globalThis.fetch = async (url, opts) => { seenPayload = JSON.parse(opts.body); return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) }; };
+    const send = async system => {
+      const res = fakeRes();
+      const body = { messages: [{ role: 'user', content: 'hi' }] };
+      if (system !== undefined) body.system = system;
+      await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.95' }, body }), res);
+      return res;
+    };
+
+    // The real client shape: byte-stable prefix (schema doc + digests), then
+    // the marker line isolating the per-call wire spec (src/ai.js systemPrompt).
+    const prefix = 'WIRE FORMAT schema doc + knowledge digests (byte-stable)';
+    const tail = '\n--- current spec (wire format) ---\n{"v":4,"t":4}';
+    await send(prefix + tail);
+    ok(Array.isArray(seenPayload.system) && seenPayload.system.length === 2, 'system with the spec marker becomes two blocks');
+    eq(seenPayload.system[0], { type: 'text', text: prefix, cache_control: { type: 'ephemeral' } }, 'first block = byte-stable prefix with cache_control ephemeral');
+    eq(seenPayload.system[1], { type: 'text', text: tail }, 'second block = per-call tail (marker + wire spec), uncached');
+    eq(seenPayload.system.map(b => b.text).join(''), prefix + tail, 'the split loses no bytes');
+
+    await send('no marker in this system prompt');
+    eq(seenPayload.system, 'no marker in this system prompt', 'marker absent → plain string passes through unchanged');
+    await send(undefined);
+    ok(seenPayload.system === undefined, 'no system at all → undefined, exactly as before');
+
+    // The split only pays off if the marker still matches what the client
+    // emits — pin the marker line in src/ai.js systemPrompt.
+    const aiSrc = fs.readFileSync(path.join(__dirname, '../src/ai.js'), 'utf8');
+    ok(aiSrc.includes("'--- current spec (wire format) ---'"), 'src/ai.js systemPrompt still carries the split marker line');
+
+    globalThis.fetch = realFetch;
+    rmkv();
+    cleanEnv();
+  }
+
   /* ---------------- env audit + production readiness (A-03) ---------------- */
   section('env audit: AI + OAuth advisories and qualified readiness (A-03)');
   {

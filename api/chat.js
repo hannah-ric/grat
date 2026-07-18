@@ -61,6 +61,25 @@ function burstOK(id) {
   return hits.length <= BURST_MAX;
 }
 
+/* C14: prompt caching. The client's system prompt (src/ai.js systemPrompt) is
+ * a byte-stable prefix — schema doc + generated digests, ~1.8k tokens — with
+ * only the current wire spec varying per call, isolated after this marker
+ * line. Split there into two blocks and mark the prefix ephemeral-cached so
+ * Anthropic re-reads it from cache (~90% cheaper) instead of re-paying it on
+ * every call. The client keeps sending one plain string; splitting is proxy-
+ * only. Marker absent (foreign client, future prompt shape) → pass through
+ * unchanged. */
+const SPEC_MARKER = '\n--- current spec (wire format) ---';
+function systemBlocks(system) {
+  if (typeof system !== 'string') return undefined;
+  const at = system.indexOf(SPEC_MARKER);
+  if (at <= 0) return system;
+  return [
+    { type: 'text', text: system.slice(0, at), cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: system.slice(at) }
+  ];
+}
+
 function sendJSON(res, status, obj) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
@@ -146,7 +165,7 @@ module.exports = async function handler(req, res) {
   const payload = {
     model: process.env.ANTHROPIC_MODEL || DEFAULT_MODEL,
     max_tokens: Math.min(Math.max(1, Number(body.max_tokens) || MAX_TOKENS_CAP), MAX_TOKENS_CAP),
-    system: typeof body.system === 'string' ? body.system : undefined,
+    system: systemBlocks(body.system),
     messages: body.messages
   };
 
