@@ -352,6 +352,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mode-btn[data-state="done"] .dot { background: var(--green); border-color: var(--green); }
 .mode-btn[data-state="attn"] .dot { background: var(--amber); border-color: var(--amber); }
 .mode-btn[data-state="fail"] .dot { background: var(--brick); border-color: var(--brick); }
+/* Pro lock on the gated Build segment (X-04): the paywall announces itself
+   before the tap — glyph here, the words ride the button's aria/title */
+.mode-btn .mode-lock { display: inline-flex; align-items: center; opacity: .9; }
+.mode-btn .mode-lock svg { display: block; }
 /* Build: the one filled segment — the shop is where this app is headed */
 .mode-btn.build-cta {
   background: var(--accent); color: var(--accent-ink); font-weight: 650;

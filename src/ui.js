@@ -294,6 +294,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const area = $('accountArea'), sep = $('accountSep');
     if (!area) return;
     renderUsageMeter();
+    renderReadiness(); // the Build lock (X-04) follows the same billing evidence
     const a = Store.auth();
     const configured = billingConfigured(a);
     const show = !!(a.user || (a.providers.length && a.storage) || configured);
@@ -2701,6 +2702,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderReadiness() {
     if (!state.integrity) return;
     const states = modeStates();
+    // Build is Pro-gated: the lock glyph + aria announce the paywall BEFORE
+    // the tap (X-04) — activation still opens the pricing dialog.
+    const buildLocked = !BB.Billing.entitled('advancedFeatures');
+    const lockEl = $('buildModeLock');
+    if (lockEl) lockEl.hidden = !buildLocked;
     for (const m of ['design', 'plan', 'build']) {
       const b = $(m === 'build' ? 'buildModeBtn' : 'mode-' + m);
       if (!b) continue;
@@ -2709,8 +2715,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
       if (current) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
-      b.setAttribute('aria-label', s.aria);
-      b.title = s.aria;
+      const aria = m === 'build' && buildLocked ? s.aria + ' — included with Pro' : s.aria;
+      b.setAttribute('aria-label', aria);
+      b.title = aria;
     }
   }
 
@@ -2911,6 +2918,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('bmPbPrev', 'prev', 'Prev');
     set('bmPbNext', 'next', 'Next', true);
     set('capBannerClose', 'close', undefined);
+    if ($('buildModeLock')) $('buildModeLock').innerHTML = icon('lock', 12);
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
   }
 
