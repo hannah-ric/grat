@@ -10514,7 +10514,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       const cycle = event.target.closest('[data-cycle]');
       if (cycle) { interval = cycle.dataset.cycle; paintCycle(); }
       if (event.target.closest('[data-upgrade]')) {
-        if (!account().user) { dialog.close(); openSignIn(); return; }
+        if (!account().user) {
+          // Never close silently: surface a visible cue in the note area, and
+          // only redirect when a sign-in provider actually exists (A-02/X-03).
+          const plan = signedOutUpgradeNote(account());
+          setNote(plan.note);
+          if (plan.redirect) openSignIn();
+          return;
+        }
         redirect('checkout', { interval });
       }
     });
@@ -10542,6 +10549,23 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (provider) window.location.href = BB.Store.loginUrl(provider);
   }
 
+  function setNote(message) {
+    const note = dialog && dialog.querySelector('[data-billing-note]');
+    if (note) note.textContent = message;
+  }
+
+  /* Signed-out Upgrade: decide what the dialog should say/do. Pure so the
+   * honest-copy contract is unit-testable without a DOM. When a provider exists
+   * we hand off to sign-in (leaving a cue so a failed redirect never vanishes);
+   * with no provider configured (the current production state) we say so plainly
+   * instead of closing the dialog with nothing happening. */
+  function signedOutUpgradeNote(a) {
+    const provider = a && a.providers && a.providers[0];
+    return provider
+      ? { redirect: true, note: 'Taking you to sign in — you can upgrade once you are signed in.' }
+      : { redirect: false, note: "Sign-in isn't available on this site yet, so upgrading isn't possible here." };
+  }
+
   function gate(feature, reason) {
     if (isPro() || entitled(feature)) return true;
     open(reason || 'This is a Pro feature.');
@@ -10564,7 +10588,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     history.replaceState(null, '', window.location.pathname + window.location.hash);
   }
 
-  BB.Billing = { status, isPro, entitled, refresh, open, gate, gateNewProject, manage: () => redirect('portal'), handleReturn };
+  BB.Billing = { status, isPro, entitled, refresh, open, gate, gateNewProject, manage: () => redirect('portal'), handleReturn, signedOutUpgradeNote };
 })();
 </script>
   <script>/* Blueprint Buddy — number provenance + species comparison (Phase 4 stretch).

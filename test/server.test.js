@@ -459,6 +459,28 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- billing client: signed-out Upgrade honesty (A-02/X-03) ---------------- */
+  section('billing: signed-out Upgrade shows an honest state, never a silent close (A-02/X-03)');
+  {
+    const vm = require('vm');
+    const src = fs.readFileSync(path.join(__dirname, '../src/billing.js'), 'utf8');
+    const sandbox = {}; sandbox.globalThis = sandbox; // pure load: no DOM touched until open()
+    vm.runInNewContext(src, sandbox);
+    const B = sandbox.BB && sandbox.BB.Billing;
+    ok(B && typeof B.signedOutUpgradeNote === 'function', 'signedOutUpgradeNote is exposed for the signed-out path');
+    if (B && typeof B.signedOutUpgradeNote === 'function') {
+      const none = B.signedOutUpgradeNote({ user: null, providers: [] });
+      eq(none.redirect, false, 'no providers → no redirect (a redirect would dead-end)');
+      ok(/available|isn't|not/i.test(none.note || ''), 'no providers → an explicit honest note is surfaced');
+      const withP = B.signedOutUpgradeNote({ user: null, providers: ['github'] });
+      eq(withP.redirect, true, 'providers present → hand off to sign-in');
+      ok((withP.note || '').length > 0, 'providers present → a cue is set before the redirect');
+    }
+    // The old silent-close-then-noop pattern must be gone from the signed-out branch.
+    ok(!/!account\(\)\.user\)\s*\{\s*dialog\.close\(\);\s*openSignIn\(\)/.test(src),
+      'signed-out upgrade no longer closes the dialog before (maybe) redirecting');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exitCode = 1;
 })().catch(e => { console.error('server tests crashed:', e); process.exitCode = 1; });
