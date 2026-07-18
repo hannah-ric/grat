@@ -442,6 +442,34 @@ section('mid-round replies: info/question/limits are triaged, never burned (C8)'
     'a mid-round transport death (local fallback) bails — the offline parser never speaks for the model');
 }
 
+/* ---------------- deep pipelines pin the original request (C11) ---------------- */
+section('buildMessages pins the original request once it scrolls out (C11)');
+{
+  const ORIGIN = 'a craftsman storage ottoman for my king size bed';
+  // 8 accumulated turns = the original exchange + 3 refinement rounds; the
+  // verbatim window (6) no longer contains the original words.
+  const turns = [
+    { role: 'user', content: ORIGIN }, { role: 'assistant', content: '{"N":{},"e":"first"}' },
+    { role: 'user', content: 'Your proposal failed validation: a' }, { role: 'assistant', content: '{"e":"r1"}' },
+    { role: 'user', content: 'Your proposal failed validation: b' }, { role: 'assistant', content: '{"e":"r2"}' },
+    { role: 'user', content: 'Your proposal failed validation: c' }, { role: 'assistant', content: '{"e":"r3"}' }
+  ];
+  const msgs = AI.buildMessages(turns, 'digest line', 'Your proposal failed validation: d', ORIGIN);
+  const pin = msgs.find(m => m.role === 'user' && m.content === '[request] ' + ORIGIN);
+  ok(!!pin, `round 4+ messages still carry the original request — got ${JSON.stringify(msgs.map(m => String(m.content).slice(0, 24)))}`);
+  ok(msgs.indexOf(pin) < msgs.length - 7, 'the pin rides ahead of the verbatim window');
+  ok(msgs[msgs.indexOf(pin) + 1].role === 'assistant', 'the pin is a paired context turn (alternation holds)');
+  // While the original is still verbatim in the window: no duplicate pin.
+  const early = AI.buildMessages(turns.slice(0, 2), '', 'Your proposal failed validation: a', ORIGIN);
+  ok(!early.some(m => String(m.content).startsWith('[request]')), 'no pin while the original is still verbatim');
+  // The first call (newUserContent IS the origin) never pins either.
+  const first = AI.buildMessages([], '', ORIGIN, ORIGIN);
+  ok(!first.some(m => String(m.content).startsWith('[request]')), 'the original turn itself is never doubled');
+  // No origin passed — unchanged legacy behavior.
+  const legacy = AI.buildMessages(turns, 'digest line', 'next');
+  ok(!legacy.some(m => String(m.content).startsWith('[request]')), 'origin-less calls are unchanged');
+}
+
 /* ---------------- critique remedy vocabulary (A10) ---------------- */
 section('buildCritique appends code-owned remedy hints per failing check type (A10)');
 {

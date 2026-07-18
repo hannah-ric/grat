@@ -587,13 +587,25 @@ var BB = globalThis.BB = globalThis.BB || {};
    * format. Send the last 6 verbatim; compress everything older into the
    * code-built digest (from history snapshots — zero extra AI calls).
    */
-  function buildMessages(turns, digest, newUserContent) {
+  function buildMessages(turns, digest, newUserContent, origin) {
     let recent = turns.slice(-VERBATIM_TURNS);
     while (recent.length && recent[0].role === 'assistant') recent = recent.slice(1);
     const out = [];
     if (digest && turns.length > VERBATIM_TURNS) {
       out.push({ role: 'user', content: '[context] ' + digest });
       out.push({ role: 'assistant', content: '{"e":"ok"}' });
+    }
+    // C11: refinement/critique rounds append two turns each, so in a deep
+    // pipeline the ORIGINAL request (the words carrying style/purpose/
+    // constraints) scrolls out of the verbatim window. Pin it with a compact
+    // context pair whenever it is no longer verbatim in what we send.
+    if (origin && typeof origin === 'string') {
+      const verbatim = c => typeof c === 'string' && c.includes(origin);
+      const inWindow = recent.some(m => verbatim(m.content)) || verbatim(newUserContent);
+      if (!inWindow) {
+        out.push({ role: 'user', content: '[request] ' + origin });
+        out.push({ role: 'assistant', content: '{"e":"ok"}' });
+      }
     }
     out.push(...recent);
     out.push({ role: 'user', content: newUserContent });
@@ -620,7 +632,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           { type: 'text', text: userText }
         ]
       : userText;
-    const baseMessages = buildMessages(turns, digest, userContent);
+    const baseMessages = buildMessages(turns, digest, userContent, opts.origin);
     // C10: a step/assembly walkthrough ask gets the code-built step list for
     // THIS committed spec injected as a context pair (same pattern as the
     // digest pair), so "step 5" means the Plan tab's step 5.

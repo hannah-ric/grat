@@ -1418,7 +1418,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (let round = 1; r.report.errors.length && !res.local && round <= 3; round++) {
       setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
       const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
-      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus });
+      // C11: rounds pin the original in-flight request so deep pipelines
+      // never refine without the words stating style/purpose/constraints.
+      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text });
       // Mid-round authoritative answers and model asides get the same UX as
       // first-round ones instead of vanishing or burning the round (C8).
       const act = AI.roundDecision(res2);
@@ -1476,7 +1478,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns };
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
-        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus });
+        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text }); // C11: pin the original request
         // Mid-critique triage (C8): the best attempt so far still commits —
         // only the polish loop stops.
         const act3 = AI.roundDecision(res3);
