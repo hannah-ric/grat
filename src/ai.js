@@ -67,18 +67,23 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- JSON extraction ---------------- */
-  /* Extract the first balanced JSON object from model text. */
+  /* Extract the first PARSEABLE balanced JSON object from model text. A
+   * balanced-but-unparseable brace blob (prose like "dims ride keys {w,d,h}")
+   * no longer ends the scan (C5) — keep scanning from the next '{'. */
   function extractJSON(text) {
     const s = String(text || '');
-    const start = s.indexOf('{');
-    if (start < 0) return null;
-    let depth = 0, inStr = false, escp = false;
-    for (let i = start; i < s.length; i++) {
-      const c = s[i];
-      if (inStr) { if (escp) escp = false; else if (c === '\\') escp = true; else if (c === '"') inStr = false; continue; }
-      if (c === '"') inStr = true;
-      else if (c === '{') depth++;
-      else if (c === '}') { depth--; if (!depth) { try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { return null; } } }
+    let start = s.indexOf('{');
+    while (start >= 0) {
+      let depth = 0, inStr = false, escp = false, closed = false;
+      for (let i = start; i < s.length; i++) {
+        const c = s[i];
+        if (inStr) { if (escp) escp = false; else if (c === '\\') escp = true; else if (c === '"') inStr = false; continue; }
+        if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') { depth--; if (!depth) { try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { closed = true; break; } } }
+      }
+      if (!closed) return null; // ran off the end — nothing further to scan
+      start = s.indexOf('{', start + 1);
     }
     return null;
   }

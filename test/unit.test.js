@@ -233,6 +233,14 @@ section('wire diff-based refinement');
   eq(q.kind, 'question', 'question classified');
   eq(q.options.length, 2, 'options preserved');
 
+  // C5: a balanced-but-unparseable brace blob before the real JSON (probe
+  // P2b — SCHEMA_DOC itself teaches the {w,d,h} notation the model may echo).
+  const past = AI.extractJSON('dims ride keys {w,d,h} in this schema. {"o":{"h":650},"e":"x"}');
+  eq(past && past.o && past.o.h, 650, 'the scanner continues past a prose brace blob to the real wire object');
+  eq(AI.extractJSON('all prose {w,d,h} and {not json} only'), null, 'all-blob text still returns null');
+  eq(AI.extractJSON('nested trap {"a":{oops} } then {"e":"ok"}').e, 'ok', 'an unparseable nested blob is skipped too');
+  ok(AI.extractJSON('truncated tail {"o":{"h":650') === null, 'an unclosed object still reads as null (truncation stays continuable)');
+
   // New-design shape (wire).
   const nd = AI.classify(AI.extractJSON('{"N":{"v":4,"n":"Oak Desk","t":1,"l":0,"u":0,"o":[1300,650,735],"m":0,"s":{"t":25},"j":[1,0,1],"f":0,"d":0},"e":"x"}'));
   eq(nd.kind, 'new', 'wire new-design classified');
