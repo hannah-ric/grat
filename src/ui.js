@@ -1083,7 +1083,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     search.placeholder = 'Search species, joints, screws, finishes…';
     search.value = state.refQuery;
     search.setAttribute('aria-label', 'Search reference tables');
+    // The reference body completes the ARIA tab pattern (P2-7): a labelled
+    // tabpanel every tab points at via aria-controls.
     const body = el('div');
+    body.id = 'refPanel';
+    body.setAttribute('role', 'tabpanel');
     const tabs = el('div', 'ref-tabs');
     const syncTabButtons = () => {
       tabs.querySelectorAll('.ref-tab').forEach((b, i) => {
@@ -1091,6 +1095,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         b.setAttribute('aria-selected', String(state.refTab === key));
         b.tabIndex = state.refTab === key ? 0 : -1;
       });
+      body.setAttribute('aria-labelledby', 'ref-tab-' + state.refTab);
     };
     search.oninput = () => {
       state.refQuery = search.value;
@@ -1102,9 +1107,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(search);
 
     tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Reference sections');
     for (const [key, label] of REF_ENTRIES) {
       const b = el('button', 'ref-tab', esc(label));
+      b.id = 'ref-tab-' + key;
       b.setAttribute('role', 'tab');
+      b.setAttribute('aria-controls', 'refPanel');
       b.setAttribute('aria-selected', state.refTab === key);
       b.tabIndex = state.refTab === key ? 0 : -1; // roving tabindex
       b.onclick = () => { state.refTab = key; syncHash(); renderPanel(); };

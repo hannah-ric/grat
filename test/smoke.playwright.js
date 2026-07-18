@@ -922,6 +922,21 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => __bb.state.refTab === 'ergo' && document.activeElement.classList.contains('ref-tab') &&
     document.activeElement.getAttribute('aria-selected') === 'true'),
     'reference tabs move with arrow keys and keep focus on the selected tab');
+  // P2-7: the sub-tabs complete the ARIA tab pattern — aria-controls on every
+  // tab, and the body is a role=tabpanel labelled by the selected tab.
+  const refAria = await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('.ref-tab')];
+    const panel = document.getElementById('refPanel');
+    const selected = tabs.find(t => t.getAttribute('aria-selected') === 'true');
+    return {
+      allControls: tabs.length > 0 && tabs.every(t => t.getAttribute('aria-controls') === 'refPanel'),
+      panelRole: panel ? panel.getAttribute('role') : null,
+      labelledBySelected: !!panel && !!selected && !!selected.id && panel.getAttribute('aria-labelledby') === selected.id
+    };
+  });
+  ok(refAria.allControls, 'every reference tab carries aria-controls to the panel');
+  ok(refAria.panelRole === 'tabpanel', 'the reference body is a role=tabpanel');
+  ok(refAria.labelledBySelected, 'the tabpanel is labelled by the selected tab');
 
   // Integrity fix buttons patch the spec through the normal pipeline.
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
