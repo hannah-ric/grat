@@ -10519,10 +10519,31 @@ var BB = globalThis.BB = globalThis.BB || {};
     ];
   }
 
-  /* Structured critique for the propose-validate-revise loop (novel pieces). */
+  /* Structured critique for the propose-validate-revise loop (novel pieces).
+   * A10: each failing check TYPE gets one code-owned remedy line — observed
+   * live, three sag rounds never once proposed lamination, so the loop
+   * shuffled geometry instead of converging. */
+  const CRITIQUE_REMEDIES = [
+    [/^sag:/, 'sag: thicken the part, laminate two sheet layers into one thicker slab, add a rail or rib under the span, or shorten the span'],
+    [/^str:/, 'strength: use a thicker section or a stronger species'],
+    [/^(tip|stand)/, 'tipping/balance: widen the stance or lower the mass'],
+    [/^joints/, 'joints: pick a stronger joint allowed by the LEVEL MATRIX']
+  ];
+  function critiqueRemedies(failedChecks) {
+    const lines = [];
+    for (const c of failedChecks) {
+      const r = CRITIQUE_REMEDIES.find(([rx]) => rx.test(String(c.id || '')));
+      if (r && !lines.includes(r[1])) lines.push(r[1]);
+    }
+    return lines;
+  }
   function buildCritique(failedChecks) {
-    const lines = failedChecks.slice(0, 10).map(c => `- ${c.title}: ${c.explain} (${c.value}; required: ${c.threshold})`);
-    return `Structural validation of your composition FAILED. Problems:\n${lines.join('\n')}\nFix ONLY these problems — keep the design intent and everything that already works. Reply {"N":{corrected FULL wire spec}} as minified JSON, nothing else.`;
+    const shown = failedChecks.slice(0, 10);
+    const lines = shown.map(c => `- ${c.title}: ${c.explain} (${c.value}; required: ${c.threshold})`);
+    const fixes = critiqueRemedies(shown);
+    return `Structural validation of your composition FAILED. Problems:\n${lines.join('\n')}\n` +
+      (fixes.length ? `Proven fixes — ${fixes.join('; ')}.\n` : '') +
+      `Fix ONLY these problems — keep the design intent and everything that already works. Reply {"N":{corrected FULL wire spec}} as minified JSON, nothing else.`;
   }
 
   /* ---------------- photo-to-design (Phase 4 item 4) ----------------

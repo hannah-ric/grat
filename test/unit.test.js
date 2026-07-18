@@ -442,6 +442,29 @@ section('mid-round replies: info/question/limits are triaged, never burned (C8)'
     'a mid-round transport death (local fallback) bails — the offline parser never speaks for the model');
 }
 
+/* ---------------- critique remedy vocabulary (A10) ---------------- */
+section('buildCritique appends code-owned remedy hints per failing check type (A10)');
+{
+  const mk = (id, title) => ({ id, title, explain: 'x', value: 'v', threshold: 't' });
+  const sag = AI.buildCritique([mk('sag:p1', 'Sag — worktop')]);
+  ok(/laminate two sheet layers/.test(sag) && /add a rail or rib/.test(sag) && /shorten the span/.test(sag),
+    `sag failures get thicken/laminate/rail/shorten-span vocabulary — got "${sag.match(/Proven fixes[^\n]*/)}"`);
+  const str = AI.buildCritique([mk('str:p2', 'Strength — shelf')]);
+  ok(/thicker section or a stronger species/.test(str), 'str failures get thicker-section/stronger-species');
+  const tip = AI.buildCritique([mk('tip', 'Tipping stability')]);
+  ok(/widen the stance or lower the mass/.test(tip), 'tip failures get widen-stance/lower-mass');
+  const stand = AI.buildCritique([mk('stand', 'It must stand')]);
+  ok(/widen the stance/.test(stand), 'COG (stand) failures share the stance remedy');
+  const jnt = AI.buildCritique([mk('joints', 'Joint adequacy')]);
+  ok(/stronger joint allowed by the LEVEL MATRIX/.test(jnt), 'joint failures point at the level matrix');
+  // One line per TYPE — five sag fails produce the remedy once.
+  const many = AI.buildCritique([mk('sag:p1', 'a'), mk('sag:p2', 'b'), mk('sag:p3', 'c')]);
+  eq((many.match(/laminate two sheet layers/g) || []).length, 1, 'remedy lines dedupe per check type');
+  // Unmapped check types add no remedy line and never break the critique.
+  const other = AI.buildCritique([mk('collide', 'Collision check')]);
+  ok(!/Proven fixes/.test(other) && /Fix ONLY these problems/.test(other), 'unmapped types keep the plain critique');
+}
+
 /* ---------------- assembly walkthrough context (C10, merges B7) ---------------- */
 section('step walkthroughs inject the code-built assembly plan (C10)');
 {
