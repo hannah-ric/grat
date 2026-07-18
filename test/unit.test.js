@@ -972,6 +972,10 @@ section('custom connections: joint KINDS are gated like template slots');
   eq(mk('staked_tenon', ['cylinder', 'slab']), 'staked_tenon', 'staked tenon leg-into-seat stays (frame kind, stick pair)');
   eq(mk('edge_glue', ['panel', 'panel']), 'edge_glue', 'edge glue-ups are legal panel-to-panel (the panel kind has a consumer)');
   eq(mk('mortise_tenon', ['post', 'rail']), 'dowels', 'level gating still applies on top of kind gating (M&T is advanced)');
+  // A1: kd_bolt is the one non-permanent joint the schema doc advertises for
+  // openable panels — case-kind pairs must keep it, never re-weld it to dado.
+  eq(mk('kd_bolt', ['panel', 'slab']), 'kd_bolt', 'kd_bolt survives on a panel-to-slab (case) pair — a tool-removable lid stays removable');
+  eq(mk('kd_bolt', ['post', 'rail']), 'kd_bolt', 'kd_bolt still legal on stick frames (bed rails)');
 }
 
 section('climate reaches the bench: wooden-runner clearance follows ΔMC');
@@ -1030,6 +1034,13 @@ section('prompt budget: hard ceiling with measured headroom');
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
+  // A1: mechanism honesty — the wire cannot carry hinges/lids/doors, and the
+  // schema doc must SAY so (kd_bolt is the only non-permanent joint) so the
+  // model never narrates motion the parts lack.
+  ok(/NOT expressible/.test(Codec.SCHEMA_DOC) && /except kd_bolt/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC states mechanisms are inexpressible (kd_bolt the only non-permanent joint)');
+  ok(/hinge/.test(Codec.SCHEMA_DOC) && /never claim motion/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC names hinge-class mechanisms and forbids claiming motion the parts lack');
   // The ANSWER shape: pure advice is legal wire, not a validation failure.
   const info = AI.classify({ i: 'Use wipe-on poly.' });
   eq([info.kind, info.text], ['info', 'Use wipe-on poly.'], 'ANSWER replies classify as info');

@@ -471,7 +471,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     },
     kd_bolt: {
       key: 'kd_bolt', label: 'Knockdown bolt', plural: 'knockdown bolts', strength: 4, difficulty: 2, level: 'beginner',
-      kinds: ['frame'],
+      // 'case' too (A1): barrel-nut bolts are the canonical knock-down CASE
+      // fastener (access panels, bolted carcasses) — and the only honest
+      // joint for a tool-removable lid/panel, so gating must not rewrite it
+      // into a permanent joint the explain then lies about.
+      kinds: ['frame', 'case'],
       tools: ['drill + brad-point bits', 'doweling jig', 'hex key'],
       bestFor: 'Bed rails, big tables, and anything that must fit through a doorway again someday — steel strength, tool-free service.',
       failure: 'The barrel-nut bore drifting off the bolt axis — drill both holes from the same reference face with a jig, never freehand.'
