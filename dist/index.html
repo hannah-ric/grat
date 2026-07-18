@@ -10251,6 +10251,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- transports ---------------- */
+  /* C6: every model fetch carries an abort timeout — a hung connection used
+   * to pin the chat in the busy state forever. Aborts reject the fetch and
+   * ride the existing catch paths (Node ≥ 18 / modern browsers; absent
+   * AbortSignal.timeout degrades to no timeout, exactly the old behavior). */
+  const FETCH_TIMEOUT_MS = 60000;
+  const fetchSignal = () =>
+    (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(FETCH_TIMEOUT_MS) : undefined;
   let injectedTransport = null; // (system, messages) => Promise<{text, stopReason}>
   function setTransport(fn) { injectedTransport = fn; }
   let anthropicDead = false; // one hard network failure disables it for the session
@@ -10270,7 +10277,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system, messages, max_tokens: MAX_TOKENS })
+        body: JSON.stringify({ system, messages, max_tokens: MAX_TOKENS }),
+        signal: fetchSignal()
       });
     } catch (e) { proxyDead = true; throw e; }
     // 404/405: no proxy at this origin. 503: proxy present but unconfigured.
@@ -10321,7 +10329,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         'x-api-key': key,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages })
+      body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages }),
+      signal: fetchSignal()
     });
     if (!response.ok) throw new Error('API returned ' + response.status);
     const data = await response.json();

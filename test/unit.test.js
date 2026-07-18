@@ -1410,11 +1410,50 @@ async function testMidRoundInfo() {
   ok(/overhang/.test(res.reply.text), 'and the text survives for botSay');
 }
 
+/* C6: every model fetch carries an abort timeout so a hung connection can
+ * never pin the chat busy forever. The 60 s wall itself is not waited on in
+ * tests — we assert the signal is wired and that an abort rejection resolves
+ * into the existing fallback path. */
+async function testFetchTimeout() {
+  section('AI transport: model fetches carry an abort timeout (C6)');
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const load = globals => {
+    const ctx = vm.createContext(globals);
+    for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, { filename: 'C6-' + f });
+    return ctx.BB;
+  };
+  let seenOpts = null;
+  const wired = load({
+    console, window: {}, document: {}, AbortSignal,
+    fetch: async (url, opts) => { seenOpts = opts; return { status: 200, ok: true, json: async () => ({ content: [{ type: 'text', text: '{"o":{"h":700},"e":"ok"}' }], stop_reason: 'end_turn' }) }; }
+  });
+  const spec6 = wired.Spec.correctSpec({ meta: { template: 'table' } });
+  const okRes = await wired.AI.respond('make it walnut', spec6, { turns: [] });
+  ok(okRes.local === false, 'stubbed proxy answers remotely');
+  ok(seenOpts && seenOpts.signal instanceof AbortSignal, 'the proxy fetch receives an AbortSignal timeout');
+  // A timeout abort rejects the fetch and rides the existing offline-fallback
+  // catch path — never an unhandled hang.
+  const aborted = load({
+    console, window: {}, document: {}, AbortSignal,
+    fetch: async () => { const e = new Error('The operation was aborted'); e.name = 'TimeoutError'; throw e; }
+  });
+  const abRes = await aborted.AI.respond('make it walnut', aborted.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(abRes.local === true && abRes.reply && abRes.reply.kind === 'diff', 'an aborted fetch degrades to the local parser, not a hang');
+  // Environments without AbortSignal.timeout keep working (no signal, old behavior).
+  const legacy = load({
+    console, window: {}, document: {},
+    fetch: async () => ({ status: 200, ok: true, json: async () => ({ content: [{ type: 'text', text: '{"o":{"h":700},"e":"ok"}' }], stop_reason: 'end_turn' }) })
+  });
+  const lgRes = await legacy.AI.respond('make it walnut', legacy.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(lgRes.local === false, 'hosts without AbortSignal.timeout still transport');
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
   await testKeylessProxyState();
   await testNamePhrasing();
   await testMidRoundInfo();
+  await testFetchTimeout();
   section('self-test suite (headless run)');
   const results = await BB.SelfTest.run();
   for (const r of results) {

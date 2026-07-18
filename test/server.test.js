@@ -640,6 +640,29 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- chat: upstream fetch carries an abort timeout (C6) ---------------- */
+  section('chat: the upstream fetch carries an abort timeout (C6)');
+  {
+    const rmkv = useTempKV();
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    const realFetch = globalThis.fetch;
+    let seenOpts = null;
+    globalThis.fetch = async (url, opts) => { seenOpts = opts; return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) }; };
+    let res = fakeRes();
+    await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.90' }, body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
+    eq(res.statusCode, 200, 'stubbed upstream still proxies');
+    ok(seenOpts && seenOpts.signal instanceof AbortSignal, 'the upstream fetch receives an AbortSignal timeout');
+    // An abort rejection rides the existing 502 unreachable path — the
+    // request resolves instead of hanging forever.
+    globalThis.fetch = async () => { const e = new Error('The operation was aborted'); e.name = 'TimeoutError'; throw e; };
+    res = fakeRes();
+    await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.91' }, body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
+    eq(res.statusCode, 502, 'a timed-out upstream resolves into the 502 unreachable path');
+    globalThis.fetch = realFetch;
+    rmkv();
+    cleanEnv();
+  }
+
   /* ---------------- env audit + production readiness (A-03) ---------------- */
   section('env audit: AI + OAuth advisories and qualified readiness (A-03)');
   {

@@ -159,7 +159,10 @@ module.exports = async function handler(req, res) {
         'x-api-key': key,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      // C6: a hung upstream must resolve into the 502 path, not pin the
+      // request forever. 55 s < the client's own 60 s bound (src/ai.js).
+      signal: AbortSignal.timeout ? AbortSignal.timeout(55000) : undefined
     });
   } catch (e) {
     Log.report('chat', 'upstream_unreachable', e);
