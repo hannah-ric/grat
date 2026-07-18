@@ -375,6 +375,18 @@ const clickMoreCtl = async sel => {
   await page.waitForSelector('.ref-search');
   ok(await page.evaluate(() => !document.getElementById('tab-reference').hidden),
     'reference tab appears only while reference is open');
+  // M-12: sheet goods in the wood table are badged; Janka/movement dash.
+  const sheetRow = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('#panel-main table tbody tr')]
+      .find(r => /\bMDF\b/i.test(r.cells[0].textContent));
+    return row ? {
+      badge: !!row.querySelector('.sheet-badge'),
+      janka: row.cells[1].textContent.trim(),
+      move: row.cells[5].textContent.trim()
+    } : null;
+  });
+  ok(!!sheetRow && sheetRow.badge && sheetRow.janka === '—' && sheetRow.move === '—',
+    `sheet rows badged with Janka/movement dashed (${JSON.stringify(sheetRow)})`);
   await page.click('.ref-tabs .ref-tab:nth-child(3)');
   await page.waitForSelector('.joint-demo');
   ok(await page.evaluate(() => document.querySelectorAll('.joint-demo').length === Object.keys(BB.K.JOINERY).length),

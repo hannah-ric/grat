@@ -1115,6 +1115,22 @@ section('M-11 tool-list abrasives derive from the actual finish schedule');
   ok(danTools.some(t => /120 \/ 180 \/ 220/.test(t)), 'danish oil keeps its 120/180/220 ladder');
 }
 
+/* ================= M-12 (2026-07 productization): sheet goods marked in the wood table ================= */
+section('M-12 Shop Reference wood table: sheet rows badged, Janka/movement dashed');
+{
+  // The wood table renders inline in browser-coupled ui.js — source-level
+  // assertions (repo convention for DOM builders), backed by a smoke check.
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok(/sheet-badge/.test(uiSrc), 'sheet rows carry a visible badge');
+  ok(/s\.sheet \? '—' : (`|')?\$?\{?s\.janka/.test(uiSrc) || /\$\{s\.sheet \? '—' : s\.janka/.test(uiSrc),
+    'Janka cell dashes for sheet: true species (face hardness is not comparable)');
+  ok(/s\.sheet \? '—' : s\.ct\.toFixed/.test(uiSrc),
+    'movement cell dashes for sheet: true species (the movement engine exempts them)');
+  // The data layer really does distinguish them — the badge has a source.
+  const sheets = Object.values(K.WOOD_SPECIES).filter(s => s.sheet);
+  ok(sheets.length >= 3, 'sheet species exist in the table (baltic birch, MDF, hardwood ply)');
+}
+
 /* ================= M-13 (2026-07 productization): compare weight skips hardware ================= */
 section('M-13 species-compare weight never weighs steel hardware as wood');
 {

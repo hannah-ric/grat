@@ -945,6 +945,12 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .ref-tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .dots { color: var(--accent); letter-spacing: 2px; }
 .movement-low { color: var(--green); } .movement-medium { color: var(--amber); } .movement-high { color: var(--brick); }
+/* Sheet-good rows in the wood reference: badged, Janka/movement dashed (M-12). */
+.sheet-badge {
+  font: 600 var(--text-xs) var(--body); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px;
+  padding: 0 5px; margin-left: 6px; vertical-align: 1px; white-space: nowrap;
+}
 
 /* BOM */
 .bom-total {

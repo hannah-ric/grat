@@ -1059,10 +1059,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     let rows = '', head = '';
     if (state.refTab === 'wood') {
       head = '<th>Species</th><th class="num">Janka</th><th class="num">MOE GPa</th><th class="num">MOR MPa</th><th class="num">SG</th><th class="num">Move ct/1%MC</th><th class="num">Cost</th><th>Character</th>';
+      // Sheet goods are badged, and their Janka/movement cells dash (audit
+      // M-12): face hardness is not comparable across a ply/fiber face, and
+      // the movement engine exempts sheet stock — showing solid-wood numbers
+      // there would be dishonest.
       rows = Object.values(K.WOOD_SPECIES).filter(s => hit(s.label, s.blurb, s.movement)).map(s => `<tr>
-        <td><strong>${esc(s.label)}</strong></td><td class="num">${s.janka} lbf</td>
+        <td><strong>${esc(s.label)}</strong>${s.sheet ? ' <span class="sheet-badge">sheet</span>' : ''}</td><td class="num">${s.sheet ? '—' : s.janka + ' lbf'}</td>
         <td class="num">${s.moe.toFixed(1)}</td><td class="num">${s.mor}</td><td class="num">${s.sg.toFixed(2)}</td>
-        <td class="num movement-${s.movement}">${s.ct.toFixed(5)}</td>
+        <td class="num${s.sheet ? '' : ' movement-' + s.movement}">${s.sheet ? '—' : s.ct.toFixed(5)}</td>
         <td class="num">${'$'.repeat(s.costTier)}</td>
         <td style="font-size:var(--text-s);color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
     } else if (state.refTab === 'ergo') {
