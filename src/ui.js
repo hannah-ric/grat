@@ -1419,7 +1419,37 @@ var BB = globalThis.BB = globalThis.BB || {};
       setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
       const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
       const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus });
-      if (!res2.reply || res2.reply.kind === 'question') break;
+      // Mid-round authoritative answers and model asides get the same UX as
+      // first-round ones instead of vanishing or burning the round (C8).
+      const act = AI.roundDecision(res2);
+      if (act === 'billing') {
+        if (res2.billing) Store.setBilling(res2.billing);
+        renderAccount();
+        const limit = (res2.billing && res2.billing.entitlements && res2.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
+        BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+        state.turns = turns.slice(-24);
+        return null;
+      }
+      if (act === 'rate') {
+        botSay('Too many messages in a row — give it a few seconds, then try again.', []);
+        state.turns = turns.slice(-24);
+        return null;
+      }
+      if (act === 'question') {
+        // The design is unchanged; the question is the model's next move —
+        // surface it instead of discarding its text.
+        state.turns = res2.turns.slice(-24);
+        askQuestion(res2.reply);
+        return null;
+      }
+      if (act === 'info') {
+        // Advice instead of a fix: show it and stop refining; the honest
+        // unbuildable line below still reports the design unchanged.
+        turns = res2.turns;
+        botSay(res2.reply.text, [], { noChange: true });
+        break;
+      }
+      if (act === 'bail') break;
       applied = AI.apply(res2.reply, applied.spec);
       turns = res2.turns;
       r = runPipeline(applied.spec);
@@ -1447,7 +1477,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
         const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus });
-        if (!res3.reply || res3.reply.kind === 'question') break;
+        // Mid-critique triage (C8): the best attempt so far still commits —
+        // only the polish loop stops.
+        const act3 = AI.roundDecision(res3);
+        if (act3 === 'billing') {
+          if (res3.billing) Store.setBilling(res3.billing);
+          renderAccount();
+          const limit3 = (res3.billing && res3.billing.entitlements && res3.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
+          BB.Billing.open(`You’ve used this month’s ${limit3} AI messages. Upgrade to keep designing with AI.`);
+          break;
+        }
+        if (act3 === 'rate') { botSay('Too many messages in a row — give it a few seconds, then try again.', []); break; }
+        if (act3 === 'question') { askQuestion(res3.reply); break; }
+        if (act3 === 'info') { botSay(res3.reply.text, [], { noChange: true }); break; }
+        if (act3 === 'bail') break;
         const a3 = AI.apply(res3.reply, final);
         const r3 = runPipeline(a3.spec);
         if (r3.report.errors.length) break;

@@ -427,6 +427,21 @@ section('integrity line rides every commit source when checks fail (A3)');
   eq(Spec.integrityLine(null, {}), '', 'no summary, no line');
 }
 
+/* ---------------- mid-round reply triage (C8) ---------------- */
+section('mid-round replies: info/question/limits are triaged, never burned (C8)');
+{
+  eq(AI.roundDecision(null), 'bail', 'no result bails');
+  eq(AI.roundDecision({ reply: null }), 'bail', 'transport failure bails');
+  eq(AI.roundDecision({ reply: null, usageLimit: true }), 'billing', 'mid-round 402 triggers the billing UX');
+  eq(AI.roundDecision({ reply: null, rateLimited: true }), 'rate', 'mid-round 429 triggers the rate-limit notice');
+  eq(AI.roundDecision({ reply: { kind: 'question', question: 'x' } }), 'question', 'a mid-round question is surfaced, not discarded');
+  eq(AI.roundDecision({ reply: { kind: 'info', text: 'x' } }), 'info', 'a mid-round info reply shows its text (P8: no more burned no-op rounds)');
+  eq(AI.roundDecision({ reply: { kind: 'diff', patch: {} } }), 'apply', 'a diff applies');
+  eq(AI.roundDecision({ reply: { kind: 'new', spec: {} } }), 'apply', 'a full respec applies');
+  eq(AI.roundDecision({ reply: { kind: 'question', question: 'x' }, local: true }), 'bail',
+    'a mid-round transport death (local fallback) bails — the offline parser never speaks for the model');
+}
+
 /* ---------------- local model ---------------- */
 section('local intent parser');
 {
@@ -1247,10 +1262,24 @@ async function testNamePhrasing() {
   ok(/5 feet/i.test(name), 'chat-route name keeps "about 5 feet tall"');
 }
 
+/* C8, probe-P8 shape: an ANSWER reply arriving in a validation-refinement
+ * round classifies as info via respond() end-to-end, so the loop can show its
+ * text and stop instead of deep-merging undefined and burning the round. */
+async function testMidRoundInfo() {
+  section('respond(): a mid-round ANSWER reply triages as info (C8/P8)');
+  AI.setTransport(async () => ({ text: '{"i":"The overhang is the problem — shorten the top instead."}', stopReason: 'end_turn' }));
+  const spec = Spec.correctSpec(Spec.defaultSpec('table'));
+  const res = await AI.respond('Your proposal failed validation: parts never touch. Return a corrected reply, minified wire JSON only.', spec, { turns: [] });
+  AI.setTransport(null);
+  eq(AI.roundDecision(res), 'info', 'the refinement loop sees info, not an appliable no-op');
+  ok(/overhang/.test(res.reply.text), 'and the text survives for botSay');
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
   await testKeylessProxyState();
   await testNamePhrasing();
+  await testMidRoundInfo();
   section('self-test suite (headless run)');
   const results = await BB.SelfTest.run();
   for (const r of results) {

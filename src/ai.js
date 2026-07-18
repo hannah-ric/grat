@@ -587,6 +587,26 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* Mid-loop reply triage for the orchestration loops (C8): billing and rate
+   * limits surface their own UX, a question goes to the user, an info reply
+   * shows its text — none of them are appliable patches. Before this, a
+   * question's text vanished on break, an info reply deep-merged into a no-op
+   * that burned the round, and limits fell through to "couldn't get a
+   * buildable design". */
+  function roundDecision(res) {
+    if (!res) return 'bail';
+    if (res.usageLimit) return 'billing';
+    if (res.rateLimited) return 'rate';
+    if (!res.reply) return 'bail';
+    // The loops only run remote; a local reply mid-round means the transport
+    // died mid-flight — bail to the honest unbuildable path, never surface
+    // the offline parser's guess as the model's answer.
+    if (res.local) return 'bail';
+    if (res.reply.kind === 'question') return 'question';
+    if (res.reply.kind === 'info') return 'info';
+    return 'apply';
+  }
+
   /* Code-built marker pair appended to the retained turns after a rejected
    * (unbuildable) proposal (B9). Without it the rejected diff sits in the
    * conversation looking accepted, and a later turn silently builds on it —
@@ -686,7 +706,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.AI = {
     systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
-    setTransport, callModel, buildMessages, buildCritique, rejectionMarker, downscaleImage,
+    setTransport, callModel, buildMessages, buildCritique, rejectionMarker, roundDecision, downscaleImage,
     supportsImages, hasRemote, VISION_PROMPT,
     unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
     MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT
