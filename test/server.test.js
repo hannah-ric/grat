@@ -505,6 +505,47 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- env audit + production readiness (A-03) ---------------- */
+  section('env audit: AI + OAuth advisories and qualified readiness (A-03)');
+  {
+    const Env = require('../api/_env-check.js');
+    cleanEnv();
+    ok(typeof Env.evaluate === 'function', '_env-check exposes a pure evaluate()');
+    if (typeof Env.evaluate === 'function') {
+      let ev = Env.evaluate();
+      const advKeys = ev.advisory.map(a => a.key);
+      ok(advKeys.includes('ANTHROPIC_API_KEY'), 'missing ANTHROPIC_API_KEY is flagged advisory');
+      ok(advKeys.some(k => /OAuth/i.test(k)), 'zero OAuth pairs is flagged advisory');
+      const aiAdv = ev.advisory.find(a => a.key === 'ANTHROPIC_API_KEY');
+      ok(aiAdv && /offline parser/i.test(aiAdv.remedy), 'AI advisory says the app degrades to the offline parser');
+      const oauthAdv = ev.advisory.find(a => /OAuth/i.test(a.key));
+      ok(oauthAdv && /sign in|sign-in|billing/i.test(oauthAdv.remedy), 'OAuth advisory says no one can sign in / billing unreachable');
+
+      process.env.GITHUB_CLIENT_ID = 'id'; process.env.GITHUB_CLIENT_SECRET = 'sec';
+      process.env.ANTHROPIC_API_KEY = 'sk-test';
+      ev = Env.evaluate();
+      const advKeys2 = ev.advisory.map(a => a.key);
+      ok(!advKeys2.includes('ANTHROPIC_API_KEY'), 'ANTHROPIC set → no AI advisory');
+      ok(!advKeys2.some(k => /OAuth/i.test(k)), 'one OAuth pair set → no OAuth advisory');
+      cleanEnv();
+    }
+
+    // verify-production's readiness verdict is a pure, testable function (the
+    // network run is guarded behind require.main, so requiring it is side-effect-free).
+    const verify = require('../scripts/verify-production.js');
+    ok(typeof verify.summarize === 'function', 'verify-production exposes summarize()');
+    if (typeof verify.summarize === 'function') {
+      const green = [{ passed: true }, { passed: null }];
+      eq(verify.summarize(green, { aiPresent: true, oauthPresent: true }).ready, true, 'all green + AI + OAuth → ready');
+      const noAi = verify.summarize(green, { aiPresent: false, oauthPresent: true });
+      eq(noAi.ready, false, 'missing AI key → NOT an unqualified ready');
+      ok(noAi.ok === true && noAi.gaps.some(g => /offline parser/i.test(g)), 'AI gap is listed but not a hard failure');
+      eq(verify.summarize(green, { aiPresent: true, oauthPresent: false }).ready, false, 'no OAuth provider → NOT ready');
+      eq(verify.summarize([{ passed: false }], { aiPresent: true, oauthPresent: true }).ok, false, 'a hard failure → not ok');
+    }
+    cleanEnv();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exitCode = 1;
 })().catch(e => { console.error('server tests crashed:', e); process.exitCode = 1; });
