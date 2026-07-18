@@ -413,6 +413,25 @@ section('exports carry the app origin; share links carry a ref marker (A-11)');
   ok(/encodeURIComponent\(Codec\.toShareCode\(state\.spec\)\) \+ '&ref=/.test(uiSrc), 'shareLink appends the ref marker');
 }
 
+/* ---------------- L-03: sheet goods never price in board feet ---------------- */
+section('sheet species carry no vestigial pricePerBdFt (L-03)');
+{
+  // Reader audit (verified at fix time): defaultPrices().bdft filters
+  // !s.sheet; plans.js/packing.js board-foot math reads spec.wood.species,
+  // which correction guarantees is a SOLID species; compareSpecies skips
+  // sheet rows. Nothing consumes pricePerBdFt for sheet: true species.
+  for (const s of Object.values(K.WOOD_SPECIES).filter(x => x.sheet)) {
+    ok(!('pricePerBdFt' in s), `${s.key} carries no pricePerBdFt (plywood is priced per sheet)`);
+  }
+  const dp = K.defaultPrices();
+  ok(Object.keys(dp.bdft).length > 0 && Object.keys(dp.bdft).every(k => !K.WOOD_SPECIES[k].sheet),
+    'board-foot default prices cover exactly the solid species');
+  ok(Object.keys(dp.bdft).every(k => typeof dp.bdft[k] === 'number' && dp.bdft[k] > 0),
+    'solid board-foot defaults remain intact');
+  ok(Object.values(K.WOOD_SPECIES).filter(x => x.sheet).every(s => Object.keys(dp.sheet).includes(s.key)),
+    'every sheet species prices through the per-sheet table instead');
+}
+
 /* ---------------- L-01: cleat stock from the ONE sheet table ---------------- */
 section('french cleat ply comes from the standard sheet-thickness table (L-01)');
 {
