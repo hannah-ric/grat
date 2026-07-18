@@ -1327,6 +1327,37 @@ const clickMoreCtl = async sel => {
     if (document.getElementById('moreMenu').classList.contains('open')) document.getElementById('moreBtn').click();
   });
 
+  /* ================= X-06: phone mode nav keeps its words ================= */
+  // Design/Plan must never collapse to unlabeled dots: visible text labels at
+  // 390px, assistive state labels intact, and the row still fits.
+  const nav390 = await page.evaluate(() => {
+    const label = id => {
+      const l = document.querySelector('#' + id + ' .mode-label');
+      return { visible: !!l && getComputedStyle(l).display !== 'none', text: l ? l.textContent : '' };
+    };
+    return {
+      design: label('mode-design'), plan: label('mode-plan'), build: label('buildModeBtn'),
+      designAria: document.getElementById('mode-design').getAttribute('aria-label') || '',
+      planAria: document.getElementById('mode-plan').getAttribute('aria-label') || '',
+      moreRight: Math.round(document.getElementById('moreBtn').getBoundingClientRect().right),
+      topbarH: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
+      tapOk: [...document.querySelectorAll('.mode-btn')].every(b => b.getBoundingClientRect().height >= 44)
+    };
+  });
+  ok(nav390.design.visible && nav390.design.text === 'Design' && nav390.plan.visible && nav390.plan.text === 'Plan',
+    'Design and Plan keep visible text labels at 390px');
+  ok(nav390.build.visible, 'Build keeps its word too');
+  ok(nav390.designAria.length > 0 && nav390.planAria.length > 0, 'mode buttons keep assistive state labels');
+  ok(nav390.moreRight <= 390, `labeled nav still fits the 390px row (More ends at ${nav390.moreRight}px)`);
+  ok(nav390.topbarH <= 64, `topbar stays one compact row with labels (${nav390.topbarH}px)`);
+  ok(nav390.tapOk, 'labeled mode buttons hold the 44px tap floor');
+  await page.setViewportSize({ width: 430, height: 844 });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => Math.round(document.getElementById('moreBtn').getBoundingClientRect().right) <= 430),
+    'labeled nav fits at 430px too (the tightest mid-band)');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 
