@@ -295,6 +295,60 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- store: server-side Free project cap ---------------- */
+  section('store: server-side Free project cap on NEW project docs only (A-10)');
+  {
+    const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    const cookie = uid => ({ cookie: S.sessionCookieFor({ uid, name: 'T', provider: 'google' }, fakeReq('/')).split(';')[0] });
+    const putDoc = async (uid, doc, value) => {
+      const res = fakeRes();
+      await store(fakeReq('/api/store?doc=' + doc, { method: 'PUT', headers: cookie(uid), body: { value } }), res);
+      return res;
+    };
+    // Save a project the way the client does: project doc first, then the index grows.
+    const seedProject = async (uid, id) => {
+      const r = await putDoc(uid, 'project:' + id, JSON.stringify({ id }));
+      const g = fakeRes(); await store(fakeReq('/api/store?doc=projects:index', { headers: cookie(uid) }), g);
+      const idx = JSON.parse(json(g).value || '[]'); idx.push({ id });
+      await putDoc(uid, 'projects:index', JSON.stringify(idx));
+      return r;
+    };
+
+    const free = 'google:free1';
+    for (const id of ['pA', 'pB', 'pC']) eq((await seedProject(free, id)).statusCode, 200, `creating ${id} under the Free cap is allowed`);
+
+    // A NEW project doc beyond the cap is rejected with a machine-readable error.
+    let r = await putDoc(free, 'project:pD', JSON.stringify({ id: 'pD' }));
+    eq(r.statusCode, 403, 'new project doc beyond the Free cap → 403');
+    eq(json(r).error, 'project_limit', 'the rejection is a distinct machine-readable error');
+
+    // Updating an EXISTING project doc always succeeds, even at/over the cap
+    // (a downgraded ex-Pro user must never lose edits).
+    eq((await putDoc(free, 'project:pA', JSON.stringify({ id: 'pA', edited: true }))).statusCode, 200,
+      'updating an existing project at the cap is allowed');
+
+    // Non-project docs are never capped.
+    eq((await putDoc(free, 'prefs:v2', '{"x":1}')).statusCode, 200, 'prefs unaffected by the cap');
+    eq((await putDoc(free, 'prices:v1', '{}')).statusCode, 200, 'prices unaffected by the cap');
+    eq((await putDoc(free, 'thumb:pD', '"data"')).statusCode, 200, 'thumbnails unaffected by the cap');
+    eq((await putDoc(free, 'projects:index', JSON.stringify([{ id: 'pA' }, { id: 'pB' }, { id: 'pC' }]))).statusCode, 200, 'index write unaffected by the cap');
+
+    // Pro (unlimited) can create well beyond the Free cap.
+    const pro = 'google:pro1';
+    await E.setSubscription(pro, { customerId: 'c', status: 'active' });
+    await putDoc(pro, 'projects:index', JSON.stringify([{ id: 'x1' }, { id: 'x2' }, { id: 'x3' }, { id: 'x4' }, { id: 'x5' }]));
+    eq((await putDoc(pro, 'project:x6', JSON.stringify({ id: 'x6' }))).statusCode, 200, 'Pro (unlimited) creates beyond the Free cap');
+
+    // Anonymous requests never reach the cap — they are 401 before any check.
+    const anon = fakeRes();
+    await store(fakeReq('/api/store?doc=project:pZ', { method: 'PUT', body: { value: '{}' } }), anon);
+    eq(anon.statusCode, 401, 'anonymous project PUT is 401 (cap needs a uid)');
+
+    rmkv();
+    cleanEnv();
+  }
+
   /* ---------------- entitlements: plans + usage ---------------- */
   section('entitlements: Free/Pro plans + usage metering');
   {
