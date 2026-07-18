@@ -451,6 +451,25 @@ section('french cleat ply comes from the standard sheet-thickness table (L-01)')
     'the rip instruction names the same stock the table sells');
 }
 
+/* ---------------- A-06: discoverability — meta/OG tags + robots.txt ---------------- */
+section('template ships meta description + OG tags; build emits robots.txt (A-06)');
+{
+  const tpl = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.template.html'), 'utf8');
+  const head = tpl.slice(0, tpl.indexOf('</head>'));
+  ok(/<meta name="description" content="[^"]{60,}">/.test(head), 'meta description present and substantive');
+  ok(/<meta property="og:title" content="[^"]+">/.test(head), 'og:title present');
+  ok(/<meta property="og:description" content="[^"]+">/.test(head), 'og:description present');
+  ok(/<meta property="og:type" content="website">/.test(head), 'og:type=website present');
+  ok(/<meta name="twitter:card" content="summary">/.test(head), 'twitter:card=summary present');
+  ok(!/og:image/.test(head), 'no og:image is fabricated (no hosted asset exists)');
+  // robots.txt is a real build output, committed alongside dist/index.html.
+  const robotsPath = path.join(__dirname, '..', 'dist', 'robots.txt');
+  const robots = fs.existsSync(robotsPath) ? fs.readFileSync(robotsPath, 'utf8') : '';
+  ok(robots.length > 0, 'dist/robots.txt exists after build');
+  ok(/^User-agent: \*$/m.test(robots) && /^Allow: \/$/m.test(robots), 'robots.txt allows all agents');
+  ok(!/sitemap|\.xml|disallow/i.test(robots), 'robots.txt references nothing that does not exist');
+}
+
 /* ---------------- history ---------------- */
 section('history');
 {
