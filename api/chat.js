@@ -18,6 +18,7 @@
 const crypto = require('crypto');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
+const Log = require('./_log.js');
 
 const DEFAULT_MODEL = 'claude-sonnet-5';
 const MAX_TOKENS_CAP = 1024;   // client asks for 1000; the proxy grants no more than this
@@ -28,8 +29,13 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024; // one downscaled photo is ~300 KB base6
  * so no one can burn the owner's Anthropic key unmetered or dodge the Free cap
  * by signing out (A4b). The IP hash keeps raw addresses out of KV keys. */
 function anonMeterId(req) {
-  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  const ip = fwd || (req.socket && req.socket.remoteAddress) || 'unknown';
+  // Never trust X-Forwarded-For: its leftmost hop is client-supplied, so an
+  // attacker rotates it to mint fresh 25-msg + burst buckets on the owner key
+  // (E-03). x-real-ip is set by Vercel to the verified client IP and is not
+  // forgeable there; behind serve.js (direct connections) it is absent and the
+  // socket address is authoritative. Prefer x-real-ip, then the direct socket.
+  const realIp = String((req.headers && req.headers['x-real-ip']) || '').trim();
+  const ip = realIp || (req.socket && req.socket.remoteAddress) || 'unknown';
   return 'ip:' + crypto.createHash('sha256').update('bb-anon:' + ip).digest('hex').slice(0, 24);
 }
 
@@ -97,6 +103,7 @@ module.exports = async function handler(req, res) {
 
   const session = S.sessionFrom(req);
   const meterId = session ? session.uid : anonMeterId(req);
+  const tokenBudget = parseInt(process.env.AI_MONTHLY_TOKEN_BUDGET, 10) || 0; // 0 / unset = disabled
   if (!burstOK(meterId)) {
     return sendJSON(res, 429, { type: 'error', error: { type: 'rate_limited', message: 'Too many requests — please slow down.' } });
   }
@@ -109,7 +116,20 @@ module.exports = async function handler(req, res) {
         billing: account
       });
     }
-  } catch (error) { /* storage outage must not break AI — the burst guard still applies */ }
+  } catch (error) { Log.report('chat', 'status_lookup_failed', error); /* storage outage must not break AI — the burst guard still applies */ }
+
+  // Optional monthly output-token spend ceiling (E-07a). Enforced PRE-upstream on
+  // the same durable KV meter pattern, so a runaway spend can't reach Anthropic.
+  // A distinct 429 that src/ai.js already surfaces gracefully (rate-limited) —
+  // never a silent drop to the offline parser. Fails open on a storage hiccup.
+  if (tokenBudget > 0) {
+    try {
+      const spent = await E.getTokenUsage(meterId);
+      if (spent.tokens >= tokenBudget) {
+        return sendJSON(res, 429, { type: 'error', error: { type: 'token_budget', message: 'Monthly AI usage limit reached — please try again next month.' } });
+      }
+    } catch (error) { Log.report('chat', 'token_budget_lookup_failed', error); }
+  }
 
   let body;
   try { body = await readBody(req); }
@@ -142,14 +162,23 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify(payload)
     });
   } catch (e) {
+    Log.report('chat', 'upstream_unreachable', e);
     return sendJSON(res, 502, errBody('upstream unreachable: ' + e.message));
   }
 
   let data;
   try { data = await upstream.json(); }
-  catch (e) { return sendJSON(res, 502, errBody('upstream returned non-JSON (' + upstream.status + ')')); }
+  catch (e) { Log.report('chat', 'upstream_non_json', upstream.status); return sendJSON(res, 502, errBody('upstream returned non-JSON (' + upstream.status + ')')); }
   if (upstream.ok) {
-    try { await E.incrementAI(meterId); } catch (error) { /* usage metering is best-effort */ }
+    try { await E.incrementAI(meterId); } catch (error) { Log.report('chat', 'meter_increment_failed', error); /* usage metering is best-effort */ }
+    if (tokenBudget > 0) {
+      // Count actual output tokens when the response reports them; otherwise fall
+      // back to the granted ceiling so an untracked response still spends budget.
+      const spent = (data && data.usage && Number(data.usage.output_tokens)) || payload.max_tokens;
+      try { await E.addTokens(meterId, spent); } catch (error) { Log.report('chat', 'token_meter_failed', error); }
+    }
+  } else {
+    Log.report('chat', 'upstream_error', upstream.status);
   }
   return sendJSON(res, upstream.status, data);
 };

@@ -97,6 +97,7 @@ function snapshot(entry) {
     cutList: cut.map(c => ({ name: c.name, qty: c.qty, L: r3(c.L), W: r3(c.W), T: r3(c.T), material: c.material, grain: c.grain, note: c.note, angles: c.angles || null })),
     integrity: {
       antiTip: integ.antiTip,
+      verdict: integ.summary.verdict, // rollup tier (audit M-18): fail > anchor > advisory > pass
       rackScore: integ.racking.score,
       tip: integ.tip ? { angEmpty: r3(integ.tip.angEmpty), angLoaded: r3(integ.tip.angLoaded), ratio: r3(integ.tip.ratio) } : null,
       checks: integ.checks.map(c => ({

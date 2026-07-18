@@ -428,7 +428,14 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Geometry sanity: aprons and legs must fit under the top.
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
-    st.legThickness = Math.min(st.legThickness, Math.floor(Math.min(o.width, o.depth) / 4));
+    // When the footprint caps the legs, snap DOWN to the largest post-stock
+    // value that still fits (audit E-04): a bare geometric clamp after the
+    // stock snap left off-table values (300×250 → 62) that drifted to 60 on
+    // the next correction pass — one pass must land on-table and stay put.
+    const legCap = Math.floor(Math.min(o.width, o.depth) / 4);
+    if (st.legThickness > legCap) {
+      st.legThickness = K.POST_THICKNESS.filter(t => t <= legCap).pop() || K.POST_THICKNESS[0];
+    }
 
     // Joint gating: code, not the model, enforces the level matrix.
     const lvl = s.meta.level;

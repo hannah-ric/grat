@@ -44,7 +44,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     bmTask: null,                   // phone pager position (derived on entry)
     installPrompt: null,            // stashed beforeinstallprompt event
     wakeLock: null,
-    speciesPick: []
+    speciesPick: [],
+    capBannerDismissed: false,      // session-scoped: dismissed project-cap banner stays down
+    userSplitTouched: false         // session-scoped: a touched splitter is never auto-fought (X-07)
   };
   const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
   const darkMq = matchMedia('(prefers-color-scheme: dark)');
@@ -174,9 +176,41 @@ var BB = globalThis.BB = globalThis.BB || {};
     paintSavePulse('pending');
     saveTimer = setTimeout(doAutosave, 700);
   }
+  /* Free project cap on the AUTOSAVE path (A-04): the pricing dialog opens at
+   * most once per session from here — every later blocked save paints only the
+   * passive indicator + banner, and nothing is ever lost silently: the state
+   * names the share-code way out. (Interactive paths like Duplicate keep the
+   * ordinary BB.Billing.gateNewProject dialog — those are user-initiated.) */
+  let capModalShown = false;
+  function projectCapBlocked(limit) {
+    paintSaveBlocked(limit);
+    if (!capModalShown) {
+      capModalShown = true;
+      BB.Billing.open(`Free includes ${limit} saved projects, so this design isn't being saved. Export a share code to keep it, or upgrade for unlimited projects.`);
+    }
+  }
+  function paintSaveBlocked(limit) {
+    clearTimeout(saveFlashTimer);
+    const elS = $('saveState');
+    elS.textContent = 'not saved — project limit';
+    elS.title = `You're at the Free limit of ${limit} saved projects, so this design is not being saved. Export a share code (Share) to keep it, or upgrade for unlimited projects.`;
+    elS.classList.remove('pending');
+    elS.classList.add('on', 'err');
+    paintSavePulse('err');
+    const banner = $('capBanner');
+    if (banner && !state.capBannerDismissed) banner.hidden = false;
+  }
+  async function autosaveCapAllows() {
+    const limit = BB.Billing.status().entitlements.projectLimit;
+    if (limit === null || limit === undefined) return true;
+    const projects = await Store.loadIndex();
+    if (projects.length < limit) return true;
+    projectCapBlocked(limit);
+    return false;
+  }
   async function doAutosave() {
     try {
-      if (!state.project && !(await BB.Billing.gateNewProject())) return;
+      if (!state.project && !(await autosaveCapAllows())) return;
       if (!state.project) state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } };
       const revisions = state.history.snapshots.slice(-Store.MAX_REVISIONS).map(s => ({
         ts: s.ts, source: s.source, summary: (s.summary || []).slice(0, 3), wire: Codec.encode(s.spec)
@@ -189,11 +223,23 @@ var BB = globalThis.BB = globalThis.BB || {};
         dims: `${fmt(state.spec.overall.width)} × ${fmt(state.spec.overall.depth)} × ${fmt(state.spec.overall.height)}`,
         progressPct: progressPct()
       });
+      // The cloud rung may have refused the doc by policy (server-side Free
+      // cap, A-10) while the local mirror landed — never report that as a
+      // clean save: same visible state as the client-side cap (A-04).
+      const denial = Store.consumeWriteDenial ? Store.consumeWriteDenial() : null;
+      if (denial && denial.error === 'project_limit') {
+        projectCapBlocked(denial.limit || BB.Billing.status().entitlements.projectLimit || 3);
+        return;
+      }
       flashSave(Store.isPersistent());
     } catch (e) { flashSave(false); }
   }
   let saveFlashTimer = null;
   function flashSave(persistent) {
+    // A save landed: the project-cap block (if any) has resolved.
+    const banner = $('capBanner');
+    if (banner) banner.hidden = true;
+    state.capBannerDismissed = false;
     const elS = $('saveState');
     const mode = Store.persistenceMode();
     elS.textContent = !persistent ? 'session only' : mode === 'cloud' ? 'saved · cloud' : 'saved';
@@ -219,11 +265,40 @@ var BB = globalThis.BB = globalThis.BB || {};
    * actually offers accounts (providers configured server-side) — a static
    * host or claude.ai shows nothing at all. */
   const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
+  /* Billing is "configured" when the origin gave us any billing evidence: a
+   * billing payload (fetched or pushed by the chat proxy) or sign-in
+   * providers. Static hosts and claude.ai stay quiet as before (A-05). */
+  function billingConfigured(a) {
+    return !!(a.billing || (a.providers && a.providers.length));
+  }
+  /* Compact AI-allowance meter (A-05): rendered only when billing is real AND
+   * usage is known (> 0) — Free users see the wall coming instead of slamming
+   * into it. Lives under the chat input, the quietest surface next to where
+   * the messages are spent. */
+  function renderUsageMeter() {
+    const box = $('aiUsage');
+    if (!box) return;
+    const b = BB.Billing.status();
+    const limit = b.entitlements && b.entitlements.aiMonthlyLimit;
+    const used = b.usage && b.usage.aiMessages;
+    const show = billingConfigured(Store.auth()) && typeof used === 'number' && used > 0 && !!limit;
+    box.hidden = !show;
+    if (!show) { box.textContent = ''; return; }
+    const left = Math.max(0, limit - used);
+    box.innerHTML = `<span class="ai-usage-count">${left} of ${limit}</span> AI messages left this month` +
+      (b.plan === 'free' ? ` · <button type="button" class="learn-link" id="aiUsageUpgrade">Upgrade</button>` : '');
+    box.title = 'AI messages are metered per calendar month. A single design refinement can use several messages as the model iterates.';
+    const up = $('aiUsageUpgrade');
+    if (up) up.onclick = () => BB.Billing.open();
+  }
   function renderAccount() {
     const area = $('accountArea'), sep = $('accountSep');
     if (!area) return;
+    renderUsageMeter();
+    renderReadiness(); // the Build lock (X-04) follows the same billing evidence
     const a = Store.auth();
-    const show = !!(a.user || (a.providers.length && a.storage));
+    const configured = billingConfigured(a);
+    const show = !!(a.user || (a.providers.length && a.storage) || configured);
     area.hidden = !show;
     sep.hidden = !show;
     area.textContent = '';
@@ -252,6 +327,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
       }
+      // Persistent plans surface (A-05): upgrading must be findable before
+      // the paywall, not only at it.
+      if (configured) {
+        const plans = el('button', '', '<span>Plans &amp; pricing</span><span class="hint">upgrade</span>');
+        plans.setAttribute('role', 'menuitem');
+        plans.onclick = () => BB.Billing.open();
+        area.append(plans);
+      }
     }
   }
 
@@ -273,6 +356,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('levelSelect').value = state.spec.meta.level;
     $('undoBtn').disabled = !state.history.canUndo();
     $('redoBtn').disabled = !state.history.canRedo();
+    // The phone-width More-menu redo (P1-1) mirrors the topbar button's state.
+    const menuRedo = $('menuRedoBtn');
+    if (menuRedo) menuRedo.disabled = !state.history.canRedo();
   }
 
   /* Theme rides prefs: auto follows the OS, light/dark pin the palette via
@@ -407,17 +493,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     const plan = state.stockPlan;
     const boards = plan ? plan.boards.length + plan.sheets.length : 0;
     const partCount = state.cut.reduce((n, r) => n + r.qty, 0);
-    const verdict = sum.fails ? 'fail' : sum.advisories ? 'advisory' : 'pass';
-    const verdictText = sum.fails
+    // Rollup tier from the engine (audit M-18): fail > anchor > advisory > pass.
+    const verdict = sum.verdict;
+    const verdictText = verdict === 'fail'
       ? 'This design does not yet pass the required strength checks.'
-      : sum.advisories
-        ? 'This design passes the required strength checks, with notes worth reading.'
-        : 'This design passes the required strength checks.';
+      : verdict === 'anchor'
+        ? 'This design is safe only when anchored to the wall — the anti-tip anchor is in the BOM and the assembly steps, not optional.'
+        : verdict === 'advisory'
+          ? 'This design passes the required strength checks, with notes worth reading.'
+          : 'This design passes the required strength checks.';
     const cards = [
       { label: 'Parts to cut', value: String(partCount), go: 'cut', aria: 'Open the cut list' },
       { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : String(boards), go: 'stock', aria: 'Open the buying plan' },
       { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'stock', aria: 'Open buying and pricing' },
-      { label: 'Safety', value: verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
+      { label: 'Safety', value: verdict === 'anchor' ? 'ANCHOR REQUIRED' : verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
     ];
     const grid = el('div', 'overview-grid');
     for (const c of cards) {
@@ -845,19 +934,22 @@ var BB = globalThis.BB = globalThis.BB || {};
    * first layer while fixes stay one glance away. */
   function renderIntegrity(root) {
     const integ = state.integrity;
-    const overall = integ.summary.fails ? 'fail' : integ.summary.advisories ? 'advisory' : 'pass';
+    const overall = integ.summary.verdict; // engine rollup (audit M-18): fail > anchor > advisory > pass
     const beginner = state.spec.meta.level === 'beginner';
     root.append(el('h3', '', 'Safety'));
     const summary = el('div', 'integrity-summary');
-    summary.innerHTML = `<span class="stamp ${overall}">${overall}</span>
+    summary.innerHTML = `<span class="stamp ${overall}">${overall === 'anchor' ? 'anchor required' : overall}</span>
       <span class="integrity-plain">${overall === 'pass'
         ? 'This design passes the required strength checks.'
         : overall === 'advisory'
           ? 'This design passes the required strength checks, with notes worth reading below.'
-          : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
+          : overall === 'anchor'
+            ? 'This design is safe only when anchored to the wall. The anti-tip anchor is mandatory — it is in the BOM and the assembly steps, not optional.'
+            : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
     root.append(summary);
-    // Failing checks never hide: plain card + one-tap fixes, above the fold.
-    for (const c of integ.checks.filter(x => x.status === 'fail')) {
+    // Failing checks never hide — and neither does a check that mandates the
+    // wall anchor (audit M-18): plain card, above the fold, at every level.
+    for (const c of integ.checks.filter(x => x.status === 'fail' || x.anchor)) {
       root.append(checkCard(c, { full: !beginner }));
     }
     const details = document.createElement('details');
@@ -919,7 +1011,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // The plain tier speaks builder, not engineer: what went wrong and that a
     // one-tap fix exists. The engine's full explanation (creep factors, exact
     // values, thresholds) stays one fold away in "See engineering details".
-    const plainLine = 'This part would not safely carry its expected load as designed. '
+    // Anchor-mandating tipping checks (audit M-18) already explain themselves
+    // in plain language — the generic load sentence would be wrong for them.
+    const plainLine = c.anchor
+      ? c.explain
+      : 'This part would not safely carry its expected load as designed. '
       + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.');
     card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
       (full ? `<div class="check-value">${esc(c.value)}</div>
@@ -990,7 +1086,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     search.placeholder = 'Search species, joints, screws, finishes…';
     search.value = state.refQuery;
     search.setAttribute('aria-label', 'Search reference tables');
+    // The reference body completes the ARIA tab pattern (P2-7): a labelled
+    // tabpanel every tab points at via aria-controls.
     const body = el('div');
+    body.id = 'refPanel';
+    body.setAttribute('role', 'tabpanel');
     const tabs = el('div', 'ref-tabs');
     const syncTabButtons = () => {
       tabs.querySelectorAll('.ref-tab').forEach((b, i) => {
@@ -998,6 +1098,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         b.setAttribute('aria-selected', String(state.refTab === key));
         b.tabIndex = state.refTab === key ? 0 : -1;
       });
+      body.setAttribute('aria-labelledby', 'ref-tab-' + state.refTab);
     };
     search.oninput = () => {
       state.refQuery = search.value;
@@ -1009,9 +1110,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(search);
 
     tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Reference sections');
     for (const [key, label] of REF_ENTRIES) {
       const b = el('button', 'ref-tab', esc(label));
+      b.id = 'ref-tab-' + key;
       b.setAttribute('role', 'tab');
+      b.setAttribute('aria-controls', 'refPanel');
       b.setAttribute('aria-selected', state.refTab === key);
       b.tabIndex = state.refTab === key ? 0 : -1; // roving tabindex
       b.onclick = () => { state.refTab = key; syncHash(); renderPanel(); };
@@ -1049,10 +1153,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     let rows = '', head = '';
     if (state.refTab === 'wood') {
       head = '<th>Species</th><th class="num">Janka</th><th class="num">MOE GPa</th><th class="num">MOR MPa</th><th class="num">SG</th><th class="num">Move ct/1%MC</th><th class="num">Cost</th><th>Character</th>';
+      // Sheet goods are badged, and their Janka/movement cells dash (audit
+      // M-12): face hardness is not comparable across a ply/fiber face, and
+      // the movement engine exempts sheet stock — showing solid-wood numbers
+      // there would be dishonest.
       rows = Object.values(K.WOOD_SPECIES).filter(s => hit(s.label, s.blurb, s.movement)).map(s => `<tr>
-        <td><strong>${esc(s.label)}</strong></td><td class="num">${s.janka} lbf</td>
+        <td><strong>${esc(s.label)}</strong>${s.sheet ? ' <span class="sheet-badge">sheet</span>' : ''}</td><td class="num">${s.sheet ? '—' : s.janka + ' lbf'}</td>
         <td class="num">${s.moe.toFixed(1)}</td><td class="num">${s.mor}</td><td class="num">${s.sg.toFixed(2)}</td>
-        <td class="num movement-${s.movement}">${s.ct.toFixed(5)}</td>
+        <td class="num${s.sheet ? '' : ' movement-' + s.movement}">${s.sheet ? '—' : s.ct.toFixed(5)}</td>
         <td class="num">${'$'.repeat(s.costTier)}</td>
         <td style="font-size:var(--text-s);color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
     } else if (state.refTab === 'ergo') {
@@ -1193,15 +1301,19 @@ var BB = globalThis.BB = globalThis.BB || {};
   function setAIState(mode, detail) {
     const label = mode === 'online' ? 'AI online'
       : mode === 'offline' ? 'Offline · basic edits'
-        : 'AI · checking…';
+        : mode === 'unconfigured' ? 'AI not configured'
+          : 'AI · checking…';
     const barLabel = mode === 'online' ? 'Online'
       : mode === 'offline' ? 'Offline'
-        : '…';
+        : mode === 'unconfigured' ? 'AI not configured'
+          : '…';
     const title = detail || (mode === 'online'
       ? 'Connected to the design service — full natural-language design and photo input.'
       : mode === 'offline'
         ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
-        : 'Checking the design service…');
+        : mode === 'unconfigured'
+          ? 'The server has no AI key configured — a deploy issue, not your connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser.'
+          : 'Checking the design service…');
     const badge = $('aiBadge');
     if (badge) {
       badge.dataset.state = mode;
@@ -1226,8 +1338,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     try {
       const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       if (r.status === 400) { setAIState('online'); return; }               // proxy present, key configured
-      if (r.status === 503) {                                               // proxy present, no key
-        setAIState(claudeHost ? 'online' : 'offline', claudeHost ? undefined : 'AI proxy not configured (no API key on the server). Basic edits still work.');
+      if (r.status === 503) {                                               // proxy present, no key (L-14)
+        setAIState(claudeHost ? 'online' : 'unconfigured');
         return;
       }
       setAIState(claudeHost ? 'online' : 'offline');                        // 404/405: no proxy here
@@ -1270,6 +1382,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // (429) — act on it instead of pretending we went offline.
     if (res.usageLimit) {
       if (res.billing) Store.setBilling(res.billing);
+      renderAccount(); // meter + plans surface reflect the fresh numbers (A-05)
       const limit = (res.billing && res.billing.entitlements && res.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
       BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
       return null;
@@ -1339,7 +1452,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, local: !!res.local };
+    return { final, failReport, explain, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -1378,9 +1491,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = Spec.describeDiff(realDiffs);
       // The badge reflects what actually just happened — the strongest
-      // evidence there is about the connection state.
-      setAIState(out.local ? 'offline' : 'online');
-      if (!out.local && Store.auth().user) BB.Billing.refresh();
+      // evidence there is about the connection state. A keyless proxy (503)
+      // reads "AI not configured", never plain offline (audit L-14).
+      setAIState(out.local ? (out.unconfigured ? 'unconfigured' : 'offline') : 'online');
+      if (!out.local && Store.auth().user) BB.Billing.refresh().then(() => renderAccount());
       const caveat = [
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
@@ -2064,11 +2178,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (res.error) { $('importMsg').textContent = res.error; return; }
     closeScrim('shareScrim');
   }
+  /* The app's own URL for export footers and share links (audit A-11).
+   * Runtime state stays HERE — the exporters receive it as an argument and
+   * remain pure. Empty on file:// and sandboxed hosts. */
+  function appOrigin() {
+    return location.origin && location.origin !== 'null'
+      ? (location.origin + location.pathname).replace(/index\.html?$/, '')
+      : '';
+  }
   /* The share LINK is the same self-contained code riding the URL hash —
-   * no server, works wherever the app is hosted. */
+   * no server, works wherever the app is hosted. The ref marker attributes
+   * shared-link arrivals; import tolerates and strips it (Codec). */
   function shareLink() {
     return location.origin && location.origin !== 'null'
-      ? location.origin + location.pathname + '#d=' + encodeURIComponent(Codec.toShareCode(state.spec))
+      ? location.origin + location.pathname + '#d=' + encodeURIComponent(Codec.toShareCode(state.spec)) + '&ref=share'
       : null; // file:// has no shareable origin — the sheet says so honestly
   }
 
@@ -2153,15 +2276,20 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function bindLogoLongPress() {
     const logo = $('brandLogo');
+    const openDiag = () => { openScrim('diagScrim'); runDiagnostics(); };
     let timer = null;
     const start = e => {
-      timer = setTimeout(() => { openScrim('diagScrim'); runDiagnostics(); }, 650);
+      timer = setTimeout(openDiag, 650);
     };
     const cancel = () => { clearTimeout(timer); timer = null; };
     logo.addEventListener('pointerdown', start);
     logo.addEventListener('pointerup', cancel);
     logo.addEventListener('pointerleave', cancel);
     logo.addEventListener('pointercancel', cancel);
+    // Keyboard reachability (M-16): the logo is a real button, so Enter and
+    // Space arrive as a click with detail 0 — those open directly. Pointer
+    // taps (detail ≥ 1) keep the deliberate long-press requirement.
+    logo.addEventListener('click', e => { if (e.detail === 0) openDiag(); });
     logo.addEventListener('contextmenu', e => e.preventDefault());
   }
 
@@ -2523,12 +2651,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!dragging) return;
       dragging = false;
       sp.classList.remove('dragging');
+      if (moved) state.userSplitTouched = true; // their split now (X-07)
       Store.savePrefs(state.prefs4);
       syncHash();
       if (touchTap) {
         const now = performance.now();
         if (now - lastTouchTapAt <= 300) {
           lastTouchTapAt = 0;
+          state.userSplitTouched = true;
           setSplit(SPLIT_DEFAULT);
         } else {
           lastTouchTapAt = now;
@@ -2537,7 +2667,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     sp.addEventListener('pointerup', endDrag);
     sp.addEventListener('pointercancel', endDrag);
-    sp.addEventListener('dblclick', () => setSplit(SPLIT_DEFAULT));
+    sp.addEventListener('dblclick', () => { state.userSplitTouched = true; setSplit(SPLIT_DEFAULT); });
     sp.addEventListener('keydown', e => {
       const cur = state.prefs4.ui.split;
       let next = null;
@@ -2548,7 +2678,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       else if (e.key === 'Home') next = SPLIT_MIN;
       else if (e.key === 'End') next = SPLIT_MAX;
       else if (e.key === 'Enter') next = SPLIT_DEFAULT;
-      if (next !== null) { e.preventDefault(); setSplit(next); }
+      if (next !== null) { e.preventDefault(); state.userSplitTouched = true; setSplit(next); }
     });
   }
 
@@ -2557,10 +2687,26 @@ var BB = globalThis.BB = globalThis.BB || {};
    * carries a state dot DERIVED from what the pipeline already knows —
    * nothing stored, nothing to get stale. Build stays the existing
    * full-screen surface layered over whichever mode it was entered from. */
+  /* Plan mode on a phone must show real plan content (X-07): entering Plan
+   * at ≤560px auto-shifts the splitter so the panel holds at least 40% of
+   * the viewport height. A splitter the user touched this session always
+   * wins — the shift never fights a live choice, and it is session-visual
+   * only (persist:false), exactly like a hash-carried split. */
+  function autoSplitForPlanPhone() {
+    if (state.userSplitTouched || !matchMedia('(max-width: 560px)').matches) return;
+    const stageH = $('stage').getBoundingClientRect().height;
+    if (stageH <= 0) return;
+    const want = Math.round(window.innerHeight * 0.4);
+    const tabsH = $('tabBar').offsetHeight || 44;
+    const maxPct = Math.floor(((stageH - tabsH - 9 - want) / stageH) * 100);
+    const target = Math.max(SPLIT_MIN, Math.min(state.prefs4.ui.split, maxPct));
+    if (target < state.prefs4.ui.split) setSplit(target, { persist: false });
+  }
   function setMode(m, opts) {
     if (m === 'build') { enterBuildMode(); return; }
     state.mode = m === 'plan' ? 'plan' : 'design';
     document.body.dataset.mode = state.mode;
+    if (state.mode === 'plan') autoSplitForPlanPhone();
     if (!(opts && opts.silent)) syncHash();
     renderReadiness();
     if (state.mode === 'plan') { renderTabs(); renderPanel(); }
@@ -2578,8 +2724,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       plan: {
         state: sum.fails ? 'fail' : sum.advisories || stockTrouble ? 'attn' : state.cut.length ? 'done' : 'todo',
         aria: sum.fails ? `Plan mode — ${sum.fails} failing safety check${sum.fails > 1 ? 's' : ''}`
-          : sum.advisories ? `Plan mode — checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`
-            : `Plan mode — cut list, buying, assembly, safety`
+          : sum.verdict === 'anchor' ? 'Plan mode — safe only when anchored to the wall'
+            : sum.advisories ? `Plan mode — checks pass with ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`
+              : `Plan mode — cut list, buying, assembly, safety`
       },
       build: {
         state: pct >= 100 ? 'done' : pct > 0 ? 'attn' : 'todo',
@@ -2590,6 +2737,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderReadiness() {
     if (!state.integrity) return;
     const states = modeStates();
+    // Build is Pro-gated: the lock glyph + aria announce the paywall BEFORE
+    // the tap (X-04) — activation still opens the pricing dialog.
+    const buildLocked = !BB.Billing.entitled('advancedFeatures');
+    const lockEl = $('buildModeLock');
+    if (lockEl) lockEl.hidden = !buildLocked;
     for (const m of ['design', 'plan', 'build']) {
       const b = $(m === 'build' ? 'buildModeBtn' : 'mode-' + m);
       if (!b) continue;
@@ -2598,14 +2750,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
       if (current) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
-      b.setAttribute('aria-label', s.aria);
-      b.title = s.aria;
+      const aria = m === 'build' && buildLocked ? s.aria + ' — included with Pro' : s.aria;
+      b.setAttribute('aria-label', aria);
+      b.title = aria;
     }
   }
 
   /* ---------------- shell: first-run hero (never blocking) ---------------- */
   function showWelcome(hasProjects) {
-    $('welcomeResumeName').textContent = hasProjects ? 'Open a saved design' : 'Open a saved design';
+    // No saved projects: the third path is IMPORT (paste a code someone gave
+    // you) — "open a saved design" would name a thing that doesn't exist yet
+    // and land export-first (M-15).
+    $('welcomeResumeName').textContent = hasProjects ? 'Open a saved design' : 'Import a design';
     $('welcomeResumeCaption').textContent = hasProjects
       ? 'Pick up where you left off — plans and build progress included.'
       : 'Paste a BB4: share code to pick up a design from anywhere.';
@@ -2697,6 +2853,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // name carries the same state.
     const integTab = $('tab-integrity');
     if (sum && sum.fails) integTab.setAttribute('aria-label', `Integrity — ${sum.fails} failing check${sum.fails > 1 ? 's' : ''}`);
+    else if (sum && sum.verdict === 'anchor') integTab.setAttribute('aria-label', 'Integrity — safe only when anchored to the wall');
     else if (sum && sum.advisories) integTab.setAttribute('aria-label', `Integrity — ${sum.advisories} advisory note${sum.advisories > 1 ? 's' : ''}`);
     else integTab.removeAttribute('aria-label');
     syncHash();
@@ -2744,16 +2901,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (kind === 'json') {
       Exports.download(name + '.designspec.json', JSON.stringify(state.spec, null, 2), 'application/json');
     } else if (kind === 'csv') {
-      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut), 'text/csv');
+      Exports.download(name + '.cutlist.csv', Exports.toCSV(state.spec, state.cut, { origin: appOrigin() }), 'text/csv');
       botSay('Exported the cut list as CSV — display units and raw millimetres side by side, ready for a spreadsheet.', []);
     } else if (kind === 'svg') {
-      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt)), 'image/svg+xml');
+      Exports.download(name + '.drawing.svg', Exports.printSVG(BB.Drafting.sheetSVG(state.spec, state.model, fmt, { origin: appOrigin() })), 'image/svg+xml');
       botSay('Exported the drawing sheet — front, side, and plan elevations with dimensions, plus a title block. Opens in any browser or vector editor.', []);
     } else if (kind === 'share') {
       openShareSheet();
     } else if (kind === 'print') {
       const root = $('printRoot');
-      root.innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan);
+      root.innerHTML = Exports.printHTML(state.spec, state.model, state.cut, state.bomData, state.steps, state.stockPlan, { origin: appOrigin() });
       // Release the sheet's inline-SVG DOM (~26 KB) once the dialog closes,
       // rather than leaving it parked in the document until the next print.
       const cleanup = () => { root.textContent = ''; window.removeEventListener('afterprint', cleanup); };
@@ -2798,6 +2955,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     set('pbReplay', 'replay');
     set('bmPbPrev', 'prev', 'Prev');
     set('bmPbNext', 'next', 'Next', true);
+    set('capBannerClose', 'close', undefined);
+    if ($('buildModeLock')) $('buildModeLock').innerHTML = icon('lock', 12);
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
   }
 
@@ -2894,6 +3053,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.history = History.createHistory(r.spec, 'seed');
     state.engine.snapNow();
     applyHash(); // a deep-linked tab survives the reload
+    if (state.mode === 'plan') autoSplitForPlanPhone(); // deep-linked Plan gets the phone floor too (X-07)
     renderAll();
     renderHints();
     renderGallery();
@@ -2920,8 +3080,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     else setTimeout(() => galleryThumbsPass(), 1200);
 
     /* top bar */
+    const doRedo = () => { const s = state.history.redo(); if (s) restoreTo(s); };
     $('undoBtn').onclick = () => { const s = state.history.undo(); if (s) restoreTo(s); };
-    $('redoBtn').onclick = () => { const s = state.history.redo(); if (s) restoreTo(s); };
+    $('redoBtn').onclick = doRedo;
+    $('menuRedoBtn').onclick = doRedo; // phone-width redo (P1-1) — same history path
     $('historyBtn').onclick = openHistoryDrawer;
     $('historyClose').onclick = closeHistoryDrawer;
     $('historyBackdrop').onclick = closeHistoryDrawer;
@@ -3002,6 +3164,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       else { openShareSheet(); $('importCode').focus(); }
     };
     $('shareBtn').onclick = openShareSheet;
+    $('menuShareBtn').onclick = openShareSheet; // phone-width Share/Import entry (X-05)
+    /* project-cap banner (A-04): passive, dismissible, share-code way out */
+    $('capBannerShare').onclick = () => openShareSheet();
+    $('capBannerUpgrade').onclick = () => BB.Billing.open();
+    $('capBannerClose').onclick = () => { state.capBannerDismissed = true; $('capBanner').hidden = true; };
     $('copyShareLink').onclick = async () => {
       const ta = $('shareLinkText');
       ta.select();
@@ -3073,7 +3240,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       // Menu-button keyboard pattern: ArrowDown opens and enters the menu,
       // arrows cycle the items, Escape (global handler) closes topmost.
-      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length || m.classList.contains('open'));
+      // Width-hidden entries (e.g. the phone-only Share/Import item) must not
+      // catch keyboard focus: only items with a rendered box participate.
+      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length);
       b.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
@@ -3323,7 +3492,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
       preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
       setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness,
-      setMode, probeAI, setAIState
+      setMode, probeAI, setAIState, renderAccount
     };
 
     // Viewport guidance speaks the input language it sees, and steps aside

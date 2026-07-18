@@ -141,7 +141,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   const WORD_NUMS = { one: 1, a: 1, an: 1, two: 2, three: 3, four: 4 };
 
-  function localModel(text, spec) {
+  function localModel(text, spec, lmOpts) {
+    // The user's own phrasing survives for NAMES (audit X-09): length
+    // pre-normalization ("about 5 feet tall" → "about 1524mm tall") exists
+    // for parsing and the wire, never for what the piece is called. The chat
+    // route normalizes before calling here, so it passes the original via
+    // lmOpts.phrasing; direct callers' raw text is captured before our own
+    // normalization pass.
+    const phrasing = (lmOpts && lmOpts.phrasing) || String(text || '');
     text = BB.Units.normalizeLengthText(text); // idempotent; direct callers get the same guarantee as chat
     const t = ' ' + String(text).toLowerCase().trim() + ' ';
     const patch = {};
@@ -152,11 +159,36 @@ var BB = globalThis.BB = globalThis.BB || {};
       o[ks[ks.length - 1]] = v;
     };
 
-    // New design?
+    const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
+    /* Negation guard (audit FE-H11): "no ash please" is a REJECTION of ash,
+     * not a request for it. A mention within a few words of a negation (in
+     * the same clause) is skipped; if nothing else was asked, the reply asks
+     * instead — never a wrong ack. Shared by species and template detection. */
+    const negated = (src, rx) => {
+      const m = rx.exec(src);
+      if (!m) return false;
+      const clause = src.slice(0, m.index).split(/[,.;:!?()]|\s[—–-]\s/).pop();
+      return /(?:^|\s)(?:no|not|never|without|avoid|don'?t|do not|hate)(?:\s+[\w']+){0,2}\s*$/.test(clause);
+    };
+
+    // New design? Longest template word first: "bedside table" must win
+    // over "table".
     const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
-    let wantTemplate = null;
-    for (const w of Object.keys(tmplWords)) if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; break; }
-    const creating = /\b(build|make|design|create|new|start)\b/.test(t) && wantTemplate && wantTemplate !== spec.meta.template;
+    let wantTemplate = null, tmplWord = null;
+    for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
+      if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
+    }
+    // A creation verb creates — and so does a bare noun-phrase description
+    // (audit X-01): the hero placeholder "A walnut nightstand with two
+    // drawers" names a piece with no verb at all. A description leads with
+    // the template noun (an article plus at most three descriptor words),
+    // never refers back to the current piece, and is not negated
+    // ("not a nightstand").
+    const bareDescription = !!tmplWord &&
+      !/\b(it|its|this|that|my|mine)\b/.test(t) &&
+      !negated(t, rxWord(tmplWord)) &&
+      new RegExp('^(?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,3}?' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').test(t.trim());
+    const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && wantTemplate !== spec.meta.template;
 
     // Ambiguity checks first.
     if (/\b(bigger|larger|smaller)\b/.test(t) && !/\b(wide|width|deep|depth|tall|height|high|%|percent)\b/.test(t)) {
@@ -170,18 +202,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // last-word collisions ("pine"); `aliases` come from the species table.
     // Strip "instead of <species>" so "make it oak instead of walnut" picks oak.
     const speciesText = t.replace(/\binstead of\s+[\w\s-]{2,40}(?=\s|$|,|\.|!|;)/g, ' ');
-    const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
-    /* Negation guard (audit FE-H11): "no ash please" is a REJECTION of ash,
-     * not a request for it. A species mention within a few words of a
-     * negation (in the same clause) is skipped; if nothing else was asked,
-     * the reply asks which wood instead — never a wrong ack. */
     let negatedSpecies = null;
-    const negated = (src, rx) => {
-      const m = rx.exec(src);
-      if (!m) return false;
-      const clause = src.slice(0, m.index).split(/[,.;:!?()]|\s[—–-]\s/).pop();
-      return /(?:^|\s)(?:no|not|never|without|avoid|don'?t|do not|hate)(?:\s+[\w']+){0,2}\s*$/.test(clause);
-    };
     const solid = Object.values(K.WOOD_SPECIES).filter(s => !s.sheet);
     let picked = null;
     for (const s of [...solid].sort((x, y) => y.label.length - x.label.length)) {
@@ -243,7 +264,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       const thinner = /(thinner|slimmer)/.test(mm2[1]);
       set('structure.legThickness', spec.structure.legThickness + (thinner ? -12 : 12)); notes.push('legs');
     }
-    if ((mm2 = t.match(/(\d+)\s*(?:more\s+)?shel(?:f|ves)/)) || (mm2 = t.match(/shel(?:f|ves)[^\d]*(\d+)/))) {
+    // Shelf counts are bare small numbers, never length tokens: "bookshelf
+    // about 1524mm tall" must not read 1524 as a shelf count (the corrected
+    // spec would clamp it to 8 and the chips would report a change nobody
+    // asked for — audit X-01). \b also keeps "bookshelf" itself from
+    // matching as "…shelf".
+    if ((mm2 = t.match(/(\d+)\s*(?:more\s+)?\bshel(?:f|ves)\b/)) || (mm2 = t.match(/\bshel(?:f|ves)\b[^\d]*?(\d+)(?![\d.]|\s*(?:mm|cm|m|in|inch(?:es)?|"|ft|feet|foot)\b)/))) {
       set('structure.shelfCount', parseInt(mm2[1], 10)); notes.push('shelves');
     } else if (/\badd (a |another )?shelf\b/.test(t)) {
       set('structure.shelfCount', spec.structure.shelfCount + 1); notes.push('shelf');
@@ -251,13 +277,18 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Drawers. Honesty first (audit FE-H10): the code strips drawers from
     // templates without openings, so the parser must never ack one there.
+    // Drawer fields judge the template the patch actually LANDS on (audit
+    // X-01): the new template when creating, else the CURRENT design — a
+    // mentioned-but-not-created template must never smuggle a field that
+    // correction will strip (the phantom "2 drawer(s)" ack).
     const canDrawer = w => ['nightstand', 'cabinet'].includes(w || spec.meta.template);
+    const landing = creating ? wantTemplate : spec.meta.template;
     let dm = null;
     if (/\b(no|remove|without)\b.*\bdrawers?\b/.test(t) && spec.meta.template !== 'nightstand') { patch.drawers = null; notes.push('no drawers'); }
     else {
       dm = t.match(/(\d+|one|two|three|four)\s+drawers?/);
       if (!dm && /\badd (a |another )?drawer\b/.test(t)) dm = [null, String((spec.drawers ? spec.drawers.count : 0) + 1)];
-      if (dm && !canDrawer(wantTemplate) && !creating) {
+      if (dm && !canDrawer(landing) && !creating) {
         if (!Object.keys(patch).length) {
           return {
             kind: 'question',
@@ -266,13 +297,13 @@ var BB = globalThis.BB = globalThis.BB || {};
           };
         }
         notes.push(`drawers skipped — not available on a ${spec.meta.template}`);
-      } else if (dm && canDrawer(wantTemplate)) {
+      } else if (dm && canDrawer(landing)) {
         const count = WORD_NUMS[dm[1]] || parseInt(dm[1], 10) || 1;
         set('drawers.count', Math.min(4, Math.max(1, count)));
         if (!spec.drawers) { set('drawers.frontStyle', 'inset'); set('drawers.runner', 'side_mount_slides'); }
         notes.push(count + ' drawer(s)');
       }
-      if (canDrawer(wantTemplate)) {
+      if (canDrawer(landing)) {
         if (/\boverlay\b/.test(t)) set('drawers.frontStyle', 'overlay');
         if (/\binset\b/.test(t)) set('drawers.frontStyle', 'inset');
         if (/\bwood(en)? runners?\b/.test(t)) { set('drawers.runner', 'wood_runners'); notes.push('wood runners'); }
@@ -301,9 +332,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
-      merged.meta.name = text.length < 40 ? text.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || wantTemplate : 'New ' + wantTemplate;
+      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || wantTemplate : 'New ' + wantTemplate;
       merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
-      const drawerNote = dm && !canDrawer(wantTemplate) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
+      const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
       return { kind: 'new', spec: merged, explain: `Roughed out a ${wantTemplate} to standard proportions${drawerNote} — refine away.` };
     }
 
@@ -334,6 +365,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   // bundled dev server; absent on claude.ai, where it dies on first touch
   // and the direct transport takes over. Browser-only.
   let proxyDead = typeof window === 'undefined';
+  // A proxy that EXISTS but answered 503 (no ANTHROPIC_API_KEY on the server)
+  // is a broken deploy, not ordinary offline — remembered for the session so
+  // the UI can say "AI not configured" instead of the generic offline label
+  // (audit L-14).
+  let proxyUnconfigured = false;
 
   async function proxyTransport(system, messages) {
     let response;
@@ -349,6 +385,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // upstream errors and leave the proxy alive for the next message.
     if (response.status === 404 || response.status === 405 || response.status === 503) {
       proxyDead = true;
+      if (response.status === 503) proxyUnconfigured = true; // route exists, key missing (L-14)
       throw new Error('proxy unavailable (' + response.status + ')');
     }
     // Usage limit (402) and rate limit (429) are AUTHORITATIVE, not transport
@@ -497,10 +534,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   async function respond(userText, spec, opts) {
     opts = opts || {};
     // Pre-parse dimension strings to explicit millimetres BEFORE the model
-    // sees them — the model proposes intent and never converts units.
+    // sees them — the model proposes intent and never converts units. The
+    // original phrasing is kept for design names (audit X-09).
+    const phrasing = String(userText || '');
     userText = BB.Units.normalizeLengthText(userText);
     const onStatus = opts.onStatus || (() => {});
-    if (!hasRemote()) return { reply: localModel(userText, spec), turns: opts.turns || [], local: true };
+    if (!hasRemote()) return { reply: localModel(userText, spec, { phrasing }), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
 
     const system = systemPrompt(spec);
     const turns = opts.turns || [];
@@ -540,7 +579,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
       if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
-      return { reply: localModel(userText, spec), turns, local: true };
+      return { reply: localModel(userText, spec, { phrasing }), turns, local: true, unconfigured: proxyUnconfigured };
     }
   }
 
@@ -616,6 +655,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
     setTransport, callModel, buildMessages, buildCritique, downscaleImage,
     supportsImages, hasRemote, VISION_PROMPT,
+    unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
     MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT
   };
 })();

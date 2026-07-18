@@ -4,6 +4,7 @@ const Stripe = require('./_stripe.js');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
 const Env = require('./_env-check.js');
+const Log = require('./_log.js');
 
 // Audit env vars once at cold start so missing keys surface immediately in logs.
 Env.audit();
@@ -92,6 +93,7 @@ module.exports = async function handler(req, res) {
     // Never leak the raw upstream message to the browser. `error.code` (when
     // present) is Stripe's enum-like code, not free text, so it is safe and
     // useful for the client to branch on; the human-readable detail stays server-side.
+    Log.report('billing', 'stripe_error', error);
     return sendJSON(res, 502, { error: 'billing_error', code: error.code || null });
   }
 };

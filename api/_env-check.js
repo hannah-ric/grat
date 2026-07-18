@@ -36,6 +36,12 @@ const CHECKS = [
     required: true,
     remedy: 'Add the Upstash Redis integration from the Vercel Marketplace — it injects KV_REST_API_TOKEN automatically.'
   },
+  // ── AI proxy ─────────────────────────────────────────────────────────────────
+  {
+    key: 'ANTHROPIC_API_KEY',
+    required: false,  // advisory: the app degrades to its built-in offline parser
+    remedy: 'AI chat is unconfigured, so the app degrades to its built-in offline parser. Set ANTHROPIC_API_KEY to enable live AI.'
+  },
   // ── Stripe ──────────────────────────────────────────────────────────────────
   {
     key: 'STRIPE_SECRET_KEY',
@@ -70,10 +76,10 @@ function present(key, aliases) {
   return !!(aliases && aliases.some(a => process.env[a]));
 }
 
-function audit() {
-  if (checked) return;
-  checked = true;
-
+/* Pure evaluation of the current environment — no logging, no once-guard — so
+ * it is unit-testable. Returns the missing (required) and advisory (optional but
+ * recommended) checks for the process env as it stands right now. */
+function evaluate() {
   const missing = [];
   const advisory = [];
 
@@ -82,6 +88,25 @@ function audit() {
     if (check.required) missing.push(check);
     else advisory.push(check);
   }
+
+  // OAuth is a PAIR check, not a single key: at least one of Google/GitHub must
+  // have both id + secret, or no one can sign in and billing/Pro is unreachable.
+  const oauthPresent =
+    !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) ||
+    !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
+  if (!oauthPresent) advisory.push({
+    key: 'OAuth provider (Google or GitHub)',
+    remedy: 'No OAuth client pair is configured, so no one can sign in and billing/Pro checkout is unreachable. Set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET or GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET.'
+  });
+
+  return { missing, advisory };
+}
+
+function audit() {
+  if (checked) return;
+  checked = true;
+
+  const { missing, advisory } = evaluate();
 
   if (missing.length === 0 && advisory.length === 0) {
     console.log('[Blueprint Buddy] All required environment variables are set.');
@@ -104,4 +129,4 @@ function audit() {
   }
 }
 
-module.exports = { audit };
+module.exports = { audit, evaluate };

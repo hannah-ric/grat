@@ -95,7 +95,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // bending, so MOE ≈ 0.7× and MOR ≈ 0.5× solid birch (13.9 GPa / 114 MPa).
       // ct/cr ≈ 0: cross-laminated plies cancel seasonal movement — plywood is exempt.
       key: 'baltic_birch', label: 'Baltic Birch Ply', janka: 1260, workability: 4,
-      movement: 'low', outdoor: false, costTier: 2, pricePerBdFt: 6, sheet: true,
+      movement: 'low', outdoor: false, costTier: 2, sheet: true, // per-sheet pricing only (audit L-03)
       moe: 10.0, mor: 55, sg: 0.68, ct: 0.0002, cr: 0.0002,
       tone: 0xe9d8ae, rough: 0.5,
       grainScale: 8, ringContrast: 0.08, hueJitter: 0.06, pores: 0.1,
@@ -229,7 +229,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // ct/cr ≈ 0 in-plane (isotropic mat); THICKNESS swell near water is
       // real but outside the width-movement model — the blurb carries it.
       key: 'mdf', label: 'MDF', aliases: ['mdf'], janka: 700, workability: 4,
-      movement: 'low', outdoor: false, costTier: 1, pricePerBdFt: 2.0, sheet: true,
+      movement: 'low', outdoor: false, costTier: 1, sheet: true, // per-sheet pricing only (audit L-03)
       moe: 3.0, mor: 25, sg: 0.75, ct: 0.0002, cr: 0.0002,
       tone: 0xc9b391, rough: 0.45,
       grainScale: 40, ringContrast: 0.02, hueJitter: 0.02, pores: 0,
@@ -242,7 +242,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // pattern as the baltic_birch entry.
       key: 'hardwood_ply', label: 'Hardwood Plywood', aliases: ['hardwood ply', 'hardwood plywood'],
       janka: 1000, workability: 4,
-      movement: 'low', outdoor: false, costTier: 2, pricePerBdFt: 4.5, sheet: true,
+      movement: 'low', outdoor: false, costTier: 2, sheet: true, // per-sheet pricing only (audit L-03)
       moe: 8.0, mor: 40, sg: 0.55, ct: 0.0002, cr: 0.0002,
       tone: 0xe2caa0, rough: 0.55,
       grainScale: 10, ringContrast: 0.1, hueJitter: 0.08, pores: 0.1,

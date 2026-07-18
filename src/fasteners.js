@@ -150,6 +150,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const out = { joint, type, a, b, runMM, fasteners: [], text: '' };
     const fine = mm => U().fmtSmall(mm);
     const len = mm => U().fmtLength(mm);
+    const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
 
     /* Floating hardware is only for tops that SIT ON their base (vertical
      * contact — aprons, rails, side top edges). A top CAPTURED between case
@@ -165,7 +166,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const pos = positions(runMM, Math.max(2, Math.round(runMM / 300)), 300);
       const c = CATALOG.figure8;
       for (const p of pos) out.fasteners.push({ kind: 'figure8', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-      out.text = `${out.fasteners.length} figure-8 fasteners along the ${b.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — pilot ${fine(c.pilotMM)}, and let the top move.`;
+      out.text = `${out.fasteners.length} figure-8 fasteners along the ${b.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — pilot ${drill(c.pilotMM)}, and let the top move.`;
       return out;
     }
 
@@ -183,7 +184,7 @@ var BB = globalThis.BB = globalThis.BB || {};
             : `centered ${fine(minDim(a) / 2)} from the joint line`;
         const cbore = sp.counterboreMM
           ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, so the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.` : '';
-        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${fine(sp.pilotMM)}.${cbore}`;
+        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${drill(sp.pilotMM)}.${cbore}`;
         break;
       }
       case 'pocket_screws': {
@@ -334,7 +335,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         break;
       }
       case 'french_cleat': {
-        // 19 mm ply ripped at 45°; a screw into every stud at ≤ 400 mm centers.
+        // Standard sheet stock ripped at 45° — the thickest entry in the ONE
+        // sheet-thickness table (18), never a hand-typed 19 that nothing
+        // sells (audit L-01). A screw into every stud at ≤ 400 mm centers.
+        const plyMM = K.SHEET_THICKNESS[K.SHEET_THICKNESS.length - 1];
         const cleatLen = Math.max(300, Math.round(runMM * 2 / 3));
         const c = CATALOG.butt_screw;
         const nS = Math.max(2, Math.floor(cleatLen / 400) + 1);
@@ -342,8 +346,8 @@ var BB = globalThis.BB = globalThis.BB || {};
           const along = nS === 1 ? cleatLen / 2 : RULES.edgeMM + (cleatLen - 2 * RULES.edgeMM) * i / (nS - 1);
           out.fasteners.push({ kind: 'screw', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, cleatLen - along) });
         }
-        out.cleat = { lengthMM: cleatLen, plyMM: 19 };
-        out.text = `French cleat: rip ${len(19)} ply at 45°; the wall half runs ${len(cleatLen)} (≥ ⅔ of the case) with ${nS} × ${fmtSpec(c)} — one into EVERY stud at ≤ ${len(400)} centers, bevel up and toward the wall. Pilot ${fine(c.pilotMM)}. Never drywall alone.`;
+        out.cleat = { lengthMM: cleatLen, plyMM };
+        out.text = `French cleat: rip ${len(plyMM)} ply at 45°; the wall half runs ${len(cleatLen)} (≥ ⅔ of the case) with ${nS} × ${fmtSpec(c)} — one into EVERY stud at ≤ ${len(400)} centers, bevel up and toward the wall. Pilot ${drill(c.pilotMM)}. Never drywall alone.`;
         break;
       }
       case 'kd_bolt': {
@@ -355,7 +359,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         for (const along of spots) {
           out.fasteners.push({ kind: 'kd_bolt', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, runMM - along) });
         }
-        out.text = `${spots.length} knockdown bolt${spots.length > 1 ? 's' : ''} per joint: ${fine(7)} bolt bore through the ${b.name.toLowerCase()} into the rail end, ${fine(10)} barrel bore ${len(inset)} in from the shoulder — drill BOTH from the same reference face with a jig, then pull up with a hex key.`;
+        out.text = `${spots.length} knockdown bolt${spots.length > 1 ? 's' : ''} per joint: ${drill(7)} bolt bore through the ${b.name.toLowerCase()} into the rail end, ${drill(10)} barrel bore ${len(inset)} in from the shoulder — drill BOTH from the same reference face with a jig, then pull up with a hex key.`;
         break;
       }
       default: {
@@ -363,7 +367,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const specTxt = U().fmtTemplate(sp.spec);
         const pos = positions(runMM, 2);
         for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-        out.text = `${pos.length} × ${specTxt}, ${len(RULES.edgeMM)} from each end, pilot ${fine(sp.pilotMM)}.`;
+        out.text = `${pos.length} × ${specTxt}, ${len(RULES.edgeMM)} from each end, pilot ${drill(sp.pilotMM)}.`;
       }
     }
     return out;

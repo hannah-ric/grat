@@ -68,15 +68,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       <div class="pricing-grid">
         <section class="price-card" aria-label="Free plan">
           <div><span class="plan-label">Free</span><strong>$0</strong><small>forever</small></div>
-          <ul><li>${FREE.projectLimit} saved projects</li><li>${FREE.aiMonthlyLimit} AI messages per month</li><li>Core drawing and cut-list exports</li><li>Device and cloud sync</li></ul>
+          <ul><li>${FREE.projectLimit} saved projects</li><li>${FREE.aiMonthlyLimit} AI messages per month</li><li>Core drawing and cut-list exports</li><li data-free-sync>Device sync</li></ul>
           <button class="btn" data-pricing-close>Keep Free</button>
         </section>
         <section class="price-card featured" aria-label="Pro plan">
           <div><span class="plan-label">Pro</span><strong data-price>$12</strong><small data-period>/ month, billed yearly</small></div>
-          <ul><li>Unlimited saved projects</li><li>${PLANS.pro.aiMonthlyLimit} AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Structural reports and advanced workshop tools</li></ul>
+          <ul><li>Unlimited saved projects</li><li>${PLANS.pro.aiMonthlyLimit} AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Full-screen Build mode</li></ul>
           <button class="btn primary pricing-upgrade" data-upgrade>Upgrade to Pro</button>
         </section>
       </div>
+      <p class="pricing-note">A single design refinement can use several AI messages as the model iterates.</p>
       <p class="pricing-note" data-billing-note>Secure checkout by Stripe. Cancel or change plans anytime.</p>
     </div>`;
     document.body.append(dialog);
@@ -85,7 +86,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       const cycle = event.target.closest('[data-cycle]');
       if (cycle) { interval = cycle.dataset.cycle; paintCycle(); }
       if (event.target.closest('[data-upgrade]')) {
-        if (!account().user) { dialog.close(); openSignIn(); return; }
+        if (!account().user) {
+          // Never close silently: surface a visible cue in the note area, and
+          // only redirect when a sign-in provider actually exists (A-02/X-03).
+          const plan = signedOutUpgradeNote(account());
+          setNote(plan.note);
+          if (plan.redirect) openSignIn();
+          return;
+        }
         redirect('checkout', { interval });
       }
     });
@@ -103,6 +111,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     ensureDialog();
     const note = dialog.querySelector('[data-billing-note]');
     note.textContent = reason ? escapeHTML(reason) : 'Secure checkout by Stripe. Cancel or change plans anytime.';
+    // Reflect the current sign-in reality every time the dialog opens (the auth
+    // probe may have resolved after the dialog was first built).
+    const sync = dialog.querySelector('[data-free-sync]');
+    if (sync) sync.textContent = freeSyncLabel(account());
     paintCycle();
     dialog.showModal();
   }
@@ -111,6 +123,29 @@ var BB = globalThis.BB = globalThis.BB || {};
     const a = account();
     const provider = a.providers && a.providers[0];
     if (provider) window.location.href = BB.Store.loginUrl(provider);
+  }
+
+  function setNote(message) {
+    const note = dialog && dialog.querySelector('[data-billing-note]');
+    if (note) note.textContent = message;
+  }
+
+  /* Signed-out Upgrade: decide what the dialog should say/do. Pure so the
+   * honest-copy contract is unit-testable without a DOM. When a provider exists
+   * we hand off to sign-in (leaving a cue so a failed redirect never vanishes);
+   * with no provider configured (the current production state) we say so plainly
+   * instead of closing the dialog with nothing happening. */
+  function signedOutUpgradeNote(a) {
+    const provider = a && a.providers && a.providers[0];
+    return provider
+      ? { redirect: true, note: 'Taking you to sign in — you can upgrade once you are signed in.' }
+      : { redirect: false, note: "Sign-in isn't available on this site yet, so upgrading isn't possible here." };
+  }
+
+  /* Free-plan sync bullet: cloud sync needs a sign-in provider, so on a
+   * providerless deployment the honest promise is device-only sync (A-08). */
+  function freeSyncLabel(a) {
+    return (a && a.providers && a.providers.length) ? 'Device and cloud sync' : 'Device sync';
   }
 
   function gate(feature, reason) {
@@ -135,5 +170,5 @@ var BB = globalThis.BB = globalThis.BB || {};
     history.replaceState(null, '', window.location.pathname + window.location.hash);
   }
 
-  BB.Billing = { status, isPro, entitled, refresh, open, gate, gateNewProject, manage: () => redirect('portal'), handleReturn };
+  BB.Billing = { status, isPro, entitled, refresh, open, gate, gateNewProject, manage: () => redirect('portal'), handleReturn, signedOutUpgradeNote, freeSyncLabel };
 })();

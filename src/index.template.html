@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<!-- Discoverability (A-06). Deliberately no card image tag: every visual is
+     generated at runtime — fabricating a hosted asset would break the
+     no-external-assets rule, and a summary card stands honestly without one. -->
+<meta name="description" content="Describe a piece of furniture and Blueprint Buddy drafts it: an interactive 3D model with real structural checks, a cut list, a buying plan with cutting diagrams, and step-by-step assembly.">
+<meta property="og:title" content="Blueprint Buddy — Describe it. We'll draft it.">
+<meta property="og:description" content="AI-guided parametric furniture design: interactive 3D model, real structural checks, cut list, buying plan, and step-by-step assembly — ready for the workshop.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#F1EBDD" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#17110F" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href='data:application/manifest+json,%7B%22name%22%3A%22Blueprint%20Buddy%22%2C%22short_name%22%3A%22BB%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F1EBDD%22%2C%22theme_color%22%3A%22%23F1EBDD%22%7D'>
@@ -19,13 +27,18 @@
 
 <div id="app">
   <header class="topbar">
-    <div class="brand" id="brandLogo" title="Blueprint Buddy (hold to open diagnostics)">
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-        <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
-        <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
-        <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
-      </svg>
-      <span class="brand-short" aria-hidden="true">BB</span>
+    <div class="brand">
+      <!-- A real button so diagnostics open by keyboard too (M-16); the h1
+           wordmark stays OUTSIDE it so the heading is never flattened. -->
+      <button type="button" class="brand-button" id="brandLogo" aria-label="Open diagnostics"
+        title="Blueprint Buddy (hold, or press Enter, to open diagnostics)">
+        <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+          <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+          <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+        </svg>
+        <span class="brand-short" aria-hidden="true">BB</span>
+      </button>
       <h1 class="brand-name">Blueprint<span>Buddy</span></h1>
     </div>
     <input id="designName" class="design-name" aria-label="Design name" value="Untitled" spellcheck="false">
@@ -40,7 +53,7 @@
     <nav class="mode-nav" id="modeNav" aria-label="Workflow">
       <button class="mode-btn" id="mode-design" data-mode="design" aria-current="page"><span class="dot" aria-hidden="true"></span><span class="mode-label">Design</span></button>
       <button class="mode-btn" id="mode-plan" data-mode="plan"><span class="dot" aria-hidden="true"></span><span class="mode-label">Plan</span></button>
-      <button class="mode-btn build-cta" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span></button>
+      <button class="mode-btn build-cta" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span><span class="mode-lock" id="buildModeLock" hidden aria-hidden="true"></span></button>
     </nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
@@ -51,10 +64,16 @@
       <div class="menu-wrap">
         <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More</button>
         <div id="moreMenu" class="menu" role="menu" inert>
+          <!-- ≤560px folds the topbar redo away; touch has no Ctrl+Shift+Z,
+               so redo stays reachable here (P1-1). -->
+          <button role="menuitem" id="menuRedoBtn" class="menu-redo-item"><span>Redo</span><span class="hint">last undone change</span></button>
           <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <!-- ≤560px folds the topbar Share CTA away; this entry keeps share
+               codes AND import reachable on phones (X-05). -->
+          <button role="menuitem" id="menuShareBtn" class="menu-share-item" aria-haspopup="dialog"><span>Share / Import</span><span class="hint">codes &amp; links</span></button>
           <div class="menu-sep"></div>
           <div class="menu-group" id="moreExportGroup">
             <div class="menu-group-label">Export</div>
@@ -107,6 +126,15 @@
     </div>
   </header>
 
+  <!-- Project-cap banner (A-04): raised when an autosave is blocked at the
+       Free saved-project limit — passive, dismissible, never a modal. -->
+  <div class="cap-banner" id="capBanner" role="status" hidden>
+    <span class="cap-banner-text">This design isn&rsquo;t being saved &mdash; you&rsquo;re at the Free saved-project limit.</span>
+    <button class="btn small" id="capBannerShare">Export a share code</button>
+    <button class="btn small ghost" id="capBannerUpgrade">See plans</button>
+    <button class="btn icon ghost" id="capBannerClose" aria-label="Dismiss saving notice"></button>
+  </div>
+
   <main class="bench">
     <aside class="chat" id="chatPanel" aria-label="Design chat">
       <button class="sheet-handle" id="sheetHandle" aria-label="Expand chat" aria-expanded="false" aria-controls="chatPanel"></button>
@@ -138,6 +166,9 @@
           <textarea id="chatText" rows="1" placeholder="Describe a change…" aria-label="Message"></textarea>
           <button type="button" class="btn primary" id="sendBtn" aria-label="Send">Send</button>
         </div>
+        <!-- AI-allowance meter (A-05): shows once billing is configured and
+             usage is known, so Free users see the wall before they hit it. -->
+        <div class="ai-usage" id="aiUsage" hidden></div>
         <div class="hint-prompts" id="hintPrompts"></div>
       </div>
     </aside>
@@ -204,10 +235,10 @@
                 <div class="menu-row">
                   <span class="menu-row-label">Camera</span>
                   <div class="seg view-seg" role="group" aria-label="Camera view">
-                    <button id="viewFront" title="Front elevation (orthographic)">F</button>
-                    <button id="viewSide" title="Side elevation (orthographic)">S</button>
-                    <button id="viewTop" title="Plan view (orthographic)">T</button>
-                    <button id="viewIso" title="Perspective view" aria-pressed="true">Iso</button>
+                    <button id="viewFront" title="Front elevation (orthographic)" aria-label="Front elevation" aria-pressed="false">F</button>
+                    <button id="viewSide" title="Side elevation (orthographic)" aria-label="Side elevation" aria-pressed="false">S</button>
+                    <button id="viewTop" title="Plan view (orthographic)" aria-label="Top plan view" aria-pressed="false">T</button>
+                    <button id="viewIso" title="Perspective view" aria-label="Perspective view" aria-pressed="true">Iso</button>
                   </div>
                 </div>
                 <div class="menu-row">

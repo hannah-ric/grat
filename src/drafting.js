@@ -141,8 +141,11 @@ var BB = globalThis.BB = globalThis.BB || {};
 </svg>`;
   }
 
-  /* One-page drawing sheet: three elevations + a title block. */
-  function sheetSVG(spec, model, fmt) {
+  /* One-page drawing sheet: three elevations + a title block. Origin is
+   * runtime state passed in by the caller (audit A-11) — the sheet stays a
+   * pure function of its arguments. */
+  function sheetSVG(spec, model, fmt, opts) {
+    const host = String((opts && opts.origin) || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
     const views = ['front', 'side', 'top'];
     const inner = views.map((v, i) =>
       `<svg x="${(i % 2) * 50}%" y="${i < 2 ? 0 : 46}%" width="50%" height="46%" preserveAspectRatio="xMidYMid meet">${elevationSVG(spec, model, v, fmt)}</svg>`
@@ -167,7 +170,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     <text x="724" y="980">${escText(dims)} · ${escText(sp ? sp.label : spec.wood.species)}</text>
     <text class="sub" x="1180" y="958">BLUEPRINT BUDDY</text>
     <text class="sub" x="1180" y="980">NOT HIDDEN-LINE · ${escText(String(spec.meta.level).toUpperCase())} BUILD</text>
-  </g>
+  </g>${host ? `
+  <text class="tb-origin" x="16" y="986" style="fill: var(--muted); font-size: 12px;">Made with Blueprint Buddy — ${escText(host)}</text>` : ''}
 </svg>`;
   }
   const escText = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

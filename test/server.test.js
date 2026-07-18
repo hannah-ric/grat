@@ -250,6 +250,105 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- store: reserved entitlement keys ---------------- */
+  section('store: entitlement keys are not user-writable via /api/store (E-01/E-02)');
+  {
+    const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    const cookie = uid => ({ cookie: S.sessionCookieFor({ uid, name: 'T', provider: 'google' }, fakeReq('/')).split(';')[0] });
+    const is4xx = code => code >= 400 && code < 500;
+
+    // E-01: PUT doc=subscription must NOT alias the entitlements subscription key.
+    eq((await E.statusFor('google:atk')).plan, 'free', 'attacker starts on Free');
+    let res = fakeRes();
+    await store(fakeReq('/api/store?doc=subscription', { method: 'PUT', headers: cookie('google:atk'), body: { value: JSON.stringify({ status: 'active', interval: 'year', currentPeriodEnd: '2099-01-01' }) } }), res);
+    ok(is4xx(res.statusCode), 'PUT doc=subscription is refused (4xx), not written');
+    eq((await E.statusFor('google:atk')).plan, 'free', 'plan stays Free — no self-grant to Pro');
+
+    // Reserved names are rejected identically for GET and DELETE.
+    res = fakeRes();
+    await store(fakeReq('/api/store?doc=subscription', { headers: cookie('google:atk') }), res);
+    ok(is4xx(res.statusCode), 'GET doc=subscription is refused (4xx)');
+    res = fakeRes();
+    await store(fakeReq('/api/store?doc=subscription', { method: 'DELETE', headers: cookie('google:atk') }), res);
+    ok(is4xx(res.statusCode), 'DELETE doc=subscription is refused (4xx)');
+
+    // E-02: PUT doc=usage:ai:<month> must NOT reset the AI meter.
+    for (let i = 0; i < 5; i++) await E.incrementAI('google:atk');
+    const month = (await E.getUsage('google:atk')).month;
+    res = fakeRes();
+    await store(fakeReq('/api/store?doc=usage:ai:' + month, { method: 'PUT', headers: cookie('google:atk'), body: { value: '0' } }), res);
+    ok(is4xx(res.statusCode), 'PUT doc=usage:* is refused (4xx)');
+    eq((await E.getUsage('google:atk')).aiMessages, 5, 'AI meter unchanged — cap is not self-resettable');
+    // The general form (any usage: subkey) is covered, e.g. token counters.
+    res = fakeRes();
+    await store(fakeReq('/api/store?doc=usage:tokens:' + month, { method: 'PUT', headers: cookie('google:atk'), body: { value: '0' } }), res);
+    ok(is4xx(res.statusCode), 'PUT doc=usage:tokens:* is refused (4xx) too');
+
+    // Legitimate colon-bearing user docs are UNAFFECTED (no colon ban, keyspace intact).
+    for (const doc of ['projects:index', 'prices:v1', 'prefs:v2', 'project:p123', 'thumb:p123']) {
+      res = fakeRes();
+      await store(fakeReq('/api/store?doc=' + doc, { method: 'PUT', headers: cookie('google:atk'), body: { value: '[]' } }), res);
+      eq(res.statusCode, 200, `user doc "${doc}" still writable`);
+    }
+    rmkv();
+    cleanEnv();
+  }
+
+  /* ---------------- store: server-side Free project cap ---------------- */
+  section('store: server-side Free project cap on NEW project docs only (A-10)');
+  {
+    const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    const cookie = uid => ({ cookie: S.sessionCookieFor({ uid, name: 'T', provider: 'google' }, fakeReq('/')).split(';')[0] });
+    const putDoc = async (uid, doc, value) => {
+      const res = fakeRes();
+      await store(fakeReq('/api/store?doc=' + doc, { method: 'PUT', headers: cookie(uid), body: { value } }), res);
+      return res;
+    };
+    // Save a project the way the client does: project doc first, then the index grows.
+    const seedProject = async (uid, id) => {
+      const r = await putDoc(uid, 'project:' + id, JSON.stringify({ id }));
+      const g = fakeRes(); await store(fakeReq('/api/store?doc=projects:index', { headers: cookie(uid) }), g);
+      const idx = JSON.parse(json(g).value || '[]'); idx.push({ id });
+      await putDoc(uid, 'projects:index', JSON.stringify(idx));
+      return r;
+    };
+
+    const free = 'google:free1';
+    for (const id of ['pA', 'pB', 'pC']) eq((await seedProject(free, id)).statusCode, 200, `creating ${id} under the Free cap is allowed`);
+
+    // A NEW project doc beyond the cap is rejected with a machine-readable error.
+    let r = await putDoc(free, 'project:pD', JSON.stringify({ id: 'pD' }));
+    eq(r.statusCode, 403, 'new project doc beyond the Free cap → 403');
+    eq(json(r).error, 'project_limit', 'the rejection is a distinct machine-readable error');
+
+    // Updating an EXISTING project doc always succeeds, even at/over the cap
+    // (a downgraded ex-Pro user must never lose edits).
+    eq((await putDoc(free, 'project:pA', JSON.stringify({ id: 'pA', edited: true }))).statusCode, 200,
+      'updating an existing project at the cap is allowed');
+
+    // Non-project docs are never capped.
+    eq((await putDoc(free, 'prefs:v2', '{"x":1}')).statusCode, 200, 'prefs unaffected by the cap');
+    eq((await putDoc(free, 'prices:v1', '{}')).statusCode, 200, 'prices unaffected by the cap');
+    eq((await putDoc(free, 'thumb:pD', '"data"')).statusCode, 200, 'thumbnails unaffected by the cap');
+    eq((await putDoc(free, 'projects:index', JSON.stringify([{ id: 'pA' }, { id: 'pB' }, { id: 'pC' }]))).statusCode, 200, 'index write unaffected by the cap');
+
+    // Pro (unlimited) can create well beyond the Free cap.
+    const pro = 'google:pro1';
+    await E.setSubscription(pro, { customerId: 'c', status: 'active' });
+    await putDoc(pro, 'projects:index', JSON.stringify([{ id: 'x1' }, { id: 'x2' }, { id: 'x3' }, { id: 'x4' }, { id: 'x5' }]));
+    eq((await putDoc(pro, 'project:x6', JSON.stringify({ id: 'x6' }))).statusCode, 200, 'Pro (unlimited) creates beyond the Free cap');
+
+    // Anonymous requests never reach the cap — they are 401 before any check.
+    const anon = fakeRes();
+    await store(fakeReq('/api/store?doc=project:pZ', { method: 'PUT', body: { value: '{}' } }), anon);
+    eq(anon.statusCode, 401, 'anonymous project PUT is 401 (cap needs a uid)');
+
+    rmkv();
+    cleanEnv();
+  }
+
   /* ---------------- entitlements: plans + usage ---------------- */
   section('entitlements: Free/Pro plans + usage metering');
   {
@@ -365,17 +464,32 @@ function objectBodyReq(url, bodyObj, headers) {
     process.env.ANTHROPIC_API_KEY = 'sk-test';
     const realFetch = globalThis.fetch;
     globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) });
-    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-forwarded-for': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+    // Vercel sets x-real-ip to the verified client IP; serve.js hands the direct
+    // socket. anonMeterId must key off those, never the client-forgeable XFF.
+    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+
+    // (E-03) The meter identity must derive from a non-forgeable source. An
+    // attacker who rotates the leftmost X-Forwarded-For must NOT mint fresh
+    // 25-msg + burst buckets on the owner-funded key.
+    {
+      const spoofA = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.7', 'x-forwarded-for': '1.1.1.1' }, socket: { remoteAddress: '10.0.0.9' } });
+      const spoofB = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.7', 'x-forwarded-for': '2.2.2.2' }, socket: { remoteAddress: '10.0.0.9' } });
+      eq(spoofA, spoofB, 'rotating X-Forwarded-For cannot mint a fresh bucket — x-real-ip is the identity');
+      const sockA = chat.anonMeterId({ headers: { 'x-forwarded-for': '1.1.1.1' }, socket: { remoteAddress: '10.9.8.7' } });
+      const sockB = chat.anonMeterId({ headers: { 'x-forwarded-for': '9.9.9.9' }, socket: { remoteAddress: '10.9.8.7' } });
+      eq(sockA, sockB, 'with no x-real-ip, the direct socket address is the identity, not XFF');
+      ok(spoofA !== chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.8' }, socket: {} }), 'genuinely different real IPs still get distinct buckets');
+    }
 
     // (a) an anonymous call is proxied AND metered by hashed IP — no more free-for-all
     let res = fakeRes();
     await chat(chatReq('203.0.113.10'), res);
     eq(res.statusCode, 200, 'anonymous chat is proxied');
-    eq((await E.getUsage(chat.anonMeterId({ headers: { 'x-forwarded-for': '203.0.113.10' }, socket: {} }))).aiMessages, 1,
+    eq((await E.getUsage(chat.anonMeterId({ headers: { 'x-real-ip': '203.0.113.10' }, socket: {} }))).aiMessages, 1,
       'anonymous usage is metered by IP (signing out no longer resets to unlimited)');
 
     // (b) once an anon IP hits the Free cap, the proxy refuses with 402
-    const meterB = chat.anonMeterId({ headers: { 'x-forwarded-for': '203.0.113.20' }, socket: {} });
+    const meterB = chat.anonMeterId({ headers: { 'x-real-ip': '203.0.113.20' }, socket: {} });
     for (let i = 0; i < E.FREE.aiMonthlyLimit; i++) await E.incrementAI(meterB);
     res = fakeRes();
     await chat(chatReq('203.0.113.20'), res);
@@ -396,6 +510,174 @@ function objectBodyReq(url, bodyObj, headers) {
 
     globalThis.fetch = realFetch;
     rmkv();
+    cleanEnv();
+  }
+
+  /* ---------------- billing client: signed-out Upgrade honesty (A-02/X-03) ---------------- */
+  section('billing: signed-out Upgrade shows an honest state, never a silent close (A-02/X-03)');
+  {
+    const vm = require('vm');
+    const src = fs.readFileSync(path.join(__dirname, '../src/billing.js'), 'utf8');
+    const sandbox = {}; sandbox.globalThis = sandbox; // pure load: no DOM touched until open()
+    vm.runInNewContext(src, sandbox);
+    const B = sandbox.BB && sandbox.BB.Billing;
+    ok(B && typeof B.signedOutUpgradeNote === 'function', 'signedOutUpgradeNote is exposed for the signed-out path');
+    if (B && typeof B.signedOutUpgradeNote === 'function') {
+      const none = B.signedOutUpgradeNote({ user: null, providers: [] });
+      eq(none.redirect, false, 'no providers → no redirect (a redirect would dead-end)');
+      ok(/available|isn't|not/i.test(none.note || ''), 'no providers → an explicit honest note is surfaced');
+      const withP = B.signedOutUpgradeNote({ user: null, providers: ['github'] });
+      eq(withP.redirect, true, 'providers present → hand off to sign-in');
+      ok((withP.note || '').length > 0, 'providers present → a cue is set before the redirect');
+    }
+    // The old silent-close-then-noop pattern must be gone from the signed-out branch.
+    ok(!/!account\(\)\.user\)\s*\{\s*dialog\.close\(\);\s*openSignIn\(\)/.test(src),
+      'signed-out upgrade no longer closes the dialog before (maybe) redirecting');
+  }
+
+  /* ---------------- billing client: card bullets match entitlements (A-08) ---------------- */
+  section('billing: Pro/Free card bullets match real entitlements (A-08)');
+  {
+    const vm = require('vm');
+    const src = fs.readFileSync(path.join(__dirname, '../src/billing.js'), 'utf8');
+
+    // Isolate the Pro (featured) card markup.
+    const proMatch = src.match(/price-card featured[\s\S]*?<\/section>/);
+    ok(!!proMatch, 'Pro card markup found');
+    const pro = proMatch ? proMatch[0] : '';
+    // The oversell is gone — structural reports are FREE, not a Pro-only feature.
+    ok(!/Structural reports/i.test(pro), 'Pro card no longer sells free "Structural reports"');
+    // Every entitlement that flips Free→Pro must be represented by a bullet.
+    const diff = [];
+    if (E.PRO.projectLimit === null && E.FREE.projectLimit !== null) diff.push({ cap: 'unlimited projects', re: /unlimited/i });
+    if (E.PRO.aiMonthlyLimit > E.FREE.aiMonthlyLimit) diff.push({ cap: 'more AI messages', re: /AI messages/i });
+    if (E.PRO.premiumExports && !E.FREE.premiumExports) diff.push({ cap: 'premium exports', re: /export|SketchUp|Print plans/i });
+    if (E.PRO.advancedFeatures && !E.FREE.advancedFeatures) diff.push({ cap: 'Build mode', re: /Build mode/i });
+    eq(diff.length, 4, 'all four Free→Pro entitlement flips are enumerated');
+    for (const d of diff) ok(d.re.test(pro), `Pro card represents the "${d.cap}" entitlement gain`);
+
+    // Free card sync copy is provider-conditional, not a hardcoded cloud promise.
+    ok(!/Device and cloud sync<\/li>/.test(src), 'Free card no longer hardcodes "Device and cloud sync"');
+    const sandbox = {}; sandbox.globalThis = sandbox;
+    vm.runInNewContext(src, sandbox);
+    const B = sandbox.BB && sandbox.BB.Billing;
+    ok(B && typeof B.freeSyncLabel === 'function', 'freeSyncLabel is exposed for the provider-conditional bullet');
+    if (B && typeof B.freeSyncLabel === 'function') {
+      eq(B.freeSyncLabel({ providers: [] }), 'Device sync', 'no providers → device-only sync copy (honest)');
+      eq(B.freeSyncLabel({ providers: ['github'] }), 'Device and cloud sync', 'providers present → cloud sync copy');
+    }
+  }
+
+  /* ---------------- observability: structured error reporting (E-08) ---------------- */
+  section('observability: a backend failure emits one structured error line (E-08)');
+  {
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    process.env.KV_REST_API_URL = 'https://kv.example.com';
+    process.env.KV_REST_API_TOKEN = 'tok';
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error('ECONNREFUSED kv down'); }; // KV outage
+    const captured = [];
+    const realErr = console.error;
+    console.error = (...a) => { captured.push(a.map(String).join(' ')); };
+    const c = S.sessionCookieFor({ uid: 'google:obs', name: 'O', provider: 'google' }, fakeReq('/')).split(';')[0];
+    const res = fakeRes();
+    try { await store(fakeReq('/api/store?doc=projects:index', { headers: { cookie: c } }), res); }
+    finally { console.error = realErr; globalThis.fetch = realFetch; }
+    eq(res.statusCode, 502, 'a KV outage surfaces as 502, not a crash');
+    const lines = captured.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+    const line = lines.find(o => o && o.scope === 'store');
+    ok(!!line, 'a structured JSON error line was emitted to stderr on the KV failure');
+    ok(line && typeof line.ts === 'string' && !!line.event && ('detail' in line),
+      'the line carries ts + scope + event + detail');
+    cleanEnv();
+  }
+
+  /* ---------------- chat: optional monthly token spend ceiling (E-07a) ---------------- */
+  section('chat: optional monthly token spend ceiling (E-07a)');
+  {
+    const rmkv = useTempKV();
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    process.env.AI_MONTHLY_TOKEN_BUDGET = '150';
+    const realFetch = globalThis.fetch;
+    let upstreamCalls = 0;
+    globalThis.fetch = async () => { upstreamCalls++; return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 100 } }) }; };
+    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+    const meter = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.61' }, socket: {} });
+
+    // First call under budget → proxied AND meters the 100 output tokens.
+    let res = fakeRes();
+    await chat(chatReq('198.51.100.61'), res);
+    eq(res.statusCode, 200, 'first call under the token budget is proxied');
+    eq((await E.getTokenUsage(meter)).tokens, 100, 'output tokens from the Anthropic response are metered');
+
+    // Second call still under budget → proxied, counter accrues to 200.
+    res = fakeRes();
+    await chat(chatReq('198.51.100.61'), res);
+    eq(res.statusCode, 200, 'second call still under budget is proxied');
+    eq((await E.getTokenUsage(meter)).tokens, 200, 'token counter accrues across calls');
+
+    // Third call: 200 >= 150 → refused PRE-upstream with a distinct 429.
+    upstreamCalls = 0;
+    res = fakeRes();
+    await chat(chatReq('198.51.100.61'), res);
+    eq(res.statusCode, 429, 'over the token budget → 429 (client tolerates it as rate-limited)');
+    eq(upstreamCalls, 0, 'the ceiling is enforced PRE-upstream — no Anthropic call is made');
+    ok(json(res).error && /budget|limit/i.test(json(res).error.message || ''), 'the 429 carries a distinct budget message');
+
+    // Disabled by default: unset env var → no ceiling, no token counting.
+    delete process.env.AI_MONTHLY_TOKEN_BUDGET;
+    res = fakeRes();
+    await chat(chatReq('198.51.100.62'), res);
+    eq(res.statusCode, 200, 'unset budget → disabled (current behavior)');
+    eq((await E.getTokenUsage(chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.62' }, socket: {} }))).tokens, 0, 'no token counting when the budget is unset');
+
+    // Honest copy: the pricing dialog states a request can span several messages.
+    const billingSrc = fs.readFileSync(path.join(__dirname, '../src/billing.js'), 'utf8');
+    ok(/several AI messages|use several|several messages/i.test(billingSrc), 'pricing copy states a complex request may use several AI messages');
+
+    globalThis.fetch = realFetch;
+    rmkv();
+    cleanEnv();
+  }
+
+  /* ---------------- env audit + production readiness (A-03) ---------------- */
+  section('env audit: AI + OAuth advisories and qualified readiness (A-03)');
+  {
+    const Env = require('../api/_env-check.js');
+    cleanEnv();
+    ok(typeof Env.evaluate === 'function', '_env-check exposes a pure evaluate()');
+    if (typeof Env.evaluate === 'function') {
+      let ev = Env.evaluate();
+      const advKeys = ev.advisory.map(a => a.key);
+      ok(advKeys.includes('ANTHROPIC_API_KEY'), 'missing ANTHROPIC_API_KEY is flagged advisory');
+      ok(advKeys.some(k => /OAuth/i.test(k)), 'zero OAuth pairs is flagged advisory');
+      const aiAdv = ev.advisory.find(a => a.key === 'ANTHROPIC_API_KEY');
+      ok(aiAdv && /offline parser/i.test(aiAdv.remedy), 'AI advisory says the app degrades to the offline parser');
+      const oauthAdv = ev.advisory.find(a => /OAuth/i.test(a.key));
+      ok(oauthAdv && /sign in|sign-in|billing/i.test(oauthAdv.remedy), 'OAuth advisory says no one can sign in / billing unreachable');
+
+      process.env.GITHUB_CLIENT_ID = 'id'; process.env.GITHUB_CLIENT_SECRET = 'sec';
+      process.env.ANTHROPIC_API_KEY = 'sk-test';
+      ev = Env.evaluate();
+      const advKeys2 = ev.advisory.map(a => a.key);
+      ok(!advKeys2.includes('ANTHROPIC_API_KEY'), 'ANTHROPIC set → no AI advisory');
+      ok(!advKeys2.some(k => /OAuth/i.test(k)), 'one OAuth pair set → no OAuth advisory');
+      cleanEnv();
+    }
+
+    // verify-production's readiness verdict is a pure, testable function (the
+    // network run is guarded behind require.main, so requiring it is side-effect-free).
+    const verify = require('../scripts/verify-production.js');
+    ok(typeof verify.summarize === 'function', 'verify-production exposes summarize()');
+    if (typeof verify.summarize === 'function') {
+      const green = [{ passed: true }, { passed: null }];
+      eq(verify.summarize(green, { aiPresent: true, oauthPresent: true }).ready, true, 'all green + AI + OAuth → ready');
+      const noAi = verify.summarize(green, { aiPresent: false, oauthPresent: true });
+      eq(noAi.ready, false, 'missing AI key → NOT an unqualified ready');
+      ok(noAi.ok === true && noAi.gaps.some(g => /offline parser/i.test(g)), 'AI gap is listed but not a hard failure');
+      eq(verify.summarize(green, { aiPresent: true, oauthPresent: false }).ready, false, 'no OAuth provider → NOT ready');
+      eq(verify.summarize([{ passed: false }], { aiPresent: true, oauthPresent: true }).ok, false, 'a hard failure → not ok');
+    }
     cleanEnv();
   }
 

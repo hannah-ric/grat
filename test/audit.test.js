@@ -1021,5 +1021,226 @@ section('FE-H10/H11 offline parser: negation and drawer honesty');
   ok((fbNs.options || []).some(o => /drawer/i.test(o)), 'nightstand keeps the drawer chip');
 }
 
+/* ================= M-01 (2026-07 productization): pilots/bores are real drill bits ================= */
+section('M-01 pilot and bore callouts are real drill sizes, never decimal inches');
+{
+  // A drill callout must be a bit you can pick out of an index: imperial =
+  // nearest standard fractional bit ("7/64 in"), metric = millimetres.
+  Units.set({ system: 'imperial', precision: 16, dual: false });
+  ok(typeof Units.fmtDrill === 'function', 'BB.Units.fmtDrill exists (display boundary owns the conversion)');
+  if (typeof Units.fmtDrill === 'function') {
+    eq(Units.fmtDrill(2.8), '7/64 in', '2.8 mm pilot → 7/64 in');
+    eq(Units.fmtDrill(3.2), '1/8 in', '3.2 mm pilot → 1/8 in');
+    eq(Units.fmtDrill(9.5), '3/8 in', '9.5 mm pocket bit → 3/8 in (the jig bit)');
+    eq(Units.fmtDrill(7), '9/32 in', '7 mm bolt bore → 9/32 in');
+    Units.set({ system: 'metric', precision: 16, dual: false });
+    eq(Units.fmtDrill(2.8), '2.8 mm', 'metric drill callouts stay millimetres');
+    Units.set({ system: 'imperial', precision: 16, dual: false });
+  }
+  // Probe matrix: every joint layout, detail row, and the print sheet across
+  // representative designs — no decimal-inch token near a pilot/bore callout.
+  const probes = [
+    { meta: { name: 'P Table', template: 'table', level: 'beginner', units: 'in' } },
+    { meta: { name: 'P NS', template: 'nightstand', level: 'intermediate', units: 'in' },
+      drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }, structure: { shelfCount: 1 } },
+    { meta: { name: 'P Cab', template: 'cabinet', level: 'advanced', units: 'in' },
+      overall: { width: 762, depth: 457.2, height: 914.4 },
+      joinery: { frame: 'mortise_tenon', case: 'dado', box: 'half_blind_dovetail' },
+      drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }, structure: { toeKick: true, backPanel: true } },
+    { meta: { name: 'P Shelf', template: 'bookshelf', level: 'beginner', units: 'in' },
+      overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 4, backPanel: true } }
+  ];
+  // Callout-shaped patterns only: "Pilot 0.11 in", "0.28 in bolt bore",
+  // "bore 0.39 in". Layout positions ("centered 0.49 in from the joint
+  // line") are honest decimals and stay legal.
+  const decimalDrill = text => {
+    const bad = [];
+    for (const rx of [
+      /\bpilots?\s+\d+\.\d+\s?in\b/gi,
+      /\d+\.\d+\s?in\b[^.;]{0,24}\bbores?\b/gi,
+      /\bbores?\s+\d+\.\d+\s?in\b/gi
+    ]) {
+      let m;
+      while ((m = rx.exec(text))) bad.push(m[0]);
+    }
+    return bad;
+  };
+  for (const raw of probes) {
+    const r = pipeline(raw);
+    // The fastener engine's full text surface: every joint layout, every
+    // print detail row, the print sheet in full (including the BOM table),
+    // and every BOM label + detail — the same drill must read the same
+    // everywhere (M-01 completion, deliberate golden refreeze authorized).
+    let all = '';
+    for (const j of r.model.joints) {
+      const lay = Fasteners.layoutForJoint(r.spec, r.model, j);
+      if (lay) all += ' ' + lay.text;
+    }
+    for (const row of Fasteners.detailRows(r.spec, r.model)) all += ' ' + row.text;
+    const cut = Plans.cutList(r.spec, r.model);
+    const integ = Structural.computeIntegrity(r.spec, r.model, {});
+    const plan = Packing.planStock(r.spec, r.model, cut, {});
+    const bom = Plans.bom(r.spec, r.model, { integrity: integ, stock: plan });
+    for (const i of bom.items) all += ' ' + i.label + ' ' + (i.detail || '');
+    const steps = Plans.assembly(r.spec, r.model, integ, { stockPlan: plan });
+    for (const s of steps) all += ' ' + s.text;
+    all += ' ' + Exports.printHTML(r.spec, r.model, cut, bom, steps, plan);
+    const bad = decimalDrill(all);
+    ok(bad.length === 0, `${raw.meta.name}: no decimal-inch pilot/bore callout — offenders: ${bad.slice(0, 3).join(' | ')}`);
+  }
+  Units.set({ system: 'metric', precision: 16, dual: false });
+}
+
+/* ================= L-02 (2026-07 productization): fallback formatters use the boundary ================= */
+section('L-02 3D-view fallback formatters route through BB.Units; no raw mm concatenation');
+{
+  // Positive: both fallbacks default to the ONE display boundary. jointview
+  // is browser-coupled (THREE/DOM), so its check stays at source level —
+  // the repo convention for DOM-coupled modules.
+  const j3d = fs.readFileSync(path.join(__dirname, '..', 'src', 'joinery3d.js'), 'utf8');
+  const jv = fs.readFileSync(path.join(__dirname, '..', 'src', 'jointview.js'), 'utf8');
+  ok(/fmt \|\| BB\.Units\.fmtLength/.test(j3d), 'joinery3d fallback is BB.Units.fmtLength');
+  ok(/fmt \|\| BB\.Units\.fmtLength/.test(jv), 'jointview fallback is BB.Units.fmtLength');
+  ok(!/\+ ' mm'/.test(j3d), 'joinery3d builds no raw mm strings');
+  ok(!/\+ ' mm'/.test(jv), 'jointview builds no raw mm strings');
+  // Functional (joinery3d is browser-free): with no fmt, labels render in
+  // the CURRENT display system — imperial shows fractions, never "N mm".
+  Units.set({ system: 'imperial', precision: 16, dual: false });
+  const r = pipeline({
+    meta: { name: 'JV', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 2, backPanel: true }
+  });
+  const shelf = r.model.parts.find(p => p.role === 'shelf');
+  const side = r.model.parts.find(p => p.role === 'side');
+  const data = BB.Joinery3D.buildJoint('dado', shelf, side);
+  ok(data.labels.length > 0 && data.labels.every(l => !/\d\s?mm\b/.test(l)),
+    'default joint labels follow the display preference — got: ' + data.labels.join(' | ').slice(0, 90));
+  Units.set({ system: 'metric', precision: 16, dual: false });
+  // Repo convention: raw "+ ' mm'" string-building lives ONLY in units.js
+  // (the boundary itself), knowledge.js (AI digests — the wire speaks mm by
+  // contract), and selftest.js (diagnostics read out internal mm truth).
+  const allowed = new Set(['units.js', 'knowledge.js', 'selftest.js']);
+  const offenders = [];
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'src')).filter(x => x.endsWith('.js'))) {
+    if (allowed.has(f)) continue;
+    if (/\+ ' mm'/.test(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'))) offenders.push(f);
+  }
+  eq(offenders, [], 'no raw mm concatenation outside the boundary + documented exemptions');
+}
+
+/* ================= M-11 (2026-07 productization): abrasives from the finish schedule ================= */
+section('M-11 tool-list abrasives derive from the actual finish schedule');
+{
+  const base = { meta: { name: 'Fin', template: 'table', level: 'beginner', units: 'mm' } };
+  const grits = tools => tools.filter(t => /grit/i.test(t)).join(' · ') || 'none';
+  // Hardwax oil: its own 120/150/180 ladder, NO between-coat pad, no phantom 220.
+  const hw = pipeline({ ...base, finish: 'hardwax_oil' });
+  const hwTools = Plans.toolList(hw.spec, hw.model, null);
+  ok(hwTools.some(t => /120 \/ 150 \/ 180/.test(t)), 'hardwax lists its own 120/150/180 ladder — got ' + grits(hwTools));
+  ok(!hwTools.some(t => /220/.test(t)), 'no phantom 220 grit when the schedule lacks it');
+  ok(!hwTools.some(t => /between/i.test(t)), 'no between-coat pad when the schedule has none');
+  // Film finish (wipe-on poly): 120/180 prep plus the 320 between-coat pad.
+  const wp = pipeline({ ...base, finish: 'wipe_poly' });
+  const wpTools = Plans.toolList(wp.spec, wp.model, null);
+  ok(wpTools.some(t => /120 \/ 180/.test(t) && !/220/.test(t)), 'wipe-on poly lists its 120/180 prep ladder — got ' + grits(wpTools));
+  ok(wpTools.some(t => /320/.test(t) && /between/i.test(t)), 'film finish lists its 320 between-coat pad');
+  // Danish oil keeps its full ladder from the same table.
+  const dan = pipeline({ ...base, finish: 'danish_oil' });
+  const danTools = Plans.toolList(dan.spec, dan.model, null);
+  ok(danTools.some(t => /120 \/ 180 \/ 220/.test(t)), 'danish oil keeps its 120/180/220 ladder');
+}
+
+/* ================= M-12 (2026-07 productization): sheet goods marked in the wood table ================= */
+section('M-12 Shop Reference wood table: sheet rows badged, Janka/movement dashed');
+{
+  // The wood table renders inline in browser-coupled ui.js — source-level
+  // assertions (repo convention for DOM builders), backed by a smoke check.
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok(/sheet-badge/.test(uiSrc), 'sheet rows carry a visible badge');
+  ok(/s\.sheet \? '—' : (`|')?\$?\{?s\.janka/.test(uiSrc) || /\$\{s\.sheet \? '—' : s\.janka/.test(uiSrc),
+    'Janka cell dashes for sheet: true species (face hardness is not comparable)');
+  ok(/s\.sheet \? '—' : s\.ct\.toFixed/.test(uiSrc),
+    'movement cell dashes for sheet: true species (the movement engine exempts them)');
+  // The data layer really does distinguish them — the badge has a source.
+  const sheets = Object.values(K.WOOD_SPECIES).filter(s => s.sheet);
+  ok(sheets.length >= 3, 'sheet species exist in the table (baltic birch, MDF, hardwood ply)');
+}
+
+/* ================= M-13 (2026-07 productization): compare weight skips hardware ================= */
+section('M-13 species-compare weight never weighs steel hardware as wood');
+{
+  // provenance.js is browser-free; it is loaded here ad hoc because the
+  // shared SRC list predates it.
+  vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'provenance.js'), 'utf8'), { filename: 'provenance.js' });
+  const r = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }, structure: { shelfCount: 1 }
+  });
+  const hwParts = r.model.parts.filter(p => p.hardware);
+  ok(hwParts.length >= 4, 'the 2-drawer model renders metal slide hardware parts');
+  // Hand-summed wood-only mass, mirroring the engine's density fallback —
+  // the same exclusion structural.js uses for its COG mass (:569).
+  const sgOf = p => (K.WOOD_SPECIES[p.material] || K.WOOD_SPECIES[r.spec.wood.species] || K.WOOD_SPECIES.pine).sg;
+  const woodOnly = r.model.parts.filter(p => !p.hardware && p.role !== 'pull')
+    .reduce((kg, p) => kg + p.size.w * p.size.h * p.size.d * 1e-9 * sgOf(p) * 1000 * (p.prim === 'cylinder' ? Math.PI / 4 : 1), 0);
+  const w = BB.Compare.weightKg(r.spec, r.model);
+  near(w, woodOnly, 1e-9, 'weightKg equals the wood-only mass — steel slides never weighed as walnut');
+  const cols = BB.Compare.compareSpecies(r.spec, ['walnut'], {});
+  near(cols[0].weightKg, Math.round(woodOnly * 10) / 10, 1e-9, 'the compare column carries the wood-only weight');
+}
+
+/* ================= M-18 (2026-07 productization): mandatory-anchor rollup tier ================= */
+section('M-18 mandatory-anchor designs roll up "safe only when anchored", never plain advisory');
+{
+  // The golden walnut nightstand: F2057 open-drawer margin 0.619 — it TIPS in
+  // the regulated scenario — yet has zero failing checks. The rollup must be
+  // the distinct anchor tier, never 'advisory' under a "passes…" headline.
+  const ns = pipeline({
+    meta: { name: 'Two-Drawer Nightstand', template: 'nightstand', level: 'intermediate', units: 'in' },
+    overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+    structure: { topThickness: 19, legThickness: 45, shelfCount: 1 },
+    joinery: { frame: 'dowels', box: 'locking_rabbet' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const ig = Structural.computeIntegrity(ns.spec, ns.model, {});
+  const f = ig.checks.find(c => c.id === 'tip_f2057');
+  ok(f && f.data.marginRatio < 1, 'fixture still tips: F2057 margin < 1');
+  ok(ig.summary.fails === 0, 'the trap is real: zero failing checks, yet it tips');
+  ok(ig.summary.anchorRequired === true, 'summary carries anchorRequired');
+  eq(ig.summary.verdict, 'anchor', 'rollup verdict is the distinct anchor tier');
+  ok(f && f.anchor === true, 'the mandating check is flagged so the UI surfaces it above the fold');
+
+  // Tier order: fail > anchor > advisory > pass. The frozen honest-fail
+  // bookshelf both fails and mandates the anchor — fail wins the headline.
+  const shelf = pipeline({
+    meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, wood: { species: 'ash' },
+    structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true }
+  });
+  const igF = Structural.computeIntegrity(shelf.spec, shelf.model, {});
+  ok(igF.summary.fails > 0 && igF.antiTip, 'honest-fail fixture both fails and mandates the anchor');
+  eq(igF.summary.verdict, 'fail', 'failing checks outrank the anchor tier');
+  const tipChk = igF.checks.find(c => c.id === 'tip');
+  ok(tipChk && tipChk.anchor === true, 'the static tipping mandate is flagged too');
+
+  // Stable pieces never enter the tier, and non-anchor verdicts reduce to the
+  // old rollup exactly.
+  const seed = pipeline({ meta: { name: 'Seed', template: 'table', level: 'beginner', units: 'mm' } });
+  const igS = Structural.computeIntegrity(seed.spec, seed.model, {});
+  ok(!igS.antiTip && igS.summary.verdict !== 'anchor', 'stable designs never enter the anchor tier');
+  eq(igS.summary.verdict, igS.summary.fails ? 'fail' : igS.summary.advisories ? 'advisory' : 'pass',
+    'non-anchor verdicts reduce to the old rollup');
+
+  // UI headline honesty (source level — ui.js is browser-coupled): both the
+  // Overview card and the Safety tab speak the tier, anchor-mandating checks
+  // join the above-the-fold cards (the beginner details-collapse cannot hide
+  // them), and no headline recomputes a rollup that lacks the tier.
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok((uiSrc.match(/safe only when anchored/gi) || []).length >= 2, 'both headline surfaces say "safe only when anchored"');
+  ok(/status === 'fail' \|\| \w+\.anchor/.test(uiSrc), 'above-the-fold check cards include anchor-mandating checks');
+  ok(!/'advisory'\s*:\s*'pass'/.test(uiSrc), 'no ui.js headline recomputes a rollup without the anchor tier');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

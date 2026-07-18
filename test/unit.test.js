@@ -48,6 +48,32 @@ section('spec correction');
 
   const noDr = Spec.correctSpec({ meta: { template: 'table' }, drawers: { count: 2 } });
   ok(noDr.drawers === null || noDr.drawers === undefined, 'table never carries drawers');
+
+  // E-04: one correction pass lands every value on its stock table —
+  // correctSpec∘correctSpec === correctSpec across templates × sizes. The
+  // 300×250 footprint is the trap: the geometric leg clamp used to run AFTER
+  // the stock snap and leave an off-table 62 that drifted to 60 on reopen.
+  {
+    const sizes = [
+      { width: 300, depth: 250, height: 400 },
+      { width: 250, depth: 200, height: 120 },
+      { width: 600, depth: 400, height: 750 },
+      { width: 2400, depth: 1200, height: 2400 },
+      { width: 508, depth: 406.4, height: 609.6 },
+      { width: 900, depth: 300, height: 1800 }
+    ];
+    for (const t of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet']) {
+      for (const o of sizes) {
+        const c1 = Spec.correctSpec({ meta: { name: 'Idem', template: t, level: 'intermediate', units: 'mm' }, overall: { ...o } });
+        const c2 = Spec.correctSpec(JSON.parse(JSON.stringify(c1)));
+        const same = JSON.stringify(c1) === JSON.stringify(c2);
+        ok(same, `correction idempotent for ${t} ${o.width}×${o.depth}×${o.height}` +
+          (same ? '' : ` — structure drift ${JSON.stringify(c1.structure)} → ${JSON.stringify(c2.structure)}`));
+        ok(K.POST_THICKNESS.includes(c1.structure.legThickness),
+          `legThickness on the post-stock table for ${t} ${o.width}×${o.depth} — got ${c1.structure.legThickness}`);
+      }
+    }
+  }
 }
 
 /* ---------------- table geometry ---------------- */
@@ -276,6 +302,172 @@ section('local intent parser');
 
   const frac = AI.localModel(`width to 29 1/2"`, spec);
   eq(frac.patch.overall.width, 749.3, 'fractional inches normalized to mm before parsing');
+
+  // X-01: a bare noun-phrase description — the app's own hero placeholder —
+  // is a creation request, and no ack/chip ever names a field the corrected
+  // spec will not actually change.
+  {
+    const hero = AI.localModel('A walnut nightstand with two drawers', spec);
+    eq(hero.kind, 'new', 'hero placeholder: bare noun phrase creates');
+    eq(hero.kind === 'new' && hero.spec.meta.template, 'nightstand', 'hero placeholder: right template');
+    eq(hero.kind === 'new' && hero.spec.wood.species, 'walnut', 'hero placeholder: walnut');
+    eq(hero.kind === 'new' && hero.spec.drawers && hero.spec.drawers.count, 2, 'hero placeholder: two drawers');
+    if (hero.kind === 'new') {
+      const applied = AI.apply(hero, spec);
+      ok(applied.spec.meta.template === 'nightstand' && applied.spec.drawers && applied.spec.drawers.count === 2,
+        'hero placeholder applies as a real 2-drawer nightstand');
+      ok(applied.chips.some(c => /template/.test(c)), 'chips record the template change');
+    }
+
+    const chip = AI.localModel(Gallery.FIRST_RUN_PROMPTS[1], spec); // 'A nightstand with two drawers in cherry'
+    eq(chip.kind, 'new', 'hint chip: bare noun phrase creates');
+    eq(chip.kind === 'new' && chip.spec.meta.template, 'nightstand', 'hint chip: nightstand');
+    eq(chip.kind === 'new' && chip.spec.wood.species, 'cherry', 'hint chip: cherry');
+    eq(chip.kind === 'new' && chip.spec.drawers && chip.spec.drawers.count, 2, 'hint chip: two drawers');
+
+    const bed = AI.localModel('a bedside table in walnut', spec);
+    eq(bed.kind === 'new' && bed.spec.meta.template, 'nightstand', 'multi-word "bedside table" beats "table"');
+
+    // Phantom shelf count: a normalized length token ("about 5 feet tall" →
+    // "about 1524mm tall") must never read as a shelf count — the chips would
+    // then report a change the user never asked for.
+    const bs = Spec.correctSpec({ meta: { template: 'bookshelf' } });
+    const tall = AI.localModel('make the bookshelf about 1524mm tall', bs);
+    eq(tall.kind, 'diff', 'same-template mention refines, never recreates');
+    eq(tall.kind === 'diff' && tall.patch.overall && tall.patch.overall.height, 1524, 'height parsed from the mm token');
+    ok(!(tall.kind === 'diff' && tall.patch.structure && 'shelfCount' in tall.patch.structure),
+      'no phantom shelf count from the mm token');
+    if (tall.kind === 'diff') {
+      const applied = AI.apply(tall, bs);
+      ok(applied.chips.every(c => !/shelf count/.test(c)), 'chips never name a shelf-count change nobody asked for');
+    }
+    const legit = AI.localModel('give it 3 shelves', bs);
+    eq(legit.kind === 'diff' && legit.patch.structure && legit.patch.structure.shelfCount, 3, 'real shelf-count asks still parse');
+
+    // A mentioned-but-not-created template cannot smuggle drawers onto the
+    // current design (correction would strip them → phantom ack).
+    const smug = AI.localModel('two drawers like a cabinet has', spec);
+    ok(smug.kind === 'question' || !/drawer/.test((smug.explain || '') + JSON.stringify(smug.patch || {})),
+      'drawers on a table are refused, never acked');
+
+    // Negation guard intact (FE-H10/H11): a negated template noun never creates.
+    ok(AI.localModel('not a nightstand', spec).kind !== 'new', 'negated template noun never creates');
+    ok(AI.localModel('no ash please', ns).kind === 'question', 'species negation guard still asks');
+  }
+
+  // X-09: design names preserve the user's phrasing — never the mm token
+  // that unit pre-normalization writes into the parsed text.
+  {
+    const nm = AI.localModel('A bookshelf about 5 feet tall', spec);
+    eq(nm.kind, 'new', 'bare bookshelf description creates');
+    ok(nm.kind === 'new' && !/\d+\s*mm\b/i.test(nm.spec.meta.name),
+      `name carries no bare mm token — got "${nm.kind === 'new' ? nm.spec.meta.name : ''}"`);
+    ok(nm.kind === 'new' && /5 feet/i.test(nm.spec.meta.name), 'name keeps the user\'s own words');
+    ok(nm.kind === 'new' && Math.abs(nm.spec.overall.height - 1524) < 0.1, 'the height still parses to 1524 mm internally');
+    // The chat route normalizes BEFORE localModel sees the text — the
+    // original phrasing rides an opts channel.
+    const pre = AI.localModel(BB.Units.normalizeLengthText('A bookshelf about 5 feet tall'), spec,
+      { phrasing: 'A bookshelf about 5 feet tall' });
+    ok(pre.kind === 'new' && !/\d+\s*mm\b/i.test(pre.spec.meta.name),
+      `pre-normalized call with phrasing: no mm token — got "${pre.kind === 'new' ? pre.spec.meta.name : ''}"`);
+  }
+}
+
+/* ---------------- lead-gen origin on export surfaces (A-11) ---------------- */
+section('exports carry the app origin; share links carry a ref marker (A-11)');
+{
+  const r = pipeline({
+    meta: { name: 'Origin NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const cut = Plans.cutList(r.spec, r.model);
+  const ORIGIN = 'https://blueprint.example.app/';
+  // Origin is runtime state — it must be PASSED IN; the exporters stay pure.
+  const csv = Exports.toCSV(r.spec, cut, { origin: ORIGIN });
+  const lastLine = csv.trim().split('\r\n').pop();
+  ok(/Blueprint Buddy/.test(lastLine) && /blueprint\.example\.app/.test(lastLine), 'CSV footer row names the app and its origin');
+  ok(!/Made with|example\.app/.test(Exports.toCSV(r.spec, cut)), 'no origin argument → no footer (pure function of its arguments)');
+
+  const fmt = v => BB.Units.fmtLength(v);
+  ok(/blueprint\.example\.app/.test(BB.Drafting.sheetSVG(r.spec, r.model, fmt, { origin: ORIGIN })),
+    'drawing sheet carries the origin in its title-block footer');
+  ok(!/example\.app/.test(BB.Drafting.sheetSVG(r.spec, r.model, fmt)), 'sheet without origin unchanged');
+
+  const integ = Structural.computeIntegrity(r.spec, r.model, {});
+  const plan = Packing.planStock(r.spec, r.model, cut, {});
+  const bom = Plans.bom(r.spec, r.model, { integrity: integ, stock: plan });
+  const steps = Plans.assembly(r.spec, r.model, integ, { stockPlan: plan });
+  const html = Exports.printHTML(r.spec, r.model, cut, bom, steps, plan, { origin: ORIGIN });
+  ok(/Made with Blueprint Buddy[^<]*blueprint\.example\.app/.test(html), 'print sheet footer carries the origin');
+
+  // Share links append a ref marker; import tolerates and strips it.
+  const code = Codec.toShareCode(r.spec);
+  const link = 'https://blueprint.example.app/#d=' + encodeURIComponent(code) + '&ref=share';
+  const back = Codec.fromShareCode(link);
+  ok(!back.error && back.spec && back.spec.meta.name === 'Origin NS', 'a full share link with the ref marker imports');
+  const back2 = Codec.fromShareCode(code + '&ref=share');
+  ok(!back2.error && !!back2.spec, 'code + ref marker imports (marker stripped)');
+  ok(!Codec.fromShareCode(code).error, 'plain codes still import');
+  ok(!!Codec.fromShareCode('BB4:!!!').error && !!Codec.fromShareCode('hello').error, 'garbage still rejected');
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok(/encodeURIComponent\(Codec\.toShareCode\(state\.spec\)\) \+ '&ref=/.test(uiSrc), 'shareLink appends the ref marker');
+}
+
+/* ---------------- L-03: sheet goods never price in board feet ---------------- */
+section('sheet species carry no vestigial pricePerBdFt (L-03)');
+{
+  // Reader audit (verified at fix time): defaultPrices().bdft filters
+  // !s.sheet; plans.js/packing.js board-foot math reads spec.wood.species,
+  // which correction guarantees is a SOLID species; compareSpecies skips
+  // sheet rows. Nothing consumes pricePerBdFt for sheet: true species.
+  for (const s of Object.values(K.WOOD_SPECIES).filter(x => x.sheet)) {
+    ok(!('pricePerBdFt' in s), `${s.key} carries no pricePerBdFt (plywood is priced per sheet)`);
+  }
+  const dp = K.defaultPrices();
+  ok(Object.keys(dp.bdft).length > 0 && Object.keys(dp.bdft).every(k => !K.WOOD_SPECIES[k].sheet),
+    'board-foot default prices cover exactly the solid species');
+  ok(Object.keys(dp.bdft).every(k => typeof dp.bdft[k] === 'number' && dp.bdft[k] > 0),
+    'solid board-foot defaults remain intact');
+  ok(Object.values(K.WOOD_SPECIES).filter(x => x.sheet).every(s => Object.keys(dp.sheet).includes(s.key)),
+    'every sheet species prices through the per-sheet table instead');
+}
+
+/* ---------------- L-01: cleat stock from the ONE sheet table ---------------- */
+section('french cleat ply comes from the standard sheet-thickness table (L-01)');
+{
+  const r = pipeline({
+    meta: { name: 'Cleat', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 2, backPanel: true }
+  });
+  const side = r.model.parts.find(p => p.role === 'side');
+  const mate = r.model.parts.find(p => p.role === 'top' || p.role === 'shelf');
+  const lay = BB.Fasteners.layoutForJoint(r.spec, r.model, { type: 'french_cleat', a: side.id, b: mate.id });
+  ok(lay && lay.cleat, 'french cleat layout carries cleat data');
+  ok(lay && lay.cleat && K.SHEET_THICKNESS.includes(lay.cleat.plyMM),
+    `cleat ply is ON the sheet-thickness table — got ${lay && lay.cleat && lay.cleat.plyMM}`);
+  eq(lay && lay.cleat && lay.cleat.plyMM, K.SHEET_THICKNESS[2], 'cleat ply is the standard 18 mm sheet');
+  ok(lay && lay.text.includes('rip ' + BB.Units.fmtLength(K.SHEET_THICKNESS[2]) + ' ply')
+    && !lay.text.includes('rip ' + BB.Units.fmtLength(19) + ' ply'),
+    'the rip instruction names the same stock the table sells');
+}
+
+/* ---------------- A-06: discoverability — meta/OG tags + robots.txt ---------------- */
+section('template ships meta description + OG tags; build emits robots.txt (A-06)');
+{
+  const tpl = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.template.html'), 'utf8');
+  const head = tpl.slice(0, tpl.indexOf('</head>'));
+  ok(/<meta name="description" content="[^"]{60,}">/.test(head), 'meta description present and substantive');
+  ok(/<meta property="og:title" content="[^"]+">/.test(head), 'og:title present');
+  ok(/<meta property="og:description" content="[^"]+">/.test(head), 'og:description present');
+  ok(/<meta property="og:type" content="website">/.test(head), 'og:type=website present');
+  ok(/<meta name="twitter:card" content="summary">/.test(head), 'twitter:card=summary present');
+  ok(!/og:image/.test(head), 'no og:image is fabricated (no hosted asset exists)');
+  // robots.txt is a real build output, committed alongside dist/index.html.
+  const robotsPath = path.join(__dirname, '..', 'dist', 'robots.txt');
+  const robots = fs.existsSync(robotsPath) ? fs.readFileSync(robotsPath, 'utf8') : '';
+  ok(robots.length > 0, 'dist/robots.txt exists after build');
+  ok(/^User-agent: \*$/m.test(robots) && /^Allow: \/$/m.test(robots), 'robots.txt allows all agents');
+  ok(!/sitemap|\.xml|disallow/i.test(robots), 'robots.txt references nothing that does not exist');
 }
 
 /* ---------------- history ---------------- */
@@ -801,8 +993,62 @@ section('word-number lengths and storage driver honesty');
   delete globalThis.localStorage;
 }
 
+/* L-14: a keyless proxy (/api/chat → 503) is a DISTINCT state — the app must
+ * never present a broken AI deploy as ordinary offline. Fresh vm contexts get
+ * a stubbed browser + fetch so the real transport ladder runs. */
+async function testKeylessProxyState() {
+  section('AI transport: keyless proxy (503) ≠ offline (L-14)');
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const load = globals => {
+    const ctx = vm.createContext(globals);
+    for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, { filename: 'L14-' + f });
+    return ctx.BB;
+  };
+  // Proxy present but unconfigured: /api/chat answers 503.
+  const keyless = load({
+    console, window: {}, document: {},
+    fetch: async () => ({ status: 503, ok: false, json: async () => ({ error: { message: 'no key' } }) })
+  });
+  const hasFlag = typeof keyless.AI.unconfigured === 'function';
+  ok(hasFlag && keyless.AI.unconfigured() === false, 'AI.unconfigured() exists and starts false');
+  const spec503 = keyless.Spec.correctSpec({ meta: { template: 'table' } });
+  const r1 = await keyless.AI.respond('make it walnut', spec503, { turns: [] });
+  ok(r1.local === true && r1.reply && r1.reply.kind === 'diff', 'keyless proxy still answers via the local parser');
+  eq(r1.unconfigured, true, '503 surfaces the distinct unconfigured state');
+  ok(hasFlag && keyless.AI.unconfigured() === true, 'the session remembers the keyless proxy');
+  const r2 = await keyless.AI.respond('make it pine', spec503, { turns: [] });
+  eq(r2.unconfigured, true, 'unconfigured persists on the hasRemote fast path');
+  // Genuine offline: the network itself is down — NOT "not configured".
+  const offline = load({
+    console, window: {}, document: {},
+    fetch: async () => { throw new Error('network down'); }
+  });
+  const rOff = await offline.AI.respond('make it walnut', offline.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(rOff.local === true && !rOff.unconfigured, 'a dead network is plain offline, never "not configured"');
+  ok(typeof offline.AI.unconfigured === 'function' && offline.AI.unconfigured() === false,
+    'offline context never claims unconfigured');
+  // Badge honesty (source level — ui.js is browser-coupled).
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok(/AI not configured/.test(uiSrc), 'badge has a distinct "AI not configured" label');
+  ok(/out\.unconfigured/.test(uiSrc), 'send path threads the unconfigured state to the badge');
+}
+
+/* X-09 (chat route): respond() normalizes the text for parsing and the wire,
+ * but the created design's NAME keeps the user's phrasing. */
+async function testNamePhrasing() {
+  section('respond(): names keep the user phrasing after normalization (X-09)');
+  const spec = BB.Spec.correctSpec({ meta: { template: 'table' } });
+  const res = await AI.respond('A bookshelf about 5 feet tall', spec, { turns: [] });
+  ok(res.local === true && res.reply && res.reply.kind === 'new', 'headless respond falls back to the local parser');
+  const name = res.reply && res.reply.kind === 'new' ? res.reply.spec.meta.name : '';
+  ok(!/\d+\s*mm\b/i.test(name), `chat-route name carries no bare mm token — got "${name}"`);
+  ok(/5 feet/i.test(name), 'chat-route name keeps "about 5 feet tall"');
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
+  await testKeylessProxyState();
+  await testNamePhrasing();
   section('self-test suite (headless run)');
   const results = await BB.SelfTest.run();
   for (const r of results) {

@@ -70,4 +70,7 @@ let html = read('src/index.template.html')
 
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(root, 'dist/index.html'), html);
-console.log(`dist/index.html — ${(html.length / 1024).toFixed(0)} KB`);
+/* robots.txt (A-06): allow everything, reference nothing that doesn't exist —
+ * the app is one page, so there is deliberately no sitemap line. */
+fs.writeFileSync(path.join(root, 'dist/robots.txt'), 'User-agent: *\nAllow: /\n');
+console.log(`dist/index.html — ${(html.length / 1024).toFixed(0)} KB (+ robots.txt)`);

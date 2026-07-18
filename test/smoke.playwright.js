@@ -375,6 +375,18 @@ const clickMoreCtl = async sel => {
   await page.waitForSelector('.ref-search');
   ok(await page.evaluate(() => !document.getElementById('tab-reference').hidden),
     'reference tab appears only while reference is open');
+  // M-12: sheet goods in the wood table are badged; Janka/movement dash.
+  const sheetRow = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('#panel-main table tbody tr')]
+      .find(r => /\bMDF\b/i.test(r.cells[0].textContent));
+    return row ? {
+      badge: !!row.querySelector('.sheet-badge'),
+      janka: row.cells[1].textContent.trim(),
+      move: row.cells[5].textContent.trim()
+    } : null;
+  });
+  ok(!!sheetRow && sheetRow.badge && sheetRow.janka === '—' && sheetRow.move === '—',
+    `sheet rows badged with Janka/movement dashed (${JSON.stringify(sheetRow)})`);
   await page.click('.ref-tabs .ref-tab:nth-child(3)');
   await page.waitForSelector('.joint-demo');
   ok(await page.evaluate(() => document.querySelectorAll('.joint-demo').length === Object.keys(BB.K.JOINERY).length),
@@ -536,8 +548,22 @@ const clickMoreCtl = async sel => {
   ok(gear.slides === 2 * gear.slideDrawers, `slide pair per slide-mounted drawer in the model (${gear.slides}/${gear.slideDrawers})`);
   ok(!gear.inCut, 'metal slides never reach the cut list');
 
-  // Accounts: on a static host (no /api/auth) the section stays hidden.
-  ok(await page.evaluate(() => document.getElementById('accountArea').hidden === true), 'account section hidden with no providers configured');
+  // Accounts: on a true static host (no providers, no billing evidence) the
+  // section stays hidden. The smoke shim's granted billing IS billing
+  // evidence, so with it present the persistent plans surface shows (A-05) —
+  // rendered explicitly here because the boot render races the shim's grant.
+  const acct = await page.evaluate(() => {
+    const real = BB.Store.auth().billing;
+    BB.Store.setBilling(null);
+    __bb.renderAccount();
+    const bare = document.getElementById('accountArea').hidden;
+    BB.Store.setBilling(real);
+    __bb.renderAccount();
+    const withBilling = document.getElementById('accountArea').hidden;
+    return { bare, withBilling };
+  });
+  ok(acct.bare === true, 'account section hidden with no providers and no billing evidence');
+  ok(acct.withBilling === false, 'billing evidence shows the persistent plans surface (A-05)');
 
   // Integrity tab: checks, movement, tappable fix through the pipeline.
   await page.click('#tab-integrity');
@@ -896,6 +922,21 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => __bb.state.refTab === 'ergo' && document.activeElement.classList.contains('ref-tab') &&
     document.activeElement.getAttribute('aria-selected') === 'true'),
     'reference tabs move with arrow keys and keep focus on the selected tab');
+  // P2-7: the sub-tabs complete the ARIA tab pattern — aria-controls on every
+  // tab, and the body is a role=tabpanel labelled by the selected tab.
+  const refAria = await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('.ref-tab')];
+    const panel = document.getElementById('refPanel');
+    const selected = tabs.find(t => t.getAttribute('aria-selected') === 'true');
+    return {
+      allControls: tabs.length > 0 && tabs.every(t => t.getAttribute('aria-controls') === 'refPanel'),
+      panelRole: panel ? panel.getAttribute('role') : null,
+      labelledBySelected: !!panel && !!selected && !!selected.id && panel.getAttribute('aria-labelledby') === selected.id
+    };
+  });
+  ok(refAria.allControls, 'every reference tab carries aria-controls to the panel');
+  ok(refAria.panelRole === 'tabpanel', 'the reference body is a role=tabpanel');
+  ok(refAria.labelledBySelected, 'the tabpanel is labelled by the selected tab');
 
   // Integrity fix buttons patch the spec through the normal pipeline.
   await page.evaluate(() => __bb.merge({ meta: { template: 'desk' }, overall: { width: 2200, depth: 650, height: 735 }, wood: { species: 'pine' }, structure: { topThickness: 19 } }, 'manual'));
@@ -967,6 +1008,29 @@ const clickMoreCtl = async sel => {
   ok(!/RED/.test(diag), `all in-app self-tests green (${diag.trim()})`);
   await page.screenshot({ path: SHOTS + '/17-diagnostics.png' });
   await page.click('#diagClose');
+
+  // M-16: diagnostics must be reachable by keyboard, not pointer-only —
+  // the logo target carries button semantics and Enter opens the panel.
+  const diagKb = await page.evaluate(() => {
+    const logo = document.getElementById('brandLogo');
+    return {
+      buttonSemantics: logo.tagName === 'BUTTON' || (logo.getAttribute('role') === 'button' && logo.getAttribute('tabindex') === '0'),
+      aria: logo.getAttribute('aria-label') || '',
+      h1Intact: !!document.querySelector('h1.brand-name') && !document.querySelector('h1.brand-name').closest('[role="button"], button')
+    };
+  });
+  ok(diagKb.buttonSemantics, 'logo diagnostics target has button semantics');
+  ok(/diagnostic/i.test(diagKb.aria), `logo names its diagnostics action for assistive tech (got "${diagKb.aria}")`);
+  ok(diagKb.h1Intact, 'the h1 wordmark stays outside the button (heading not flattened)');
+  await page.focus('#brandLogo');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+  ok(await page.isVisible('#diagScrim.open'), 'Enter on the focused logo opens diagnostics');
+  await page.evaluate(() => { if (document.getElementById('diagScrim').classList.contains('open')) document.getElementById('diagClose').click(); });
+  // Camera presets announce their views, not bare letters.
+  const presetAria = await page.evaluate(() => ['viewFront', 'viewSide', 'viewTop', 'viewIso'].map(id => document.getElementById(id).getAttribute('aria-label') || ''));
+  ok(/front elevation/i.test(presetAria[0]) && /side elevation/i.test(presetAria[1]) && /plan|top/i.test(presetAria[2]) && /perspective/i.test(presetAria[3]),
+    `camera presets carry real names (${presetAria.join(' | ') || 'none'})`);
 
   // Photo downscale: never send a raw camera image (1024 px long edge, JPEG).
   const ds = await page.evaluate(async () => {
@@ -1280,8 +1344,324 @@ const clickMoreCtl = async sel => {
   ok(nudged.clicked && /100%/.test(nudged.pct) && nudged.nudge && nudged.flag,
     `finishing the build raises the one-time install nudge (${nudged.pct})`);
   await page.evaluate(() => { document.getElementById('bmInstallDismiss').click(); __bb.exitBuildMode(); });
+
+  /* ================= X-05: Share + Import reachable on phones ================= */
+  // ≤560px hides the topbar Share CTA; the More menu must carry a working
+  // Share/Import entry there (the CSS comment's claim, made true).
+  ok(await page.evaluate(() => getComputedStyle(document.getElementById('shareBtn')).display === 'none'),
+    'topbar Share CTA is hidden at 390px');
+  await page.click('#moreBtn');
+  const menuShare = await page.evaluate(() => {
+    const b = document.getElementById('menuShareBtn');
+    return { exists: !!b, visible: !!b && b.getClientRects().length > 0 };
+  });
+  ok(menuShare.exists && menuShare.visible, 'More menu offers a Share / Import entry at phone widths');
+  await page.evaluate(() => { const b = document.getElementById('menuShareBtn'); if (b) b.click(); });
+  await page.waitForTimeout(250);
+  ok(await page.isVisible('#shareScrim.open'), 'the More-menu Share entry opens the share dialog');
+  ok(await page.isVisible('#shareScrim.open #importCode'), 'the import paste box is reachable from the phone entry');
+  await page.evaluate(() => {
+    if (document.getElementById('shareScrim').classList.contains('open')) document.getElementById('shareClose').click();
+    if (document.getElementById('moreMenu').classList.contains('open')) document.getElementById('moreBtn').click();
+  });
+
+  /* ================= X-06: phone mode nav keeps its words ================= */
+  // Design/Plan must never collapse to unlabeled dots: visible text labels at
+  // 390px, assistive state labels intact, and the row still fits.
+  const nav390 = await page.evaluate(() => {
+    const label = id => {
+      const l = document.querySelector('#' + id + ' .mode-label');
+      return { visible: !!l && getComputedStyle(l).display !== 'none', text: l ? l.textContent : '' };
+    };
+    return {
+      design: label('mode-design'), plan: label('mode-plan'), build: label('buildModeBtn'),
+      designAria: document.getElementById('mode-design').getAttribute('aria-label') || '',
+      planAria: document.getElementById('mode-plan').getAttribute('aria-label') || '',
+      moreRight: Math.round(document.getElementById('moreBtn').getBoundingClientRect().right),
+      topbarH: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
+      tapOk: [...document.querySelectorAll('.mode-btn')].every(b => b.getBoundingClientRect().height >= 44)
+    };
+  });
+  ok(nav390.design.visible && nav390.design.text === 'Design' && nav390.plan.visible && nav390.plan.text === 'Plan',
+    'Design and Plan keep visible text labels at 390px');
+  ok(nav390.build.visible, 'Build keeps its word too');
+  ok(nav390.designAria.length > 0 && nav390.planAria.length > 0, 'mode buttons keep assistive state labels');
+  ok(nav390.moreRight <= 390, `labeled nav still fits the 390px row (More ends at ${nav390.moreRight}px)`);
+  ok(nav390.topbarH <= 64, `topbar stays one compact row with labels (${nav390.topbarH}px)`);
+  ok(nav390.tapOk, 'labeled mode buttons hold the 44px tap floor');
+  await page.setViewportSize({ width: 430, height: 844 });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => Math.round(document.getElementById('moreBtn').getBoundingClientRect().right) <= 430),
+    'labeled nav fits at 430px too (the tightest mid-band)');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+
+  /* ================= X-07: Plan mode on a phone shows real content ============ */
+  // Entering Plan at ≤560px auto-shifts the splitter so the panel holds at
+  // least 40% of the viewport — the first plan row is readable without a
+  // drag. A splitter the user has touched this session always wins.
+  const planPhone = await page.evaluate(() => {
+    __bb.state.userSplitTouched = false;
+    __bb.setSplit(58, { persist: false });
+    __bb.setMode('design');
+    __bb.selectTab('cut'); // enters Plan through the same gate as the mode nav
+    document.getElementById('panel-main').scrollTop = 0; // fresh entry (earlier tests scrolled it)
+    const panel = document.getElementById('panel-main').getBoundingClientRect();
+    const firstRow = document.querySelector('#panel-main .cut-card, #panel-main tbody tr');
+    const sheetTop = document.getElementById('chatPanel').getBoundingClientRect().top;
+    const r = firstRow ? firstRow.getBoundingClientRect() : null;
+    return {
+      panelShare: panel.height / innerHeight,
+      rowVisible: !!r && r.top >= panel.top - 1 && r.bottom <= Math.min(sheetTop, innerHeight) + 1,
+      debug: { panelTop: Math.round(panel.top), panelBottom: Math.round(panel.bottom), row: r && [Math.round(r.top), Math.round(r.bottom)], sheetTop: Math.round(sheetTop), expanded: document.getElementById('chatPanel').classList.contains('expanded') }
+    };
+  });
+  ok(planPhone.panelShare >= 0.39, `entering Plan on a phone gives the panel ≥40% of the viewport (got ${Math.round(planPhone.panelShare * 100)}%)`);
+  ok(planPhone.rowVisible, `the first plan row is visible without a drag (${JSON.stringify(planPhone.debug)})`);
+  const dragWins = await page.evaluate(() => {
+    __bb.state.userSplitTouched = true;
+    __bb.setSplit(58, { persist: false });
+    __bb.setMode('design');
+    __bb.setMode('plan');
+    const split = __bb.state.prefs4.ui.split;
+    __bb.state.userSplitTouched = false;
+    __bb.setSplit(58, { persist: false });
+    return split;
+  });
+  ok(dragWins === 58, `a user-touched splitter is never auto-fought (${dragWins}%)`);
+
+  /* ================= P1-1: redo reachable on touch ================= */
+  // The topbar redo folds away at phone widths; touch users (who have no
+  // Ctrl+Shift+Z) get an actionable Redo in the More menu instead.
+  ok(await page.evaluate(() => getComputedStyle(document.getElementById('redoBtn')).display === 'none'),
+    'topbar redo is folded away at 390px');
+  const redoTouch = await page.evaluate(() => {
+    const before = __bb.state.spec.overall.height;
+    __bb.merge({ overall: { height: before + 30 } }, 'manual');
+    const changed = __bb.state.spec.overall.height;
+    document.getElementById('undoBtn').click();
+    const afterUndo = __bb.state.spec.overall.height;
+    document.getElementById('moreBtn').click();
+    const item = document.getElementById('menuRedoBtn');
+    const visible = !!item && item.getClientRects().length > 0 && !item.disabled;
+    if (item) item.click();
+    const out = {
+      distinct: changed !== before,
+      undone: afterUndo === before,
+      visible,
+      redone: __bb.state.spec.overall.height === changed,
+      menuClosed: !document.getElementById('moreMenu').classList.contains('open')
+    };
+    if (!out.menuClosed) document.getElementById('moreBtn').click();
+    document.getElementById('undoBtn').click(); // leave the design as we found it
+    return out;
+  });
+  ok(redoTouch.distinct && redoTouch.undone, 'undo/redo probe setup holds (edit landed, undo reverted)');
+  ok(redoTouch.visible, 'More menu offers an enabled Redo at phone widths');
+  ok(redoTouch.redone && redoTouch.menuClosed, 'the menu Redo restores the undone change and closes the menu');
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
+
+  /* ================= A-05: usage meter + persistent upgrade surface ============ */
+  // A billing-configured origin shows Free users the wall BEFORE they hit it:
+  // a compact remaining-messages meter by the chat input, and a persistent
+  // Plans entry in the More menu — not only the paywall dialog.
+  const meter = await page.evaluate(() => {
+    const grab = () => {
+      const m = document.getElementById('aiUsage');
+      return {
+        visible: !!m && !m.hidden,
+        text: m ? m.textContent : '',
+        areaShown: !document.getElementById('accountArea').hidden,
+        menuHasPlans: !!document.querySelector('#accountArea [role="menuitem"]')
+      };
+    };
+    const real = BB.Store.auth().billing;
+    BB.Store.setBilling({ plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 7 } });
+    if (__bb.renderAccount) __bb.renderAccount();
+    const free = grab();
+    BB.Store.setBilling(real);
+    if (__bb.renderAccount) __bb.renderAccount();
+    const restored = grab();
+    return { free, restored };
+  });
+  ok(meter.free.visible && /18 of 25/.test(meter.free.text),
+    `free user with known usage sees the remaining-messages meter (got "${meter.free.text.trim()}")`);
+  ok(/Upgrade/i.test(meter.free.text), 'the meter carries an Upgrade affordance for Free');
+  ok(meter.free.areaShown && meter.free.menuHasPlans, 'billing-configured origin gets a persistent Plans entry in More');
+  ok(!meter.restored.visible, 'meter hides again when usage is zero/unknown');
+
+  /* ================= X-04: the Build gate announces itself ================= */
+  // Free users get a visible + aria-communicated Pro lock on the Build mode
+  // button, so the paywall is announced BEFORE the tap; activation still
+  // opens the pricing dialog, never a bare dead-end.
+  const lock = await page.evaluate(() => {
+    const real = BB.Store.auth().billing;
+    BB.Store.setBilling({ plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 0 } });
+    if (__bb.renderAccount) __bb.renderAccount();
+    __bb.renderReadiness();
+    const lockEl = document.getElementById('buildModeLock');
+    const btn = document.getElementById('buildModeBtn');
+    const free = {
+      lockVisible: !!lockEl && !lockEl.hidden && !!lockEl.querySelector('svg'),
+      aria: btn.getAttribute('aria-label') || ''
+    };
+    btn.click();
+    const dlg = document.querySelector('.pricing-dialog');
+    free.modal = !!(dlg && dlg.open);
+    free.buildEntered = __bb.state.buildMode;
+    if (dlg && dlg.open) dlg.close();
+    BB.Store.setBilling(real);
+    if (__bb.renderAccount) __bb.renderAccount();
+    __bb.renderReadiness();
+    return { free, pro: { lockVisible: !!lockEl && !lockEl.hidden } };
+  });
+  ok(lock.free.lockVisible, 'free users see a visible Pro lock glyph on the Build button');
+  ok(/\bPro\b/.test(lock.free.aria), `Build button aria announces the Pro gate before the tap (got "${lock.free.aria}")`);
+  ok(lock.free.modal && !lock.free.buildEntered, 'activating locked Build still opens the pricing dialog, not the shop');
+  ok(!lock.pro.lockVisible, 'Pro entitlement clears the lock affordance');
+
+  /* ================= A-04: the Free project-cap loop ================= */
+  // At the 3-project cap the autosave path must stay calm AND honest: the
+  // pricing dialog opens at most ONCE per session, the save indicator says
+  // plainly that nothing is saved (with a working share-code way out), and
+  // later blocked saves surface only the passive indicator/banner.
+  const cap = await page.evaluate(async () => {
+    const FREE = { plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 0 } };
+    const realIdx = await BB.Store.loadIndex();
+    const realProject = __bb.state.project;
+    const realBilling = BB.Store.auth().billing;
+    await BB.Store.set('projects:index', [1, 2, 3].map(i => ({ id: 'seed' + i, name: 'Seed ' + i, updated: Date.now() - i, dims: null, progressPct: 0 })));
+    BB.Store.setBilling(FREE);
+    __bb.state.project = null;
+    const dlg = () => document.querySelector('.pricing-dialog');
+    const banner = () => document.getElementById('capBanner');
+    const snap = () => ({
+      modal: !!(dlg() && dlg().open),
+      saveText: document.getElementById('saveState').textContent,
+      banner: !!(banner() && !banner().hidden)
+    });
+    await __bb.doAutosave();
+    const first = snap();
+    if (dlg() && dlg().open) dlg().close();
+    await __bb.doAutosave();
+    const second = snap();
+    if (dlg() && dlg().open) dlg().close(); // cleanup regardless of outcome
+    let shareOpens = false;
+    const shareBtn = document.getElementById('capBannerShare');
+    if (shareBtn) {
+      shareBtn.click();
+      shareOpens = document.getElementById('shareScrim').classList.contains('open');
+      if (shareOpens) document.getElementById('shareClose').click();
+    }
+    // restore the world for the tests that follow
+    await BB.Store.set('projects:index', realIdx);
+    __bb.state.project = realProject;
+    BB.Store.setBilling(realBilling);
+    if (banner()) banner().hidden = true;
+    return { first, second, shareOpens };
+  });
+  ok(cap.first.modal, 'first blocked autosave at the cap opens the pricing dialog');
+  ok(cap.first.saveText === 'not saved — project limit',
+    `blocked autosave shows an explicit save state (got "${cap.first.saveText}")`);
+  ok(cap.first.banner, 'blocked autosave raises the passive not-saved banner');
+  ok(!cap.second.modal, 'second blocked autosave does NOT re-open the pricing dialog');
+  ok(cap.second.saveText === 'not saved — project limit' && cap.second.banner,
+    'later blocked saves keep the passive indicator only');
+  ok(cap.shareOpens, 'the banner share-code affordance opens the share dialog');
+
+  // (d) A server 403 {error:'project_limit'} on the project-doc write lands in
+  // the SAME visible state — the cloud driver records the denial and the
+  // autosave paints it, never a silent "saved · cloud".
+  const cap403 = await page.evaluate(async () => {
+    const realFetch = window.fetch;
+    const shim = window.storage;
+    const json = (body, status) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    window.fetch = async (url, opts) => {
+      const u = String(url);
+      if (u.startsWith('/api/auth')) return json({ user: { id: 'u1', name: 'Cap Tester' }, providers: ['dev'], storage: true }, 200);
+      if (u.startsWith('/api/store')) {
+        if (opts && opts.method === 'PUT' && u.includes('doc=project%3A')) return json({ error: 'project_limit', limit: 3 }, 403);
+        return json({ value: JSON.stringify([]) }, 200);
+      }
+      return realFetch(url, opts);
+    };
+    try {
+      window.storage = null;                       // force the cloud rung
+      await BB.Store.init({ timeoutMs: 2000 });    // probe succeeds -> remote alive
+      if (!__bb.state.project) __bb.state.project = { id: BB.Store.newId(), progress: { cuts: {}, steps: {} } };
+      await __bb.doAutosave();
+      return {
+        cloud: BB.Store.auth().cloud,
+        saveText: document.getElementById('saveState').textContent,
+        banner: !!(document.getElementById('capBanner') && !document.getElementById('capBanner').hidden)
+      };
+    } finally {
+      window.storage = shim;
+      window.fetch = realFetch;
+      const banner = document.getElementById('capBanner');
+      if (banner) banner.hidden = true;
+    }
+  });
+  ok(cap403.cloud, 'store chain upgraded to cloud for the 403 probe');
+  ok(cap403.saveText === 'not saved — project limit',
+    `server project_limit 403 paints the same explicit state (got "${cap403.saveText}")`);
+  ok(cap403.banner, 'server project_limit 403 raises the same passive banner');
+
+  /* ================= P2-9: cut-list sticky headers actually stick ============ */
+  // The column headers must pin to the top of the scrolling panel while the
+  // rows scroll under them — measured on a 13-row cut list.
+  const sticky = await page.evaluate(async () => {
+    __bb.merge({ meta: { template: 'cabinet' }, overall: { width: 900, depth: 450, height: 900 }, drawers: { count: 2 }, structure: { shelfCount: 2 } }, 'manual');
+    __bb.selectTab('cut');
+    await new Promise(r => setTimeout(r, 400)); // panel rise animation settles
+    const panel = document.getElementById('panel-main');
+    const thead = document.querySelector('#panel-main thead');
+    const rows = document.querySelectorAll('#panel-main tbody tr').length;
+    panel.scrollTop = 0;
+    const beforeTop = thead.getBoundingClientRect().top;
+    panel.scrollTop = 300;
+    const t = thead.getBoundingClientRect();
+    const p = panel.getBoundingClientRect();
+    const firstRow = document.querySelector('#panel-main tbody tr').getBoundingClientRect();
+    panel.scrollTop = 0;
+    return {
+      rows,
+      pinned: t.top >= p.top - 1 && t.top <= p.top + 40,
+      drift: Math.round(beforeTop - t.top),
+      rowsUnder: firstRow.top < t.bottom
+    };
+  });
+  ok(sticky.rows >= 13, `sticky probe runs on a ${sticky.rows}-row cut list`);
+  ok(sticky.pinned, `thead pins to the panel top after a 300px scroll (drifted ${sticky.drift}px instead)`);
+  ok(sticky.rowsUnder, 'rows scroll under the pinned header');
+
+  /* ================= M-15: first-run welcome reads import-first ============ */
+  // With no saved projects the third path is IMPORT (paste a code you were
+  // given), not "open a saved design" you don't have — and its action lands
+  // focus in the paste box, not on the export code.
+  const welcomeImport = await page.evaluate(() => {
+    __bb.showWelcome(false);
+    const name = document.getElementById('welcomeResumeName').textContent;
+    document.getElementById('welcomeResume').click();
+    const out = {
+      name,
+      shareOpen: document.getElementById('shareScrim').classList.contains('open'),
+      focusId: document.activeElement ? document.activeElement.id : ''
+    };
+    if (out.shareOpen) document.getElementById('shareClose').click();
+    __bb.hideWelcome();
+    __bb.showWelcome(true);
+    out.withProjects = document.getElementById('welcomeResumeName').textContent;
+    __bb.hideWelcome();
+    return out;
+  });
+  ok(welcomeImport.name === 'Import a design', `no-projects welcome reads import-first (got "${welcomeImport.name}")`);
+  ok(welcomeImport.shareOpen && welcomeImport.focusId === 'importCode',
+    `the import action opens Share with focus in the paste box (focus on "${welcomeImport.focusId}")`);
+  ok(welcomeImport.withProjects === 'Open a saved design', 'the has-projects welcome keeps "Open a saved design"');
+
 
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });

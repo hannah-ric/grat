@@ -175,6 +175,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Every non-lumber price routes through the user-editable table
     // (prices.hardware) with the catalog defaults as fallback.
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     const hp = (key, fallback) => K.hardwarePrice(opts.prices, key, fallback);
     const engineCounts = BB.Fasteners ? BB.Fasteners.countFor(spec, model) : [];
     const PRICE_EACH = {
@@ -182,10 +183,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       biscuit: 0.15, loose_tenon: 0.5, kd_bolt: 1.5, spline: 0.4
     };
     for (const c of engineCounts) {
-      const label = c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${fine(c.pilotMM)})` : '');
+      const label = c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${drill(c.pilotMM)})` : '');
       const detail = c.kind === 'figure8' ? 'top attachment — allows seasonal movement'
         : c.kind === 'pocket' ? 'per the pocket-hole layout in the steps'
-        : c.kind === 'dowel' ? `drill ${fine(c.pilotMM)}, positions in the steps`
+        : c.kind === 'dowel' ? `drill ${drill(c.pilotMM)}, positions in the steps`
         : c.kind === 'biscuit' ? 'slot positions in the assembly steps'
         : c.kind === 'loose_tenon' ? 'mortise setout in the assembly steps'
         : c.kind === 'kd_bolt' ? 'bolt and barrel bores in the assembly steps'
@@ -222,7 +223,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         } else {
           items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         }
-        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${fine(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
       }
       // Pull lines print the EFFECTIVE style — what pullSpec actually fitted
       // — so the label and the boring instructions can never disagree. A
@@ -241,13 +242,13 @@ var BB = globalThis.BB = globalThis.BB || {};
             ? `screws into the front’s top edge — pre-drill, this is end grain`
             : `template-routed mortise in the face — nothing proud`)
           : pull.ctcMM
-            ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`
-            : `one ${fine(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`}`;
+            ? `${pull.holes} × ${drill(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`
+            : `one ${drill(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`}`;
         items.push({ kind: 'hardware', label: pull.count > 1 ? `${pStyle.label} (pair)` : pStyle.label, qty: pull.count, detail: `drawer ${d.index + 1} — ${boreDetail}${subNote}`, price: hp('pull_' + pStyle.key, pStyle.price) * pull.count });
       } else {
         items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
       }
-      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${fine(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
     // No shelf-pin line: every template shelf is JOINED to the sides (the
     // model, cut list, and structural engine all treat it as fixed), so pins
@@ -285,6 +286,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
     const boxJ = K.JOINERY[spec.joinery.box];
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     /* Screwed/pocketed boxes have a relieved back: the bottom slides in from
      * the rear AFTER assembly. Grooved boxes (locking rabbet, dovetail)
      * capture the bottom on all four sides — it MUST go in during glue-up;
@@ -582,11 +584,21 @@ var BB = globalThis.BB = globalThis.BB || {};
    */
   const BASE_TOOLS = [
     'Tape measure', 'Combination square', 'Table saw or circular saw with a guide',
-    'Drill/driver', 'Bar or pipe clamps', 'Sandpaper (120 / 180 / 220 grit)'
+    'Drill/driver', 'Bar or pipe clamps'
   ];
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   function toolList(spec, model, stockPlan) {
     const tools = new Set(BASE_TOOLS);
+    // Abrasives from the ACTUAL finish schedule (audit M-11): the prep grit
+    // ladder plus the between-coat abrasive, straight from K.FINISHES —
+    // never a hardcoded 120/180/220 that contradicts the finishing steps.
+    const finSched = K.FINISHES.find(f => f.key === spec.finish);
+    const prepGrits = finSched && finSched.prep && finSched.prep.grits && finSched.prep.grits.length
+      ? finSched.prep.grits : [120, 180, 220];
+    tools.add(`Sandpaper (${prepGrits.join(' / ')} grit)`);
+    if (finSched && finSched.prep && finSched.prep.betweenGrit) {
+      tools.add(`${finSched.prep.betweenGrit}-grit pad (between coats)`);
+    }
     for (const t of new Set(model.joints.map(j => j.type))) {
       for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(cap(tool));
     }

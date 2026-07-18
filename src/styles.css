@@ -295,6 +295,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: relative;
 }
 .brand { display: flex; align-items: center; gap: 9px; flex: none; padding-right: var(--s2); }
+/* the glyph is a real (quiet) button so diagnostics open by keyboard (M-16) */
+.brand-button {
+  display: inline-flex; align-items: center; gap: 9px;
+  border: 0; background: none; padding: 0; color: inherit; cursor: default;
+}
 .brand svg { display: block; }
 .brand-short {
   display: none;
@@ -352,6 +357,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mode-btn[data-state="done"] .dot { background: var(--green); border-color: var(--green); }
 .mode-btn[data-state="attn"] .dot { background: var(--amber); border-color: var(--amber); }
 .mode-btn[data-state="fail"] .dot { background: var(--brick); border-color: var(--brick); }
+/* Pro lock on the gated Build segment (X-04): the paywall announces itself
+   before the tap — glyph here, the words ride the button's aria/title */
+.mode-btn .mode-lock { display: inline-flex; align-items: center; opacity: .9; }
+.mode-btn .mode-lock svg { display: block; }
 /* Build: the one filled segment — the shop is where this app is headed */
 .mode-btn.build-cta {
   background: var(--accent); color: var(--accent-ink); font-weight: 650;
@@ -459,6 +468,8 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .ai-badge[data-state="online"] .dot { background: var(--green); }
 .ai-badge[data-state="offline"] .dot { background: var(--amber); }
 .ai-badge[data-state="offline"] { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
+.ai-badge[data-state="unconfigured"] .dot { background: var(--brick); }
+.ai-badge[data-state="unconfigured"] { color: var(--brick); border-color: color-mix(in srgb, var(--brick) 40%, transparent); background: var(--brick-soft); }
 @keyframes badgePulse { 50% { opacity: .35; } }
 .ai-badge[data-state="checking"] .dot { animation: badgePulse 1.2s infinite var(--ease); }
 /* phones: the chat sheet hides this badge when collapsed — mirror it in the bar */
@@ -575,6 +586,10 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 /* a placeholder longer than the column reads as one clean clipped line,
  * never a half-visible wrap */
 .chat-input textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* AI-allowance meter (A-05): one quiet line under the chat input */
+.ai-usage { margin-top: var(--s2); font-size: var(--text-xs); color: var(--muted); line-height: 1.4; }
+.ai-usage .ai-usage-count { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink-2); }
+.ai-usage .learn-link { font-size: var(--text-xs); }
 .hint-prompts { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
 .hint-prompts .btn {
   justify-content: flex-start; font-weight: 450; color: var(--ink-2);
@@ -844,10 +859,17 @@ body.drafting .viewport-wrap {
 .table-scroll { overflow: visible; border: 1px solid var(--line); border-radius: var(--radius-m); }
 .table-scroll.scrollable { overflow-x: auto; overscroll-behavior-x: contain; }
 table.data { border-collapse: collapse; width: 100%; font-size: var(--text-s); min-width: 560px; }
+/* Sticky column headers (P2-9): sticky lives on the THEAD — sticky on th
+   never pinned against the panel scroller in Chromium (the header rode away
+   with the rows); thead-level sticky pins reliably. */
+table.data thead { position: sticky; top: 0; z-index: 2; }
+/* in the plan panel, pin flush with the panel's top edge so rows never
+   ghost through the padding band above the header */
+.panel table.data thead { top: calc(var(--space-s) * -1); }
 table.data th {
   text-align: left; font: 600 var(--text-s) var(--body); letter-spacing: .05em; text-transform: uppercase;
   color: var(--muted); padding: var(--s2) 14px; border-bottom: 1px solid var(--line-2); background: var(--panel-2);
-  white-space: nowrap; position: sticky; top: 0; z-index: 1;
+  white-space: nowrap;
 }
 table.data td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.data tr:last-child td { border-bottom: 0; }
@@ -943,6 +965,12 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .ref-tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .dots { color: var(--accent); letter-spacing: 2px; }
 .movement-low { color: var(--green); } .movement-medium { color: var(--amber); } .movement-high { color: var(--brick); }
+/* Sheet-good rows in the wood reference: badged, Janka/movement dashed (M-12). */
+.sheet-badge {
+  font: 600 var(--text-xs) var(--body); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); border: 1px solid var(--line-2); border-radius: 4px;
+  padding: 0 5px; margin-left: 6px; vertical-align: 1px; white-space: nowrap;
+}
 
 /* BOM */
 .bom-total {
@@ -1116,8 +1144,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .control-card input[type="range"] { width: 84px; }
 }
 /* mode nav slims on narrow desks: inactive modes keep only their dot,
-   the current mode and the Build CTA keep their words */
-@media (max-width: 1280px) {
+   the current mode and the Build CTA keep their words. Desktop-band only —
+   phones get the stacked labeled segments below (X-06). */
+@media (min-width: 881px) and (max-width: 1280px) {
   .mode-btn { padding: 7px 10px; }
   .mode-btn:not([aria-current="page"]):not(.build-cta) .mode-label { display: none; }
 }
@@ -1194,8 +1223,11 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .topbar .btn.icon { min-width: 40px; }
   .mode-nav { padding: 2px; }
   .mode-btn { padding: 6px 9px; min-height: 44px; }
-  /* phones: dots carry Design/Plan; Build alone keeps its word */
-  .mode-btn:not(.build-cta) .mode-label { display: none; }
+  /* phones: Design/Plan are never unlabeled dots (X-06) — each segment
+     stacks its state dot over a small visible word, holding the 44px floor */
+  .mode-btn:not(.build-cta) { flex-direction: column; justify-content: center; gap: 3px; padding: 4px 8px; }
+  .mode-btn:not(.build-cta) .mode-label { display: inline; font-size: 0.625rem; line-height: 1; letter-spacing: .02em; }
+  .mode-btn .dot { width: 6px; height: 6px; }
   .mode-btn.build-cta .mode-label { display: inline; }
   .welcome { top: 48px; width: min(440px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); padding: var(--s3); }
   .welcome-paths { grid-template-columns: 1fr; }
@@ -1209,14 +1241,21 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
     position: fixed; bottom: calc(var(--sheet-peek) + var(--s2)); z-index: 55;
   }
 }
+/* Share/Import and Redo inside More exist for the widths where their topbar
+   controls fold away (X-05, P1-1); wider screens keep the dedicated buttons. */
+.menu .menu-share-item, .menu .menu-redo-item { display: none; }
 @media (max-width: 560px) {
   .save-state { display: none; }
   .save-dot:not([hidden]) { display: inline-block; }
   .brand-short { display: none; }
   .design-name { min-width: 72px; flex-basis: 72px; }
-  #redoBtn { display: inline-flex; }
-  /* Share folds into reach of More; Build (mode nav) stays the strong action */
+  /* redo folds out of the row — the labeled mode nav (X-06) takes its width;
+     touch users keep a redo affordance via the More menu (P1-1) */
+  #redoBtn { display: none; }
+  /* Share folds into reach of More (the menu-share-item entry); Build (mode
+     nav) stays the strong action */
   .share-cta { display: none; }
+  .menu .menu-share-item, .menu .menu-redo-item { display: flex; }
 }
 
 /* ---------------- reduced motion ---------------- */
@@ -1275,6 +1314,18 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 
 .brand { cursor: default; user-select: none; -webkit-user-select: none; }
 
+/* project-cap banner (A-04): the passive "not saved" surface — amber advisory
+   family, one calm row under the header, dismissible, never a modal */
+.cap-banner {
+  flex: none; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  padding: var(--s1) var(--s3);
+  background: var(--amber-soft); color: var(--amber-ink);
+  border-bottom: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  font-size: var(--text-s); line-height: 1.4; z-index: 25;
+}
+.cap-banner .cap-banner-text { flex: 1 1 240px; }
+.cap-banner .btn.small { flex: none; }
+
 /* integrity tab dot */
 .integrity-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); vertical-align: 2px; margin-left: 2px; }
 .integrity-dot.fail { background: var(--brick); }
@@ -1326,6 +1377,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 }
 .overview-card.verdict-fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
 .overview-card.verdict-advisory { background: var(--amber-soft); }
+.overview-card.verdict-anchor { border-color: color-mix(in srgb, var(--amber-ink) 45%, transparent); background: var(--amber-soft); }
 .overview-next { margin-top: var(--s3); }
 
 /* ---------------- integrity panel ---------------- */
@@ -1341,6 +1393,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 }
 .stamp.pass { color: var(--green); }
 .stamp.advisory { color: var(--amber-ink); }
+.stamp.anchor { color: var(--amber-ink); } /* distinct tier, text carries it: "anchor required" */
 .stamp.fail { color: var(--brick); }
 .load-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s2) 0; border-bottom: 1px solid var(--line); font-size: var(--text-s); }
 .load-row .span-note { font: 500 var(--text-s) var(--mono); color: var(--muted); margin-left: var(--s2); }
@@ -1634,13 +1687,13 @@ body.bm-playback .playback-bar { display: none !important; }
   .design-name { min-width: 64px; flex-basis: 64px; }
   /* the caret is decoration; the narrow header needs its 21px more */
   #moreBtn svg { display: none; }
-  .mode-btn { padding: 6px 7px; }
-  /* undo stays; redo rides Ctrl+Shift+Z (documented trade for 320px fit) */
-  #redoBtn { display: none; }
+  .mode-btn { padding-inline: 7px; }
+  .mode-btn:not(.build-cta) { padding-inline: 6px; }
 }
 @media (max-width: 360px) {
   .design-name { min-width: 56px; flex-basis: 56px; }
-  .mode-btn { padding: 6px 6px; }
+  .mode-btn { padding-inline: 6px; }
+  .mode-btn:not(.build-cta) { padding-inline: 5px; }
 }
 
 /* ---------------- increased contrast ----------------

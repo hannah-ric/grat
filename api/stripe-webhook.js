@@ -3,6 +3,7 @@
 const Stripe = require('./_stripe.js');
 const E = require('./_entitlements.js');
 const Env = require('./_env-check.js');
+const Log = require('./_log.js');
 
 // Audit env vars once at cold start so missing keys surface immediately in logs.
 Env.audit();
@@ -61,18 +62,24 @@ function subscriptionRecord(subscription) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return sendJSON(res, 405, { error: 'POST only' });
-  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) return sendJSON(res, 503, { error: 'webhook_unconfigured' });
+  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+    Log.report('webhook', 'unconfigured', 'STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET missing');
+    return sendJSON(res, 503, { error: 'webhook_unconfigured' });
+  }
   const stripe = Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-05-27.dahlia' });
   let raw;
   try {
     raw = await rawBody(req);
   } catch (bodyError) {
-    return sendJSON(res, 400, { error: bodyError.rawBodyUnavailable ? 'raw_body_unavailable' : 'invalid_body' });
+    const reason = bodyError.rawBodyUnavailable ? 'raw_body_unavailable' : 'invalid_body';
+    Log.report('webhook', reason, bodyError);
+    return sendJSON(res, 400, { error: reason });
   }
   let event;
   try {
     event = stripe.webhooks.constructEvent(raw, req.headers['stripe-signature'], process.env.STRIPE_WEBHOOK_SECRET);
   } catch (error) {
+    Log.report('webhook', 'invalid_signature', error);
     return sendJSON(res, 400, { error: 'invalid_signature' });
   }
   try {
@@ -87,6 +94,7 @@ module.exports = async function handler(req, res) {
     }
     return sendJSON(res, 200, { received: true });
   } catch (error) {
+    Log.report('webhook', 'processing_failed', error);
     return sendJSON(res, 500, { error: 'webhook_processing_failed' });
   }
 };

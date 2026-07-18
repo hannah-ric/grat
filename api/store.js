@@ -26,8 +26,23 @@
 
 const S = require('./_session.js');
 const KV = require('./_kv.js');
+const Log = require('./_log.js');
+const E = require('./_entitlements.js');
 
 const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/;
+// The store namespaces every document as bb:{uid}:{doc}. api/_entitlements.js
+// uses that SAME per-uid keyspace for authoritative billing/usage records —
+// bb:{uid}:subscription and bb:{uid}:usage:ai:<month> (and usage:tokens:<month>).
+// A store write to one of those names would alias an entitlement key and let a
+// signed-in user self-grant Pro or reset their own AI meter (E-01/E-02). Reserve
+// the entitlement roots so they can never be reached through this endpoint. We do
+// NOT ban colons (client docs are projects:index / prices:v1 / prefs:v2 /
+// project:* / thumb:*) nor rename the user keyspace — only these exact roots and
+// their subkeys are off-limits, for reads, writes, and deletes alike.
+const RESERVED_DOC = /^(subscription|usage)(:|$)/;
+// A project document (src/store.js PROJECT_PREFIX = 'project:'); note this does
+// NOT match 'projects:index' (the index), 'prices:v1', 'prefs:v2', or 'thumb:*'.
+const PROJECT_DOC_RE = /^project:/;
 const MAX_VALUE_BYTES = 400 * 1024; // biggest honest doc: project w/ 20 revisions + thumb
 const MAX_BODY_BYTES = MAX_VALUE_BYTES + 4096;
 
@@ -59,6 +74,33 @@ function readBody(req) {
   });
 }
 
+/* The Free plan's project ceiling, or null for unlimited (Pro) / when it can't
+ * be determined. Fails open: a storage hiccup must never block a user's save. */
+async function projectLimitFor(uid) {
+  try {
+    const status = await E.statusFor(uid);
+    const limit = status && status.entitlements ? status.entitlements.projectLimit : null;
+    return (limit === null || limit === undefined) ? null : limit;
+  } catch (e) {
+    Log.report('store', 'entitlement_lookup_failed', e);
+    return null;
+  }
+}
+
+/* Existing project count, read from the client's own source of truth (the
+ * projects:index array). The KV client exposes no key scan, and the index is
+ * exactly what the client caps against, so the two agree. */
+async function projectCount(kv, uid) {
+  try {
+    const raw = await kv.get(`bb:${uid}:projects:index`);
+    if (raw === undefined || raw === null) return 0;
+    const idx = JSON.parse(typeof raw === 'string' ? raw : String(raw));
+    return Array.isArray(idx) ? idx.length : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
 module.exports = async function handler(req, res) {
   const sess = S.sessionFrom(req);
   if (!sess) return sendJSON(res, 401, { error: 'auth_required' });
@@ -68,6 +110,9 @@ module.exports = async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const doc = url.searchParams.get('doc') || '';
   if (!DOC_RE.test(doc)) return sendJSON(res, 400, { error: 'bad doc name' });
+  // Reserved entitlement keys behave as if the doc name were invalid — a plain
+  // 4xx, identical for GET/PUT/POST/DELETE, before any backend access.
+  if (RESERVED_DOC.test(doc)) return sendJSON(res, 400, { error: 'reserved doc name' });
   const key = `bb:${sess.uid}:${doc}`;
 
   try {
@@ -81,6 +126,18 @@ module.exports = async function handler(req, res) {
       catch (e) { return sendJSON(res, 400, { error: e.message }); }
       if (!body || typeof body.value !== 'string') return sendJSON(res, 400, { error: 'value (string) required' });
       if (Buffer.byteLength(body.value, 'utf8') > MAX_VALUE_BYTES) return sendJSON(res, 413, { error: 'value too large' });
+      // A-10: enforce the Free project ceiling on NEW project docs only. Updates
+      // to an existing project always succeed (a downgraded ex-Pro user never
+      // loses edits); Pro/unlimited plans and non-project docs are unaffected.
+      if (PROJECT_DOC_RE.test(doc)) {
+        const limit = await projectLimitFor(sess.uid);
+        if (limit !== null) {
+          const existing = await kv.get(key);
+          if ((existing === undefined || existing === null) && (await projectCount(kv, sess.uid)) >= limit) {
+            return sendJSON(res, 403, { error: 'project_limit', limit });
+          }
+        }
+      }
       await kv.set(key, body.value);
       return sendJSON(res, 200, { ok: true });
     }
@@ -91,6 +148,7 @@ module.exports = async function handler(req, res) {
     res.setHeader('Allow', 'GET, PUT, POST, DELETE');
     return sendJSON(res, 405, { error: 'method not allowed' });
   } catch (e) {
+    Log.report('store', 'kv_error', e);
     return sendJSON(res, 502, { error: 'storage backend error: ' + e.message });
   }
 };

@@ -44,6 +44,21 @@ function check(name, passed, detail, fix) {
   if (!passed && fix) console.log(`       ${c.yellow('Fix:')} ${fix}`);
 }
 
+/* Pure readiness verdict, so the "is it live?" decision is unit-testable.
+ * A deploy with all Stripe/KV checks green is still NOT fully live if AI is
+ * unconfigured (falls back to the offline parser) or no OAuth provider exists
+ * (no one can sign in, so checkout is unreachable) — those are advisory gaps
+ * that must qualify the ready message, never a silent "all set" (A-03). */
+function summarize(results, opts) {
+  opts = opts || {};
+  const failures = results.filter(r => r.passed === false).length;
+  const warnings = results.filter(r => r.passed === null).length;
+  const gaps = [];
+  if (opts.aiPresent === false) gaps.push('AI chat is not configured (ANTHROPIC_API_KEY unset) — the app will use its built-in offline parser, not live AI.');
+  if (opts.oauthPresent === false) gaps.push('No OAuth provider is configured — no one can sign in, so subscription checkout / Pro is unreachable.');
+  return { failures, warnings, gaps, ok: failures === 0, ready: failures === 0 && gaps.length === 0 };
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const enc = (obj, prefix, out) => {
   out = out || [];
@@ -105,6 +120,11 @@ async function getVercelEnvKeys() {
   }
 }
 
+// Exported for unit testing (the readiness verdict is pure); the network run
+// below only executes when the script is invoked directly, not on require.
+module.exports = { summarize };
+if (require.main !== module) return;
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 (async () => {
   console.log('\n' + c.bold('Blueprint Buddy — Production Readiness Check'));
@@ -139,6 +159,17 @@ async function getVercelEnvKeys() {
   check('KV_REST_API_URL + KV_REST_API_TOKEN', kvOk,
     kvOk ? 'set' : 'neither KV pair is set',
     kvOk ? null : 'Add the Upstash Redis integration from the Vercel Marketplace.');
+  // Advisory: AI degrades to the offline parser without a key; no OAuth pair
+  // means no sign-in and unreachable billing. Both WARN (null), never fail.
+  const aiPresent = envPresent('ANTHROPIC_API_KEY');
+  check('ANTHROPIC_API_KEY', aiPresent ? true : null,
+    aiPresent ? envDetail('ANTHROPIC_API_KEY') : 'not set — AI chat falls back to the built-in offline parser (no live AI)',
+    'Set ANTHROPIC_API_KEY in Vercel → Settings → Environment Variables to enable live AI.');
+  const oauthPresent = (envPresent('GOOGLE_CLIENT_ID') && envPresent('GOOGLE_CLIENT_SECRET')) ||
+                       (envPresent('GITHUB_CLIENT_ID') && envPresent('GITHUB_CLIENT_SECRET'));
+  check('OAuth sign-in provider', oauthPresent ? true : null,
+    oauthPresent ? 'at least one Google/GitHub client pair configured' : 'no Google or GitHub OAuth pair set — no one can sign in; billing/Pro is unreachable',
+    'Set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET or GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET.');
   check('APP_ORIGIN', null,  // advisory only
     process.env.APP_ORIGIN ? `set to ${process.env.APP_ORIGIN}` : 'not set — redirect targets derived from Host header',
     'Set APP_ORIGIN=https://your-app.vercel.app in Vercel → Settings → Environment Variables.');
@@ -259,15 +290,22 @@ async function getVercelEnvKeys() {
 
   // ── Summary ──────────────────────────────────────────────────────────────────
   console.log('\n' + c.dim('─'.repeat(52)));
-  const failures = results.filter(r => r.passed === false);
-  const warnings = results.filter(r => r.passed === null);
-  if (failures.length === 0) {
-    console.log(c.green(c.bold(`All checks passed.${warnings.length ? ` (${warnings.length} advisory)` : ''}`)));
+  const summary = summarize(results, { aiPresent, oauthPresent });
+  const advisorySuffix = summary.warnings ? ` (${summary.warnings} advisory)` : '';
+  if (!summary.ok) {
+    console.log(c.red(c.bold(`${summary.failures} check(s) failed.${summary.warnings ? ` ${summary.warnings} advisory.` : ''}`)));
+    console.log(c.dim('Resolve the issues above before accepting live traffic.\n'));
+    process.exit(1);
+  } else if (summary.ready) {
+    console.log(c.green(c.bold(`All checks passed.${advisorySuffix}`)));
     console.log(c.dim('The app is ready to accept live Stripe subscriptions.\n'));
     process.exit(0);
   } else {
-    console.log(c.red(c.bold(`${failures.length} check(s) failed.${warnings.length ? ` ${warnings.length} advisory.` : ''}`)));
-    console.log(c.dim('Resolve the issues above before accepting live traffic.\n'));
-    process.exit(1);
+    // Stripe/KV are green but the deployment is not fully live — qualify it
+    // instead of printing an unconditional "ready" message (A-03).
+    console.log(c.yellow(c.bold(`Stripe & KV checks passed${advisorySuffix}, but the deployment is NOT fully live:`)));
+    for (const gap of summary.gaps) console.log(c.yellow('  • ' + gap));
+    console.log(c.dim('\nBilling can accept subscriptions, but resolve the above before calling the deploy production-ready.\n'));
+    process.exit(0);
   }
 })();
