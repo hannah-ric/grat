@@ -481,6 +481,39 @@ function objectBodyReq(url, bodyObj, headers) {
       'signed-out upgrade no longer closes the dialog before (maybe) redirecting');
   }
 
+  /* ---------------- billing client: card bullets match entitlements (A-08) ---------------- */
+  section('billing: Pro/Free card bullets match real entitlements (A-08)');
+  {
+    const vm = require('vm');
+    const src = fs.readFileSync(path.join(__dirname, '../src/billing.js'), 'utf8');
+
+    // Isolate the Pro (featured) card markup.
+    const proMatch = src.match(/price-card featured[\s\S]*?<\/section>/);
+    ok(!!proMatch, 'Pro card markup found');
+    const pro = proMatch ? proMatch[0] : '';
+    // The oversell is gone — structural reports are FREE, not a Pro-only feature.
+    ok(!/Structural reports/i.test(pro), 'Pro card no longer sells free "Structural reports"');
+    // Every entitlement that flips Free→Pro must be represented by a bullet.
+    const diff = [];
+    if (E.PRO.projectLimit === null && E.FREE.projectLimit !== null) diff.push({ cap: 'unlimited projects', re: /unlimited/i });
+    if (E.PRO.aiMonthlyLimit > E.FREE.aiMonthlyLimit) diff.push({ cap: 'more AI messages', re: /AI messages/i });
+    if (E.PRO.premiumExports && !E.FREE.premiumExports) diff.push({ cap: 'premium exports', re: /export|SketchUp|Print plans/i });
+    if (E.PRO.advancedFeatures && !E.FREE.advancedFeatures) diff.push({ cap: 'Build mode', re: /Build mode/i });
+    eq(diff.length, 4, 'all four Free→Pro entitlement flips are enumerated');
+    for (const d of diff) ok(d.re.test(pro), `Pro card represents the "${d.cap}" entitlement gain`);
+
+    // Free card sync copy is provider-conditional, not a hardcoded cloud promise.
+    ok(!/Device and cloud sync<\/li>/.test(src), 'Free card no longer hardcodes "Device and cloud sync"');
+    const sandbox = {}; sandbox.globalThis = sandbox;
+    vm.runInNewContext(src, sandbox);
+    const B = sandbox.BB && sandbox.BB.Billing;
+    ok(B && typeof B.freeSyncLabel === 'function', 'freeSyncLabel is exposed for the provider-conditional bullet');
+    if (B && typeof B.freeSyncLabel === 'function') {
+      eq(B.freeSyncLabel({ providers: [] }), 'Device sync', 'no providers → device-only sync copy (honest)');
+      eq(B.freeSyncLabel({ providers: ['github'] }), 'Device and cloud sync', 'providers present → cloud sync copy');
+    }
+  }
+
   /* ---------------- observability: structured error reporting (E-08) ---------------- */
   section('observability: a backend failure emits one structured error line (E-08)');
   {

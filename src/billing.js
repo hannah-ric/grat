@@ -68,12 +68,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       <div class="pricing-grid">
         <section class="price-card" aria-label="Free plan">
           <div><span class="plan-label">Free</span><strong>$0</strong><small>forever</small></div>
-          <ul><li>${FREE.projectLimit} saved projects</li><li>${FREE.aiMonthlyLimit} AI messages per month</li><li>Core drawing and cut-list exports</li><li>Device and cloud sync</li></ul>
+          <ul><li>${FREE.projectLimit} saved projects</li><li>${FREE.aiMonthlyLimit} AI messages per month</li><li>Core drawing and cut-list exports</li><li data-free-sync>Device sync</li></ul>
           <button class="btn" data-pricing-close>Keep Free</button>
         </section>
         <section class="price-card featured" aria-label="Pro plan">
           <div><span class="plan-label">Pro</span><strong data-price>$12</strong><small data-period>/ month, billed yearly</small></div>
-          <ul><li>Unlimited saved projects</li><li>${PLANS.pro.aiMonthlyLimit} AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Structural reports and advanced workshop tools</li></ul>
+          <ul><li>Unlimited saved projects</li><li>${PLANS.pro.aiMonthlyLimit} AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Full-screen Build mode</li></ul>
           <button class="btn primary pricing-upgrade" data-upgrade>Upgrade to Pro</button>
         </section>
       </div>
@@ -111,6 +111,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     ensureDialog();
     const note = dialog.querySelector('[data-billing-note]');
     note.textContent = reason ? escapeHTML(reason) : 'Secure checkout by Stripe. Cancel or change plans anytime.';
+    // Reflect the current sign-in reality every time the dialog opens (the auth
+    // probe may have resolved after the dialog was first built).
+    const sync = dialog.querySelector('[data-free-sync]');
+    if (sync) sync.textContent = freeSyncLabel(account());
     paintCycle();
     dialog.showModal();
   }
@@ -138,6 +142,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       : { redirect: false, note: "Sign-in isn't available on this site yet, so upgrading isn't possible here." };
   }
 
+  /* Free-plan sync bullet: cloud sync needs a sign-in provider, so on a
+   * providerless deployment the honest promise is device-only sync (A-08). */
+  function freeSyncLabel(a) {
+    return (a && a.providers && a.providers.length) ? 'Device and cloud sync' : 'Device sync';
+  }
+
   function gate(feature, reason) {
     if (isPro() || entitled(feature)) return true;
     open(reason || 'This is a Pro feature.');
@@ -160,5 +170,5 @@ var BB = globalThis.BB = globalThis.BB || {};
     history.replaceState(null, '', window.location.pathname + window.location.hash);
   }
 
-  BB.Billing = { status, isPro, entitled, refresh, open, gate, gateNewProject, manage: () => redirect('portal'), handleReturn, signedOutUpgradeNote };
+  BB.Billing = { status, isPro, entitled, refresh, open, gate, gateNewProject, manage: () => redirect('portal'), handleReturn, signedOutUpgradeNote, freeSyncLabel };
 })();
