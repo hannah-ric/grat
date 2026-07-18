@@ -175,6 +175,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Every non-lumber price routes through the user-editable table
     // (prices.hardware) with the catalog defaults as fallback.
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     const hp = (key, fallback) => K.hardwarePrice(opts.prices, key, fallback);
     const engineCounts = BB.Fasteners ? BB.Fasteners.countFor(spec, model) : [];
     const PRICE_EACH = {
@@ -185,7 +186,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const label = c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${fine(c.pilotMM)})` : '');
       const detail = c.kind === 'figure8' ? 'top attachment — allows seasonal movement'
         : c.kind === 'pocket' ? 'per the pocket-hole layout in the steps'
-        : c.kind === 'dowel' ? `drill ${fine(c.pilotMM)}, positions in the steps`
+        : c.kind === 'dowel' ? `drill ${drill(c.pilotMM)}, positions in the steps`
         : c.kind === 'biscuit' ? 'slot positions in the assembly steps'
         : c.kind === 'loose_tenon' ? 'mortise setout in the assembly steps'
         : c.kind === 'kd_bolt' ? 'bolt and barrel bores in the assembly steps'
@@ -241,8 +242,8 @@ var BB = globalThis.BB = globalThis.BB || {};
             ? `screws into the front’s top edge — pre-drill, this is end grain`
             : `template-routed mortise in the face — nothing proud`)
           : pull.ctcMM
-            ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`
-            : `one ${fine(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`}`;
+            ? `${pull.holes} × ${drill(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`
+            : `one ${drill(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`}`;
         items.push({ kind: 'hardware', label: pull.count > 1 ? `${pStyle.label} (pair)` : pStyle.label, qty: pull.count, detail: `drawer ${d.index + 1} — ${boreDetail}${subNote}`, price: hp('pull_' + pStyle.key, pStyle.price) * pull.count });
       } else {
         items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
@@ -285,6 +286,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
     const boxJ = K.JOINERY[spec.joinery.box];
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     /* Screwed/pocketed boxes have a relieved back: the bottom slides in from
      * the rear AFTER assembly. Grooved boxes (locking rabbet, dovetail)
      * capture the bottom on all four sides — it MUST go in during glue-up;

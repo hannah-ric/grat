@@ -1021,6 +1021,78 @@ section('FE-H10/H11 offline parser: negation and drawer honesty');
   ok((fbNs.options || []).some(o => /drawer/i.test(o)), 'nightstand keeps the drawer chip');
 }
 
+/* ================= M-01 (2026-07 productization): pilots/bores are real drill bits ================= */
+section('M-01 pilot and bore callouts are real drill sizes, never decimal inches');
+{
+  // A drill callout must be a bit you can pick out of an index: imperial =
+  // nearest standard fractional bit ("7/64 in"), metric = millimetres.
+  Units.set({ system: 'imperial', precision: 16, dual: false });
+  ok(typeof Units.fmtDrill === 'function', 'BB.Units.fmtDrill exists (display boundary owns the conversion)');
+  if (typeof Units.fmtDrill === 'function') {
+    eq(Units.fmtDrill(2.8), '7/64 in', '2.8 mm pilot → 7/64 in');
+    eq(Units.fmtDrill(3.2), '1/8 in', '3.2 mm pilot → 1/8 in');
+    eq(Units.fmtDrill(9.5), '3/8 in', '9.5 mm pocket bit → 3/8 in (the jig bit)');
+    eq(Units.fmtDrill(7), '9/32 in', '7 mm bolt bore → 9/32 in');
+    Units.set({ system: 'metric', precision: 16, dual: false });
+    eq(Units.fmtDrill(2.8), '2.8 mm', 'metric drill callouts stay millimetres');
+    Units.set({ system: 'imperial', precision: 16, dual: false });
+  }
+  // Probe matrix: every joint layout, detail row, and the print sheet across
+  // representative designs — no decimal-inch token near a pilot/bore callout.
+  const probes = [
+    { meta: { name: 'P Table', template: 'table', level: 'beginner', units: 'in' } },
+    { meta: { name: 'P NS', template: 'nightstand', level: 'intermediate', units: 'in' },
+      drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }, structure: { shelfCount: 1 } },
+    { meta: { name: 'P Cab', template: 'cabinet', level: 'advanced', units: 'in' },
+      overall: { width: 762, depth: 457.2, height: 914.4 },
+      joinery: { frame: 'mortise_tenon', case: 'dado', box: 'half_blind_dovetail' },
+      drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }, structure: { toeKick: true, backPanel: true } },
+    { meta: { name: 'P Shelf', template: 'bookshelf', level: 'beginner', units: 'in' },
+      overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 4, backPanel: true } }
+  ];
+  // Callout-shaped patterns only: "Pilot 0.11 in", "0.28 in bolt bore",
+  // "bore 0.39 in". Layout positions ("centered 0.49 in from the joint
+  // line") are honest decimals and stay legal.
+  const decimalDrill = text => {
+    const bad = [];
+    for (const rx of [
+      /\bpilots?\s+\d+\.\d+\s?in\b/gi,
+      /\d+\.\d+\s?in\b[^.;]{0,24}\bbores?\b/gi,
+      /\bbores?\s+\d+\.\d+\s?in\b/gi
+    ]) {
+      let m;
+      while ((m = rx.exec(text))) bad.push(m[0]);
+    }
+    return bad;
+  };
+  for (const raw of probes) {
+    const r = pipeline(raw);
+    // The fastener engine's full text surface: every joint layout, every
+    // print detail row, the print sheet's joinery/hardware section, and the
+    // BOM's detail fields. (BOM LABELS are golden-frozen display strings —
+    // their pilots keep the historical decimal format pending a deliberate
+    // refreeze, logged as a follow-up finding.)
+    let all = '';
+    for (const j of r.model.joints) {
+      const lay = Fasteners.layoutForJoint(r.spec, r.model, j);
+      if (lay) all += ' ' + lay.text;
+    }
+    for (const row of Fasteners.detailRows(r.spec, r.model)) all += ' ' + row.text;
+    const cut = Plans.cutList(r.spec, r.model);
+    const integ = Structural.computeIntegrity(r.spec, r.model, {});
+    const plan = Packing.planStock(r.spec, r.model, cut, {});
+    const bom = Plans.bom(r.spec, r.model, { integrity: integ, stock: plan });
+    for (const i of bom.items) all += ' ' + (i.detail || '');
+    const steps = Plans.assembly(r.spec, r.model, integ, { stockPlan: plan });
+    for (const s of steps) all += ' ' + s.text;
+    const html = Exports.printHTML(r.spec, r.model, cut, bom, steps, plan);
+    all += ' ' + ((html.match(/<h2>Joinery[^]*?<\/section>/) || [''])[0]);
+    const bad = decimalDrill(all);
+    ok(bad.length === 0, `${raw.meta.name}: no decimal-inch pilot/bore callout — offenders: ${bad.slice(0, 3).join(' | ')}`);
+  }
+  Units.set({ system: 'metric', precision: 16, dual: false });
+}
+
 /* ================= M-13 (2026-07 productization): compare weight skips hardware ================= */
 section('M-13 species-compare weight never weighs steel hardware as wood');
 {

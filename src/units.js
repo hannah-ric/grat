@@ -98,6 +98,21 @@ var BB = globalThis.BB = globalThis.BB || {};
       ? dualize(inDecText(mm), mmText(mm), o)
       : dualize(mmText(mm), inDecText(mm), o);
   }
+  /* Drill callouts — pilots and bores (audit M-01): a number you can pick
+   * out of a bit index. Imperial: the nearest standard fractional bit in
+   * 1/64 in steps, reduced ("7/64 in"), never decimal inches. Metric stays
+   * millimetres (metric bit sets run in 0.1/0.5 mm). Math stays mm. */
+  function fmtDrill(mm, o) {
+    if (typeof mm !== 'number' || !isFinite(mm) || mm <= 0) return '—';
+    const bitText = () => {
+      let n = Math.max(1, Math.round((mm / IN) * 64)), d = 64;
+      while (n % 2 === 0 && d > 1) { n /= 2; d /= 2; }
+      return (d === 1 ? String(n) : n + '/' + d) + ' in';
+    };
+    return opt(o, 'system') === 'imperial'
+      ? dualize(bitText(), mmText(mm), o)
+      : dualize(mmText(mm), bitText(), o);
+  }
   function fmtBoardLength(mm, o) {
     if (typeof mm !== 'number' || !isFinite(mm)) return '—';
     return opt(o, 'system') === 'imperial'
@@ -278,7 +293,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Units = {
     DEFAULTS, get, set, setSystem,
-    fmtLength, fmtSmall, fmtBoardLength, fmtSheet, fmtNominal,
+    fmtLength, fmtSmall, fmtDrill, fmtBoardLength, fmtSheet, fmtNominal,
     fmtWeight, fmtPointLoad, fmtLinearLoad, fmtBoardFeet, fmtDeg,
     fmtSagRate, fmtTemplate, sliderDomain,
     parseLength, normalizeLengthText,

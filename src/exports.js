@@ -344,7 +344,7 @@ BlueprintBuddyImport.build
         for (const d of model.drawers) {
           const n = d.index + 1;
           if (d.runner === 'side_mount_slides' && d.slideLen) {
-            hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtSmall(3)}.` });
+            hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtDrill(3)}.` });
           } else if (d.runner === 'undermount_slides' && d.slideLen) {
             hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
           } else if (d.runner === 'wood_runners') {
@@ -356,8 +356,8 @@ BlueprintBuddyImport.build
             const text = pu.holes === 0
               ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
               : pu.ctcMM
-                ? `${pu.holes} × ${U.fmtSmall(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
-                : `One ${U.fmtSmall(eff.boreDia || 5)} bore, centered on the shared centerline.`;
+                ? `${pu.holes} × ${U.fmtDrill(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
+                : `One ${U.fmtDrill(eff.boreDia || 5)} bore, centered on the shared centerline.`;
             hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
           } else if (eff) {
             hw.push({ label: 'Magnetic touch latch', qty: 1, where: `Drawer ${n} front`, text: `Latch behind the front, striker on the box; needs ${U.fmtSmall(2)}–${U.fmtSmall(3)} of travel in the reveal.` });

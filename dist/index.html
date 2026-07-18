@@ -4139,6 +4139,21 @@ var BB = globalThis.BB = globalThis.BB || {};
       ? dualize(inDecText(mm), mmText(mm), o)
       : dualize(mmText(mm), inDecText(mm), o);
   }
+  /* Drill callouts — pilots and bores (audit M-01): a number you can pick
+   * out of a bit index. Imperial: the nearest standard fractional bit in
+   * 1/64 in steps, reduced ("7/64 in"), never decimal inches. Metric stays
+   * millimetres (metric bit sets run in 0.1/0.5 mm). Math stays mm. */
+  function fmtDrill(mm, o) {
+    if (typeof mm !== 'number' || !isFinite(mm) || mm <= 0) return '—';
+    const bitText = () => {
+      let n = Math.max(1, Math.round((mm / IN) * 64)), d = 64;
+      while (n % 2 === 0 && d > 1) { n /= 2; d /= 2; }
+      return (d === 1 ? String(n) : n + '/' + d) + ' in';
+    };
+    return opt(o, 'system') === 'imperial'
+      ? dualize(bitText(), mmText(mm), o)
+      : dualize(mmText(mm), bitText(), o);
+  }
   function fmtBoardLength(mm, o) {
     if (typeof mm !== 'number' || !isFinite(mm)) return '—';
     return opt(o, 'system') === 'imperial'
@@ -4319,7 +4334,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Units = {
     DEFAULTS, get, set, setSystem,
-    fmtLength, fmtSmall, fmtBoardLength, fmtSheet, fmtNominal,
+    fmtLength, fmtSmall, fmtDrill, fmtBoardLength, fmtSheet, fmtNominal,
     fmtWeight, fmtPointLoad, fmtLinearLoad, fmtBoardFeet, fmtDeg,
     fmtSagRate, fmtTemplate, sliderDomain,
     parseLength, normalizeLengthText,
@@ -6817,6 +6832,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const out = { joint, type, a, b, runMM, fasteners: [], text: '' };
     const fine = mm => U().fmtSmall(mm);
     const len = mm => U().fmtLength(mm);
+    const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
 
     /* Floating hardware is only for tops that SIT ON their base (vertical
      * contact — aprons, rails, side top edges). A top CAPTURED between case
@@ -6832,7 +6848,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const pos = positions(runMM, Math.max(2, Math.round(runMM / 300)), 300);
       const c = CATALOG.figure8;
       for (const p of pos) out.fasteners.push({ kind: 'figure8', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-      out.text = `${out.fasteners.length} figure-8 fasteners along the ${b.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — pilot ${fine(c.pilotMM)}, and let the top move.`;
+      out.text = `${out.fasteners.length} figure-8 fasteners along the ${b.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — pilot ${drill(c.pilotMM)}, and let the top move.`;
       return out;
     }
 
@@ -6850,7 +6866,7 @@ var BB = globalThis.BB = globalThis.BB || {};
             : `centered ${fine(minDim(a) / 2)} from the joint line`;
         const cbore = sp.counterboreMM
           ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, so the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.` : '';
-        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${fine(sp.pilotMM)}.${cbore}`;
+        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${drill(sp.pilotMM)}.${cbore}`;
         break;
       }
       case 'pocket_screws': {
@@ -7010,7 +7026,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           out.fasteners.push({ kind: 'screw', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, cleatLen - along) });
         }
         out.cleat = { lengthMM: cleatLen, plyMM: 19 };
-        out.text = `French cleat: rip ${len(19)} ply at 45°; the wall half runs ${len(cleatLen)} (≥ ⅔ of the case) with ${nS} × ${fmtSpec(c)} — one into EVERY stud at ≤ ${len(400)} centers, bevel up and toward the wall. Pilot ${fine(c.pilotMM)}. Never drywall alone.`;
+        out.text = `French cleat: rip ${len(19)} ply at 45°; the wall half runs ${len(cleatLen)} (≥ ⅔ of the case) with ${nS} × ${fmtSpec(c)} — one into EVERY stud at ≤ ${len(400)} centers, bevel up and toward the wall. Pilot ${drill(c.pilotMM)}. Never drywall alone.`;
         break;
       }
       case 'kd_bolt': {
@@ -7022,7 +7038,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         for (const along of spots) {
           out.fasteners.push({ kind: 'kd_bolt', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: Math.round(along * 10) / 10, edgeMM: Math.min(along, runMM - along) });
         }
-        out.text = `${spots.length} knockdown bolt${spots.length > 1 ? 's' : ''} per joint: ${fine(7)} bolt bore through the ${b.name.toLowerCase()} into the rail end, ${fine(10)} barrel bore ${len(inset)} in from the shoulder — drill BOTH from the same reference face with a jig, then pull up with a hex key.`;
+        out.text = `${spots.length} knockdown bolt${spots.length > 1 ? 's' : ''} per joint: ${drill(7)} bolt bore through the ${b.name.toLowerCase()} into the rail end, ${drill(10)} barrel bore ${len(inset)} in from the shoulder — drill BOTH from the same reference face with a jig, then pull up with a hex key.`;
         break;
       }
       default: {
@@ -7030,7 +7046,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const specTxt = U().fmtTemplate(sp.spec);
         const pos = positions(runMM, 2);
         for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-        out.text = `${pos.length} × ${specTxt}, ${len(RULES.edgeMM)} from each end, pilot ${fine(sp.pilotMM)}.`;
+        out.text = `${pos.length} × ${specTxt}, ${len(RULES.edgeMM)} from each end, pilot ${drill(sp.pilotMM)}.`;
       }
     }
     return out;
@@ -7678,6 +7694,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Every non-lumber price routes through the user-editable table
     // (prices.hardware) with the catalog defaults as fallback.
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     const hp = (key, fallback) => K.hardwarePrice(opts.prices, key, fallback);
     const engineCounts = BB.Fasteners ? BB.Fasteners.countFor(spec, model) : [];
     const PRICE_EACH = {
@@ -7688,7 +7705,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const label = c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${fine(c.pilotMM)})` : '');
       const detail = c.kind === 'figure8' ? 'top attachment — allows seasonal movement'
         : c.kind === 'pocket' ? 'per the pocket-hole layout in the steps'
-        : c.kind === 'dowel' ? `drill ${fine(c.pilotMM)}, positions in the steps`
+        : c.kind === 'dowel' ? `drill ${drill(c.pilotMM)}, positions in the steps`
         : c.kind === 'biscuit' ? 'slot positions in the assembly steps'
         : c.kind === 'loose_tenon' ? 'mortise setout in the assembly steps'
         : c.kind === 'kd_bolt' ? 'bolt and barrel bores in the assembly steps'
@@ -7744,8 +7761,8 @@ var BB = globalThis.BB = globalThis.BB || {};
             ? `screws into the front’s top edge — pre-drill, this is end grain`
             : `template-routed mortise in the face — nothing proud`)
           : pull.ctcMM
-            ? `${pull.holes} × ${fine(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`
-            : `one ${fine(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`}`;
+            ? `${pull.holes} × ${drill(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`
+            : `one ${drill(pStyle.boreDia || 5)} bore, centered${effKey === 'knob_turned_wood' ? ' — wedged tenon, no screw' : ` · M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front)`}`;
         items.push({ kind: 'hardware', label: pull.count > 1 ? `${pStyle.label} (pair)` : pStyle.label, qty: pull.count, detail: `drawer ${d.index + 1} — ${boreDetail}${subNote}`, price: hp('pull_' + pStyle.key, pStyle.price) * pull.count });
       } else {
         items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
@@ -7788,6 +7805,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
     const boxJ = K.JOINERY[spec.joinery.box];
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     /* Screwed/pocketed boxes have a relieved back: the bottom slides in from
      * the rear AFTER assembly. Grooved boxes (locking rabbet, dovetail)
      * capture the bottom on all four sides — it MUST go in during glue-up;
@@ -8950,7 +8968,7 @@ BlueprintBuddyImport.build
         for (const d of model.drawers) {
           const n = d.index + 1;
           if (d.runner === 'side_mount_slides' && d.slideLen) {
-            hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtSmall(3)}.` });
+            hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtDrill(3)}.` });
           } else if (d.runner === 'undermount_slides' && d.slideLen) {
             hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
           } else if (d.runner === 'wood_runners') {
@@ -8962,8 +8980,8 @@ BlueprintBuddyImport.build
             const text = pu.holes === 0
               ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
               : pu.ctcMM
-                ? `${pu.holes} × ${U.fmtSmall(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
-                : `One ${U.fmtSmall(eff.boreDia || 5)} bore, centered on the shared centerline.`;
+                ? `${pu.holes} × ${U.fmtDrill(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
+                : `One ${U.fmtDrill(eff.boreDia || 5)} bore, centered on the shared centerline.`;
             hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
           } else if (eff) {
             hw.push({ label: 'Magnetic touch latch', qty: 1, where: `Drawer ${n} front`, text: `Latch behind the front, striker on the box; needs ${U.fmtSmall(2)}–${U.fmtSmall(3)} of travel in the reveal.` });
