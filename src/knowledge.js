@@ -843,7 +843,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       'ERGONOMICS(mm): ' + e,
       'JOINERY: ' + j,
       levelMatrixLine(),
-      'SLIDES(mm): ' + SLIDE_LENGTHS.join(',')
+      'SLIDES(mm): ' + SLIDE_LENGTHS.join(','),
+      // C12: the packer's real sheet — sheet-budget requests ("one sheet of
+      // ply") must be designed against these dimensions, not a guessed prior.
+      `SHEET(mm): ${LUMBER.SHEET.W}×${LUMBER.SHEET.L}, thickness ${LUMBER.SHEET.THICKNESSES.join('/')}`
     ].join('\n');
   }
 

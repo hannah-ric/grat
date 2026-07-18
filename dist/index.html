@@ -3112,7 +3112,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       'ERGONOMICS(mm): ' + e,
       'JOINERY: ' + j,
       levelMatrixLine(),
-      'SLIDES(mm): ' + SLIDE_LENGTHS.join(',')
+      'SLIDES(mm): ' + SLIDE_LENGTHS.join(','),
+      // C12: the packer's real sheet — sheet-budget requests ("one sheet of
+      // ply") must be designed against these dimensions, not a guessed prior.
+      `SHEET(mm): ${LUMBER.SHEET.W}×${LUMBER.SHEET.L}, thickness ${LUMBER.SHEET.THICKNESSES.join('/')}`
     ].join('\n');
   }
 
@@ -11879,6 +11882,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       test('digest', 'bed-size anchor rows ride the knowledge digest (C1)',
         !!kingBed && kingBed.min >= 1900 && K.knowledgeDigest().includes(`king_bed_width ${kingBed.min}–${kingBed.max}mm`),
         kingBed ? `king_bed_width ${kingBed.min}–${kingBed.max}` : 'row missing', 'king row generated into digest');
+      // C12: the standard sheet regenerates from LUMBER.SHEET — the table the
+      // packer actually packs onto — so sheet-budget asks design against it.
+      const sh = K.LUMBER.SHEET;
+      test('digest', 'sheet size line regenerates from LUMBER.SHEET (C12)',
+        K.knowledgeDigest().includes(`SHEET(mm): ${sh.W}×${sh.L}, thickness ${sh.THICKNESSES.join('/')}`),
+        'generated line present', 'generated line present');
     }
 
     /* ============ 2026 knowledge expansion: full engine coverage ============

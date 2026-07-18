@@ -974,6 +974,8 @@ section('knowledge bases');
   ok(kingBed && kingBed.axis === 'width' && kingBed.min >= 1900 && kingBed.max <= 2030, 'king bed width row anchors ~1930-1980 mm (C1)');
   ok(['twin_bed_width', 'full_bed_width', 'queen_bed_width', 'cal_king_bed_width'].every(k => K.ERGONOMICS.some(r => r.key === k)), 'all five bed-size anchors present (C1)');
   ok(K.knowledgeDigest().includes(`king_bed_width ${kingBed.min}–${kingBed.max}mm`), 'digest carries the king bed anchor (C1)');
+  // C12: the digest states the packer's true sheet, generated from LUMBER.SHEET.
+  ok(K.knowledgeDigest().includes(`SHEET(mm): ${K.LUMBER.SHEET.W}×${K.LUMBER.SHEET.L}, thickness ${K.LUMBER.SHEET.THICKNESSES.join('/')}`), 'digest states the standard sheet from LUMBER.SHEET (C12)');
   // Bed rows name a furniture class ahead of any template, so template
   // validation must not fire on them (appliesTo has no real template).
   ok(kingBed.appliesTo.every(t => !['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet'].includes(t)), 'bed anchors never target a real template (C1)');
