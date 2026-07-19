@@ -1715,5 +1715,84 @@ section('G9 acks never claim attachment, stock reuse, material-free builds, or d
   ok(!/Actually:/.test(g10), `negated attachment claim passes — got "${g10}"`);
 }
 
+/* ================= G11: anchor/fail ack disclosure + anchor-step context ================= */
+section('G11 anchor verdicts reach the ack; failing acks name the governing check; anchor step fits non-wall contexts');
+{
+  // Anchor verdict, no fails: said in chat, not just a BOM line (B13 — the
+  // ref2/ref5 commits shipped "REQUIRED" anchor hardware with a silent ack).
+  eq(Spec.integrityLine({ fails: 0, advisories: 2, anchorRequired: true }, {}),
+    ' This piece needs the included wall anchor — it tips without it.',
+    'anchor verdict gets its own ack sentence');
+
+  // Failing commits name the governing check when the worst sag is itself a
+  // failure (simple2's live numbers: 6.22 mm over a 2.87 mm limit).
+  const l1 = Spec.integrityLine({ fails: 5, advisories: 1, worstSag: { id: 'shelf_2', sag: 6.221, limit: 2.8733, span: 862 } }, {});
+  ok(/ Integrity: 5 failing checks — worst: shelf 2 sag 6\.2 mm vs 2\.9 mm limit; see the Safety tab before building\./.test(l1),
+    `failing ack names the worst check — got "${l1}"`);
+
+  // A worst sag on the passing side is never blamed for other checks' fails.
+  eq(Spec.integrityLine({ fails: 1, worstSag: { id: 'top_1', sag: 1.0, limit: 3.0, span: 900 } }, {}),
+    ' Integrity: 1 failing check — see the Safety tab before building.',
+    'a passing sag is not named as the governing failure');
+
+  // Fails outrank the anchor sentence (one line, ordered like the verdict).
+  const l2 = Spec.integrityLine({ fails: 2, anchorRequired: true }, {});
+  ok(/failing checks/.test(l2) && !/needs the included wall anchor/.test(l2), 'fail line wins over the anchor line');
+
+  // G4 assumed-load clause rides the line whenever it speaks…
+  const l3 = Spec.integrityLine({
+    fails: 1,
+    surfaceLoads: [
+      { id: 'p4', presetKey: 'books', label: 'Books', assumed: true },
+      { id: 'p5', presetKey: 'books', label: 'Books', assumed: true },
+      { id: 'p9', presetKey: 'seating', label: 'Seated people', assumed: false }
+    ]
+  }, {});
+  ok(/Checked at Books on p4, p5 \(assumed — set the real duty in the Safety tab\)\./.test(l3),
+    `assumed presets are named per surface — got "${l3}"`);
+  ok(!/Seated people/.test(l3), 'a user-chosen load is never reported as assumed');
+
+  // …and engine-DERIVED surfaces (G3) disclose even on a clean pass.
+  const l4 = Spec.integrityLine({
+    fails: 0, advisories: 0, anchorRequired: false,
+    assumedSurfaces: ['p3'],
+    surfaceLoads: [{ id: 'p3', presetKey: 'books', label: 'Books', assumed: true }]
+  }, {});
+  eq(l4, ' Checked at Books on p3 (assumed — set the real duty in the Safety tab).',
+    'a derived check surface is disclosed even when everything passes');
+
+  // Template defaults alone stay quiet on a clean pass — no ack spam.
+  eq(Spec.integrityLine({
+    fails: 0, advisories: 0, assumedSurfaces: [],
+    surfaceLoads: [{ id: 'top_1', presetKey: 'worktop', label: 'Desk / table duty', assumed: true }]
+  }, {}), '', 'assumed defaults alone never spam a passing template commit');
+
+  // Photo flows keep their fuller phrasing.
+  ok(/all checks pass/.test(Spec.integrityLine({ fails: 0, advisories: 0 }, { photo: true })), 'photo branch preserved');
+
+  // End to end: an untagged custom (G3 derived surfaces) speaks through the
+  // real engine summary.
+  const un = Spec.defaultSpec('custom');
+  un.custom.parts.forEach(p => { p.surface = 'none'; });
+  const r = pipeline(un);
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  ok(ig.summary.assumedSurfaces.length > 0, 'the untagged custom derived a check surface');
+  ok(/\(assumed — set the real duty in the Safety tab\)/.test(Spec.integrityLine(ig.summary, {})),
+    'the derived assumption reaches the chat line end to end');
+
+  // The anchor STEP acknowledges non-wall contexts for custom pieces only —
+  // a mid-room divider or column wrap cannot "screw into a stud" (A7).
+  const cu = pipeline(Spec.defaultSpec('custom'));
+  const cuSteps = Plans.assembly(cu.spec, cu.model, { antiTip: true }, {});
+  const cuAnchor = cuSteps.find(s => s.id === 'antitip');
+  ok(cuAnchor && /; if it can’t back onto a wall, rethink placement — the tip risk is real\.$/.test(cuAnchor.text),
+    `custom anchor step names the non-wall reality — got "${cuAnchor && cuAnchor.text}"`);
+  const tb = pipeline(Spec.defaultSpec('table'));
+  const tbAnchor = Plans.assembly(tb.spec, tb.model, { antiTip: true }, {}).find(s => s.id === 'antitip');
+  eq(tbAnchor && tbAnchor.text,
+    'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer.',
+    'template anchor step wording is byte-stable (goldens cannot see this change)');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

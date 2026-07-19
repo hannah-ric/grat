@@ -569,19 +569,46 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
-  /* Integrity honesty line for the chat ack (A3): a failing verdict is never
-   * hidden behind a cheerful blurb, whatever the commit source. Photo flows
-   * keep their fuller phrasing (proportions were estimated, so even a clean
-   * report is worth stating). */
+  /* Integrity honesty line for the chat ack (A3/G11): a failing verdict is
+   * never hidden behind a cheerful blurb, an ANCHOR verdict is said in chat
+   * — not just a "REQUIRED" BOM line the user meets at checkout (B13) — and
+   * a failing line names the governing check when the worst sag is itself
+   * the failure. The assumed-load disclosure (G3/G4) rides here too:
+   * engine-DERIVED check surfaces always state their assumed duty, and
+   * defaulted presets are named whenever the line already speaks — but
+   * template defaults alone never turn a clean pass into ack noise. Photo
+   * flows keep their fuller phrasing (proportions were estimated, so even a
+   * clean report is worth stating). */
   function integrityLine(summary, opts) {
     if (!summary) return '';
     if (opts && opts.photo) {
       const t = summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass';
       return ` Integrity: ${t} — full report in the Safety tab.`;
     }
-    return summary.fails
-      ? ` Integrity: ${summary.fails} failing check${summary.fails > 1 ? 's' : ''} — see the Safety tab before building.`
-      : '';
+    let line = '';
+    if (summary.fails) {
+      // Name the worst sag only when it is truly a failing check (the fail
+      // threshold is 1.5× the limit) — the failures may live elsewhere.
+      const ws = summary.worstSag;
+      const worst = ws && ws.limit > 0 && ws.sag / ws.limit > 1.5
+        ? ` — worst: ${String(ws.id).replace(/_/g, ' ')} sag ${U().fmtSmall(ws.sag)} vs ${U().fmtSmall(ws.limit)} limit;`
+        : ' —';
+      line = ` Integrity: ${summary.fails} failing check${summary.fails > 1 ? 's' : ''}${worst} see the Safety tab before building.`;
+    } else if (summary.anchorRequired) {
+      line = ' This piece needs the included wall anchor — it tips without it.';
+    }
+    const assumed = Array.isArray(summary.surfaceLoads) ? summary.surfaceLoads.filter(l => l && l.assumed) : [];
+    const derived = Array.isArray(summary.assumedSurfaces) && summary.assumedSurfaces.length > 0;
+    if (assumed.length && (line || derived)) {
+      const byLabel = new Map();
+      for (const l of assumed) {
+        if (!byLabel.has(l.label)) byLabel.set(l.label, []);
+        byLabel.get(l.label).push(String(l.id).replace(/_/g, ' '));
+      }
+      const groups = [...byLabel].map(([lab, ids]) => `${lab} on ${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''}`);
+      line += ` Checked at ${groups.join(' and ')} (assumed — set the real duty in the Safety tab).`;
+    }
+    return line;
   }
 
   function snap(v, table) {

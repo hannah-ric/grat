@@ -539,10 +539,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. Work on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
       out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
     }
-    // Mandatory anti-tip anchoring: an instruction step, not an aside.
+    // Mandatory anti-tip anchoring: an instruction step, not an aside. A
+    // custom piece may not live against a wall at all (room dividers, column
+    // wraps, "hanging" desks) — say what that means instead of assuming
+    // studs behind it (G11/A7). Custom-scoped so template wording — and the
+    // golden corpus — stays byte-identical.
     if (integrity && integrity.antiTip) {
       out.push(step('antitip', 'Anchor to the wall (required)',
-        'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer.', []));
+        'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer'
+        + (t === 'custom' ? '; if it can’t back onto a wall, rethink placement — the tip risk is real.' : '.'), []));
     }
     safetyStep(spec, model, integrity, opts.stockPlan, out);
     sandingStep(spec, out);
