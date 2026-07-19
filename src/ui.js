@@ -2875,8 +2875,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!state.integrity) return;
     const states = modeStates();
     // Build is Pro-gated: the lock glyph + aria announce the paywall BEFORE
-    // the tap (X-04) — activation still opens the pricing dialog.
-    const buildLocked = !BB.Billing.entitled('advancedFeatures');
+    // the tap (X-04) — activation still opens the pricing dialog. On a
+    // providerless host there is no paywall to announce: gate() never fires
+    // there (C-01), so the lock stays hidden too.
+    const buildLocked = billingConfigured(Store.auth()) && !BB.Billing.entitled('advancedFeatures');
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
     for (const m of ['design', 'plan', 'build']) {

@@ -148,7 +148,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     return (a && a.providers && a.providers.length) ? 'Device and cloud sync' : 'Device sync';
   }
 
+  /* Billing is "configured" only when the origin gave us evidence: a billing
+   * payload or sign-in providers (mirror of ui.js billingConfigured). A static
+   * or providerless host cannot sell Pro — its Upgrade path is an honest
+   * dead-end — so it must never gate either (C-01). The SERVER stays the
+   * entitlement authority whenever billing is real. */
+  function configured() {
+    const a = account();
+    return !!(a.billing || (a.providers && a.providers.length));
+  }
+
   function gate(feature, reason) {
+    if (!configured()) return true;
     if (isPro() || entitled(feature)) return true;
     open(reason || 'This is a Pro feature.');
     return false;
