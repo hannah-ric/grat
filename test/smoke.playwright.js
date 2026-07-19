@@ -1714,6 +1714,63 @@ const clickMoreCtl = async sel => {
   ok(!g13.blamedDesign, 'a dropped connection is never blamed on the design');
   ok(g13.untouched, 'the last valid design survives both transport deaths untouched');
 
+  /* ================= G10: silent grounding reaches the ack ================= */
+  // An airborne custom proposal is grounded silently by correction; the
+  // committed ack must disclose the translation (whether the commit lands as
+  // a clean ack or an honest-fail report).
+  const g10 = await page.evaluate(async () => {
+    const grounded = BB.Spec.correctSpec({
+      meta: { name: 'Pedestal probe', template: 'custom', level: 'beginner', units: 'mm' },
+      custom: {
+        parts: [
+          { id: 'base', role: 'base', primitive: 'slab', dim: { l: 400, w: 400, t: 30 }, pos: { x: 0, y: 15, z: 0 }, loadBearing: true },
+          { id: 'post', role: 'post', primitive: 'post', dim: { l: 400, w: 80, t: 80 }, pos: { x: 0, y: 230, z: 0 }, loadBearing: true },
+          { id: 'top', role: 'top', primitive: 'slab', dim: { l: 300, w: 300, t: 30 }, pos: { x: 0, y: 445, z: 0 }, surface: 'shelf' }
+        ],
+        connections: [
+          { a: 'base', b: 'post', joint: 'butt_screws' },
+          { a: 'post', b: 'top', joint: 'butt_screws' }
+        ]
+      }
+    });
+    const airborne = JSON.parse(JSON.stringify(grounded));
+    for (const p of airborne.custom.parts) p.pos.y += 700; // a "hanging" pedestal
+    // The cap403 section above leaves a mock user signed in, so this commit
+    // (first non-local send since) fires Billing.refresh(); this host's 204
+    // for /api/billing would clobber entitlements — pin it to 404 and
+    // restore billing, same snapshot pattern as the billing sections.
+    const realFetch = window.fetch;
+    const realBilling = BB.Store.auth().billing;
+    window.fetch = async (url, opts) => String(url).startsWith('/api/billing')
+      ? new Response('{"error":"unavailable"}', { status: 404, headers: { 'Content-Type': 'application/json' } })
+      : realFetch(url, opts);
+    let calls = 0;
+    try {
+      BB.AI.setTransport(async () => {
+        calls++;
+        if (calls === 1) return { text: JSON.stringify({ N: BB.Codec.encode(airborne), e: 'A pedestal shelf.' }), stopReason: 'end_turn' };
+        return { text: JSON.stringify({ i: 'no further changes' }), stopReason: 'end_turn' };
+      });
+      await __bb.sendMessage('a floating pedestal shelf');
+      await new Promise(r => setTimeout(r, 120)); // let the fire-and-forget refresh settle
+    } finally {
+      BB.AI.setTransport(null);
+      window.fetch = realFetch;
+      BB.Store.setBilling(realBilling);
+    }
+    const acks = [...document.querySelectorAll('#chatLog .msg.bot .bubble')].map(b => b.textContent);
+    const ack = acks.reverse().find(t => /pedestal shelf|Honest report/i.test(t)) || acks[0] || '';
+    return {
+      committed: __bb.state.spec.meta.template === 'custom' && __bb.state.spec.meta.name === 'Pedestal probe',
+      floorY: Math.min(...__bb.state.model.parts.map(p => p.pos.y - p.size.h / 2)),
+      ackDiscloses: /floated .+ above the floor/.test(ack) && /grounded/.test(ack),
+      ack: ack.slice(0, 200)
+    };
+  });
+  ok(g10.committed, 'the airborne proposal commits as the custom piece');
+  ok(Math.abs(g10.floorY) < 1, `delivered piece stands on the floor (minY ${g10.floorY.toFixed(1)})`);
+  ok(g10.ackDiscloses, `the ack discloses the silent grounding ("${g10.ack}")`);
+
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.click('#tab-stock');

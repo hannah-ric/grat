@@ -1373,6 +1373,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* G10: the silent-correction disclosure for one applied reply — measure
+   * the RAW proposal (a new spec exactly as decoded; a diff as the
+   * pre-correction merge onto its base) against what correction delivered.
+   * Returns note strings, [] when correction changed nothing notable, or
+   * null when the reply carries nothing recomputable (the caller then keeps
+   * the previous notes — the custom composition is unchanged). */
+  function correctionNotesFor(reply, baseSpec, appliedSpec) {
+    if (reply.kind === 'new') return Spec.correctionNotes(reply.spec, appliedSpec);
+    if (reply.kind === 'diff' && reply.patch && reply.patch.custom) {
+      return Spec.correctionNotes(Spec.deepMerge(baseSpec, reply.patch), appliedSpec);
+    }
+    return null;
+  }
+
   /* The AI round-trip: wire protocol, continuation status, single validation
    * retry, and the propose–validate–revise loop for novel pieces. */
   async function aiPipeline(text, image, setStatus) {
@@ -1432,6 +1446,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // rails" over a design with no rails) after later rounds restructured
     // the piece, while the accurate corrected explains were discarded.
     let explain = res.reply.explain;
+    // G10: what silent correction did to the raw proposal (grounding an
+    // airborne composition). Recomputed per applied refinement round
+    // (latest applied proposal wins); shown to the model in round context
+    // and appended to the committed ack.
+    let notes = correctionNotesFor(res.reply, state.spec, applied.spec) || [];
     let r = runPipeline(applied.spec);
 
     // Up to three validation-refinement rounds with the specific errors
@@ -1442,7 +1461,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // these rounds is never presented; the last valid design stays.
     for (let round = 1; r.report.errors.length && !res.local && round <= 3; round++) {
       setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
-      const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
+      // G10: the model refines against corrected geometry it never proposed —
+      // tell it what correction silently did (grounding) alongside the errors.
+      const errText = (notes.length ? 'Note: ' + notes.join(' ') + ' ' : '') +
+        'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
       // C11: rounds pin the original in-flight request so deep pipelines
       // never refine without the words stating style/purpose/constraints.
       const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text });
@@ -1486,8 +1508,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         return null;
       }
       if (act === 'bail') break;
-      applied = AI.apply(res2.reply, applied.spec);
+      const base2 = applied.spec;
+      applied = AI.apply(res2.reply, base2);
       explain = res2.reply.explain || explain; // G8: the applied round's story wins
+      const n2 = correctionNotesFor(res2.reply, base2, applied.spec); // G10: latest applied proposal wins
+      if (n2) notes = n2;
       turns = res2.turns;
       r = runPipeline(applied.spec);
     }
@@ -1548,7 +1573,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, requested, local: !!res.local, unconfigured: !!res.unconfigured };
+    return { final, failReport, explain, notes, requested, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -1595,11 +1620,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
       ].filter(Boolean).join(' ') || null;
+      // G10: silent-correction disclosures ride the committed ack — after the
+      // reconciled ack, before the integrity/honest-report line.
+      const noteText = out.notes && out.notes.length ? ' ' + out.notes.join(' ') : '';
       if (out.failReport) {
         // G8: the honest report narrates the committed design too — the
         // surviving explain (reconciled like any ack) opens it, so the user
         // learns what was built, not just what it fails.
-        const story = out.explain ? Spec.reconcileAck(out.explain, state.spec, chips, out.requested) + ' ' : '';
+        const story = out.explain
+          ? Spec.reconcileAck(out.explain, state.spec, chips, out.requested) + noteText + ' '
+          : (noteText ? noteText.trim() + ' ' : '');
         botSay(`${story}Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
         selectTab('integrity');
       } else {
@@ -1610,7 +1640,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         // The ack is never the model's word alone: reconcile it against the
         // committed spec and append the code-built truth (A2).
         const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
-        botSay(ack + integLine, chips, { noChange: !chips.length, caveat });
+        botSay(ack + noteText + integLine, chips, { noChange: !chips.length, caveat });
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {
