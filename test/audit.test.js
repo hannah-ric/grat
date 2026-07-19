@@ -1242,5 +1242,106 @@ section('M-18 mandatory-anchor designs roll up "safe only when anchored", never 
   ok(!/'advisory'\s*:\s*'pass'/.test(uiSrc), 'no ui.js headline recomputes a rollup without the anchor tier');
 }
 
+/* =========================================================================
+ * 2026-07 generalization findings (register-gated: G1–G5, G15).
+ * Fixtures are the live review sessions' committed geometry, rebuilt inline.
+ * ========================================================================= */
+
+/* The adapt4 platform bed: committed live with verdict PASS while its
+ * 40×20 mm hard-maple side rails rupture under the engine's own seating
+ * preset (findings B1/B6, verify-B1-adapt4-rails.py). */
+function adapt4Bed(opts) {
+  opts = opts || {};
+  const P = (id, role, primitive, l, w, t, x, y, z, rotY, surface) => ({
+    id, role, primitive, dim: { l, w, t }, pos: { x, y, z },
+    rot: rotY ? { x: 0, y: rotY, z: 0 } : null,
+    grain: 'length', stock: 'solid', loadBearing: true, surface: surface || 'none'
+  });
+  const parts = [
+    P('p1', 'leg_foot_left', 'post', 450, 90, 90, -717, 225, -967),
+    P('p2', 'leg_foot_right', 'post', 450, 90, 90, 717, 225, -967),
+    P('p3', 'leg_head_left', 'post', 450, 90, 90, -717, 225, 967),
+    P('p4', 'leg_head_right', 'post', 450, 90, 90, 717, 225, 967),
+    P('p5', 'leg_center_a', 'post', 450, 90, 90, 0, 225, -356),
+    P('p6', 'leg_center_b', 'post', 450, 90, 90, 0, 225, 356),
+    P('p7', 'rail_left', 'rail', 1934, 40, 20, -717, 405, 0, 90),
+    P('p8', 'rail_right', 'rail', 1934, 40, 20, 717, 405, 0, 90),
+    P('p9', 'end_rail_foot', 'rail', 1434, 40, 20, 0, 405, -967),
+    P('p10', 'end_rail_head', 'rail', 1434, 40, 20, 0, 405, 967),
+    P('p11', 'beam_center', 'rail', 1834, 40, 20, 0, 405, 0, 90)
+  ];
+  const fj = opts.frameJoint || 'pocket_screws';
+  const conns = [
+    ['p1', 'p7'], ['p3', 'p7'], ['p2', 'p8'], ['p4', 'p8'],
+    ['p1', 'p9'], ['p2', 'p9'], ['p3', 'p10'], ['p4', 'p10'],
+    ['p5', 'p11'], ['p6', 'p11'],
+    ['p7', 'p9'], ['p8', 'p9'], ['p7', 'p10'], ['p8', 'p10']
+  ].map(([a, b]) => ({ a, b, joint: fj }));
+  let n = 12;
+  for (const z of [-847, -587, -227, 33, 493, 753]) {
+    for (const sx of [-1, 1]) {
+      const id = 'p' + n++;
+      parts.push(P(id, 'deck_slat', 'slab', 716, 140, 38, 359 * sx, 444, z, 0,
+        opts.untagged ? 'none' : 'seating'));
+      conns.push({ a: id, b: sx < 0 ? 'p7' : 'p8', joint: 'dowels' }, { a: id, b: 'p11', joint: 'dowels' });
+    }
+  }
+  return {
+    meta: { name: 'Platform Bed', template: 'custom', level: 'advanced', units: 'in' },
+    overall: { width: 1524, depth: 2024, height: 463 },
+    wood: { species: 'hard_maple', sheetSpecies: 'baltic_birch' },
+    custom: { parts, connections: conns }
+  };
+}
+const mpa = c => c && parseFloat((c.value.match(/([\d.]+) MPa/) || [])[1]);
+
+/* ================= G1: member load-path coverage (B1 + B6) ================= */
+section('G1 members carrying a checked surface get their own beam checks');
+{
+  const r = pipeline(adapt4Bed());
+  ok(!r.report.errors.length, 'fixture passes the geometric audit (as it did live)');
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  const strP7 = ig.checks.find(c => c.id === 'str:mbr:p7');
+  const sagP7 = ig.checks.find(c => c.id === 'sag:mbr:p7');
+  ok(strP7 && sagP7, 'side rail p7 gets sag + strength member checks');
+  ok(ig.checks.some(c => c.id === 'str:mbr:p8'), 'side rail p8 too');
+  const strP11 = ig.checks.find(c => c.id === 'str:mbr:p11');
+  ok(strP11, 'center beam p11 too');
+  // verify-B1: 136 kg seat point mid-rail over the 1844 mm clear span:
+  // σ = (P·L/4)·c/I = (1334.16·1844/4)·20/106666.7 = 115.3 MPa vs MOR 109.
+  ok(strP7 && strP7.status === 'fail', 'rail strength FAILS (the live commit presented verdict pass)');
+  near(mpa(strP7), 115.3, 2.5, 'rail stress matches the verify-B1 hand calc');
+  ok(sagP7 && sagP7.status === 'fail', 'rail sag fails its span limit');
+  // Center beam: supports 712 mm apart on a 1834 member → cantilever model,
+  // point at the free end. Fails hard; the point load is MAX not Σ (a person
+  // sits in one place — twelve tagged slats must not stack twelve people).
+  ok(strP11 && strP11.status === 'fail' && mpa(strP11) > 100 && mpa(strP11) < 300,
+    `center beam fails as a cantilever without stacking point loads (${mpa(strP11)} MPa)`);
+  ok(!ig.checks.some(c => c.id === 'sag:mbr:p9' || c.id === 'sag:mbr:p10'),
+    'unloaded end rails draw no member checks');
+  const slat = ig.checks.find(c => c.id === 'sag:p12');
+  ok(slat && slat.status === 'pass', 'the slat surface checks are unchanged (sound slats stay sound)');
+  eq(ig.summary.verdict, 'fail', 'adapt4 committed geometry can no longer present verdict pass');
+
+  // Load-path joint adequacy (B6): the beam-to-center-leg pocket screws see
+  // the member end reaction as demand — and a joinery change re-runs it.
+  const joints = ig.checks.find(c => c.id === 'joints');
+  ok(joints && joints.status === 'fail', 'joint adequacy sees the load-path connections and fails');
+  ok(joints && /p11/.test(joints.value), 'the weakest link is named on the member path (beam–leg)');
+  const mt = pipeline(adapt4Bed({ frameJoint: 'mortise_tenon' }));
+  const igMT = Structural.computeIntegrity(mt.spec, mt.model, {});
+  const jMT = igMT.checks.find(c => c.id === 'joints');
+  ok(jMT && jMT.status !== 'fail', 'mortise & tenon on the same load path clears the gate (swap re-checked)');
+
+  // Tributary accumulation: six book-loaded slats each hand half their UDL to
+  // the rail — w = 6·(0.5886·716)/2/1844 N/mm → σ = (w·L²/8)·c/I ≈ 54.7 MPa.
+  // (Σ of shares, not a single-slat shortcut, and no double-count beyond it.)
+  const lc = {};
+  for (let i = 12; i <= 23; i++) lc['p' + i] = 'books';
+  const igB = Structural.computeIntegrity(r.spec, r.model, { loadChoices: lc });
+  near(mpa(igB.checks.find(c => c.id === 'str:mbr:p7')), 54.7, 2,
+    'six tributary shares accumulate onto the rail (books duty)');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

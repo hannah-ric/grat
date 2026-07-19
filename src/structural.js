@@ -561,6 +561,140 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* ---- member load-path coverage (finding G1, 2026-07 generalization) ----
+     * A checked surface hands its load to the members it bears on; before this
+     * block those members were never examined (a bed deck on 40×20 rails
+     * presented verdict PASS while the rails ruptured on paper). For custom
+     * compositions: walk the connection graph downward from every checked
+     * surface, accumulate each member's tributary share, infer the member's
+     * own span between ITS supports exactly like surfacesOf infers surface
+     * spans, and run the same evalBeam + strength machinery per member.
+     *   · distributed load splits equally over the surface's direct supports;
+     *   · a point load (a person) acts in ONE place — each member is checked
+     *     with the full point at its worst position, never a stacked sum;
+     *   · a support that is itself a tagged surface keeps its own surface
+     *     check unchanged (no double-report);
+     *   · vertical members (posts, standing panels) carry axially, not in
+     *     bending — they terminate the walk (axial capacity is a future
+     *     check class); floor-resting members bear continuously and are safe.
+     * Template frames don't come through here: their aprons already run the
+     * audited frame model above. */
+    const memberChecks = []; // { part, supports, R } for the joint-adequacy block
+    if (custom && surfaces.length) {
+      const surfIds = new Set(surfaces.map(s => s.id));
+      const cconns = (spec.custom && spec.custom.connections) || [];
+      const bottoms = new Map(parts.map(p => [p.id, Math.min(...Geo.obbCorners(Geo.partOBB(p)).map(c => c[1]))]));
+      const supportsOf = p => {
+        const seen = new Set(), out = [];
+        for (const c of cconns) {
+          const oid = c.a === p.id ? c.b : c.b === p.id ? c.a : null;
+          if (!oid || seen.has(oid)) continue;
+          const q = byId.get(oid);
+          if (q && q.loadBearing && bottoms.get(oid) < bottoms.get(p.id) - 10) { seen.add(oid); out.push(q); }
+        }
+        return out;
+      };
+      const recs = new Map(); // member id -> accumulated tributary load
+      const recFor = q => {
+        if (!recs.has(q.id)) recs.set(q.id, { part: q, distSus: 0, distTrans: 0, point: 0, from: [] });
+        return recs.get(q.id);
+      };
+      for (const s of surfaces) {
+        const p = LOAD_PRESETS[s.presetKey] || LOAD_PRESETS.display;
+        let dist = 0, sus = false, point = 0;
+        if (p.kind === 'udl') { dist = (p.kgPerM * s.span / 1000) * GRAV; sus = !!p.sustained; }
+        else if (p.kind === 'seat') { point = p.kgSeat * GRAV; dist = (seatsFor(s.span) - 1) * p.kgSeat * GRAV; }
+        else { dist = p.kgDist * GRAV; sus = p.sustained === true; point = p.kgEdge * GRAV; }
+        const sup = supportsOf(s.part);
+        if (!sup.length) continue;
+        for (const q of sup) {
+          if (surfIds.has(q.id)) continue; // its own surface check stands
+          const r = recFor(q);
+          if (sus) r.distSus += dist / sup.length; else r.distTrans += dist / sup.length;
+          r.point = Math.max(r.point, point);
+          r.from.push(s.id);
+        }
+      }
+      // Highest member first, so multi-tier stacks flow their reactions down.
+      const done = new Set();
+      for (;;) {
+        let rec = null;
+        for (const r of recs.values()) if (!done.has(r.part.id) && (!rec || bottoms.get(r.part.id) > bottoms.get(rec.part.id))) rec = r;
+        if (!rec) break;
+        done.add(rec.part.id);
+        const m = rec.part;
+        const total = rec.distSus + rec.distTrans + rec.point;
+        const grounded = bottoms.get(m.id) < 5;
+        if (grounded || total < 1) continue;
+        const ext = Geo.worldExtents(m);
+        const horiz = Math.max(ext.x, ext.z) > ext.y;
+        const sup = supportsOf(m);
+        if (horiz) {
+          // Span between the member's own supports, surfacesOf-style.
+          const axis = ext.x >= ext.z ? [1, 0, 0] : [0, 0, 1];
+          const len = Math.max(ext.x, ext.z);
+          const half = len / 2;
+          const ts = sup.map(q => Math.max(-half, Math.min(half,
+            Geo.dot3([q.pos.x - m.pos.x, q.pos.y - m.pos.y, q.pos.z - m.pos.z], axis))));
+          let mdl = 'cant', span = half;
+          if (ts.length >= 2) {
+            const spread = Math.max(...ts) - Math.min(...ts);
+            if (spread >= 0.4 * len) {
+              mdl = 'ss';
+              // Clear span: back the extreme supports' own width out of the
+              // centre-to-centre spread (the frame model does the same).
+              const axExt = q => { const e = Geo.worldExtents(q); return axis[0] ? e.x : e.z; };
+              const qMin = sup[ts.indexOf(Math.min(...ts))], qMax = sup[ts.indexOf(Math.max(...ts))];
+              span = Math.max(100, spread - axExt(qMin) / 2 - axExt(qMax) / 2);
+            }
+          }
+          if (mdl === 'cant') {
+            const tbar = ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : 0;
+            span = Math.max(80, half + Math.abs(tbar));
+          }
+          const cases = [];
+          const udlFn = mdl === 'cant' ? 'udlCant' : 'udlSS';
+          const ptFn = mdl === 'cant' ? 'pointCant' : 'pointSS';
+          if (rec.distSus > 0) cases.push({ fn: udlFn, mag: rec.distSus / span, creep: CREEP_FACTOR });
+          if (rec.distTrans > 0) cases.push({ fn: udlFn, mag: rec.distTrans / span, creep: 1 });
+          if (rec.point > 0) cases.push({ fn: ptFn, mag: rec.point, creep: 1 });
+          const b = Math.max(10, Math.min(ext.x, ext.z));
+          const h = Math.max(5, ext.y);
+          const I = I_rect(b, h);
+          const msp = speciesOf(materialSpeciesKey(m, spec));
+          const { sag, M, crept } = evalBeam(cases, span, msp.moe * 1000, I);
+          const limit = mdl === 'cant' ? span / CANT_LIMIT_RATIO : span / SAG_LIMIT_RATIO;
+          const ratio = sag / limit;
+          if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: m.id, sag, limit, span }; }
+          const srcs = [...new Set(rec.from)];
+          const mFixes = [];
+          checks.push({
+            id: 'sag:mbr:' + m.id, title: `Sag — ${m.name} (supporting member)`,
+            status: sagStatus(ratio),
+            value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(span)} ${mdl === 'cant' ? 'cantilever' : 'span'}`,
+            threshold: `≤ ${fmtFine(limit)} (${mdl === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
+            explain: `${m.name} carries the load from ${srcs.join(', ')} — a ${fmtLen(b)} × ${fmtLen(h)} ${msp.label} section spanning ${fmtLen(span)} between its own supports.${crept ? ` Sustained share includes ×${CREEP_FACTOR} creep.` : ''}`,
+            fixes: ratio > 1 ? mFixes : [],
+            data: { sagMM: sag, limitMM: limit, spanMM: span },
+            prov: { rule: `member beam: tributary load from ${srcs.join('+')}, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, ${mdl === 'cant' ? 'cantilever' : 'span'} ${Math.round(span)} mm` }
+          });
+          strengthCheck('str:mbr:' + m.id, `${m.name} (supporting member)`, M, h, I, { label: 'carried' }, mFixes, msp);
+          const R = mdl === 'cant' ? total : total / 2; // worst end reaction
+          memberChecks.push({ part: m, supports: sup, R });
+        }
+        // Flow this member's whole load onto whatever holds IT up (a joist
+        // deck on beams, a post standing on a beam): sustained share stays
+        // sustained, everything else lands as transient distributed load.
+        for (const q of sup) {
+          if (surfIds.has(q.id)) continue;
+          const r2 = recFor(q);
+          r2.distSus += rec.distSus / sup.length;
+          r2.distTrans += (rec.distTrans + rec.point) / sup.length;
+          r2.from.push(...rec.from);
+        }
+      }
+    }
+
     /* ---- tipping stability: COG from part volumes & density, empty and loaded ---- */
     let antiTip = false, tip = null;
     {
@@ -814,6 +948,26 @@ var BB = globalThis.BB = globalThis.BB || {};
         const per = N / count;
         const margin = cap / per;
         if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain };
+      }
+      /* G1: load-path connections — every member-to-support joint is checked
+       * with the member's end reaction as demand, so a joinery change on the
+       * load path re-runs adequacy (the T2 mortise&tenon → pocket-screw swap
+       * used to pass unexamined). */
+      for (const mc of memberChecks) {
+        for (const q of mc.supports) {
+          const cn = ((spec.custom && spec.custom.connections) || []).find(c =>
+            (c.a === mc.part.id && c.b === q.id) || (c.b === mc.part.id && c.a === q.id));
+          if (!cn) continue;
+          const rating = JOINT_RATING[cn.joint] || JOINT_RATING.butt_screws;
+          const pa = specParts.get(cn.a), pb = specParts.get(cn.b);
+          const screwed = cn.joint === 'butt_screws' || cn.joint === 'pocket_screws';
+          const eg = !!(screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa)));
+          const cap = rating.capN * sgF * (eg ? 0.67 : 1);
+          const margin = cap / mc.R;
+          if (!weakest || margin < weakest.margin) {
+            weakest = { margin, joint: cn.joint, where: `${mc.part.id}–${q.id}`, per: mc.R, cap, slot: null, endGrain: eg };
+          }
+        }
       }
       if (weakest) {
         const jLabel = k => K.JOINERY[k] ? K.JOINERY[k].label.toLowerCase() : k;
