@@ -283,6 +283,57 @@ section('wire diff-based refinement');
   }
 }
 
+/* ---------------- explain truncation: sentence-bounded, never mid-word (G7) ---------------- */
+section('explain truncation is sentence-bounded at a raised cap (G7)');
+{
+  // The schema demands honest disclosures in "e"; the old .slice(0, 320)
+  // amputated exactly those sentences mid-word ("…via the n."). Cap is now
+  // 600 with sentence-boundary truncation as the backstop.
+  const sent = (n, i) => { // an exactly-n-char sentence ending ". "
+    const label = 'S' + i + ' ';
+    return (label + 'x'.repeat(Math.max(0, n - label.length - 1))).slice(0, n - 1) + '.';
+  };
+  // A 530-char two-sentence e survives WHOLE (the ref4-run1 class).
+  const e530 = sent(300, 1) + ' ' + sent(229, 2);
+  eq(e530.length, 530, 'fixture e is 530 chars');
+  const r530 = AI.classify({ o: { h: 650 }, e: e530 });
+  eq(r530.explain, e530, 'a 530-char two-sentence explain survives verbatim (no 320 amputation)');
+  // A 700-char e is cut at the LAST SENTENCE END before the cap — never mid-word.
+  const e700 = sent(280, 1) + ' ' + sent(280, 2) + ' ' + sent(138, 3);
+  eq(e700.length, 700, 'fixture e is 700 chars');
+  const r700 = AI.classify({ o: { h: 650 }, e: e700 });
+  eq(r700.explain, sent(280, 1) + ' ' + sent(280, 2), 'a 700-char explain is cut at the last sentence end before the cap');
+  ok(/\.$/.test(r700.explain) && r700.explain.length <= 600, 'the cut lands on terminal punctuation within the cap');
+  // Decimal numbers are not sentence ends: the cut never lands inside "152.4".
+  const eDec = sent(200, 1) + ' This span is 152.4mm plus ' + 'y'.repeat(500) + '.';
+  const rDec = AI.classify({ o: { h: 650 }, e: eDec });
+  eq(rDec.explain, sent(200, 1), 'a decimal point mid-sentence is never treated as a sentence boundary');
+  // A punctuation-free run-on falls back to the last word boundary + ellipsis.
+  const runOn = ('word '.repeat(200)).trim();
+  const rRun = AI.classify({ o: { h: 650 }, e: runOn });
+  ok(rRun.explain.length <= 601 && /word…$/.test(rRun.explain) && !/wor…$/.test(rRun.explain),
+    `a run-on cuts at a word boundary with an ellipsis, never mid-word — got tail "${rRun.explain.slice(-12)}"`);
+  // "i" advice text shares the policy at its own 900 cap.
+  const i1200 = sent(500, 1) + ' ' + sent(380, 2) + ' ' + sent(318, 3);
+  const rInfo = AI.classify({ i: i1200 });
+  eq(rInfo.text, sent(500, 1) + ' ' + sent(380, 2), 'oversized info text is sentence-bounded at its 900 cap');
+
+  // The real recorded case (ref4-run1 turn 2 call 0, verbatim): the 530-char
+  // explain whose amputated half held the drawers-impossible disclosure and
+  // the compose-with-nightstands workaround — the best product answer of the
+  // eval. It must now survive classification whole.
+  const ref4Raw = "{\"N\":{\"v\":4,\"n\":\"Queen Storage Bed Frame\",\"t\":6,\"l\":2,\"u\":0,\"o\":[1524,2130,410],\"m\":5,\"j\":[6,20,1],\"f\":2,\"d\":0,\"p\":[[0,35,195,35,390,70,70,0,0,0,0,0,1,0,\"leg_head_left\"],[0,1489,195,35,390,70,70,0,0,0,0,0,1,0,\"leg_head_right\"],[0,35,195,2095,390,70,70,0,0,0,0,0,1,0,\"leg_foot_left\"],[0,1489,195,2095,390,70,70,0,0,0,0,0,1,0,\"leg_foot_right\"],[0,762,195,710,390,70,70,0,0,0,0,0,1,0,\"leg_center_1\"],[0,762,195,1420,390,70,70,0,0,0,0,0,1,0,\"leg_center_2\"],[1,762,315,35,1454,150,40,0,0,0,0,0,1,0,\"head_rail\"],[1,762,315,2095,1454,150,40,0,0,0,0,0,1,0,\"foot_rail\"],[1,35,315,1065,2060,150,40,0,90,0,0,0,1,0,\"left_side_rail\"],[1,1489,315,1065,2060,150,40,0,90,0,0,0,1,0,\"right_side_rail\"],[1,762,315,1065,2060,150,40,0,90,0,0,0,1,0,\"center_beam\"],[3,762,399,532,1524,1065,18,0,0,0,0,1,1,1,\"deck_panel_head_half\"],[3,762,399,1598,1524,1065,18,0,0,0,0,1,1,1,\"deck_panel_foot_half\"],[3,135,100,372,200,675,18,0,0,0,0,1,0,3,\"fixed_shelf_left\"],[3,1389,100,372,200,675,18,0,0,0,0,1,0,3,\"fixed_shelf_right\"]],\"c\":[[0,6,6],[1,6,6],[2,7,6],[3,7,6],[0,8,20],[2,8,20],[1,9,20],[3,9,20],[4,10,6],[5,10,6],[10,6,20],[10,7,20],[11,8,1],[11,9,1],[11,10,1],[12,8,1],[12,9,1],[12,10,1],[13,0,1],[13,4,1],[14,1,1],[14,5,1]]},\"e\":\"Heavy-duty queen platform frame (ash, mortise&tenon corners, kd_bolt rail-to-post for moving) with a center beam on two extra legs to carry 400lb — this is the load path a queen bed needs to avoid sag. Note: true pull-out sliding drawers aren't buildable in a custom-template spec (slide hardware only attaches via the nightstand/cabinet templates), so I built fixed open storage shelves flanking the center legs instead. If you want real slide-out drawers, I can design two nightstand or cabinet units sized to sit in those bays.\"}";
+  const ref4 = AI.classify(AI.extractJSON(ref4Raw));
+  eq(ref4.kind, 'new', 'ref4-run1 raw reply classifies as a new design');
+  eq(ref4.explain.length, 530, 'the full 530-char explain survives (was amputated at "…via the n.")');
+  ok(ref4.explain.includes('If you want real slide-out drawers, I can design two nightstand or cabinet units sized to sit in those bays.'),
+    'the drawers-workaround sentence survives verbatim');
+  ok(ref4.explain.includes('via the nightstand/cabinet templates'),
+    'the disclosure no longer ends mid-word at "via the n."');
+  // SCHEMA_DOC states the e budget once, next to the shape that carries it.
+  ok(/1-2 sentences, ≤500 chars/.test(Codec.SCHEMA_DOC), 'SCHEMA_DOC states the "e" budget');
+}
+
 /* ---------------- custom o-only refinement scales in code (B3) ---------------- */
 section('custom overall-only diff scales the composition (B3)');
 {
@@ -1313,8 +1364,9 @@ section('prompt budget: hard ceiling with measured headroom');
   const tokens = Codec.estimateTokens(sys);
   // Ceiling raised 1900 → 2000 for the A5 exclusion-binding line (~80 tokens,
   // deliberate spend), then 2000 → 2040 for the C1 bed-size anchor rows
-  // (~35 tokens); the guard still catches accidental bloat.
-  ok(tokens <= 2040, `system prompt stays under the 2040-token ceiling (measured ${tokens})`);
+  // (~35 tokens), then 2040 → 2060 for the G7 e-budget clause (~18 tokens);
+  // the guard still catches accidental bloat.
+  ok(tokens <= 2060, `system prompt stays under the 2060-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);

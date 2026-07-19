@@ -105,6 +105,32 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- classify: wire reply -> verbose intent ---------------- */
+  /* G7: explain budget. SCHEMA_DOC demands honest disclosures in "e"
+   * (mechanism boundaries, workaround offers, assumption statements) and on
+   * novel pieces they routinely run 320-530 chars — the old hard
+   * .slice(0, 320) amputated exactly that safety/honesty content mid-word
+   * ("…via the n.") and glued the integrity line onto the stump. Cap raised
+   * to fit the schema's own demands, with sentence-boundary truncation as
+   * the backstop: cut at the last sentence end before the cap, never
+   * mid-sentence; a punctuation-free run-on falls back to the last word
+   * boundary plus an ellipsis — never mid-word. */
+  const EXPLAIN_CAP = 600; // "e" ack text (schema asks ≤500 — headroom, not license)
+  const INFO_CAP = 900;    // "i" advice text (unchanged budget)
+  function capText(text, cap) {
+    const s = String(text);
+    if (s.length <= cap) return s;
+    let cut = -1, m;
+    const re = /[.!?]["'’”)\]]*(?=\s|$)/g; // terminal punctuation (+ closing quotes/brackets) ending a sentence
+    while ((m = re.exec(s))) {
+      const end = m.index + m[0].length;
+      if (end > cap) break;
+      cut = end;
+    }
+    if (cut > 0) return s.slice(0, cut).trimEnd();
+    const head = s.slice(0, cap);
+    const ws = head.lastIndexOf(' ');
+    return (ws > 0 ? head.slice(0, ws) : head).trimEnd() + '…';
+  }
   function classify(obj) {
     if (!obj || typeof obj !== 'object') return null;
     const q = obj.q !== undefined ? obj.q : obj.question;
@@ -117,9 +143,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     // no wire keys parsed to null and burned the validation retry.
     const info = obj.i !== undefined ? obj.i : obj.info;
     if (typeof info === 'string' && info.trim()) {
-      return { kind: 'info', text: String(info).slice(0, 900) };
+      return { kind: 'info', text: capText(info, INFO_CAP) };
     }
-    const explain = String(obj.e !== undefined ? obj.e : (obj.explain || '')).slice(0, 320);
+    const explain = capText(obj.e !== undefined ? obj.e : (obj.explain || ''), EXPLAIN_CAP);
     const N = obj.N !== undefined ? obj.N : obj.new;
     if (N && typeof N === 'object') {
       const spec = Codec().decode(N);
