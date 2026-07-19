@@ -1409,5 +1409,65 @@ section('G2 cantilevered surface connections are checked as a moment couple');
   ok(jMT && !/cantilever root/.test(jMT.value), 'ss surfaces draw no phantom couple');
 }
 
+/* ================= G3: untagged customs get derived check surfaces (B4) ================= */
+section('G3 check coverage is never model-discretionary: untagged customs derive surfaces');
+{
+  // The B-probe-nosurf demonstration: adapt4's exact geometry, SURF tags
+  // stripped, committed live with verdict pass and ZERO load checks.
+  const r = pipeline(adapt4Bed({ untagged: true }));
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  ok(ig.surfaces.length > 0, 'surfaces are derived when the wire author tags nothing');
+  ok(ig.surfaces.every(s => s.assumed === true && s.kind === 'shelf'),
+    'derived surfaces are shelf-duty and flagged assumed');
+  ok(ig.checks.some(c => c.id.startsWith('sag:')), 'sag physics runs on the derived surfaces');
+  ok(!(ig.summary.verdict === 'pass' && !ig.checks.some(c => /^(sag|str):/.test(c.id))),
+    'a fully-untagged custom can never report verdict pass with zero load checks');
+  ok(Array.isArray(ig.summary.assumedSurfaces) && ig.summary.assumedSurfaces.length > 0,
+    'the summary carries the assumption for the ack/Safety tab');
+  // The topmost horizontal slab per connected stack is the derived surface —
+  // the deck slats, not the rails under them.
+  ok(ig.surfaces.some(s => s.id === 'p12'), 'a deck slat is the derived surface');
+  ok(!ig.surfaces.some(s => s.id === 'p7' || s.id === 'p11'), 'rails below the deck are not surfaces');
+
+  // A grounded slab still derives (ref8’s planter bottoms sit on the floor).
+  const planter = pipeline({
+    meta: { name: 'Planter Box', template: 'custom', level: 'beginner', units: 'mm' },
+    wood: { species: 'western_red_cedar' },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'planter_bottom', primitive: 'slab', dim: { l: 350, w: 350, t: 19 }, pos: { x: 0, y: 9.5, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p2', role: 'planter_front', primitive: 'panel', dim: { l: 350, w: 350, t: 19 }, pos: { x: 0, y: 175.5, z: 166 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p3', role: 'planter_back', primitive: 'panel', dim: { l: 350, w: 350, t: 19 }, pos: { x: 0, y: 175.5, z: -166 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: [{ a: 'p1', b: 'p2', joint: 'edge_glue' }, { a: 'p1', b: 'p3', joint: 'edge_glue' }]
+    }
+  });
+  const igP = Structural.computeIntegrity(planter.spec, planter.model, {});
+  ok(igP.surfaces.some(s => s.id === 'p1' && s.assumed), 'floor-resting planter bottom is derived (walls are vertical)');
+
+  // No horizontal slab/panel at all: the engine says so instead of passing silently.
+  const frame = pipeline({
+    meta: { name: 'Bare Frame', template: 'custom', level: 'beginner', units: 'mm' },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'post_a', primitive: 'post', dim: { l: 900, w: 60, t: 60 }, pos: { x: -300, y: 450, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p2', role: 'post_b', primitive: 'post', dim: { l: 900, w: 60, t: 60 }, pos: { x: 300, y: 450, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p3', role: 'stretcher', primitive: 'rail', dim: { l: 540, w: 60, t: 30 }, pos: { x: 0, y: 870, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: [{ a: 'p1', b: 'p3', joint: 'mortise_tenon' }, { a: 'p2', b: 'p3', joint: 'mortise_tenon' }]
+    }
+  });
+  const igF = Structural.computeIntegrity(frame.spec, frame.model, {});
+  ok(igF.checks.some(c => c.id === 'loadcheck' && c.status !== 'pass'),
+    'nothing derivable → an explicit no-load-checks-ran advisory, never a silent pass');
+  ok(igF.summary.verdict !== 'pass', 'the bare frame cannot roll up verdict pass');
+
+  // Tagged compositions are untouched: no phantom derived surfaces.
+  const tagged = pipeline(adapt4Bed());
+  const igT = Structural.computeIntegrity(tagged.spec, tagged.model, {});
+  ok(igT.surfaces.length === 12 && igT.surfaces.every(s => !s.assumed),
+    'tagged compositions derive nothing extra');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

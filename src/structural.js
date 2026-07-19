@@ -242,8 +242,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (t === 'custom') {
       // Declared surfaces; span model inferred from the connection graph.
       const byId = new Map(parts.map(p => [p.id, p]));
-      for (const p of parts) {
-        if (!p.surface || p.surface === 'none') continue;
+      const mkSurface = (p, kind, assumed) => {
         const ext = Geo.worldExtents(p);
         const axis = ext.x >= ext.z ? [1, 0, 0] : [0, 0, 1];
         const len = Math.max(ext.x, ext.z);
@@ -268,10 +267,42 @@ var BB = globalThis.BB = globalThis.BB || {};
           span = Math.max(80, half + Math.abs(tbar));
         }
         const th = p.cutDim ? p.cutDim.T : Math.min(p.size.w, p.size.h, p.size.d);
-        push({
-          id: p.id, part: p, label: p.name, model: mdl, span, b: Math.max(20, bHoriz), h: th, over: 0,
-          kind: p.surface === 'seating' ? 'seat' : p.surface === 'worktop' ? 'top' : 'shelf'
-        });
+        push(Object.assign({
+          id: p.id, part: p, label: assumed ? `${p.name} (assumed shelf)` : p.name,
+          model: mdl, span, b: Math.max(20, bHoriz), h: th, over: 0, kind
+        }, assumed ? { assumed: true } : {}));
+      };
+      let tagged = 0;
+      for (const p of parts) {
+        if (!p.surface || p.surface === 'none') continue;
+        tagged++;
+        mkSurface(p, p.surface === 'seating' ? 'seat' : p.surface === 'worktop' ? 'top' : 'shelf', false);
+      }
+      /* G3 (finding B4): check coverage must never be model-discretionary.
+       * If the wire author tagged nothing, derive the check surfaces: the
+       * topmost horizontal slab/panel of each connected stack is what things
+       * get put on — treat it as shelf duty, flagged `assumed` so the ack
+       * and Safety tab disclose the assumption instead of skipping physics. */
+      if (!tagged && parts.length) {
+        const comp = new Map(parts.map(p => [p.id, p.id]));
+        const find = id => { while (comp.get(id) !== id) { comp.set(id, comp.get(comp.get(id))); id = comp.get(id); } return id; };
+        for (const c of (spec.custom && spec.custom.connections) || []) {
+          if (comp.has(c.a) && comp.has(c.b)) comp.set(find(c.a), find(c.b));
+        }
+        const topPer = new Map(); // component root -> topmost horizontal slab/panel y
+        const cand = [];
+        for (const p of parts) {
+          if (p.prim !== 'slab' && p.prim !== 'panel') continue;
+          const ext = Geo.worldExtents(p);
+          if (ext.y >= Math.max(ext.x, ext.z)) continue; // standing panel, not a surface
+          const top = p.pos.y + ext.y / 2;
+          const root = find(p.id);
+          cand.push({ p, top, root });
+          if (!topPer.has(root) || top > topPer.get(root)) topPer.set(root, top);
+        }
+        for (const c of cand) {
+          if (c.top >= topPer.get(c.root) - 5) mkSurface(c.p, 'shelf', true); // ties (a slat deck) all derive
+        }
       }
     }
     return out;
@@ -406,6 +437,19 @@ var BB = globalThis.BB = globalThis.BB || {};
           fixes: []
         });
       }
+    }
+
+    /* G3 backstop: a custom with no tagged surface AND nothing derivable
+     * (no horizontal slab/panel anywhere) must still never roll up a clean
+     * pass with zero load physics — say so, out loud. */
+    if (custom && parts.length && !surfaces.length) {
+      checks.push({
+        id: 'loadcheck', title: 'Load coverage', status: 'advisory',
+        value: 'no load-bearing surface declared or derivable',
+        threshold: 'at least one checked load surface',
+        explain: 'No part is tagged as a load surface and none could be derived, so NO sag or strength physics ran on this design. Tag the parts things will rest or sit on.',
+        fixes: []
+      });
     }
 
     /* ---- beam checks per load-bearing surface: sag (MOE), strength (MOR/SF4) ----
@@ -1115,6 +1159,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       fails,
       advisories,
       anchorRequired: antiTip,
+      // G3: derived (assumed) check surfaces are disclosed, never silent.
+      assumedSurfaces: surfaces.filter(s => s.assumed).map(s => s.id),
       /* Rollup tier (audit M-18): a mandatory wall anchor is its own headline
        * tier — "safe only when anchored" — never rolled into plain advisory
        * under a "passes the required checks" banner. Order: fail > anchor >
