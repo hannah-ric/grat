@@ -51,6 +51,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       // per call saying the same thing twice.
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
       'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
+      // G6: ask-vs-guess was ungoverned chance — 2/4 fresh runs of an
+      // underdetermined request silently committed complete failing designs.
+      // Deliberate token spend; asking is load-bearing for soundness (every
+      // guessed ref7 commit failed integrity; the informed one passed).
+      'ASK OR DISCLOSE: if a load-bearing or fit-critical unknown (what piece; boards on hand when building from the user\'s stock; the size of a named object or count — "for 6", a queen mattress; a stated capacity) would change the design, ask ONE question (QUESTION shape), most consequential first; a follow-up turn may ask the next such unknown (inventory after piece) or state the assumption.',
+      'If you design without asking, OPEN "e" naming the assumptions you filled in; size to any named object/count and state that size in "e". Never ask styling/finish first; a complete, well-determined request gets ZERO questions.',
       'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
       // A5: a stated exclusion must bind every later choice or be excepted
       // out loud — never silently reframed (observed: "no metal hardware"
@@ -105,6 +111,32 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- classify: wire reply -> verbose intent ---------------- */
+  /* G7: explain budget. SCHEMA_DOC demands honest disclosures in "e"
+   * (mechanism boundaries, workaround offers, assumption statements) and on
+   * novel pieces they routinely run 320-530 chars — the old hard
+   * .slice(0, 320) amputated exactly that safety/honesty content mid-word
+   * ("…via the n.") and glued the integrity line onto the stump. Cap raised
+   * to fit the schema's own demands, with sentence-boundary truncation as
+   * the backstop: cut at the last sentence end before the cap, never
+   * mid-sentence; a punctuation-free run-on falls back to the last word
+   * boundary plus an ellipsis — never mid-word. */
+  const EXPLAIN_CAP = 600; // "e" ack text (schema asks ≤500 — headroom, not license)
+  const INFO_CAP = 900;    // "i" advice text (unchanged budget)
+  function capText(text, cap) {
+    const s = String(text);
+    if (s.length <= cap) return s;
+    let cut = -1, m;
+    const re = /[.!?]["'’”)\]]*(?=\s|$)/g; // terminal punctuation (+ closing quotes/brackets) ending a sentence
+    while ((m = re.exec(s))) {
+      const end = m.index + m[0].length;
+      if (end > cap) break;
+      cut = end;
+    }
+    if (cut > 0) return s.slice(0, cut).trimEnd();
+    const head = s.slice(0, cap);
+    const ws = head.lastIndexOf(' ');
+    return (ws > 0 ? head.slice(0, ws) : head).trimEnd() + '…';
+  }
   function classify(obj) {
     if (!obj || typeof obj !== 'object') return null;
     const q = obj.q !== undefined ? obj.q : obj.question;
@@ -117,9 +149,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // no wire keys parsed to null and burned the validation retry.
     const info = obj.i !== undefined ? obj.i : obj.info;
     if (typeof info === 'string' && info.trim()) {
-      return { kind: 'info', text: String(info).slice(0, 900) };
+      return { kind: 'info', text: capText(info, INFO_CAP) };
     }
-    const explain = String(obj.e !== undefined ? obj.e : (obj.explain || '')).slice(0, 320);
+    const eRaw = String(obj.e !== undefined ? obj.e : (obj.explain || ''));
+    const explain = capText(eRaw, EXPLAIN_CAP);
     const N = obj.N !== undefined ? obj.N : obj.new;
     if (N && typeof N === 'object') {
       const spec = Codec().decode(N);
@@ -130,6 +163,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     const wireDiff = {};
     for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain' && k !== 'i' && k !== 'info') wireDiff[k] = obj[k];
+    // G14: a prose-only reply — non-empty "e", no wire keys — is a correct
+    // no-change answer wearing the wrong key (observed: adapt3-run2's
+    // verified constraint answer died as "never produced a valid design
+    // reply" because a bare explain parsed to null and the retry repeated
+    // it). Coerce to an info answer; the raw e rides the "i" budget.
+    if (!Object.keys(wireDiff).length && eRaw.trim()) {
+      return { kind: 'info', text: capText(eRaw, INFO_CAP) };
+    }
     const patch = Codec().decodePartial(wireDiff);
     if (!patch) return null;
     // Wire keys outside the documented schema decode to nothing — record them
@@ -686,7 +727,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         onStatus('Re-asking for valid JSON');
         const retryMessages = [...baseMessages,
           { role: 'assistant', content: text || '(empty)' },
-          { role: 'user', content: 'That was not valid wire-format JSON. Reply again with ONLY minified JSON in the documented wire format.' }];
+          // G14: name the escape hatch — a "not JSON" verdict alone made the
+          // model repeat a valid-JSON-wrong-shape reply until the turn died.
+          { role: 'user', content: 'That was not valid wire-format JSON. Reply again with ONLY minified JSON in the documented wire format. If you meant advice or an explanation with NO spec change, reply {"i":"..."}.' }];
         const second = await callModel(system, retryMessages, onStatus);
         parsed = classify(extractJSON(second.text));
         if (parsed) text = second.text;
@@ -717,7 +760,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
       if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
-      return { reply: localModel(userText, spec, { phrasing }), turns, local: true, unconfigured: proxyUnconfigured };
+      // G13: the transport EXISTED and died mid-flight (hasRemote() was true
+      // above — a session that starts offline returns early and never lands
+      // here). The local reply still ships for the first-turn offline
+      // feature, but the result is MARKED so the orchestration loops can
+      // name the network instead of blaming the design ("I couldn't get a
+      // buildable design from that…" over a dropped fetch). Additive: local
+      // stays true, the reply stays the parser's.
+      return { reply: localModel(userText, spec, { phrasing }), turns, local: true, transportFailed: true, unconfigured: proxyUnconfigured };
     }
   }
 
@@ -732,6 +782,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (res.usageLimit) return 'billing';
     if (res.rateLimited) return 'rate';
     if (!res.reply) return 'bail';
+    // G13: a transport death mid-loop is a NETWORK event, not a design
+    // verdict — name it distinctly so the loop can offer a retry ("connection
+    // dropped, design untouched") instead of falling through to the
+    // unbuildable rejection with unspent rounds. Checked before the local
+    // bail: the offline parser still never speaks for the model.
+    if (res.transportFailed) return 'transport';
     // The loops only run remote; a local reply mid-round means the transport
     // died mid-flight — bail to the honest unbuildable path, never surface
     // the offline parser's guess as the model's answer.

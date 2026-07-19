@@ -148,7 +148,10 @@
    {
     "id": "joints",
     "status": "pass",
-    "data": null
+    "data": {
+     "perN": 515.025,
+     "capN": 882
+    }
    },
    {
     "id": "move:top_1",

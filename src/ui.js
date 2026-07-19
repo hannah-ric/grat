@@ -1373,6 +1373,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* G10: the silent-correction disclosure for one applied reply — measure
+   * the RAW proposal (a new spec exactly as decoded; a diff as the
+   * pre-correction merge onto its base) against what correction delivered.
+   * Returns note strings, [] when correction changed nothing notable, or
+   * null when the reply carries nothing recomputable (the caller then keeps
+   * the previous notes — the custom composition is unchanged). */
+  function correctionNotesFor(reply, baseSpec, appliedSpec) {
+    if (reply.kind === 'new') return Spec.correctionNotes(reply.spec, appliedSpec);
+    if (reply.kind === 'diff' && reply.patch && reply.patch.custom) {
+      return Spec.correctionNotes(Spec.deepMerge(baseSpec, reply.patch), appliedSpec);
+    }
+    return null;
+  }
+
   /* The AI round-trip: wire protocol, continuation status, single validation
    * retry, and the propose–validate–revise loop for novel pieces. */
   async function aiPipeline(text, image, setStatus) {
@@ -1395,6 +1409,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay(res.error, []);
       return null;
     }
+    // G13: the transport existed and died on this very call — the reply in
+    // hand is the offline parser's, not the model's. When this session had
+    // EVIDENCE of a live service (badge: online), name the network and stop:
+    // the design is untouched and the message is retryable — the parser
+    // never silently answers for the model. A session that never proved a
+    // service (offline/unconfigured badge — e.g. a static host whose first
+    // send discovers there is no proxy) keeps the documented offline
+    // degradation: the local reply proceeds with its offline caveat.
+    const aiBadge = $('aiBadge');
+    if (res.transportFailed && aiBadge && aiBadge.dataset.state === 'online') {
+      botSay('Connection dropped mid-refinement — your design is untouched. Send the message again to retry.', []);
+      return null;
+    }
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
       askQuestion(res.reply);
@@ -1413,6 +1440,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       : { patch: { overall: res.reply.spec && res.reply.spec.overall, drawers: res.reply.spec && res.reply.spec.drawers }, ignored: res.reply.ignored || [] };
     let applied = AI.apply(res.reply, state.spec);
     let turns = res.turns;
+    // G8: the committed ack must narrate the SURVIVING design — track the
+    // explain of the latest APPLIED reply. Captured once from round 1, it
+    // described phantom architecture ("carried only by the two angled side
+    // rails" over a design with no rails) after later rounds restructured
+    // the piece, while the accurate corrected explains were discarded.
+    let explain = res.reply.explain;
+    // G10: what silent correction did to the raw proposal (grounding an
+    // airborne composition). Recomputed per applied refinement round
+    // (latest applied proposal wins); shown to the model in round context
+    // and appended to the committed ack.
+    let notes = correctionNotesFor(res.reply, state.spec, applied.spec) || [];
     let r = runPipeline(applied.spec);
 
     // Up to three validation-refinement rounds with the specific errors
@@ -1423,7 +1461,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // these rounds is never presented; the last valid design stays.
     for (let round = 1; r.report.errors.length && !res.local && round <= 3; round++) {
       setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
-      const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
+      // G10: the model refines against corrected geometry it never proposed —
+      // tell it what correction silently did (grounding) alongside the errors.
+      const errText = (notes.length ? 'Note: ' + notes.join(' ') + ' ' : '') +
+        'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
       // C11: rounds pin the original in-flight request so deep pipelines
       // never refine without the words stating style/purpose/constraints.
       const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text });
@@ -1457,8 +1498,21 @@ var BB = globalThis.BB = globalThis.BB || {};
         botSay(res2.reply.text, [], { noChange: true });
         break;
       }
+      if (act === 'transport') {
+        // G13: the network died mid-round, the model never answered — name
+        // the connection and stop. The last valid design stays; no rejection
+        // marker and no "couldn't get a buildable design" blame for a
+        // dropped fetch (the offline parser never speaks for the model).
+        state.turns = turns.slice(-24);
+        botSay('Connection dropped mid-refinement — your design is untouched. Send the message again to retry.', []);
+        return null;
+      }
       if (act === 'bail') break;
-      applied = AI.apply(res2.reply, applied.spec);
+      const base2 = applied.spec;
+      applied = AI.apply(res2.reply, base2);
+      explain = res2.reply.explain || explain; // G8: the applied round's story wins
+      const n2 = correctionNotesFor(res2.reply, base2, applied.spec); // G10: latest applied proposal wins
+      if (n2) notes = n2;
       turns = res2.turns;
       r = runPipeline(applied.spec);
     }
@@ -1474,14 +1528,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     // attempt is presented honestly, failing report and all.
     let final = applied.spec;
     let failReport = null;
-    let explain = res.reply.explain;
     if (final.meta.template === 'custom' && !res.local) {
       let best = null, curTurns = turns;
       for (let round = 1; round <= 3; round++) {
         const built = runPipeline(final);
         const integ = Structural.computeIntegrity(built.spec, built.model, integrityOpts());
         const fails = integ.checks.filter(c => c.status === 'fail');
-        if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns };
+        // G8: best carries the explain that describes best.spec, so a
+        // rollback restores the matching story, never a later proposal's.
+        if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns, explain };
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
         const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text }); // C11: pin the original request
@@ -1498,19 +1553,27 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (act3 === 'rate') { botSay('Too many messages in a row — give it a few seconds, then try again.', []); break; }
         if (act3 === 'question') { askQuestion(res3.reply); break; }
         if (act3 === 'info') { botSay(res3.reply.text, [], { noChange: true }); break; }
+        if (act3 === 'transport') {
+          // G13: network death mid-polish — the best attempt still commits
+          // below; name the connection instead of bailing silently.
+          botSay('Connection dropped mid-refinement — keeping the best attempt so far. Send another message to keep refining.', []);
+          break;
+        }
         if (act3 === 'bail') break;
         const a3 = AI.apply(res3.reply, final);
         const r3 = runPipeline(a3.spec);
         if (r3.report.errors.length) break;
         final = r3.spec;
+        explain = res3.reply.explain || explain; // G8: the adopted round's story wins
         curTurns = res3.turns;
       }
       final = best.spec;
       turns = best.turns;
+      explain = best.explain; // G8: the committed ack narrates best.spec
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, requested, local: !!res.local, unconfigured: !!res.unconfigured };
+    return { final, failReport, explain, notes, requested, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -1557,8 +1620,17 @@ var BB = globalThis.BB = globalThis.BB || {};
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
       ].filter(Boolean).join(' ') || null;
+      // G10: silent-correction disclosures ride the committed ack — after the
+      // reconciled ack, before the integrity/honest-report line.
+      const noteText = out.notes && out.notes.length ? ' ' + out.notes.join(' ') : '';
       if (out.failReport) {
-        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
+        // G8: the honest report narrates the committed design too — the
+        // surviving explain (reconciled like any ack) opens it, so the user
+        // learns what was built, not just what it fails.
+        const story = out.explain
+          ? Spec.reconcileAck(out.explain, state.spec, chips, out.requested) + noteText + ' '
+          : (noteText ? noteText.trim() + ' ' : '');
+        botSay(`${story}Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
         selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
@@ -1568,7 +1640,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         // The ack is never the model's word alone: reconcile it against the
         // committed spec and append the code-built truth (A2).
         const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
-        botSay(ack + integLine, chips, { noChange: !chips.length, caveat });
+        botSay(ack + noteText + integLine, chips, { noChange: !chips.length, caveat });
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {

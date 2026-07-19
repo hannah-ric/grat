@@ -1663,6 +1663,114 @@ const clickMoreCtl = async sel => {
   ok(welcomeImport.withProjects === 'Open a saved design', 'the has-projects welcome keeps "Open a saved design"');
 
 
+  /* ================= G13: transport death names the network ================= */
+  // A transport that existed and died — on the first call or inside a
+  // validation round — surfaces as a retryable connection message, never as
+  // "I couldn't get a buildable design" and never as the offline parser
+  // answering for the model. The design stays untouched both times.
+  const g13 = await page.evaluate(async () => {
+    const bubbles = () => [...document.querySelectorAll('#chatLog .msg.bot .bubble')].map(b => b.textContent.trim()).filter(Boolean);
+    const specBefore = JSON.stringify(__bb.state.spec);
+    const n0 = bubbles().length;
+    // This session has proven a live service (injected transport) — the badge
+    // gate distinguishes an online blip from a static host that never had one.
+    __bb.setAIState('online');
+    // (a) first call dies mid-flight.
+    BB.AI.setTransport(async () => { throw new Error('boom'); });
+    await __bb.sendMessage('make it walnut');
+    const firstMsg = bubbles().pop() || '';
+    // (b) death inside a validation round: reply 1 is a custom with an
+    // unjointed overlap (validation error), then the wire drops.
+    const bad = BB.Spec.correctSpec({
+      meta: { name: 'Overlap probe', template: 'custom', level: 'advanced', units: 'mm' },
+      custom: {
+        parts: [
+          { id: 'a', role: 'slab_a', primitive: 'slab', dim: { l: 300, w: 300, t: 30 }, pos: { x: 0, y: 15, z: 0 } },
+          { id: 'b', role: 'slab_b', primitive: 'slab', dim: { l: 300, w: 300, t: 30 }, pos: { x: 0, y: 25, z: 0 } }
+        ],
+        connections: []
+      }
+    });
+    let call = 0;
+    BB.AI.setTransport(async () => {
+      call++;
+      if (call === 1) return { text: JSON.stringify({ N: BB.Codec.encode(bad), e: 'Two overlapping slabs.' }), stopReason: 'end_turn' };
+      throw new Error('boom');
+    });
+    await __bb.sendMessage('two overlapping slabs please');
+    BB.AI.setTransport(null);
+    __bb.setAIState('offline'); // restore this host's truthful badge
+    const after = bubbles().slice(n0);
+    return {
+      firstMsg,
+      midMsg: after[after.length - 1] || '',
+      blamedDesign: after.some(t => t.includes("couldn't get a buildable design")),
+      untouched: JSON.stringify(__bb.state.spec) === specBefore,
+      roundsRan: call >= 2
+    };
+  });
+  ok(g13.firstMsg.startsWith('Connection dropped'), `first-call transport death names the network ("${g13.firstMsg.slice(0, 60)}")`);
+  ok(g13.roundsRan && g13.midMsg.startsWith('Connection dropped'), `mid-validation transport death names the network ("${g13.midMsg.slice(0, 60)}")`);
+  ok(!g13.blamedDesign, 'a dropped connection is never blamed on the design');
+  ok(g13.untouched, 'the last valid design survives both transport deaths untouched');
+
+  /* ================= G10: silent grounding reaches the ack ================= */
+  // An airborne custom proposal is grounded silently by correction; the
+  // committed ack must disclose the translation (whether the commit lands as
+  // a clean ack or an honest-fail report).
+  const g10 = await page.evaluate(async () => {
+    const grounded = BB.Spec.correctSpec({
+      meta: { name: 'Pedestal probe', template: 'custom', level: 'beginner', units: 'mm' },
+      custom: {
+        parts: [
+          { id: 'base', role: 'base', primitive: 'slab', dim: { l: 400, w: 400, t: 30 }, pos: { x: 0, y: 15, z: 0 }, loadBearing: true },
+          { id: 'post', role: 'post', primitive: 'post', dim: { l: 400, w: 80, t: 80 }, pos: { x: 0, y: 230, z: 0 }, loadBearing: true },
+          { id: 'top', role: 'top', primitive: 'slab', dim: { l: 300, w: 300, t: 30 }, pos: { x: 0, y: 445, z: 0 }, surface: 'shelf' }
+        ],
+        connections: [
+          { a: 'base', b: 'post', joint: 'butt_screws' },
+          { a: 'post', b: 'top', joint: 'butt_screws' }
+        ]
+      }
+    });
+    const airborne = JSON.parse(JSON.stringify(grounded));
+    for (const p of airborne.custom.parts) p.pos.y += 700; // a "hanging" pedestal
+    // The cap403 section above leaves a mock user signed in, so this commit
+    // (first non-local send since) fires Billing.refresh(); this host's 204
+    // for /api/billing would clobber entitlements — pin it to 404 and
+    // restore billing, same snapshot pattern as the billing sections.
+    const realFetch = window.fetch;
+    const realBilling = BB.Store.auth().billing;
+    window.fetch = async (url, opts) => String(url).startsWith('/api/billing')
+      ? new Response('{"error":"unavailable"}', { status: 404, headers: { 'Content-Type': 'application/json' } })
+      : realFetch(url, opts);
+    let calls = 0;
+    try {
+      BB.AI.setTransport(async () => {
+        calls++;
+        if (calls === 1) return { text: JSON.stringify({ N: BB.Codec.encode(airborne), e: 'A pedestal shelf.' }), stopReason: 'end_turn' };
+        return { text: JSON.stringify({ i: 'no further changes' }), stopReason: 'end_turn' };
+      });
+      await __bb.sendMessage('a floating pedestal shelf');
+      await new Promise(r => setTimeout(r, 120)); // let the fire-and-forget refresh settle
+    } finally {
+      BB.AI.setTransport(null);
+      window.fetch = realFetch;
+      BB.Store.setBilling(realBilling);
+    }
+    const acks = [...document.querySelectorAll('#chatLog .msg.bot .bubble')].map(b => b.textContent);
+    const ack = acks.reverse().find(t => /pedestal shelf|Honest report/i.test(t)) || acks[0] || '';
+    return {
+      committed: __bb.state.spec.meta.template === 'custom' && __bb.state.spec.meta.name === 'Pedestal probe',
+      floorY: Math.min(...__bb.state.model.parts.map(p => p.pos.y - p.size.h / 2)),
+      ackDiscloses: /floated .+ above the floor/.test(ack) && /grounded/.test(ack),
+      ack: ack.slice(0, 200)
+    };
+  });
+  ok(g10.committed, 'the airborne proposal commits as the custom piece');
+  ok(Math.abs(g10.floorY) < 1, `delivered piece stands on the floor (minY ${g10.floorY.toFixed(1)})`);
+  ok(g10.ackDiscloses, `the ack discloses the silent grounding ("${g10.ack}")`);
+
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.click('#tab-stock');

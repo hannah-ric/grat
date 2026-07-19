@@ -255,6 +255,38 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
 }
 
 /* =========================================================================
+ * 12. Frame-joint demand = worst apron end reaction (G5, 2026-07).
+ *     Same bench as section 2 (1200×380×450 ash, aprons 20×80, span 1040).
+ *     The audited frame model (F-S2-1) gives each apron HALF the spread load
+ *     and ¾ of the point load; simple-span statics then put the end reaction
+ *     at the loaded apron's leg joint:
+ *       seating preset, seats = round(1040/550) = 2:
+ *         point case P = 136×9.81 = 1334.16 N  → apron share 0.75·P,
+ *           at midspan each end takes half     → R_pt = 0.75·P/2 = 0.375·P
+ *         spread case w = (seats−1)·P/L        → apron share 0.5·w,
+ *           UDL end reaction w′L/2             → R_ud = 0.5·(P/L)·L/2 = 0.25·P
+ *       R = (0.375 + 0.25)·P = 0.625 × 1334.16 = 833.85 N.
+ *     (The old model divided the whole surface load over all 8 frame joints —
+ *      333.5 N — flattering the loaded end joint by 2.5×.)
+ *     Capacity: pocket screws 700 N at SG 0.50, linear SG scaling (ash).
+ * ========================================================================= */
+{
+  const { spec, model } = pipeline({
+    meta: { name: 'HC bench joints', template: 'bench', level: 'beginner', units: 'mm' },
+    overall: { width: 1200, depth: 380, height: 450 },
+    wood: { species: 'ash' }, structure: { topThickness: 32, legThickness: 60 }
+  });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const j = integ.checks.find(c => c.id === 'joints');
+  const P = Structural.LOAD_PRESETS.seating.kgSeat * 9.81;
+  const handR = 0.5 * (P / 1040) * (1040 / 2) + 0.75 * P / 2;   // = 0.625·P
+  const handCap = 700 * (K.WOOD_SPECIES.ash.sg / 0.5);           // pocket screws, SG-scaled
+  console.log(`\n[12] Frame joint: R = 0.25·P + 0.375·P = ${handR.toFixed(2)} N; cap = 700×${K.WOOD_SPECIES.ash.sg}/0.5 = ${handCap.toFixed(0)} N (margin ${(handCap / handR).toFixed(2)})`);
+  row('frame joint demand: worst apron end reaction (N)', handR, j && j.data ? j.data.perN : NaN);
+  row('frame joint capacity: 700 N × SG/0.5 (N)', handCap, j && j.data ? j.data.capN : NaN, 0.01);
+}
+
+/* =========================================================================
  * 9. Optimizer board re-computation: one board, exact kerf/trim arithmetic.
  *    3×800 on a 2438 board: 15 + 800+3+800+3+800 + 15 = 2436 ≤ 2438 ✓
  *    offcut = 2438 − 15 − (800×3 + 3×2) − 15 = 2 mm.

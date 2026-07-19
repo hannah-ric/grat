@@ -283,6 +283,57 @@ section('wire diff-based refinement');
   }
 }
 
+/* ---------------- explain truncation: sentence-bounded, never mid-word (G7) ---------------- */
+section('explain truncation is sentence-bounded at a raised cap (G7)');
+{
+  // The schema demands honest disclosures in "e"; the old .slice(0, 320)
+  // amputated exactly those sentences mid-word ("…via the n."). Cap is now
+  // 600 with sentence-boundary truncation as the backstop.
+  const sent = (n, i) => { // an exactly-n-char sentence ending ". "
+    const label = 'S' + i + ' ';
+    return (label + 'x'.repeat(Math.max(0, n - label.length - 1))).slice(0, n - 1) + '.';
+  };
+  // A 530-char two-sentence e survives WHOLE (the ref4-run1 class).
+  const e530 = sent(300, 1) + ' ' + sent(229, 2);
+  eq(e530.length, 530, 'fixture e is 530 chars');
+  const r530 = AI.classify({ o: { h: 650 }, e: e530 });
+  eq(r530.explain, e530, 'a 530-char two-sentence explain survives verbatim (no 320 amputation)');
+  // A 700-char e is cut at the LAST SENTENCE END before the cap — never mid-word.
+  const e700 = sent(280, 1) + ' ' + sent(280, 2) + ' ' + sent(138, 3);
+  eq(e700.length, 700, 'fixture e is 700 chars');
+  const r700 = AI.classify({ o: { h: 650 }, e: e700 });
+  eq(r700.explain, sent(280, 1) + ' ' + sent(280, 2), 'a 700-char explain is cut at the last sentence end before the cap');
+  ok(/\.$/.test(r700.explain) && r700.explain.length <= 600, 'the cut lands on terminal punctuation within the cap');
+  // Decimal numbers are not sentence ends: the cut never lands inside "152.4".
+  const eDec = sent(200, 1) + ' This span is 152.4mm plus ' + 'y'.repeat(500) + '.';
+  const rDec = AI.classify({ o: { h: 650 }, e: eDec });
+  eq(rDec.explain, sent(200, 1), 'a decimal point mid-sentence is never treated as a sentence boundary');
+  // A punctuation-free run-on falls back to the last word boundary + ellipsis.
+  const runOn = ('word '.repeat(200)).trim();
+  const rRun = AI.classify({ o: { h: 650 }, e: runOn });
+  ok(rRun.explain.length <= 601 && /word…$/.test(rRun.explain) && !/wor…$/.test(rRun.explain),
+    `a run-on cuts at a word boundary with an ellipsis, never mid-word — got tail "${rRun.explain.slice(-12)}"`);
+  // "i" advice text shares the policy at its own 900 cap.
+  const i1200 = sent(500, 1) + ' ' + sent(380, 2) + ' ' + sent(318, 3);
+  const rInfo = AI.classify({ i: i1200 });
+  eq(rInfo.text, sent(500, 1) + ' ' + sent(380, 2), 'oversized info text is sentence-bounded at its 900 cap');
+
+  // The real recorded case (ref4-run1 turn 2 call 0, verbatim): the 530-char
+  // explain whose amputated half held the drawers-impossible disclosure and
+  // the compose-with-nightstands workaround — the best product answer of the
+  // eval. It must now survive classification whole.
+  const ref4Raw = "{\"N\":{\"v\":4,\"n\":\"Queen Storage Bed Frame\",\"t\":6,\"l\":2,\"u\":0,\"o\":[1524,2130,410],\"m\":5,\"j\":[6,20,1],\"f\":2,\"d\":0,\"p\":[[0,35,195,35,390,70,70,0,0,0,0,0,1,0,\"leg_head_left\"],[0,1489,195,35,390,70,70,0,0,0,0,0,1,0,\"leg_head_right\"],[0,35,195,2095,390,70,70,0,0,0,0,0,1,0,\"leg_foot_left\"],[0,1489,195,2095,390,70,70,0,0,0,0,0,1,0,\"leg_foot_right\"],[0,762,195,710,390,70,70,0,0,0,0,0,1,0,\"leg_center_1\"],[0,762,195,1420,390,70,70,0,0,0,0,0,1,0,\"leg_center_2\"],[1,762,315,35,1454,150,40,0,0,0,0,0,1,0,\"head_rail\"],[1,762,315,2095,1454,150,40,0,0,0,0,0,1,0,\"foot_rail\"],[1,35,315,1065,2060,150,40,0,90,0,0,0,1,0,\"left_side_rail\"],[1,1489,315,1065,2060,150,40,0,90,0,0,0,1,0,\"right_side_rail\"],[1,762,315,1065,2060,150,40,0,90,0,0,0,1,0,\"center_beam\"],[3,762,399,532,1524,1065,18,0,0,0,0,1,1,1,\"deck_panel_head_half\"],[3,762,399,1598,1524,1065,18,0,0,0,0,1,1,1,\"deck_panel_foot_half\"],[3,135,100,372,200,675,18,0,0,0,0,1,0,3,\"fixed_shelf_left\"],[3,1389,100,372,200,675,18,0,0,0,0,1,0,3,\"fixed_shelf_right\"]],\"c\":[[0,6,6],[1,6,6],[2,7,6],[3,7,6],[0,8,20],[2,8,20],[1,9,20],[3,9,20],[4,10,6],[5,10,6],[10,6,20],[10,7,20],[11,8,1],[11,9,1],[11,10,1],[12,8,1],[12,9,1],[12,10,1],[13,0,1],[13,4,1],[14,1,1],[14,5,1]]},\"e\":\"Heavy-duty queen platform frame (ash, mortise&tenon corners, kd_bolt rail-to-post for moving) with a center beam on two extra legs to carry 400lb — this is the load path a queen bed needs to avoid sag. Note: true pull-out sliding drawers aren't buildable in a custom-template spec (slide hardware only attaches via the nightstand/cabinet templates), so I built fixed open storage shelves flanking the center legs instead. If you want real slide-out drawers, I can design two nightstand or cabinet units sized to sit in those bays.\"}";
+  const ref4 = AI.classify(AI.extractJSON(ref4Raw));
+  eq(ref4.kind, 'new', 'ref4-run1 raw reply classifies as a new design');
+  eq(ref4.explain.length, 530, 'the full 530-char explain survives (was amputated at "…via the n.")');
+  ok(ref4.explain.includes('If you want real slide-out drawers, I can design two nightstand or cabinet units sized to sit in those bays.'),
+    'the drawers-workaround sentence survives verbatim');
+  ok(ref4.explain.includes('via the nightstand/cabinet templates'),
+    'the disclosure no longer ends mid-word at "via the n."');
+  // SCHEMA_DOC states the e budget once, next to the shape that carries it.
+  ok(/1-2 sentences, ≤500 chars/.test(Codec.SCHEMA_DOC), 'SCHEMA_DOC states the "e" budget');
+}
+
 /* ---------------- custom o-only refinement scales in code (B3) ---------------- */
 section('custom overall-only diff scales the composition (B3)');
 {
@@ -447,7 +498,13 @@ section('mid-round replies: info/question/limits are triaged, never burned (C8)'
   eq(AI.roundDecision({ reply: { kind: 'diff', patch: {} } }), 'apply', 'a diff applies');
   eq(AI.roundDecision({ reply: { kind: 'new', spec: {} } }), 'apply', 'a full respec applies');
   eq(AI.roundDecision({ reply: { kind: 'question', question: 'x' }, local: true }), 'bail',
-    'a mid-round transport death (local fallback) bails — the offline parser never speaks for the model');
+    'a mid-round local reply without the transport marking (benched/offline session) bails — the offline parser never speaks for the model');
+  // G13: a transport that EXISTED and died mid-flight is a network event,
+  // not a design verdict — named distinctly, checked before the local bail.
+  eq(AI.roundDecision({ reply: { kind: 'diff', patch: {} }, local: true, transportFailed: true }), 'transport',
+    'a mid-round transport death triages as \'transport\' (G13) — retryable, never blamed on the design');
+  eq(AI.roundDecision({ reply: null, usageLimit: true, transportFailed: true }), 'billing',
+    'authoritative limits still outrank the transport marking');
 }
 
 /* ---------------- deep pipelines pin the original request (C11) ---------------- */
@@ -1313,8 +1370,11 @@ section('prompt budget: hard ceiling with measured headroom');
   const tokens = Codec.estimateTokens(sys);
   // Ceiling raised 1900 → 2000 for the A5 exclusion-binding line (~80 tokens,
   // deliberate spend), then 2000 → 2040 for the C1 bed-size anchor rows
-  // (~35 tokens); the guard still catches accidental bloat.
-  ok(tokens <= 2040, `system prompt stays under the 2040-token ceiling (measured ${tokens})`);
+  // (~35 tokens), then 2040 → 2060 for the G7 e-budget clause (~18 tokens),
+  // then 2060 → 2290 for the G6 ask-or-disclose policy (~170 tokens — the
+  // sev-5 silent-guessing fix) and the G10 floor-boundary line (~56 tokens);
+  // the guard still catches accidental bloat.
+  ok(tokens <= 2290, `system prompt stays under the 2290-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
@@ -1336,6 +1396,28 @@ section('prompt budget: hard ceiling with measured headroom');
     'system prompt states that stated exclusions bind the whole session');
   ok(/screws\/bolts ARE metal/.test(sys) && /mortise_tenon/.test(sys) && /never silently reframe/.test(sys),
     'the exclusion line names metal fasteners as metal, all-wood joints, and forbids silent reframes');
+  // G6: ask-or-disclose policy — silent guessing on underdetermined requests
+  // was ungoverned chance (2/4 fresh runs committed complete failing designs
+  // with zero questions). The policy must name the unknown classes, the
+  // one-question rule, the assumption-disclosure duty, and the zero-question
+  // guarantee for complete requests.
+  ok(/ASK OR DISCLOSE:/.test(sys) && /load-bearing or fit-critical unknown/.test(sys) && /ONE question \(QUESTION shape\)/.test(sys),
+    'system prompt carries the ask-or-disclose policy with the one-question rule');
+  ok(/what piece; boards on hand/.test(sys) && /"for 6", a queen mattress/.test(sys) && /a stated capacity/.test(sys),
+    'the policy names the load-bearing unknown classes (piece, stock, named-object size, capacity)');
+  ok(/most consequential first/.test(sys) && /inventory after piece/.test(sys),
+    'the policy orders questions and allows a follow-up for the next load-bearing unknown');
+  ok(/OPEN "e" naming the assumptions/.test(sys) && /state that size in "e"/.test(sys),
+    'designing anyway requires opening "e" with the assumptions and the size-to-named-object statement');
+  ok(/Never ask styling\/finish first/.test(sys) && /ZERO questions/.test(sys),
+    'styling never leads and complete requests stay question-free');
+  // G10: the floor-standing boundary is documented next to the mechanisms
+  // line — the model kept proposing hangs and correction silently grounded
+  // them into mangled floor deliveries (ref1 both runs).
+  ok(/STAND ON THE FLOOR/.test(Codec.SCHEMA_DOC) && /hanging\/wall\/ceiling mounting does not exist/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC states the everything-stands-on-the-floor boundary');
+  ok(/nearest floor-standing design and say so in "e", or ask/.test(Codec.SCHEMA_DOC),
+    'the floor line instructs the same disclose-or-ask behavior as the mechanisms line');
 }
 
 section('word-number lengths and storage driver honesty');
@@ -1407,6 +1489,74 @@ async function testNamePhrasing() {
   const name = res.reply && res.reply.kind === 'new' ? res.reply.spec.meta.name : '';
   ok(!/\d+\s*mm\b/i.test(name), `chat-route name carries no bare mm token — got "${name}"`);
   ok(/5 feet/i.test(name), 'chat-route name keeps "about 5 feet tall"');
+}
+
+/* G14: a prose-only reply (non-empty "e", no wire keys) coerces to an info
+ * answer instead of nulling the turn — adapt3-run2's CORRECT no-change
+ * constraint answer used to die as "The model never produced a valid design
+ * reply" because classify() nulled the bare explain and the retry
+ * misdiagnosed valid JSON as "not valid wire-format JSON". */
+async function testBareExplainCoercion() {
+  section('respond(): a bare-explain reply is an info answer, not an error (G14)');
+  // adapt3-run2 turn 2, both calls, verbatim.
+  const bareE = '{"e":"No change needed — legs (70mm thick), aprons (20mm thick), and top (25mm thick) are each well under the 152.4mm gap when disassembled via the kd_bolt joints, so it still flat-packs to fit."}';
+  const parsed = AI.classify(AI.extractJSON(bareE));
+  ok(parsed && parsed.kind === 'info', `the recorded adapt3-run2 bare-e reply classifies as info, not null — got ${parsed && parsed.kind}`);
+  ok(parsed && /152\.4mm gap/.test(parsed.text) && /flat-packs to fit/.test(parsed.text), 'the full answer text survives uncut');
+  // Boundary honesty: an empty bare "e" still has nothing to say, and an "e"
+  // riding real wire keys stays an ordinary diff.
+  eq(AI.classify({ e: '' }), null, 'an empty bare "e" still parses to null');
+  eq(AI.classify({ e: 'moved', o: { h: 650 } }).kind, 'diff', 'an "e" beside wire keys stays a diff');
+  // End-to-end: one call, no burned retry, info UX.
+  let calls = 0;
+  AI.setTransport(async () => { calls++; return { text: bareE, stopReason: 'end_turn' }; });
+  const spec = Spec.correctSpec(Spec.defaultSpec('table'));
+  const res = await AI.respond('the storage gap is actually only 6 inches, not 10', spec, { turns: [] });
+  AI.setTransport(null);
+  ok(res.reply && res.reply.kind === 'info' && !res.error, 'the turn lands as info, never a hard error');
+  eq(calls, 1, 'no validation retry is burned on a coerced reply');
+  eq(AI.roundDecision(res), 'info', 'mid-loop the same reply triages as info');
+  // When the retry DOES fire (genuinely unparseable reply), its message now
+  // names the {"i"} advice escape instead of only re-demanding wire JSON.
+  let retryMsg = null;
+  AI.setTransport(async (system, messages) => {
+    const last = messages[messages.length - 1];
+    if (/not valid wire-format JSON/.test(String(last.content))) {
+      retryMsg = String(last.content);
+      return { text: '{"i":"Advice only — nothing changes."}', stopReason: 'end_turn' };
+    }
+    return { text: 'no json here at all', stopReason: 'end_turn' };
+  });
+  const res2 = await AI.respond('what do you think?', spec, { turns: [] });
+  AI.setTransport(null);
+  ok(!!retryMsg && retryMsg.includes('{"i":"..."}'), `the JSON retry names the {"i":"..."} advice shape — got "${retryMsg}"`);
+  ok(res2.reply && res2.reply.kind === 'info', 'the named escape hatch is honored on the retry');
+}
+
+/* G13: a transport that existed and then died mid-flight marks its result
+ * transportFailed, so the orchestration loops can surface a retryable
+ * network error instead of rejecting the design with unspent rounds
+ * (observed live: ref6-run1/ref4-run2 — "I couldn't get a buildable design
+ * from that" over a dropped call; an identical user retry then succeeded). */
+async function testTransportFailedMarking() {
+  section('respond(): a mid-flight transport death is marked, roundDecision names it (G13)');
+  const spec = Spec.correctSpec(Spec.defaultSpec('table'));
+  // An injected transport (hasRemote() true) that throws = the mid-loop shape.
+  AI.setTransport(async () => { throw new Error('socket dropped'); });
+  const res = await AI.respond('Your proposal failed validation: parts never touch. Return a corrected reply, minified wire JSON only.', spec, { turns: [] });
+  AI.setTransport(null);
+  eq(res.transportFailed, true, 'the result is marked transportFailed');
+  ok(res.local === true && res.reply, 'the marking is additive — the local reply and local:true still ship (first-turn offline feature)');
+  eq(AI.roundDecision(res), 'transport', 'roundDecision names the network, never a design bail');
+  // A session with NO transport at all (true offline) is NOT a transport
+  // failure — the early local return stays unmarked and bails as before.
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const octx = vm.createContext({ console });
+  for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), octx, { filename: 'G13-' + f });
+  const OB = octx.BB;
+  const off = await OB.AI.respond('make it walnut', OB.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(off.local === true && !off.transportFailed, 'a session that never had a transport is plain offline, never "transport failed"');
+  eq(OB.AI.roundDecision(off), 'bail', 'offline local replies keep the bail semantics');
 }
 
 /* C8, probe-P8 shape: an ANSWER reply arriving in a validation-refinement
@@ -1544,6 +1694,8 @@ async function testTruncationExhaustion() {
 (async () => {
   await testKeylessProxyState();
   await testNamePhrasing();
+  await testBareExplainCoercion();
+  await testTransportFailedMarking();
   await testMidRoundInfo();
   await testFetchTimeout();
   await testTransportTTL();

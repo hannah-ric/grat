@@ -433,6 +433,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     return [...jobs.values()];
   }
 
+  /* kd_bolt is the knowledge layer's only tool-removable joint (SCHEMA_DOC:
+   * "all joints permanent except kd_bolt") — an instruction to glue it would
+   * permanently weld the knockdown whose entire point is disassembly
+   * (G12/A4/C10). K.JOINERY carries no glued/removable flag, so the
+   * predicate lives here; if a second non-glued joint ever ships, promote
+   * this to a knowledge-table property. */
+  const isKnockdown = joint => joint === 'kd_bolt';
+  const KD_STEP_TEXT = 'Bolt together — hand-tight, then snug once square.';
+
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -503,7 +512,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         out.push(step('c' + (i + 1), `Join ${a.name.toLowerCase()} to ${b.name.toLowerCase()}`,
           `Fix ${a.name.toLowerCase()} (${c.a}) to ${b.name.toLowerCase()} (${c.b}) with ${j ? (j.plural || j.label.toLowerCase()) : c.joint}.` +
           (ang ? ` Angled joint: ${BB.Geo.angleText(ang)} — cut per the cut list before assembly.` : '') +
-          ' Dry-fit before glue.',
+          (isKnockdown(c.joint) ? ' ' + KD_STEP_TEXT : ' Dry-fit before glue.'),
           [c.a, c.b]));
       });
     } else if (t === 'bookshelf') {
@@ -535,14 +544,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
-      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. Glue, clamp, and check for square.`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
+      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
       out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. Work on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
       out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
     }
-    // Mandatory anti-tip anchoring: an instruction step, not an aside.
+    // Mandatory anti-tip anchoring: an instruction step, not an aside. A
+    // custom piece may not live against a wall at all (room dividers, column
+    // wraps, "hanging" desks) — say what that means instead of assuming
+    // studs behind it (G11/A7). Custom-scoped so template wording — and the
+    // golden corpus — stays byte-identical.
     if (integrity && integrity.antiTip) {
       out.push(step('antitip', 'Anchor to the wall (required)',
-        'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer.', []));
+        'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer'
+        + (t === 'custom' ? '; if it can’t back onto a wall, rethink placement — the tip risk is real.' : '.'), []));
     }
     safetyStep(spec, model, integrity, opts.stockPlan, out);
     sandingStep(spec, out);

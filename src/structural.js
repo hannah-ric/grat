@@ -45,6 +45,23 @@ var BB = globalThis.BB = globalThis.BB || {};
   const partDensity = (p, spec) =>
     p.material === 'hardware' ? 3000 : densityOf(materialSpeciesKey(p, spec));
   const nextSolidUp = t => K.SOLID_THICKNESS.find(x => x > t) || null;
+  /* G15 (finding B12): the tappable thickness fix must be SOLVED against the
+   * failing check, not one blind stock step (simple2's "thicken to 20 mm"
+   * left the shelf at 5.33 mm vs a 2.87 limit). Closed form: sag scales
+   * 1/t³ (I = b·t³/12) and bending stress 1/t², so the first passing
+   * thickness is t·∛(sag/limit) or t·√(1.25·stress/allow) — whichever
+   * governs — snapped UP the stock table. When even the biggest stock
+   * falls short, it is offered honestly as a partial step. */
+  function solveThicknessFix(h, sagRatio, stress, allow) {
+    let need = h;
+    if (sagRatio > 1) need = Math.max(need, h * Math.cbrt(sagRatio));
+    if (allow > 0 && stress > 0 && allow / stress < 1.25) need = Math.max(need, h * Math.sqrt((1.25 * stress) / allow));
+    if (need <= h + 0.05) return null;
+    const t = K.SOLID_THICKNESS.find(x => x > h && x >= need - 1e-6);
+    if (t) return { t, partial: false };
+    const biggest = K.SOLID_THICKNESS[K.SOLID_THICKNESS.length - 1];
+    return biggest > h ? { t: biggest, partial: true } : null;
+  }
   // All display text routes through BB.Units — the check math stays SI.
   const U = () => BB.Units;
   const fmtFine = x => U().fmtSmall(x);      // sag / movement / margins: decimal in
@@ -77,7 +94,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (kind === 'seat') return 'seating';
     if (kind === 'top') return 'worktop';
     if (defaultLoad && defaultLoad !== 'auto' && LOAD_PRESETS[defaultLoad]) return defaultLoad;
-    if (template === 'bookshelf' || template === 'cabinet') return 'books';
+    /* A custom part tagged 'shelf' gets the same book duty the bookshelf
+     * template uses (G4/B3): a novel BOOKSHELF was being checked at display
+     * 10 kg/m — 1/6 of the duty its template twin assumes. Template shelf
+     * kinds (a table's lower shelf, a nightstand top) keep display duty. */
+    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom') return 'books';
     return 'display';
   }
 
@@ -182,8 +203,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const t = spec.meta.template;
     const out = [];
     const push = s => {
-      s.presetKey = (loadChoices && loadChoices[s.id] && LOAD_PRESETS[loadChoices[s.id]])
-        ? loadChoices[s.id] : defaultPresetFor(s.kind, t, defaultLoad);
+      const chosen = !!(loadChoices && loadChoices[s.id] && LOAD_PRESETS[loadChoices[s.id]]);
+      s.presetKey = chosen ? loadChoices[s.id] : defaultPresetFor(s.kind, t, defaultLoad);
+      s.userChosen = chosen; // a user pick is never an "assumed" load (G4)
       out.push(s);
     };
     const parts = model.parts;
@@ -242,8 +264,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (t === 'custom') {
       // Declared surfaces; span model inferred from the connection graph.
       const byId = new Map(parts.map(p => [p.id, p]));
-      for (const p of parts) {
-        if (!p.surface || p.surface === 'none') continue;
+      const mkSurface = (p, kind, assumed) => {
         const ext = Geo.worldExtents(p);
         const axis = ext.x >= ext.z ? [1, 0, 0] : [0, 0, 1];
         const len = Math.max(ext.x, ext.z);
@@ -268,10 +289,42 @@ var BB = globalThis.BB = globalThis.BB || {};
           span = Math.max(80, half + Math.abs(tbar));
         }
         const th = p.cutDim ? p.cutDim.T : Math.min(p.size.w, p.size.h, p.size.d);
-        push({
-          id: p.id, part: p, label: p.name, model: mdl, span, b: Math.max(20, bHoriz), h: th, over: 0,
-          kind: p.surface === 'seating' ? 'seat' : p.surface === 'worktop' ? 'top' : 'shelf'
-        });
+        push(Object.assign({
+          id: p.id, part: p, label: assumed ? `${p.name} (assumed shelf)` : p.name,
+          model: mdl, span, b: Math.max(20, bHoriz), h: th, over: 0, kind
+        }, assumed ? { assumed: true } : {}));
+      };
+      let tagged = 0;
+      for (const p of parts) {
+        if (!p.surface || p.surface === 'none') continue;
+        tagged++;
+        mkSurface(p, p.surface === 'seating' ? 'seat' : p.surface === 'worktop' ? 'top' : 'shelf', false);
+      }
+      /* G3 (finding B4): check coverage must never be model-discretionary.
+       * If the wire author tagged nothing, derive the check surfaces: the
+       * topmost horizontal slab/panel of each connected stack is what things
+       * get put on — treat it as shelf duty, flagged `assumed` so the ack
+       * and Safety tab disclose the assumption instead of skipping physics. */
+      if (!tagged && parts.length) {
+        const comp = new Map(parts.map(p => [p.id, p.id]));
+        const find = id => { while (comp.get(id) !== id) { comp.set(id, comp.get(comp.get(id))); id = comp.get(id); } return id; };
+        for (const c of (spec.custom && spec.custom.connections) || []) {
+          if (comp.has(c.a) && comp.has(c.b)) comp.set(find(c.a), find(c.b));
+        }
+        const topPer = new Map(); // component root -> topmost horizontal slab/panel y
+        const cand = [];
+        for (const p of parts) {
+          if (p.prim !== 'slab' && p.prim !== 'panel') continue;
+          const ext = Geo.worldExtents(p);
+          if (ext.y >= Math.max(ext.x, ext.z)) continue; // standing panel, not a surface
+          const top = p.pos.y + ext.y / 2;
+          const root = find(p.id);
+          cand.push({ p, top, root });
+          if (!topPer.has(root) || top > topPer.get(root)) topPer.set(root, top);
+        }
+        for (const c of cand) {
+          if (c.top >= topPer.get(c.root) - 5) mkSurface(c.p, 'shelf', true); // ties (a slat deck) all derive
+        }
       }
     }
     return out;
@@ -408,6 +461,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* G3 backstop: a custom with no tagged surface AND nothing derivable
+     * (no horizontal slab/panel anywhere) must still never roll up a clean
+     * pass with zero load physics — say so, out loud. */
+    if (custom && parts.length && !surfaces.length) {
+      checks.push({
+        id: 'loadcheck', title: 'Load coverage', status: 'advisory',
+        value: 'no load-bearing surface declared or derivable',
+        threshold: 'at least one checked load surface',
+        explain: 'No part is tagged as a load surface and none could be derived, so NO sag or strength physics ran on this design. Tag the parts things will rest or sit on.',
+        fixes: []
+      });
+    }
+
     /* ---- beam checks per load-bearing surface: sag (MOE), strength (MOR/SF4) ----
      * Frame surfaces (table/desk/bench/nightstand tops) run the honest model
      * from the audit (F-S2-1): the APRONS are the beams over the leg-to-leg
@@ -441,16 +507,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       const ssp = speciesOf(materialSpeciesKey(s.part, spec));
       const Es = ssp.moe * 1000; // GPa -> MPa
       const fixes = [];
-      const up = nextSolidUp(s.h);
       const sIsSheet = !!(K.WOOD_SPECIES[s.part.material] && K.WOOD_SPECIES[s.part.material].sheet);
-      if (!custom && up) {
-        if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${fmtLen(up)}`, patch: { structure: { topThickness: up } } });
-        else if (!sIsSheet && !s.apron) fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
-      }
-      if (custom && up && !sIsSheet) {
-        const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: up } } : p);
-        fixes.push({ id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(up)}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
-      }
+      /* G15: the thickness fix is solved AGAINST the failing check (first
+       * stock that passes, or an honest partial step) — so it is built after
+       * the beam is evaluated, from the check's own ratio and stress. */
+      const thicknessFix = (sagRatio, stress, allow) => {
+        if (sIsSheet) return null; // sheet stock tops out — the remedy is structure, not a phantom thickness
+        const solved = solveThicknessFix(s.h, sagRatio, stress, allow);
+        if (!solved) return null;
+        const suffix = solved.partial ? ' (partial fix — still over the limit)' : '';
+        if (!custom) {
+          if (s.part.role === 'top' && TABLE_LIKE.includes(t)) return { id: 'thick-top', label: `Thicken top to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { topThickness: solved.t } } };
+          if (!s.apron) return { id: 'thick-shelf', label: `Thicken to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { shelfThickness: solved.t } } };
+          return null;
+        }
+        const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: solved.t } } : p);
+        return { id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(solved.t)}${suffix}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } };
+      };
       if (K.WOOD_SPECIES.hard_maple.moe > sp.moe * 1.1 && spec.wood.species !== 'hard_maple') {
         fixes.push({ id: 'maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } });
       }
@@ -500,6 +573,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         const limS = s.strip.span / SAG_LIMIT_RATIO;
         const rS = sagS / limS;
         if (rS > worstSagRatio) { worstSagRatio = rS; worstSag = { id: s.id, sag: sagS, limit: limS, span: s.strip.span }; }
+        const tFixS = thicknessFix(rS, Is > 0 ? (MS * (s.h / 2)) / Is : Infinity, ssp.mor / SAFETY_FACTOR);
+        if (tFixS) fixes.unshift(tFixS); // top thickness governs the strip, not the aprons
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label} between aprons`,
           status: sagStatus(rS),
@@ -515,9 +590,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         const I = I_rect(s.b, s.h);
         const cases = loadCasesFor(s.presetKey, s.span, s.model);
         const { sag, M, crept } = evalBeam(cases, s.span, Es, I);
+        s._M = M; // root moment — the joint block prices cantilever couples off it (G2)
         const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
+        const tFix = thicknessFix(ratio, I > 0 ? (M * (s.h / 2)) / I : Infinity, ssp.mor / SAFETY_FACTOR);
+        if (tFix) fixes.unshift(tFix);
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label}`,
           status: sagStatus(ratio),
@@ -558,6 +636,182 @@ var BB = globalThis.BB = globalThis.BB || {};
             { id: 'duty-oak', label: 'Switch to red oak', patch: { wood: { species: 'red_oak' } } }
           ]
         });
+      }
+    }
+
+    /* ---- member load-path coverage (finding G1, 2026-07 generalization) ----
+     * A checked surface hands its load to the members it bears on; before this
+     * block those members were never examined (a bed deck on 40×20 rails
+     * presented verdict PASS while the rails ruptured on paper). For custom
+     * compositions: walk the connection graph downward from every checked
+     * surface, accumulate each member's tributary share, infer the member's
+     * own span between ITS supports exactly like surfacesOf infers surface
+     * spans, and run the same evalBeam + strength machinery per member.
+     *   · distributed load splits equally over the surface's direct supports;
+     *   · a point load (a person) acts in ONE place — each member is checked
+     *     with the full point at its worst position, never a stacked sum;
+     *   · a support that is itself a tagged surface keeps its own surface
+     *     check unchanged (no double-report);
+     *   · vertical members (posts, standing panels) carry axially, not in
+     *     bending — they terminate the walk (axial capacity is a future
+     *     check class); floor-resting members bear continuously and are safe.
+     * Template frames don't come through here: their aprons already run the
+     * audited frame model above. */
+    const memberChecks = []; // { part, supports, R } for the joint-adequacy block
+    if (custom && surfaces.length) {
+      const surfIds = new Set(surfaces.map(s => s.id));
+      const cconns = (spec.custom && spec.custom.connections) || [];
+      const bottoms = new Map(parts.map(p => [p.id, Math.min(...Geo.obbCorners(Geo.partOBB(p)).map(c => c[1]))]));
+      const supportsOf = p => {
+        const seen = new Set(), out = [];
+        for (const c of cconns) {
+          const oid = c.a === p.id ? c.b : c.b === p.id ? c.a : null;
+          if (!oid || seen.has(oid)) continue;
+          const q = byId.get(oid);
+          if (q && q.loadBearing && bottoms.get(oid) < bottoms.get(p.id) - 10) { seen.add(oid); out.push(q); }
+        }
+        return out;
+      };
+      const recs = new Map(); // member id -> accumulated tributary load
+      const recFor = q => {
+        if (!recs.has(q.id)) recs.set(q.id, { part: q, distSus: 0, distTrans: 0, point: 0, from: [] });
+        return recs.get(q.id);
+      };
+      /* G15 for members: the deepen fix is solved against the member's own
+       * check (sag ∝ 1/h³, stress ∝ 1/h²) and patches the spec dimension
+       * that is world-vertical — only when the part's rotation keeps one
+       * (y-rotations do; tilted members get no phantom fix). Slab thickness
+       * snaps up the stock table; rail/panel depth is a rip cut, rounded to
+       * a clean 5 mm. */
+      const deepenFix = (m, h, sagRatio, stress, allow) => {
+        const sp2 = ((spec.custom && spec.custom.parts) || []).find(p => p.id === m.id);
+        if (!sp2) return null;
+        const rr = sp2.rot || { x: 0, y: 0, z: 0 };
+        const flat = a => { const d = ((a % 180) + 180) % 180; return d < 1 || d > 179; };
+        if (!flat(rr.x || 0) || !flat(rr.z || 0)) return null;
+        const key = sp2.primitive === 'slab' ? 't' : (sp2.primitive === 'rail' || sp2.primitive === 'panel') ? 'w' : null;
+        if (!key) return null; // a post/cylinder lies down only via x/z rotations (gated above)
+        let need = h;
+        if (sagRatio > 1) need = Math.max(need, h * Math.cbrt(sagRatio));
+        if (allow > 0 && stress > 0 && allow / stress < 1.25) need = Math.max(need, h * Math.sqrt((1.25 * stress) / allow));
+        if (need <= h + 0.05) return null;
+        let tNew, partial;
+        if (key === 't') {
+          const solved = solveThicknessFix(h, sagRatio, stress, allow);
+          if (!solved) return null;
+          tNew = solved.t; partial = solved.partial;
+        } else {
+          tNew = Math.min(1500, Math.ceil(need / 5) * 5);
+          partial = tNew < need - 0.05;
+        }
+        const newParts = spec.custom.parts.map(p => p.id === m.id ? { ...p, dim: { ...p.dim, [key]: tNew } } : p);
+        return {
+          id: 'deep-' + m.id,
+          label: `Deepen ${m.id} to ${fmtLen(tNew)}${partial ? ' (partial fix — still over the limit)' : ''}`,
+          patch: { custom: { parts: newParts, connections: spec.custom.connections } }
+        };
+      };
+      for (const s of surfaces) {
+        const p = LOAD_PRESETS[s.presetKey] || LOAD_PRESETS.display;
+        let dist = 0, sus = false, point = 0;
+        if (p.kind === 'udl') { dist = (p.kgPerM * s.span / 1000) * GRAV; sus = !!p.sustained; }
+        else if (p.kind === 'seat') { point = p.kgSeat * GRAV; dist = (seatsFor(s.span) - 1) * p.kgSeat * GRAV; }
+        else { dist = p.kgDist * GRAV; sus = p.sustained === true; point = p.kgEdge * GRAV; }
+        const sup = supportsOf(s.part);
+        if (!sup.length) continue;
+        for (const q of sup) {
+          if (surfIds.has(q.id)) continue; // its own surface check stands
+          const r = recFor(q);
+          if (sus) r.distSus += dist / sup.length; else r.distTrans += dist / sup.length;
+          r.point = Math.max(r.point, point);
+          r.from.push(s.id);
+        }
+      }
+      // Highest member first, so multi-tier stacks flow their reactions down.
+      const done = new Set();
+      for (;;) {
+        let rec = null;
+        for (const r of recs.values()) if (!done.has(r.part.id) && (!rec || bottoms.get(r.part.id) > bottoms.get(rec.part.id))) rec = r;
+        if (!rec) break;
+        done.add(rec.part.id);
+        const m = rec.part;
+        const total = rec.distSus + rec.distTrans + rec.point;
+        const grounded = bottoms.get(m.id) < 5;
+        if (grounded || total < 1) continue;
+        const ext = Geo.worldExtents(m);
+        const horiz = Math.max(ext.x, ext.z) > ext.y;
+        const sup = supportsOf(m);
+        if (horiz) {
+          // Span between the member's own supports, surfacesOf-style.
+          const axis = ext.x >= ext.z ? [1, 0, 0] : [0, 0, 1];
+          const len = Math.max(ext.x, ext.z);
+          const half = len / 2;
+          const ts = sup.map(q => Math.max(-half, Math.min(half,
+            Geo.dot3([q.pos.x - m.pos.x, q.pos.y - m.pos.y, q.pos.z - m.pos.z], axis))));
+          let mdl = 'cant', span = half;
+          if (ts.length >= 2) {
+            const spread = Math.max(...ts) - Math.min(...ts);
+            if (spread >= 0.4 * len) {
+              mdl = 'ss';
+              // Clear span: back the extreme supports' own width out of the
+              // centre-to-centre spread (the frame model does the same).
+              const axExt = q => { const e = Geo.worldExtents(q); return axis[0] ? e.x : e.z; };
+              const qMin = sup[ts.indexOf(Math.min(...ts))], qMax = sup[ts.indexOf(Math.max(...ts))];
+              span = Math.max(100, spread - axExt(qMin) / 2 - axExt(qMax) / 2);
+            }
+          }
+          if (mdl === 'cant') {
+            const tbar = ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : 0;
+            span = Math.max(80, half + Math.abs(tbar));
+          }
+          const cases = [];
+          const udlFn = mdl === 'cant' ? 'udlCant' : 'udlSS';
+          const ptFn = mdl === 'cant' ? 'pointCant' : 'pointSS';
+          if (rec.distSus > 0) cases.push({ fn: udlFn, mag: rec.distSus / span, creep: CREEP_FACTOR });
+          if (rec.distTrans > 0) cases.push({ fn: udlFn, mag: rec.distTrans / span, creep: 1 });
+          if (rec.point > 0) cases.push({ fn: ptFn, mag: rec.point, creep: 1 });
+          const b = Math.max(10, Math.min(ext.x, ext.z));
+          const h = Math.max(5, ext.y);
+          const I = I_rect(b, h);
+          const msp = speciesOf(materialSpeciesKey(m, spec));
+          const { sag, M, crept } = evalBeam(cases, span, msp.moe * 1000, I);
+          const limit = mdl === 'cant' ? span / CANT_LIMIT_RATIO : span / SAG_LIMIT_RATIO;
+          const ratio = sag / limit;
+          if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: m.id, sag, limit, span }; }
+          const srcs = [...new Set(rec.from)];
+          const mFixes = [];
+          {
+            const allowM = msp.mor / SAFETY_FACTOR;
+            const stressM = I > 0 ? (M * (h / 2)) / I : Infinity;
+            if (ratio > 1 || allowM / stressM < 1.25) {
+              const mf = deepenFix(m, h, ratio, stressM, allowM);
+              if (mf) mFixes.push(mf);
+            }
+          }
+          checks.push({
+            id: 'sag:mbr:' + m.id, title: `Sag — ${m.name} (supporting member)`,
+            status: sagStatus(ratio),
+            value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(span)} ${mdl === 'cant' ? 'cantilever' : 'span'}`,
+            threshold: `≤ ${fmtFine(limit)} (${mdl === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
+            explain: `${m.name} carries the load from ${srcs.join(', ')} — a ${fmtLen(b)} × ${fmtLen(h)} ${msp.label} section spanning ${fmtLen(span)} between its own supports.${crept ? ` Sustained share includes ×${CREEP_FACTOR} creep.` : ''}`,
+            fixes: ratio > 1 ? mFixes : [],
+            data: { sagMM: sag, limitMM: limit, spanMM: span },
+            prov: { rule: `member beam: tributary load from ${srcs.join('+')}, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, ${mdl === 'cant' ? 'cantilever' : 'span'} ${Math.round(span)} mm` }
+          });
+          strengthCheck('str:mbr:' + m.id, `${m.name} (supporting member)`, M, h, I, { label: 'carried' }, mFixes, msp);
+          const R = mdl === 'cant' ? total : total / 2; // worst end reaction
+          memberChecks.push({ part: m, supports: sup, R });
+        }
+        // Flow this member's whole load onto whatever holds IT up (a joist
+        // deck on beams, a post standing on a beam): sustained share stays
+        // sustained, everything else lands as transient distributed load.
+        for (const q of sup) {
+          if (surfIds.has(q.id)) continue;
+          const r2 = recFor(q);
+          r2.distSus += rec.distSus / sup.length;
+          r2.distTrans += (rec.distTrans + rec.point) / sup.length;
+          r2.from.push(...rec.from);
+        }
       }
     }
 
@@ -784,15 +1038,18 @@ var BB = globalThis.BB = globalThis.BB || {};
      * side-grain capacity (NDS end-grain factor; audit F-S2-7). */
     {
       let weakest = null;
+      let surfGroups = 0, coupleRoots = 0; // custom coverage tally (G2 honesty)
       const specParts = custom ? new Map(((spec.custom && spec.custom.parts) || []).map(p => [p.id, p])) : null;
       for (const s of surfaces) {
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
+        let demand = null, apron = false; // G5: apron end reaction overrides N/count
         if (custom) {
           const conns = ((spec.custom && spec.custom.connections) || []).filter(c => c.a === s.id || c.b === s.id);
           if (!conns.length) continue;
+          surfGroups++;
           count = conns.length;
-          let minCap = Infinity;
+          let minCap = Infinity, capGroup = 0;
           for (const c of conns) {
             const rating0 = JOINT_RATING[c.joint] || JOINT_RATING.butt_screws;
             let capC = rating0.capN;
@@ -800,20 +1057,72 @@ var BB = globalThis.BB = globalThis.BB || {};
             const screwed = c.joint === 'butt_screws' || c.joint === 'pocket_screws';
             const eg = screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa));
             if (eg) capC *= 0.67;
+            capGroup += capC * sgF;
             if (capC < minCap) { minCap = capC; joint = c.joint; endGrain = !!eg; }
           }
           where = s.id;
+          /* G2: a cantilevered surface's real failure mode is the ROOT MOMENT,
+           * not vertical shear — the overhung load levers its fasteners out.
+           * Demand: the beam check's own root moment resisted as a couple
+           * inside the member — tension in the joint group over an arm bounded
+           * by the shelf thickness (⅔·h, compression at the far edge line).
+           * Capacity: the group's summed SG-scaled ratings — a conservative
+           * shear-equivalent stand-in, no new physics tables. Same 1.5× gate. */
+          if (s.model === 'cant' && s._M > 0) {
+            coupleRoots++;
+            const T = s._M / (0.67 * s.h);
+            const mC = capGroup / T;
+            if (!weakest || mC < weakest.margin) {
+              weakest = { margin: mC, joint, where: `${s.id} cantilever root`, per: T, cap: capGroup, slot: null, endGrain: false, couple: true, h: s.h };
+            }
+          }
         } else if (TABLE_LIKE.includes(t)) {
-          if (s.part.role === 'top') { joint = spec.joinery.frame; count = 8; where = 'apron–leg'; slot = 'frame'; }
-          else { joint = spec.joinery.case; count = 4; where = 'shelf–leg'; slot = 'case'; }
+          if (s.part.role === 'top') {
+            joint = spec.joinery.frame; count = 8; where = 'apron–leg'; slot = 'frame';
+            /* G5 (B7): the frame model above already says the aprons are the
+             * beams — each carries half the spread load and ¾ of the point
+             * load. The joint demand must be SELF-CONSISTENT with it: the
+             * loaded apron's end joint carries the apron END REACTION
+             * (Σ 0.5·w·L/2 for spread cases + Σ 0.75·P/2 for a midspan
+             * point), not an equal 1/count share of the surface total —
+             * which flattered the true worst joint by 2–3×. */
+            if (s.apron) {
+              apron = true;
+              demand = 0;
+              for (const c of loadCasesFor(s.presetKey, s.apron.span, 'ss')) {
+                if (c.fn === 'udlSS') demand += (0.5 * c.mag) * s.apron.span / 2;
+                else demand += (0.75 * c.mag) / 2;
+              }
+            }
+          } else { joint = spec.joinery.case; count = 4; where = 'shelf–leg'; slot = 'case'; }
         } else {
           joint = spec.joinery.case; count = 2; where = `${s.part.role}–side`; slot = 'case';
         }
         const rating = JOINT_RATING[joint] || JOINT_RATING.butt_screws;
         const cap = rating.capN * sgF * (endGrain ? 0.67 : 1);
-        const per = N / count;
+        const per = demand != null ? demand : N / count;
         const margin = cap / per;
-        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain };
+        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain, apron };
+      }
+      /* G1: load-path connections — every member-to-support joint is checked
+       * with the member's end reaction as demand, so a joinery change on the
+       * load path re-runs adequacy (the T2 mortise&tenon → pocket-screw swap
+       * used to pass unexamined). */
+      for (const mc of memberChecks) {
+        for (const q of mc.supports) {
+          const cn = ((spec.custom && spec.custom.connections) || []).find(c =>
+            (c.a === mc.part.id && c.b === q.id) || (c.b === mc.part.id && c.a === q.id));
+          if (!cn) continue;
+          const rating = JOINT_RATING[cn.joint] || JOINT_RATING.butt_screws;
+          const pa = specParts.get(cn.a), pb = specParts.get(cn.b);
+          const screwed = cn.joint === 'butt_screws' || cn.joint === 'pocket_screws';
+          const eg = !!(screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa)));
+          const cap = rating.capN * sgF * (eg ? 0.67 : 1);
+          const margin = cap / mc.R;
+          if (!weakest || margin < weakest.margin) {
+            weakest = { margin, joint: cn.joint, where: `${mc.part.id}–${q.id}`, per: mc.R, cap, slot: null, endGrain: eg };
+          }
+        }
       }
       if (weakest) {
         const jLabel = k => K.JOINERY[k] ? K.JOINERY[k].label.toLowerCase() : k;
@@ -824,15 +1133,32 @@ var BB = globalThis.BB = globalThis.BB || {};
             (!weakest.slot || K.jointAllowed(j, level, weakest.slot)));
           if (stronger && weakest.slot) fixes.push({ id: 'upjoint', label: `Upgrade ${weakest.where} to ${jLabel(stronger)}`, patch: { joinery: { [weakest.slot]: stronger } } });
         }
+        /* The explain names exactly what was examined (G2): on customs only
+         * the load-surface groups, cantilever roots, and load-path support
+         * connections were checked — never "every joint", because decorative
+         * or off-path connections are not. Template joint models cover the
+         * structural joints by construction, so their wording stands. */
+        const coverage = `${surfGroups} load-surface joint group${surfGroups === 1 ? '' : 's'}` +
+          (coupleRoots ? `, ${coupleRoots} cantilever root${coupleRoots === 1 ? '' : 's'}` : '') +
+          (memberChecks.length ? ` and ${memberChecks.length} supporting member${memberChecks.length === 1 ? '' : 's'}` : '');
         checks.push({
           id: 'joints', title: 'Joint adequacy',
           status: weakest.margin >= 1.5 ? 'pass' : weakest.margin >= 1 ? 'advisory' : 'fail',
-          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where}${weakest.endGrain ? ' (end grain, ×0.67)' : ''} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
+          value: weakest.couple
+            ? `weakest: ${jLabel(weakest.joint)} at ${weakest.where} — cantilever couple pulls ${U().fmtPointLoad(weakest.per / GRAV)} vs ${U().fmtPointLoad(weakest.cap / GRAV)} group capacity`
+            : `weakest: ${jLabel(weakest.joint)} at ${weakest.where}${weakest.endGrain ? ' (end grain, ×0.67)' : ''} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
           threshold: '≥ 1.5× capacity margin (SG-scaled joint ratings)',
-          explain: (weakest.margin >= 1.5 ? 'Every joint carries its share of the load path with room to spare.'
-            : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`) +
+          explain: (weakest.margin >= 1.5
+            ? (custom ? `Checked ${coverage} — every checked connection holds its load with at least 1.5× in hand.`
+              : 'Every joint carries its share of the load path with room to spare.')
+            : weakest.couple
+              ? `The overhung load levers this joint group out of its support: the root moment resists as a pull-out couple across two-thirds of the ${fmtLen(weakest.h)} member thickness, and the ${jLabel(weakest.joint)} group at ${weakest.where} can't hold it.`
+              : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`) +
+            (custom && weakest.margin < 1.5 ? ` (Checked: ${coverage}.)` : '') +
+            (weakest.apron ? ' Demand is the loaded apron\'s end reaction from the same frame model the sag checks use (half the spread load + ¾ of the point load per apron).' : '') +
             (weakest.endGrain ? ' Screws at this joint bear on end grain, which holds about a third less (derated ×0.67) — a dowel, tenon, or cleat would restore full capacity.' : ''),
-          fixes
+          fixes,
+          ...(weakest.apron ? { data: { perN: weakest.per, capN: weakest.cap } } : {})
         });
       }
     }
@@ -927,6 +1253,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       fails,
       advisories,
       anchorRequired: antiTip,
+      // G3: derived (assumed) check surfaces are disclosed, never silent.
+      assumedSurfaces: surfaces.filter(s => s.assumed).map(s => s.id),
+      /* G4 contract (consumed by Spec.integrityLine / the Safety tab): what
+       * load every checked surface was judged under, and whether that was an
+       * assumption (engine default or a derived surface) or the user's own
+       * pick. User loadChoices are never overridden. */
+      surfaceLoads: surfaces.map(s => ({
+        id: s.id,
+        presetKey: s.presetKey,
+        label: (LOAD_PRESETS[s.presetKey] || LOAD_PRESETS.display).label,
+        assumed: !!s.assumed || !s.userChosen
+      })),
       /* Rollup tier (audit M-18): a mandatory wall anchor is its own headline
        * tier — "safe only when anchored" — never rolled into plain advisory
        * under a "passes the required checks" banner. Order: fail > anchor >

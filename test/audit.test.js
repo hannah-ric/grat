@@ -1242,5 +1242,648 @@ section('M-18 mandatory-anchor designs roll up "safe only when anchored", never 
   ok(!/'advisory'\s*:\s*'pass'/.test(uiSrc), 'no ui.js headline recomputes a rollup without the anchor tier');
 }
 
+/* =========================================================================
+ * 2026-07 generalization findings (register-gated: G1–G5, G15).
+ * Fixtures are the live review sessions' committed geometry, rebuilt inline.
+ * ========================================================================= */
+
+/* The adapt4 platform bed: committed live with verdict PASS while its
+ * 40×20 mm hard-maple side rails rupture under the engine's own seating
+ * preset (findings B1/B6, verify-B1-adapt4-rails.py). */
+function adapt4Bed(opts) {
+  opts = opts || {};
+  const P = (id, role, primitive, l, w, t, x, y, z, rotY, surface) => ({
+    id, role, primitive, dim: { l, w, t }, pos: { x, y, z },
+    rot: rotY ? { x: 0, y: rotY, z: 0 } : null,
+    grain: 'length', stock: 'solid', loadBearing: true, surface: surface || 'none'
+  });
+  const parts = [
+    P('p1', 'leg_foot_left', 'post', 450, 90, 90, -717, 225, -967),
+    P('p2', 'leg_foot_right', 'post', 450, 90, 90, 717, 225, -967),
+    P('p3', 'leg_head_left', 'post', 450, 90, 90, -717, 225, 967),
+    P('p4', 'leg_head_right', 'post', 450, 90, 90, 717, 225, 967),
+    P('p5', 'leg_center_a', 'post', 450, 90, 90, 0, 225, -356),
+    P('p6', 'leg_center_b', 'post', 450, 90, 90, 0, 225, 356),
+    P('p7', 'rail_left', 'rail', 1934, 40, 20, -717, 405, 0, 90),
+    P('p8', 'rail_right', 'rail', 1934, 40, 20, 717, 405, 0, 90),
+    P('p9', 'end_rail_foot', 'rail', 1434, 40, 20, 0, 405, -967),
+    P('p10', 'end_rail_head', 'rail', 1434, 40, 20, 0, 405, 967),
+    P('p11', 'beam_center', 'rail', 1834, 40, 20, 0, 405, 0, 90)
+  ];
+  const fj = opts.frameJoint || 'pocket_screws';
+  const conns = [
+    ['p1', 'p7'], ['p3', 'p7'], ['p2', 'p8'], ['p4', 'p8'],
+    ['p1', 'p9'], ['p2', 'p9'], ['p3', 'p10'], ['p4', 'p10'],
+    ['p5', 'p11'], ['p6', 'p11'],
+    ['p7', 'p9'], ['p8', 'p9'], ['p7', 'p10'], ['p8', 'p10']
+  ].map(([a, b]) => ({ a, b, joint: fj }));
+  let n = 12;
+  for (const z of [-847, -587, -227, 33, 493, 753]) {
+    for (const sx of [-1, 1]) {
+      const id = 'p' + n++;
+      parts.push(P(id, 'deck_slat', 'slab', 716, 140, 38, 359 * sx, 444, z, 0,
+        opts.untagged ? 'none' : 'seating'));
+      conns.push({ a: id, b: sx < 0 ? 'p7' : 'p8', joint: 'dowels' }, { a: id, b: 'p11', joint: 'dowels' });
+    }
+  }
+  return {
+    meta: { name: 'Platform Bed', template: 'custom', level: 'advanced', units: 'in' },
+    overall: { width: 1524, depth: 2024, height: 463 },
+    wood: { species: 'hard_maple', sheetSpecies: 'baltic_birch' },
+    custom: { parts, connections: conns }
+  };
+}
+const mpa = c => c && parseFloat((c.value.match(/([\d.]+) MPa/) || [])[1]);
+
+/* ================= G1: member load-path coverage (B1 + B6) ================= */
+section('G1 members carrying a checked surface get their own beam checks');
+{
+  const r = pipeline(adapt4Bed());
+  ok(!r.report.errors.length, 'fixture passes the geometric audit (as it did live)');
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  const strP7 = ig.checks.find(c => c.id === 'str:mbr:p7');
+  const sagP7 = ig.checks.find(c => c.id === 'sag:mbr:p7');
+  ok(strP7 && sagP7, 'side rail p7 gets sag + strength member checks');
+  ok(ig.checks.some(c => c.id === 'str:mbr:p8'), 'side rail p8 too');
+  const strP11 = ig.checks.find(c => c.id === 'str:mbr:p11');
+  ok(strP11, 'center beam p11 too');
+  // verify-B1: 136 kg seat point mid-rail over the 1844 mm clear span:
+  // σ = (P·L/4)·c/I = (1334.16·1844/4)·20/106666.7 = 115.3 MPa vs MOR 109.
+  ok(strP7 && strP7.status === 'fail', 'rail strength FAILS (the live commit presented verdict pass)');
+  near(mpa(strP7), 115.3, 2.5, 'rail stress matches the verify-B1 hand calc');
+  ok(sagP7 && sagP7.status === 'fail', 'rail sag fails its span limit');
+  // Center beam: supports 712 mm apart on a 1834 member → cantilever model,
+  // point at the free end. Fails hard; the point load is MAX not Σ (a person
+  // sits in one place — twelve tagged slats must not stack twelve people).
+  ok(strP11 && strP11.status === 'fail' && mpa(strP11) > 100 && mpa(strP11) < 300,
+    `center beam fails as a cantilever without stacking point loads (${mpa(strP11)} MPa)`);
+  ok(!ig.checks.some(c => c.id === 'sag:mbr:p9' || c.id === 'sag:mbr:p10'),
+    'unloaded end rails draw no member checks');
+  const slat = ig.checks.find(c => c.id === 'sag:p12');
+  ok(slat && slat.status === 'pass', 'the slat surface checks are unchanged (sound slats stay sound)');
+  eq(ig.summary.verdict, 'fail', 'adapt4 committed geometry can no longer present verdict pass');
+
+  // Load-path joint adequacy (B6): the beam-to-center-leg pocket screws see
+  // the member end reaction as demand — and a joinery change re-runs it.
+  const joints = ig.checks.find(c => c.id === 'joints');
+  ok(joints && joints.status === 'fail', 'joint adequacy sees the load-path connections and fails');
+  ok(joints && /p11/.test(joints.value), 'the weakest link is named on the member path (beam–leg)');
+  const mt = pipeline(adapt4Bed({ frameJoint: 'mortise_tenon' }));
+  const igMT = Structural.computeIntegrity(mt.spec, mt.model, {});
+  const jMT = igMT.checks.find(c => c.id === 'joints');
+  ok(jMT && jMT.status !== 'fail', 'mortise & tenon on the same load path clears the gate (swap re-checked)');
+
+  // Tributary accumulation: six book-loaded slats each hand half their UDL to
+  // the rail — w = 6·(0.5886·716)/2/1844 N/mm → σ = (w·L²/8)·c/I ≈ 54.7 MPa.
+  // (Σ of shares, not a single-slat shortcut, and no double-count beyond it.)
+  const lc = {};
+  for (let i = 12; i <= 23; i++) lc['p' + i] = 'books';
+  const igB = Structural.computeIntegrity(r.spec, r.model, { loadChoices: lc });
+  near(mpa(igB.checks.find(c => c.id === 'str:mbr:p7')), 54.7, 2,
+    'six tributary shares accumulate onto the rail (books duty)');
+}
+
+/* The ref2-run1 spiral column bookshelf: five 600×300×18 ply shelves, each
+ * cantilevered off a 50×45 white-oak spine on a single 2-dowel connection.
+ * The engine printed "10 lb per joint vs 245 lb capacity … room to spare"
+ * while the root moment sat at/beyond dowel ultimate (findings B2/B3,
+ * verify-B2-spiral-moment.py). */
+function spiralShelf() {
+  const S = (id, role, y, rotY, x, z) => ({
+    id, role, primitive: 'slab', dim: { l: 600, w: 300, t: 18 }, pos: { x, y, z },
+    rot: rotY ? { x: 0, y: rotY, z: 0 } : null,
+    grain: 'length', stock: 'sheet', loadBearing: true, surface: 'shelf'
+  });
+  return {
+    meta: { name: 'Spiral Column Bookshelf', template: 'custom', level: 'intermediate', units: 'in' },
+    overall: { width: 867.7, depth: 825.4, height: 2051 },
+    wood: { species: 'white_oak', sheetSpecies: 'hardwood_ply' },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'mount_spine', primitive: 'post', dim: { l: 2050, w: 50, t: 45 }, pos: { x: 0, y: 1026, z: 27 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        S('p2', 'shelf1', 301, 0, 0, 202),
+        S('p3', 'shelf2', 601, 72, 166, 81),
+        S('p4', 'shelf3', 901, 144, 103, -115),
+        S('p5', 'shelf4', 1201, 216, -103, -115),
+        S('p6', 'shelf5', 1501, 288, -166, 81),
+        { id: 'p7', role: 'stability_base', primitive: 'slab', dim: { l: 500, w: 400, t: 32 }, pos: { x: 0, y: 16, z: 150 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: ['p2', 'p3', 'p4', 'p5', 'p6', 'p7'].map(b => ({ a: 'p1', b, joint: 'dowels' }))
+    }
+  };
+}
+
+/* ================= G2: cantilever root moment reaches the joint check (B2) ================= */
+section('G2 cantilevered surface connections are checked as a moment couple');
+{
+  const r = pipeline(spiralShelf());
+  ok(!r.report.errors.length, 'spiral fixture passes the geometric audit (as it did live)');
+  const books = {};
+  for (const id of ['p2', 'p3', 'p4', 'p5', 'p6']) books[id] = 'books';
+  const ig = Structural.computeIntegrity(r.spec, r.model, { loadChoices: books });
+  const j = ig.checks.find(c => c.id === 'joints');
+  ok(j && j.status === 'fail', 'book duty FAILS the cantilever root (engine used to print 25× pass)');
+  ok(j && /cantilever|root/i.test(j.value + ' ' + j.explain), 'the check names the cantilever couple');
+  // verify-B2: worst shelf cantilevers 433 mm → M = w·L²/2 = 55.2 kN·mm,
+  // couple arm 0.67·18 = 12.06 mm → group tension ≈ 4.58 kN = 466 kg, vs
+  // two glued dowels rated 800 N × SG 1.36 = 1.09 kN. Demand ≈ 4.2× capacity.
+  const kg = j && parseFloat((j.value.match(/([\d.]+) kg/) || [])[1]);
+  near(kg, 466, 25, 'couple tension matches the verify-B2 class (≈4.6 kN pull-out)');
+  // Even the delivered display duty leaves no 1.5× margin at the root.
+  const disp = {};
+  for (const id of ['p2', 'p3', 'p4', 'p5', 'p6']) disp[id] = 'display';
+  const igD = Structural.computeIntegrity(r.spec, r.model, { loadChoices: disp });
+  const jD = igD.checks.find(c => c.id === 'joints');
+  ok(jD && jD.status !== 'pass', 'display duty is still no pass at the root (≈1.4×, under the 1.5× gate)');
+  // The joints explain never overclaims on customs: only checked connections
+  // are spoken for ("Every joint …" was printed over unexamined load paths).
+  ok(jD && !/every joint/i.test(jD.explain), 'custom joints explain names what was checked, never "every joint"');
+  const bench = pipeline(Object.assign(Spec.defaultSpec('custom'), { meta: { name: 'CB', template: 'custom', level: 'beginner', units: 'mm' } }));
+  const igCB = Structural.computeIntegrity(bench.spec, bench.model, {});
+  const jCB = igCB.checks.find(c => c.id === 'joints');
+  ok(jCB && !/every joint/i.test(jCB.explain), 'the default custom bench explain names its coverage too');
+  // Simply-supported surfaces gain no couple: the plain shear path still runs.
+  const igMT = Structural.computeIntegrity(pipeline(adapt4Bed({ frameJoint: 'mortise_tenon' })).spec,
+    pipeline(adapt4Bed({ frameJoint: 'mortise_tenon' })).model, {});
+  const jMT = igMT.checks.find(c => c.id === 'joints');
+  ok(jMT && !/cantilever root/.test(jMT.value), 'ss surfaces draw no phantom couple');
+}
+
+/* ================= G3: untagged customs get derived check surfaces (B4) ================= */
+section('G3 check coverage is never model-discretionary: untagged customs derive surfaces');
+{
+  // The B-probe-nosurf demonstration: adapt4's exact geometry, SURF tags
+  // stripped, committed live with verdict pass and ZERO load checks.
+  const r = pipeline(adapt4Bed({ untagged: true }));
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  ok(ig.surfaces.length > 0, 'surfaces are derived when the wire author tags nothing');
+  ok(ig.surfaces.every(s => s.assumed === true && s.kind === 'shelf'),
+    'derived surfaces are shelf-duty and flagged assumed');
+  ok(ig.checks.some(c => c.id.startsWith('sag:')), 'sag physics runs on the derived surfaces');
+  ok(!(ig.summary.verdict === 'pass' && !ig.checks.some(c => /^(sag|str):/.test(c.id))),
+    'a fully-untagged custom can never report verdict pass with zero load checks');
+  ok(Array.isArray(ig.summary.assumedSurfaces) && ig.summary.assumedSurfaces.length > 0,
+    'the summary carries the assumption for the ack/Safety tab');
+  // The topmost horizontal slab per connected stack is the derived surface —
+  // the deck slats, not the rails under them.
+  ok(ig.surfaces.some(s => s.id === 'p12'), 'a deck slat is the derived surface');
+  ok(!ig.surfaces.some(s => s.id === 'p7' || s.id === 'p11'), 'rails below the deck are not surfaces');
+
+  // A grounded slab still derives (ref8’s planter bottoms sit on the floor).
+  const planter = pipeline({
+    meta: { name: 'Planter Box', template: 'custom', level: 'beginner', units: 'mm' },
+    wood: { species: 'western_red_cedar' },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'planter_bottom', primitive: 'slab', dim: { l: 350, w: 350, t: 19 }, pos: { x: 0, y: 9.5, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p2', role: 'planter_front', primitive: 'panel', dim: { l: 350, w: 350, t: 19 }, pos: { x: 0, y: 175.5, z: 166 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p3', role: 'planter_back', primitive: 'panel', dim: { l: 350, w: 350, t: 19 }, pos: { x: 0, y: 175.5, z: -166 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: [{ a: 'p1', b: 'p2', joint: 'edge_glue' }, { a: 'p1', b: 'p3', joint: 'edge_glue' }]
+    }
+  });
+  const igP = Structural.computeIntegrity(planter.spec, planter.model, {});
+  ok(igP.surfaces.some(s => s.id === 'p1' && s.assumed), 'floor-resting planter bottom is derived (walls are vertical)');
+
+  // No horizontal slab/panel at all: the engine says so instead of passing silently.
+  const frame = pipeline({
+    meta: { name: 'Bare Frame', template: 'custom', level: 'beginner', units: 'mm' },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'post_a', primitive: 'post', dim: { l: 900, w: 60, t: 60 }, pos: { x: -300, y: 450, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p2', role: 'post_b', primitive: 'post', dim: { l: 900, w: 60, t: 60 }, pos: { x: 300, y: 450, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p3', role: 'stretcher', primitive: 'rail', dim: { l: 540, w: 60, t: 30 }, pos: { x: 0, y: 870, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: [{ a: 'p1', b: 'p3', joint: 'mortise_tenon' }, { a: 'p2', b: 'p3', joint: 'mortise_tenon' }]
+    }
+  });
+  const igF = Structural.computeIntegrity(frame.spec, frame.model, {});
+  ok(igF.checks.some(c => c.id === 'loadcheck' && c.status !== 'pass'),
+    'nothing derivable → an explicit no-load-checks-ran advisory, never a silent pass');
+  ok(igF.summary.verdict !== 'pass', 'the bare frame cannot roll up verdict pass');
+
+  // Tagged compositions are untouched: no phantom derived surfaces.
+  const tagged = pipeline(adapt4Bed());
+  const igT = Structural.computeIntegrity(tagged.spec, tagged.model, {});
+  ok(igT.surfaces.length === 12 && igT.surfaces.every(s => !s.assumed),
+    'tagged compositions derive nothing extra');
+}
+
+/* ================= G4: custom shelves default to book duty + assumed-load disclosure (B3/B5a) ================= */
+section('G4 custom shelf surfaces default to books; summary discloses assumed loads');
+{
+  // The one-line hole: custom+shelf fell through to display (10 kg/m) — the
+  // spiral BOOKSHELF was checked at 1/6 the duty the bookshelf template uses.
+  eq(Structural.defaultPresetFor('shelf', 'custom', undefined), 'books', 'custom shelf kind defaults to books');
+  eq(Structural.defaultPresetFor('shelf', 'bookshelf', undefined), 'books', 'bookshelf template unchanged');
+  eq(Structural.defaultPresetFor('seat', 'custom', undefined), 'seating', 'seat kind unchanged');
+  eq(Structural.defaultPresetFor('top', 'custom', undefined), 'worktop', 'top kind unchanged');
+  eq(Structural.defaultPresetFor('shelf', 'custom', 'display'), 'display', 'an explicit design-level default still wins');
+  eq(Structural.defaultPresetFor('shelf', 'nightstand', undefined), 'display', 'template shelf defaults untouched');
+
+  const r = pipeline(spiralShelf());
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  ok(ig.surfaces.length === 5 && ig.surfaces.every(s => s.presetKey === 'books'),
+    'spiral shelves now check at book duty by default');
+  const j = ig.checks.find(c => c.id === 'joints');
+  ok(j && j.status === 'fail', 'default duty fails the cantilever roots (the live commit showed a 25× pass at display)');
+
+  // summary.surfaceLoads — the contract integrityLine consumes (P-SPEC):
+  // [{ id, presetKey, label, assumed }] for every checked surface.
+  const sl = ig.summary.surfaceLoads;
+  ok(Array.isArray(sl) && sl.length === ig.surfaces.length, 'summary.surfaceLoads lists every checked surface');
+  const p2 = sl && sl.find(x => x.id === 'p2');
+  ok(p2 && p2.presetKey === 'books' && p2.label === 'Books' && p2.assumed === true,
+    'a defaulted preset is disclosed as assumed, with its label');
+  // A user loadChoice is never overridden — and is not "assumed".
+  const igU = Structural.computeIntegrity(r.spec, r.model, { loadChoices: { p2: 'display' } });
+  const slU = (igU.summary.surfaceLoads || []).find(x => x.id === 'p2');
+  ok(igU.surfaces.find(s => s.id === 'p2').presetKey === 'display' && slU && slU.assumed === false,
+    'user loadChoices are honored and not marked assumed');
+  // Template surfaces disclose their defaults the same way.
+  const tb = pipeline({ meta: { name: 'T', template: 'table', level: 'beginner', units: 'mm' } });
+  const igT = Structural.computeIntegrity(tb.spec, tb.model, {});
+  const slT = (igT.summary.surfaceLoads || []).find(x => x.id === 'top_1');
+  ok(slT && slT.presetKey === 'worktop' && slT.assumed === true, 'template defaults are disclosed as assumed too');
+  // G3-derived surfaces flow through as assumed book duty.
+  const un = pipeline(adapt4Bed({ untagged: true }));
+  const igN = Structural.computeIntegrity(un.spec, un.model, {});
+  const slN = igN.summary.surfaceLoads || [];
+  ok(slN.length > 0 && slN.every(x => x.assumed === true && x.presetKey === 'books'),
+    'derived surfaces land in surfaceLoads as assumed book duty');
+}
+
+/* ================= G5: frame-joint demand = worst apron end reaction (B7) ================= */
+section('G5 table-like frame joints see the apron end reaction, not total/8');
+{
+  // ref7-run1's committed cedar bench. The engine's own frame model (F-S2-1)
+  // says each apron carries half the spread load + ¾ of the point load — yet
+  // the joint check divided the surface total equally over all 8 frame
+  // joints (75 lb) when the loaded-apron end joint really carries
+  // R = 0.5·w·L/2 + 0.75·P/2 = 333.5 + 500.3 = 833.9 N ≈ 187 lb (2.5×).
+  const r = pipeline({
+    meta: { name: 'Deck Board Bench', template: 'bench', level: 'beginner', units: 'in' },
+    overall: { width: 1200, depth: 350, height: 450 },
+    wood: { species: 'western_red_cedar' },
+    structure: { topThickness: 25, legThickness: 45, apronHeight: 80, apronThickness: 25, apronInset: 12 },
+    joinery: { frame: 'butt_screws' }
+  });
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  const j = ig.checks.find(c => c.id === 'joints');
+  ok(j && j.data && typeof j.data.perN === 'number', 'apron-path joint demand ships as check data');
+  // seats(1070) = 2 → P = 1334.16 N point + one extra seat as spread:
+  // R = 0.5·(P/1070)·(1070/2) + 0.75·P/2 = 0.25·P + 0.375·P = 833.85 N.
+  near(j && j.data && j.data.perN, 833.85, 1.5, 'demand is the worst apron end reaction (hand statics)');
+  near(j && j.data && j.data.capN, 320, 1, 'capacity: butt screws 500 N × cedar SG factor 0.64');
+  ok(j && j.status === 'fail', 'the honest margin ≈0.38× is a clear fail (was flattered to 0.96×)');
+
+  // Carcass case joints keep the untouched model — the frozen ash-bookshelf
+  // honest-fail golden must not move (G27).
+  const bs = pipeline({
+    meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, wood: { species: 'ash' },
+    structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true }
+  });
+  const jB = Structural.computeIntegrity(bs.spec, bs.model, {}).checks.find(c => c.id === 'joints');
+  ok(jB && !jB.data, 'carcass case joints carry no apron data (ash golden stays byte-stable)');
+  // Sanity: a stout frame still clears the honest demand — the Shaker table
+  // (dowel frame, cherry) sits just above the 1.5× gate, not in fail.
+  const sh = pipeline({
+    meta: { name: 'Shaker Dining Table', template: 'table', level: 'intermediate', units: 'in' },
+    overall: { width: 1828.8, depth: 914.4, height: 749.3 }, wood: { species: 'cherry' },
+    structure: { topThickness: 25, legThickness: 70, apronHeight: 101.6, apronThickness: 19, apronInset: 12.7 },
+    joinery: { frame: 'dowels' }
+  });
+  const jS = Structural.computeIntegrity(sh.spec, sh.model, {}).checks.find(c => c.id === 'joints');
+  // worktop duty: R = 0.5·(75·9.81)/2 + 0.75·(90·9.81)/2 = 515.0 N vs
+  // dowels 800 N × SG 1.0 → margin 1.55 — an honest pass, no flattery left.
+  ok(jS && jS.status === 'pass' && jS.data && Math.abs(jS.data.perN - 515.03) < 1,
+    'the Shaker classic still passes on the honest end-reaction demand');
+}
+
+/* ================= G15: thickness fixes solve to the first PASSING stock (B12) ================= */
+section('G15 tappable thickness fixes are solved against the check, not one blind step');
+{
+  // simple2's live commit: 19 mm pine shelves at 862 mm span under books,
+  // crept sag 6.221 vs 2.873 limit (ratio 2.165). The old fix offered the
+  // next stock step (20 mm → still 5.33, still failing). Solved:
+  // t·∛ratio = 19 × 1.2936 = 24.58 → first passing stock = 25 mm.
+  const raw = {
+    meta: { name: 'Simple Pine Bookshelf', template: 'bookshelf', level: 'beginner', units: 'in' },
+    overall: { width: 900, depth: 300, height: 1524 }, wood: { species: 'pine' },
+    structure: { shelfCount: 4, shelfThickness: 19, sideThickness: 19, backPanel: true },
+    joinery: { frame: 'butt_screws', case: 'butt_screws', box: 'butt_screws' }
+  };
+  const r = pipeline(raw);
+  const sagChk = Structural.computeIntegrity(r.spec, r.model, {}).checks.find(c => c.id === 'sag:shelf_1');
+  ok(sagChk && sagChk.status === 'fail', 'fixture still fails honestly (5.33-class sag)');
+  const fx = sagChk && sagChk.fixes.find(f => f.id === 'thick-shelf');
+  ok(fx, 'the failing shelf offers a thickness fix');
+  eq(fx && fx.patch.structure.shelfThickness, 25, 'fix skips the still-failing 20 mm step and lands on 25 mm');
+  ok(fx && /25/.test(fx.label), 'the label names the solved thickness');
+  const r25 = pipeline(Object.assign(JSON.parse(JSON.stringify(raw)), { structure: { shelfCount: 4, shelfThickness: 25, sideThickness: 19, backPanel: true } }));
+  const sag25 = Structural.computeIntegrity(r25.spec, r25.model, {}).checks.find(c => c.id === 'sag:shelf_1');
+  ok(sag25 && sag25.status === 'pass', 'the offered fix actually passes (6.22 → 2.76 vs 2.80-class limit)');
+
+  // Custom surface path: a 12 mm pine slab spanning 840 mm at book duty
+  // (ratio 8.91) needs t·∛ratio = 24.9 — the fix lands on 25, not 15.
+  const cu = pipeline({
+    meta: { name: 'Plank Shelf', template: 'custom', level: 'beginner', units: 'mm' },
+    wood: { species: 'pine' },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'shelf', primitive: 'slab', dim: { l: 900, w: 250, t: 12 }, pos: { x: 0, y: 426, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'shelf' },
+        { id: 'p2', role: 'post_a', primitive: 'post', dim: { l: 420, w: 60, t: 60 }, pos: { x: -420, y: 210, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p3', role: 'post_b', primitive: 'post', dim: { l: 420, w: 60, t: 60 }, pos: { x: 420, y: 210, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: [{ a: 'p2', b: 'p1', joint: 'butt_screws' }, { a: 'p3', b: 'p1', joint: 'butt_screws' }]
+    }
+  });
+  const igC = Structural.computeIntegrity(cu.spec, cu.model, {});
+  const sagC = igC.checks.find(c => c.id === 'sag:p1');
+  const fxC = sagC && sagC.fixes.find(f => f.id === 'thick-p1');
+  ok(sagC && sagC.status === 'fail' && fxC, 'the failing custom slab offers a solved thickness fix');
+  const newT = fxC && fxC.patch.custom.parts.find(p => p.id === 'p1').dim.t;
+  eq(newT, 25, 'custom fix solves several stock steps at once (12 → 25, not 15)');
+
+  // Member checks (G1) get the same solver: adapt4's 40-tall rail needs
+  // 40·∛21.1 = 110.5 → deepen to 115 (rounded up to clean 5 mm rip width),
+  // which passes both sag (5.5 vs 6.1) and strength (14.0 vs 27.3 allow).
+  const bed = pipeline(adapt4Bed());
+  const igB = Structural.computeIntegrity(bed.spec, bed.model, {});
+  const mFx = igB.checks.find(c => c.id === 'sag:mbr:p7');
+  const deep = mFx && mFx.fixes.find(f => f.id === 'deep-p7');
+  ok(deep, 'a failing member offers a solved deepen fix');
+  eq(deep && deep.patch.custom.parts.find(p => p.id === 'p7').dim.w, 115, 'rail deepens to the solved 115 mm, not one step');
+
+  // When no stock can pass, the label says so instead of pretending.
+  const wide = pipeline(Object.assign(JSON.parse(JSON.stringify(raw)),
+    { overall: { width: 2000, depth: 300, height: 1524 } }));
+  const sagW = Structural.computeIntegrity(wide.spec, wide.model, {}).checks.find(c => c.id === 'sag:shelf_1');
+  const fxW = sagW && sagW.fixes.find(f => f.id === 'thick-shelf');
+  ok(fxW && fxW.patch.structure.shelfThickness === 45 && /partial/i.test(fxW.label),
+    'an unsolvable span offers the biggest stock as an honest partial step');
+}
+
+/* ================= G9: reconcileAck — phantom attachment / stock-source / "-free" / structure dims ================= */
+section('G9 acks never claim attachment, stock reuse, material-free builds, or dims the plan lacks');
+{
+  const none = { patch: {}, ignored: [] };
+
+  // ref2-run1 (live): "gets french-cleat screwed to it [the column]" over a
+  // delivered spec whose connections are all dowels — no cleat part, joint,
+  // BOM line, or step exists (the tip-critical claim lived only in the ack).
+  const REF2 = "Column itself isn't modeled (it's your existing structural post); a solid white-oak vertical spine gets french-cleat screwed to it, and 5 plywood shelves cantilever off it at 72° increments, rising 300mm each turn. Check the 900mm footprint clears your column plus walking space.";
+  const spiral = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: 'intermediate' }, wood: { species: 'white_oak', sheetSpecies: 'hardwood_ply' } }));
+  spiral.custom.connections.forEach(c => { c.joint = 'dowels'; });
+  const g1 = Spec.reconcileAck(REF2, spiral, ['x'], none);
+  ok(/Actually:.*no french cleat exists in this plan/.test(g1), `phantom cleat corrected — got "${g1}"`);
+  ok(/anti-tip strap/.test(g1), 'the correction names the one real building attachment');
+
+  // ref7-run1 t2 (live): stock-source claim over a catalog-shopping stock
+  // plan, plus a leg number correction silently clamped (50 → 45).
+  const REF7A = "Tuned the bench to the actual stock: 5/4 (~25mm) cedar deck boards, with legs laminated from two boards (50mm) for stiffness and the apron built from a single board (25mm) — top was already 25mm. That uses only your deck boards, no dimensional lumber. Want the small table next as a low coffee-table height or a standard side-table height?";
+  const bench1 = Spec.correctSpec({
+    meta: { name: 'Deck Board Bench', template: 'bench', level: 'beginner', units: 'in' },
+    overall: { width: 1200, depth: 350, height: 450 }, wood: { species: 'western_red_cedar' },
+    structure: { topThickness: 25, legThickness: 50, apronHeight: 80, apronThickness: 25 },
+    joinery: { frame: 'butt_screws' }
+  });
+  eq(bench1.structure.legThickness, 45, 'the proposed 50 mm laminated legs snapped to 45 (the claim the ack keeps making)');
+  const g2 = Spec.reconcileAck(REF7A, bench1, ['x'], none);
+  ok(/the stock plan buys catalog lumber — designing onto on-hand boards isn’t modeled yet/.test(g2), `stock reuse claim corrected — got "${g2}"`);
+  ok(/leg thickness is 45 mm, not the claimed 50 mm/.test(g2), `clamped leg number corrected — got "${g2}"`);
+  ok(!/apron thickness is/.test(g2) && !/top thickness is/.test(g2), 'true apron/top numbers are not flagged');
+
+  // ref7-run2 t2 (live): "legs/aprons doubled-up 2x6 (70mm)" over aprons the
+  // clamp delivered at 25 mm — the legs really are 70, only the apron lies.
+  const REF7B = "A simple outdoor bench sized to use six 6' 2x6s: legs/aprons doubled-up 2x6 (70mm), seat slats at full 38mm thickness with gaps to shed water. Pocket screws forgive the cupping better than tight joinery; spar urethane suits exterior cedar.";
+  const bench2 = Spec.correctSpec({
+    meta: { name: 'Cedar Deck-Board Bench', template: 'bench', level: 'beginner', units: 'in' },
+    overall: { width: 1200, depth: 350, height: 450 }, wood: { species: 'western_red_cedar' },
+    structure: { topThickness: 38, legThickness: 70, apronHeight: 100, apronThickness: 38 },
+    joinery: { frame: 'pocket_screws' }
+  });
+  eq(bench2.structure.apronThickness, 25, 'the proposed 38 mm (2x6) aprons clamped to 25');
+  const g3 = Spec.reconcileAck(REF7B, bench2, ['x'], none);
+  ok(/apron thickness is 25 mm, not the claimed 70 mm/.test(g3), `doubled-2x6 apron story corrected — got "${g3}"`);
+  ok(!/leg thickness is/.test(g3), 'the true 70 mm leg claim is untouched');
+  ok(!/top thickness is/.test(g3), 'the true 38 mm seat-slat claim is untouched');
+  ok(!/catalog lumber/.test(g3), '"sized to use six 2x6s" is sizing intent, not a reuse claim — no stock fix');
+
+  // simple2 (live): "plywood-free back panel" over a baltic birch ply back.
+  const SIMPLE2 = "A simple pine bookshelf, 900w x 300d x 1524h mm, with 4 shelves, plywood-free back panel, and beginner-friendly butt joints with screws for easy building.";
+  const pineShelf = Spec.correctSpec({
+    meta: { name: 'Pine Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1524 }, wood: { species: 'pine' },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const g4 = Spec.reconcileAck(SIMPLE2, pineShelf, ['x'], none);
+  ok(/not plywood-free — the delivered design uses baltic birch ply/.test(g4), `"plywood-free" over a ply back corrected — got "${g4}"`);
+
+  // The same claim over a design with no sheet stock in it is TRUE — silent.
+  const bareTable = Spec.correctSpec(Spec.defaultSpec('table'));
+  const g5 = Spec.reconcileAck('A plywood-free solid oak table.', bareTable, ['x'], none);
+  ok(!/Actually:/.test(g5), `a true "plywood-free" claim passes — got "${g5}"`);
+
+  // Must-NOT-fire: honest mechanism disclosures pass through byte-identical.
+  const kdTable = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('table'), { joinery: { frame: 'kd_bolt' } }));
+  const ADAPT3 = "A true fold-flat hinge mechanism isn't something I can build—every joint is permanent except kd_bolt. Nearest real option: legs bolt to the apron frame with kd_bolt (hex-key) joints, so one person unbolts 4 legs solo and stacks top+frame+legs flat, well under 254mm, for storage.";
+  const REF3A = "True folding hinges aren't buildable here (all joints are permanent except kd_bolt), so I switched frame joinery to kd_bolt: one person can unbolt the aprons/legs from the top and knock it down for storage. Top, legs, and aprons are all ≤70mm thick, so the disassembled parts lean flat and slide into a 254mm gap.";
+  const REF3B = "A true hinged fold-flat isn't buildable — every joint is permanent except kd_bolt. This is a knock-down design instead: legs and aprons bolt to the top with kd_bolt hardware, so one person can unbolt it and stack the flat top, aprons, and legs (each well under 254mm) for storage, then rebolt it solo to set up again.";
+  for (const [nm, txt] of [['adapt3', ADAPT3], ['ref3-run1', REF3A], ['ref3-run2', REF3B]]) {
+    eq(Spec.reconcileAck(txt, kdTable, ['x'], none), txt, `${nm}'s honest mechanism disclosure passes through untouched`);
+  }
+
+  // ref8-run2 (live): the liner honesty ("not a modeled part") is preserved.
+  const REF8 = "Two cedar planter boxes (dadoed bottoms, rabbeted corners) anchor a slatted privacy screen on posts and rails. Solid wood alone isn't waterproof — drop a separate metal or plastic liner tray inside each planter (not a modeled part) to actually keep water off your hardwood floor.";
+  const planter = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { wood: { species: 'western_red_cedar' } }));
+  eq(Spec.reconcileAck(REF8, planter, ['x'], none), REF8, 'ref8-run2 liner honesty passes through untouched');
+
+  // A positive TRUE dimension claim is never "corrected".
+  const g7 = Spec.reconcileAck('A sturdy red oak table with a 25 mm top on 70 mm legs.', bareTable, ['x'], none);
+  ok(!/Actually:/.test(g7), `true dimension claims pass — got "${g7}"`);
+
+  // A delta claim is not a dimension claim (the unit suite's a3 text).
+  const g8 = Spec.reconcileAck('Grew the top 50.8 mm deeper.', bareTable, [], none);
+  ok(!/top thickness/.test(g8), `"50.8 mm deeper" is a delta, not a thickness claim — got "${g8}"`);
+
+  // Suspension narration with no artifact is corrected; honest negation is not.
+  const g9 = Spec.reconcileAck('The desk hangs from the ceiling on steel cables.', kdTable, ['x'], none);
+  ok(/no ceiling attachment exists in this plan/.test(g9), `suspension claim corrected — got "${g9}"`);
+  const g10 = Spec.reconcileAck('This bookshelf doesn’t attach to the wall — it stands on its own feet.', pineShelf, ['x'], none);
+  ok(!/Actually:/.test(g10), `negated attachment claim passes — got "${g10}"`);
+}
+
+/* ================= G11: anchor/fail ack disclosure + anchor-step context ================= */
+section('G11 anchor verdicts reach the ack; failing acks name the governing check; anchor step fits non-wall contexts');
+{
+  // Anchor verdict, no fails: said in chat, not just a BOM line (B13 — the
+  // ref2/ref5 commits shipped "REQUIRED" anchor hardware with a silent ack).
+  eq(Spec.integrityLine({ fails: 0, advisories: 2, anchorRequired: true }, {}),
+    ' This piece needs the included wall anchor — it tips without it.',
+    'anchor verdict gets its own ack sentence');
+
+  // Failing commits name the governing check when the worst sag is itself a
+  // failure (simple2's live numbers: 6.22 mm over a 2.87 mm limit).
+  const l1 = Spec.integrityLine({ fails: 5, advisories: 1, worstSag: { id: 'shelf_2', sag: 6.221, limit: 2.8733, span: 862 } }, {});
+  ok(/ Integrity: 5 failing checks — worst: shelf 2 sag 6\.2 mm vs 2\.9 mm limit; see the Safety tab before building\./.test(l1),
+    `failing ack names the worst check — got "${l1}"`);
+
+  // A worst sag on the passing side is never blamed for other checks' fails.
+  eq(Spec.integrityLine({ fails: 1, worstSag: { id: 'top_1', sag: 1.0, limit: 3.0, span: 900 } }, {}),
+    ' Integrity: 1 failing check — see the Safety tab before building.',
+    'a passing sag is not named as the governing failure');
+
+  // Fails outrank the anchor sentence (one line, ordered like the verdict).
+  const l2 = Spec.integrityLine({ fails: 2, anchorRequired: true }, {});
+  ok(/failing checks/.test(l2) && !/needs the included wall anchor/.test(l2), 'fail line wins over the anchor line');
+
+  // G4 assumed-load clause rides the line whenever it speaks…
+  const l3 = Spec.integrityLine({
+    fails: 1,
+    surfaceLoads: [
+      { id: 'p4', presetKey: 'books', label: 'Books', assumed: true },
+      { id: 'p5', presetKey: 'books', label: 'Books', assumed: true },
+      { id: 'p9', presetKey: 'seating', label: 'Seated people', assumed: false }
+    ]
+  }, {});
+  ok(/Checked at Books on p4, p5 \(assumed — set the real duty in the Safety tab\)\./.test(l3),
+    `assumed presets are named per surface — got "${l3}"`);
+  ok(!/Seated people/.test(l3), 'a user-chosen load is never reported as assumed');
+
+  // …and engine-DERIVED surfaces (G3) disclose even on a clean pass.
+  const l4 = Spec.integrityLine({
+    fails: 0, advisories: 0, anchorRequired: false,
+    assumedSurfaces: ['p3'],
+    surfaceLoads: [{ id: 'p3', presetKey: 'books', label: 'Books', assumed: true }]
+  }, {});
+  eq(l4, ' Checked at Books on p3 (assumed — set the real duty in the Safety tab).',
+    'a derived check surface is disclosed even when everything passes');
+
+  // Template defaults alone stay quiet on a clean pass — no ack spam.
+  eq(Spec.integrityLine({
+    fails: 0, advisories: 0, assumedSurfaces: [],
+    surfaceLoads: [{ id: 'top_1', presetKey: 'worktop', label: 'Desk / table duty', assumed: true }]
+  }, {}), '', 'assumed defaults alone never spam a passing template commit');
+
+  // Photo flows keep their fuller phrasing.
+  ok(/all checks pass/.test(Spec.integrityLine({ fails: 0, advisories: 0 }, { photo: true })), 'photo branch preserved');
+
+  // End to end: an untagged custom (G3 derived surfaces) speaks through the
+  // real engine summary.
+  const un = Spec.defaultSpec('custom');
+  un.custom.parts.forEach(p => { p.surface = 'none'; });
+  const r = pipeline(un);
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  ok(ig.summary.assumedSurfaces.length > 0, 'the untagged custom derived a check surface');
+  ok(/\(assumed — set the real duty in the Safety tab\)/.test(Spec.integrityLine(ig.summary, {})),
+    'the derived assumption reaches the chat line end to end');
+
+  // The anchor STEP acknowledges non-wall contexts for custom pieces only —
+  // a mid-room divider or column wrap cannot "screw into a stud" (A7).
+  const cu = pipeline(Spec.defaultSpec('custom'));
+  const cuSteps = Plans.assembly(cu.spec, cu.model, { antiTip: true }, {});
+  const cuAnchor = cuSteps.find(s => s.id === 'antitip');
+  ok(cuAnchor && /; if it can’t back onto a wall, rethink placement — the tip risk is real\.$/.test(cuAnchor.text),
+    `custom anchor step names the non-wall reality — got "${cuAnchor && cuAnchor.text}"`);
+  const tb = pipeline(Spec.defaultSpec('table'));
+  const tbAnchor = Plans.assembly(tb.spec, tb.model, { antiTip: true }, {}).find(s => s.id === 'antitip');
+  eq(tbAnchor && tbAnchor.text,
+    'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer.',
+    'template anchor step wording is byte-stable (goldens cannot see this change)');
+}
+
+/* ================= G12: assembly steps never glue a knockdown joint ================= */
+section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
+{
+  // Template path (ref3/adapt3's live shape): a kd_bolt frame whose entire
+  // point is tool-only disassembly used to get "Glue, clamp, and check for
+  // square." — following the text welds the table shut and silently
+  // invalidates the model's verified flat-pack answer.
+  const kd = pipeline(Spec.deepMerge(Spec.defaultSpec('table'), { meta: { units: 'mm' }, joinery: { frame: 'kd_bolt' } }));
+  eq(kd.spec.joinery.frame, 'kd_bolt', 'kd_bolt survives correction on a beginner frame');
+  const kdSteps = Plans.assembly(kd.spec, kd.model, null, {});
+  const s1 = kdSteps.find(s => s.id === 's1');
+  ok(s1 && /knockdown bolts/.test(s1.text) && /Bolt together — hand-tight, then snug once square\./.test(s1.text),
+    `kd frame step bolts instead of gluing — got "${s1 && s1.text}"`);
+  ok(!kdSteps.some(s => (s.joints || []).some(j => j.type === 'kd_bolt') && /glue/i.test(s.text)),
+    'no step that makes a kd_bolt joint mentions glue');
+
+  // The glued wording stays byte-identical for glued frames (golden guard).
+  const gl = pipeline(Spec.defaultSpec('table'));
+  const g1 = Plans.assembly(gl.spec, gl.model, null, {}).find(s => s.id === 's1');
+  ok(g1 && /with pocket screws\. Glue, clamp, and check for square\./.test(g1.text),
+    `glued frames keep the original sentence — got "${g1 && g1.text}"`);
+
+  // Custom path: the unconditional " Dry-fit before glue." suffix (ref4's
+  // live bed rails: "…with knockdown bolts. Dry-fit before glue.").
+  const cu = Spec.correctSpec(Spec.defaultSpec('custom'));
+  cu.custom.connections[0].joint = 'kd_bolt';
+  const cuModel = Parametric.build(cu);
+  const cSteps = Plans.assembly(cu, cuModel, null, {});
+  const kdStep = cSteps.find(s => /knockdown bolts/.test(s.text));
+  ok(kdStep && /Bolt together — hand-tight, then snug once square\./.test(kdStep.text) && !/glue/i.test(kdStep.text),
+    `custom kd_bolt connection bolts, no glue — got "${kdStep && kdStep.text}"`);
+  const glStep = cSteps.find(s => /butt joint/.test(s.text));
+  ok(glStep && / Dry-fit before glue\./.test(glStep.text),
+    `glued custom connections keep the dry-fit suffix — got "${glStep && glStep.text}"`);
+
+  // No golden fixture uses kd_bolt, so this wording change cannot diff the
+  // corpus — assert it stays that way.
+  for (const f of fs.readdirSync(path.join(__dirname, 'golden'))) {
+    ok(!/kd_bolt/.test(fs.readFileSync(path.join(__dirname, 'golden', f), 'utf8')), `golden ${f} is kd_bolt-free`);
+  }
+}
+
+/* ================= G10: silent custom grounding is recorded as a correction note ================= */
+section('G10 correctionNotes records the grounding translation correction never disclosed');
+{
+  // ref1-run1's recorded wire proposal, verbatim: the "Ceiling-Suspended
+  // Truss Desk" whose coherent hanging composition (desktop y=715, ceiling
+  // ledger frame y=2395) correctCustom silently translated 610 mm down onto
+  // the floor — no event ever told the model or the user that the
+  // suspension premise was destroyed (spec.js grounding runs before the
+  // audit, so geom_floats can never fire on an airborne composition).
+  const REF1_WIRE = JSON.parse('{"N":{"v":4,"n":"Ceiling-Suspended Truss Desk","t":6,"l":1,"u":1,"o":[1200,600,1830],"m":2,"j":[12,12,12],"f":2,"d":0,"p":[[3,0,715,0,1200,600,30,0,0,0,0,0,1,2,"desktop"],[0,-550,1525,-260,1650,70,70,0,0,0,0,0,1,0,"post_FL"],[0,550,1525,-260,1650,70,70,0,0,0,0,0,1,0,"post_FR"],[0,-550,1525,260,1650,70,70,0,0,0,0,0,1,0,"post_BL"],[0,550,1525,260,1650,70,70,0,0,0,0,0,1,0,"post_BR"],[1,0,655,-260,1100,90,20,0,0,0,0,0,1,0,"apron_front"],[1,0,655,260,1100,90,20,0,0,0,0,0,1,0,"apron_back"],[1,-550,655,0,520,90,20,0,90,0,0,0,1,0,"apron_left"],[1,550,655,0,520,90,20,0,90,0,0,0,1,0,"apron_right"],[1,0,2395,-260,1100,90,40,0,0,0,0,0,1,0,"ceiling_front"],[1,0,2395,260,1100,90,40,0,0,0,0,0,1,0,"ceiling_back"],[1,-550,2395,0,520,90,40,0,90,0,0,0,1,0,"ceiling_left"],[1,550,2395,0,520,90,40,0,90,0,0,0,1,0,"ceiling_right"]],"c":[[0,5,1],[0,6,1],[0,7,1],[0,8,1],[5,1,12],[5,2,12],[6,3,12],[6,4,12],[7,1,12],[7,3,12],[8,2,12],[8,4,12],[9,1,12],[9,2,12],[10,3,12],[10,4,12],[11,1,12],[11,3,12],[12,2,12],[12,4,12]]}}');
+  const raw = Codec.decode(REF1_WIRE.N);
+  const corrected = Spec.correctSpec(raw);
+  ok(corrected.custom && corrected.custom.parts.length === 13, 'the composition survives correction');
+  const notes = Spec.correctionNotes(raw, corrected);
+  eq(notes.length, 1, 'exactly one grounding note for the suspended proposal');
+  ok(/floated ~610 mm above the floor/.test(notes[0]), `the note carries the real translation — got "${notes[0]}"`);
+  ok(/grounded/.test(notes[0]) && /floor-standing/.test(notes[0]), 'the note states the fix and the product boundary');
+
+  // Display boundary: the note renders through BB.Units like everything else.
+  Units.set({ system: 'imperial', precision: 16, dual: false });
+  const impNote = Spec.correctionNotes(raw, corrected)[0];
+  ok(/floated ~24 in above the floor/.test(impNote), `the note re-renders imperial — got "${impNote}"`);
+  Units.set({ system: 'metric', precision: 16, dual: false });
+
+  // A grounded proposal earns no note; correctionNotes is pure and quiet.
+  const grounded = Spec.defaultSpec('custom');
+  eq(Spec.correctionNotes(grounded, Spec.correctSpec(Spec.clone(grounded))), [], 'a grounded proposal earns no note');
+
+  // Small hovers stay silent — grounding under the 50 mm threshold is the
+  // ordinary snap-to-floor cleanup, not a destroyed premise.
+  const hover = Spec.defaultSpec('custom');
+  hover.custom.parts.forEach(p => { p.pos.y += 40; });
+  eq(Spec.correctionNotes(hover, Spec.correctSpec(Spec.clone(hover))), [], 'a 40 mm hover is below the disclosure threshold');
+
+  // Template specs and non-custom corrections are out of scope.
+  eq(Spec.correctionNotes(Spec.defaultSpec('table'), Spec.correctSpec(Spec.defaultSpec('table'))), [], 'templates have no grounding notes');
+
+  // Defensive: a raw proposal with missing dim/pos/rot fields is measured
+  // with correction's own sanitization and never throws.
+  const junk = { meta: { template: 'custom', level: 'beginner' }, custom: { parts: [{ primitive: 'slab', dim: { l: 500 }, pos: { y: 900 } }, { id: 'x' }], connections: [] } };
+  ok(Array.isArray(Spec.correctionNotes(junk, Spec.correctSpec(Spec.clone(junk)))), 'junk raw parts are measured defensively');
+
+  // A proposal sunk below the floor is raised — and says so.
+  const sunk = Spec.defaultSpec('custom');
+  sunk.custom.parts.forEach(p => { p.pos.y -= 300; });
+  const sunkNotes = Spec.correctionNotes(sunk, Spec.correctSpec(Spec.clone(sunk)));
+  ok(sunkNotes.length === 1 && /sat ~300 mm below the floor/.test(sunkNotes[0]), `a sunk proposal is named too — got "${sunkNotes[0]}"`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
