@@ -77,7 +77,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (kind === 'seat') return 'seating';
     if (kind === 'top') return 'worktop';
     if (defaultLoad && defaultLoad !== 'auto' && LOAD_PRESETS[defaultLoad]) return defaultLoad;
-    if (template === 'bookshelf' || template === 'cabinet') return 'books';
+    /* A custom part tagged 'shelf' gets the same book duty the bookshelf
+     * template uses (G4/B3): a novel BOOKSHELF was being checked at display
+     * 10 kg/m — 1/6 of the duty its template twin assumes. Template shelf
+     * kinds (a table's lower shelf, a nightstand top) keep display duty. */
+    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom') return 'books';
     return 'display';
   }
 
@@ -182,8 +186,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const t = spec.meta.template;
     const out = [];
     const push = s => {
-      s.presetKey = (loadChoices && loadChoices[s.id] && LOAD_PRESETS[loadChoices[s.id]])
-        ? loadChoices[s.id] : defaultPresetFor(s.kind, t, defaultLoad);
+      const chosen = !!(loadChoices && loadChoices[s.id] && LOAD_PRESETS[loadChoices[s.id]]);
+      s.presetKey = chosen ? loadChoices[s.id] : defaultPresetFor(s.kind, t, defaultLoad);
+      s.userChosen = chosen; // a user pick is never an "assumed" load (G4)
       out.push(s);
     };
     const parts = model.parts;
@@ -1161,6 +1166,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       anchorRequired: antiTip,
       // G3: derived (assumed) check surfaces are disclosed, never silent.
       assumedSurfaces: surfaces.filter(s => s.assumed).map(s => s.id),
+      /* G4 contract (consumed by Spec.integrityLine / the Safety tab): what
+       * load every checked surface was judged under, and whether that was an
+       * assumption (engine default or a derived surface) or the user's own
+       * pick. User loadChoices are never overridden. */
+      surfaceLoads: surfaces.map(s => ({
+        id: s.id,
+        presetKey: s.presetKey,
+        label: (LOAD_PRESETS[s.presetKey] || LOAD_PRESETS.display).label,
+        assumed: !!s.assumed || !s.userChosen
+      })),
       /* Rollup tier (audit M-18): a mandatory wall anchor is its own headline
        * tier — "safe only when anchored" — never rolled into plain advisory
        * under a "passes the required checks" banner. Order: fail > anchor >

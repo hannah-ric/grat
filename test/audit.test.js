@@ -1469,5 +1469,49 @@ section('G3 check coverage is never model-discretionary: untagged customs derive
     'tagged compositions derive nothing extra');
 }
 
+/* ================= G4: custom shelves default to book duty + assumed-load disclosure (B3/B5a) ================= */
+section('G4 custom shelf surfaces default to books; summary discloses assumed loads');
+{
+  // The one-line hole: custom+shelf fell through to display (10 kg/m) — the
+  // spiral BOOKSHELF was checked at 1/6 the duty the bookshelf template uses.
+  eq(Structural.defaultPresetFor('shelf', 'custom', undefined), 'books', 'custom shelf kind defaults to books');
+  eq(Structural.defaultPresetFor('shelf', 'bookshelf', undefined), 'books', 'bookshelf template unchanged');
+  eq(Structural.defaultPresetFor('seat', 'custom', undefined), 'seating', 'seat kind unchanged');
+  eq(Structural.defaultPresetFor('top', 'custom', undefined), 'worktop', 'top kind unchanged');
+  eq(Structural.defaultPresetFor('shelf', 'custom', 'display'), 'display', 'an explicit design-level default still wins');
+  eq(Structural.defaultPresetFor('shelf', 'nightstand', undefined), 'display', 'template shelf defaults untouched');
+
+  const r = pipeline(spiralShelf());
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  ok(ig.surfaces.length === 5 && ig.surfaces.every(s => s.presetKey === 'books'),
+    'spiral shelves now check at book duty by default');
+  const j = ig.checks.find(c => c.id === 'joints');
+  ok(j && j.status === 'fail', 'default duty fails the cantilever roots (the live commit showed a 25× pass at display)');
+
+  // summary.surfaceLoads — the contract integrityLine consumes (P-SPEC):
+  // [{ id, presetKey, label, assumed }] for every checked surface.
+  const sl = ig.summary.surfaceLoads;
+  ok(Array.isArray(sl) && sl.length === ig.surfaces.length, 'summary.surfaceLoads lists every checked surface');
+  const p2 = sl && sl.find(x => x.id === 'p2');
+  ok(p2 && p2.presetKey === 'books' && p2.label === 'Books' && p2.assumed === true,
+    'a defaulted preset is disclosed as assumed, with its label');
+  // A user loadChoice is never overridden — and is not "assumed".
+  const igU = Structural.computeIntegrity(r.spec, r.model, { loadChoices: { p2: 'display' } });
+  const slU = (igU.summary.surfaceLoads || []).find(x => x.id === 'p2');
+  ok(igU.surfaces.find(s => s.id === 'p2').presetKey === 'display' && slU && slU.assumed === false,
+    'user loadChoices are honored and not marked assumed');
+  // Template surfaces disclose their defaults the same way.
+  const tb = pipeline({ meta: { name: 'T', template: 'table', level: 'beginner', units: 'mm' } });
+  const igT = Structural.computeIntegrity(tb.spec, tb.model, {});
+  const slT = (igT.summary.surfaceLoads || []).find(x => x.id === 'top_1');
+  ok(slT && slT.presetKey === 'worktop' && slT.assumed === true, 'template defaults are disclosed as assumed too');
+  // G3-derived surfaces flow through as assumed book duty.
+  const un = pipeline(adapt4Bed({ untagged: true }));
+  const igN = Structural.computeIntegrity(un.spec, un.model, {});
+  const slN = igN.summary.surfaceLoads || [];
+  ok(slN.length > 0 && slN.every(x => x.assumed === true && x.presetKey === 'books'),
+    'derived surfaces land in surfaceLoads as assumed book duty');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
