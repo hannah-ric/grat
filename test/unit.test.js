@@ -233,6 +233,14 @@ section('wire diff-based refinement');
   eq(q.kind, 'question', 'question classified');
   eq(q.options.length, 2, 'options preserved');
 
+  // C5: a balanced-but-unparseable brace blob before the real JSON (probe
+  // P2b — SCHEMA_DOC itself teaches the {w,d,h} notation the model may echo).
+  const past = AI.extractJSON('dims ride keys {w,d,h} in this schema. {"o":{"h":650},"e":"x"}');
+  eq(past && past.o && past.o.h, 650, 'the scanner continues past a prose brace blob to the real wire object');
+  eq(AI.extractJSON('all prose {w,d,h} and {not json} only'), null, 'all-blob text still returns null');
+  eq(AI.extractJSON('nested trap {"a":{oops} } then {"e":"ok"}').e, 'ok', 'an unparseable nested blob is skipped too');
+  ok(AI.extractJSON('truncated tail {"o":{"h":650') === null, 'an unclosed object still reads as null (truncation stays continuable)');
+
   // New-design shape (wire).
   const nd = AI.classify(AI.extractJSON('{"N":{"v":4,"n":"Oak Desk","t":1,"l":0,"u":0,"o":[1300,650,735],"m":0,"s":{"t":25},"j":[1,0,1],"f":0,"d":0},"e":"x"}'));
   eq(nd.kind, 'new', 'wire new-design classified');
@@ -243,6 +251,290 @@ section('wire diff-based refinement');
   const cheat = AI.apply(AI.classify(AI.extractJSON('{"j":{"b":7},"e":"x"}')),
     Spec.correctSpec({ meta: { template: 'nightstand', level: 'beginner' } }));
   ok(cheat.spec.joinery.box !== 'half_blind_dovetail', 'AI cannot smuggle advanced joints past a beginner level');
+
+  // A4: "p" and "c" are independent diff keys on a custom piece.
+  {
+    const cbase = Spec.correctSpec(Spec.defaultSpec('custom'));
+    // p-only: the existing connection graph must survive the merge.
+    const wireP = Codec.encode(cbase).p;
+    const pOnly = Codec.decodePartial({ p: wireP });
+    ok(pOnly && pOnly.custom && Array.isArray(pOnly.custom.parts) && !('connections' in pOnly.custom),
+      'p-only diff carries parts and NO connections key');
+    const pApplied = AI.apply({ kind: 'diff', patch: pOnly, explain: '' }, cbase);
+    eq(pApplied.spec.custom.connections.length, 2, 'p-only diff preserves the existing connection graph');
+    const pr = pipeline(pApplied.spec);
+    eq(pr.report.errors.filter(e => e.id.startsWith('float_')).length, 0, 'p-only edit leaves no free-floating parts');
+    // c-only: a joint upgrade decodes to a connections patch (was null).
+    const cOnly = Codec.decodePartial({ c: [[1, 0, 3], [2, 0, 3]] }); // JNT 3 = dado
+    ok(cOnly && cOnly.custom && !cOnly.custom.parts && cOnly.custom.connections.length === 2,
+      'c-only diff decodes to a connections patch, no parts key');
+    ok(!(cOnly.meta && cOnly.meta.template), 'c-only diff never stamps the template');
+    const cbaseInt = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: 'intermediate' } }));
+    const cApplied = AI.apply({ kind: 'diff', patch: cOnly, explain: '' }, cbaseInt);
+    eq(cApplied.spec.custom.parts.length, 3, 'parts untouched by a c-only diff');
+    ok(cApplied.spec.custom.connections.every(cn => cn.joint === 'dado'),
+      'c-only joint upgrade lands in the corrected graph');
+    ok(cApplied.chips.length > 0, 'the c-only change is visible in the code-computed diff');
+    // Stale connection ids after a part-count shrink are dropped, not fatal.
+    const shrink = Codec.decodePartial({ p: wireP.slice(0, 2) });
+    const sApplied = AI.apply({ kind: 'diff', patch: shrink, explain: '' }, cbase);
+    ok(sApplied.spec.custom.connections.every(cn => ['p1', 'p2'].includes(cn.a) && ['p1', 'p2'].includes(cn.b)),
+      'connections referencing removed parts are dropped by correction');
+  }
+}
+
+/* ---------------- custom o-only refinement scales in code (B3) ---------------- */
+section('custom overall-only diff scales the composition (B3)');
+{
+  const cbase = Spec.correctSpec(Spec.defaultSpec('custom')); // 1100×350×468
+  const target = cbase.overall.height - 101.6;
+  const reply = AI.classify(AI.extractJSON(JSON.stringify({ o: { h: target }, e: 'Lowered 101.6 mm' })));
+  const applied = AI.apply(reply, cbase);
+  ok(Math.abs(applied.spec.overall.height - target) <= 5,
+    `o-only height diff on a custom piece really resizes — got ${applied.spec.overall.height}, want ≈${target}`);
+  ok(Math.abs(cbase.overall.height - applied.spec.overall.height - 101.6) <= 5,
+    'delivered height dropped ≈101.6 mm (never a silent no-op behind a "changed" ack)');
+  ok(applied.chips.some(c => /^height /.test(c)), 'the height change lands in the code-computed chips');
+  ok(Math.abs(applied.spec.overall.width - cbase.overall.width) <= 2, 'width untouched by a height-only resize');
+  eq(applied.spec.custom.parts.length, cbase.custom.parts.length, 'parts survive the scale');
+  eq(applied.spec.custom.connections.length, cbase.custom.connections.length, 'connections survive the scale');
+  const r = pipeline(applied.spec);
+  eq(r.report.errors.length, 0, 'the scaled composition still builds clean');
+  // A width-only target scales exactly (no thickness snap on that axis here).
+  const wApplied = AI.apply(AI.classify(AI.extractJSON('{"o":{"w":1400},"e":"wider"}')), cbase);
+  eq(wApplied.spec.overall.width, 1400, 'width-only target lands exactly');
+  eq(wApplied.spec.overall.height, cbase.overall.height, 'height untouched by a width-only resize');
+  // scaleCustom is a no-op guard: same-size target returns null, patch falls through.
+  ok(Spec.scaleCustom(cbase, { height: cbase.overall.height }) === null, 'same-size target returns null (nothing to scale)');
+  // Rotated parts map their local dims to the right world axis: the default
+  // custom legs are panels rotated 90° about y — their WIDTH is vertical, so
+  // a height scale must move dim.w, not dim.l.
+  const leg = cbase.custom.parts.find(p => p.rot && p.rot.y === 90);
+  const scaledLeg = Spec.scaleCustom(cbase, { height: cbase.overall.height * 0.5 }).parts.find(p => p.id === leg.id);
+  ok(Math.abs(scaledLeg.dim.w - leg.dim.w * 0.5) <= 0.1, 'rotated panel scales its vertical (w) dim on a height resize');
+  eq(scaledLeg.dim.l, leg.dim.l, 'and keeps its horizontal (l) dim');
+}
+
+/* ---------------- custom composition diffs are human chips (B5) ---------------- */
+section('custom composition diffs are human-readable chips (B5)');
+{
+  const base = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'),
+    { meta: { level: 'intermediate' }, wood: { species: 'walnut' } }));
+
+  // The B-base2-t2 live failure: a diff flipped every part's stock from solid
+  // walnut to baltic-birch sheet and the chips said only "10 items → 10 items".
+  const flipped = Spec.clone(base);
+  for (const p of flipped.custom.parts) p.stock = 'sheet';
+  const flipChips = Spec.describeDiff(Spec.diffSpecs(base, Spec.correctSpec(flipped)));
+  ok(!flipChips.some(c => /\bitems?\b/.test(c)), `no chip is an opaque "N items" count — got ${JSON.stringify(flipChips)}`);
+  ok(flipChips.some(c => /all parts stock Black Walnut → Baltic Birch Ply/.test(c)),
+    `the material flip is named in human terms — got ${JSON.stringify(flipChips)}`);
+
+  // A joint change on a connection is named with the parts and joint labels.
+  const jointed = Spec.clone(base);
+  jointed.custom.connections = jointed.custom.connections.map(c => Object.assign({}, c, { joint: 'dado' }));
+  const jointChips = Spec.describeDiff(Spec.diffSpecs(base, Spec.correctSpec(jointed)));
+  ok(jointChips.some(c => /leg_panel–seat joint .*→ Dado \/ housing/.test(c)),
+    `a connection's joint change is a named chip — got ${JSON.stringify(jointChips)}`);
+
+  // A single part's dimension change renders as a length in display units,
+  // and re-renders when the unit system flips (same contract as template chips).
+  const resized = Spec.clone(base);
+  resized.custom.parts[0].dim.l = 1200;
+  const dimDiffs = Spec.diffSpecs(base, Spec.correctSpec(resized));
+  const dimChips = Spec.describeDiff(dimDiffs);
+  ok(dimChips.some(c => /^seat length .*in → .*in/.test(c)), `part dims render in display units — got ${JSON.stringify(dimChips)}`);
+  BB.Units.set({ system: 'metric' });
+  ok(Spec.describeDiff(dimDiffs).some(c => /^seat length 1100 mm → 1200 mm/.test(c)), 'part dims re-render metric after a units switch');
+  BB.Units.set({ system: 'imperial' });
+
+  // Part-count changes stay visible, and new connections are announced.
+  const grown = Spec.clone(base);
+  grown.custom.parts.push({ id: 'p4', role: 'stretcher', primitive: 'rail', dim: { l: 900, w: 60, t: 20 }, pos: { x: 0, y: 100, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'none' });
+  grown.custom.connections.push({ a: 'p4', b: 'p2', joint: 'butt_screws' });
+  const grownChips = Spec.describeDiff(Spec.diffSpecs(base, Spec.correctSpec(grown)));
+  ok(grownChips.some(c => /composition 3 parts → 4 parts/.test(c)), `part count change is a chip — got ${JSON.stringify(grownChips)}`);
+  ok(grownChips.some(c => /joined .*stretcher/.test(c) || /connections added/.test(c)), 'a new connection is announced');
+}
+
+/* ---------------- ack reconciliation (A2, merges B4/C4) ---------------- */
+section('ack reconciliation: the bot never claims what the spec lacks (A2)');
+{
+  const none = { patch: {}, ignored: [] };
+
+  // req1 live case: "splayed legs" claimed on a legless bookshelf.
+  const shelf = Spec.correctSpec({ meta: { template: 'bookshelf', level: 'advanced' }, wood: { species: 'walnut' } });
+  const a1 = Spec.reconcileAck('Walnut case bookshelf with splayed solid legs and open sides for a bold mid-century look.', shelf, ['species Red Oak → Black Walnut'], none);
+  ok(/no legs in this design/.test(a1), `legless bookshelf ack corrected — got "${a1}"`);
+  ok(!/delivered wood/.test(a1), 'the true species claim (walnut) is not flagged');
+
+  // req4-b-2 live case: "Three drawers ... hard maple" over a 2-drawer soft-maple cabinet.
+  const cab = Spec.correctSpec({ meta: { template: 'cabinet', level: 'intermediate' }, wood: { species: 'soft_maple' }, drawers: { count: 2 } });
+  const a2 = Spec.reconcileAck('Sized at workbench height with a thick 44mm hard maple top. Three drawers organize small hardware.', cab, ['drawer count null → 2'], none);
+  ok(/2 drawers/.test(a2), `drawer count corrected — got "${a2}"`);
+  ok(/soft maple/.test(a2), `species corrected to the delivered soft maple — got "${a2}"`);
+
+  // A bare "maple" when the delivered wood IS a maple is not a contradiction.
+  const a2b = Spec.reconcileAck('A sturdy maple workbench top.', cab, ['x'], none);
+  ok(!/Actually:/.test(a2b), `generic "maple" over soft maple passes — got "${a2b}"`);
+
+  // B4 live case (B-base2-t2): the requested depth reverted mid-pipeline.
+  const table = Spec.correctSpec(Spec.defaultSpec('table'));
+  const a3 = Spec.reconcileAck('Grew the top 50.8 mm deeper.', table, [], { patch: { overall: { depth: table.overall.depth + 50.8 } }, ignored: [] });
+  ok(/depth is .* not the proposed/.test(a3), `reverted dimension surfaced — got "${a3}"`);
+
+  // A requested change that changed nothing at all is said so.
+  const a4 = Spec.reconcileAck('Lowered it 4 inches.', table, [], { patch: { overall: { height: table.overall.height } }, ignored: [] });
+  ok(/nothing in the delivered design actually changed/.test(a4), `false "changed" ack corrected — got "${a4}"`);
+
+  // C4: ignored wire keys are named.
+  const a5 = Spec.reconcileAck('Angled the legs 10 degrees.', table, [], { patch: { overall: { height: table.overall.height } }, ignored: ['legs', 'angle'] });
+  ok(/ignored: legs, angle/.test(a5), `ignored keys caveat — got "${a5}"`);
+
+  // Mechanism words: a phantom hinge claim is corrected...
+  const a6 = Spec.reconcileAck('The lid is hinged at the back for easy access.', shelf, ['x'], none);
+  ok(/nothing hinges, folds, or pivots/.test(a6), `phantom hinge corrected — got "${a6}"`);
+  // ...but honest negation is never "corrected"...
+  const a7 = Spec.reconcileAck('The lid is glued fixed — a true hinged lid isn’t expressible here.', shelf, ['x'], none);
+  ok(!/Actually:/.test(a7), `honest hinge negation passes — got "${a7}"`);
+  // ...and a genuine kd_bolt lift-off survives.
+  const kd = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: 'advanced' } }));
+  kd.custom.connections[0].joint = 'kd_bolt';
+  const a8 = Spec.reconcileAck('The top lifts off after removing the KD bolts.', kd, ['x'], none);
+  ok(!/permanently fastened/.test(a8), `kd_bolt lift-off claim passes — got "${a8}"`);
+
+  // A truthful ack passes through byte-identical.
+  const low = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('table'), { overall: { height: 700 } }));
+  const clean = Spec.reconcileAck('Lowered the top to 700 mm.', low, ['height 29 in → 27 9/16 in'], { patch: { overall: { height: 700 } }, ignored: [] });
+  eq(clean, 'Lowered the top to 700 mm.', 'a truthful ack passes through unchanged');
+
+  // C4 codec half: an out-of-range enum index is dropped, never a silent
+  // reset to the wire default.
+  ok(Codec.decodePartial({ m: 99 }) === null, 'a diff of only an out-of-range enum decodes to null');
+  const p2 = Codec.decodePartial({ m: 99, o: { h: 700 } });
+  ok(p2.overall.height === 700 && !p2.wood, 'out-of-range species index is dropped, not reset to default');
+  // classify records unknown wire keys for the ack caveat.
+  const rIgn = AI.classify({ o: { h: 700 }, legs: 'angled', e: 'x' });
+  eq(rIgn.ignored, ['legs'], 'classify lists unknown wire keys as ignored');
+}
+
+/* ---------------- integrity line on every commit source (A3) ---------------- */
+section('integrity line rides every commit source when checks fail (A3)');
+{
+  eq(Spec.integrityLine({ fails: 5, advisories: 3 }, {}),
+    ' Integrity: 5 failing checks — see the Safety tab before building.',
+    'text-flow ack carries the failing-check line');
+  eq(Spec.integrityLine({ fails: 1, advisories: 0 }, {}),
+    ' Integrity: 1 failing check — see the Safety tab before building.',
+    'singular phrasing for one failure');
+  eq(Spec.integrityLine({ fails: 0, advisories: 2 }, {}), '', 'no scare line when nothing fails (text flows)');
+  ok(/all checks pass/.test(Spec.integrityLine({ fails: 0, advisories: 0 }, { photo: true })),
+    'photo flows keep the full report line even when clean');
+  ok(/2 advisory/.test(Spec.integrityLine({ fails: 0, advisories: 2 }, { photo: true })),
+    'photo flows still surface advisories');
+  eq(Spec.integrityLine(null, {}), '', 'no summary, no line');
+}
+
+/* ---------------- mid-round reply triage (C8) ---------------- */
+section('mid-round replies: info/question/limits are triaged, never burned (C8)');
+{
+  eq(AI.roundDecision(null), 'bail', 'no result bails');
+  eq(AI.roundDecision({ reply: null }), 'bail', 'transport failure bails');
+  eq(AI.roundDecision({ reply: null, usageLimit: true }), 'billing', 'mid-round 402 triggers the billing UX');
+  eq(AI.roundDecision({ reply: null, rateLimited: true }), 'rate', 'mid-round 429 triggers the rate-limit notice');
+  eq(AI.roundDecision({ reply: { kind: 'question', question: 'x' } }), 'question', 'a mid-round question is surfaced, not discarded');
+  eq(AI.roundDecision({ reply: { kind: 'info', text: 'x' } }), 'info', 'a mid-round info reply shows its text (P8: no more burned no-op rounds)');
+  eq(AI.roundDecision({ reply: { kind: 'diff', patch: {} } }), 'apply', 'a diff applies');
+  eq(AI.roundDecision({ reply: { kind: 'new', spec: {} } }), 'apply', 'a full respec applies');
+  eq(AI.roundDecision({ reply: { kind: 'question', question: 'x' }, local: true }), 'bail',
+    'a mid-round transport death (local fallback) bails — the offline parser never speaks for the model');
+}
+
+/* ---------------- deep pipelines pin the original request (C11) ---------------- */
+section('buildMessages pins the original request once it scrolls out (C11)');
+{
+  const ORIGIN = 'a craftsman storage ottoman for my king size bed';
+  // 8 accumulated turns = the original exchange + 3 refinement rounds; the
+  // verbatim window (6) no longer contains the original words.
+  const turns = [
+    { role: 'user', content: ORIGIN }, { role: 'assistant', content: '{"N":{},"e":"first"}' },
+    { role: 'user', content: 'Your proposal failed validation: a' }, { role: 'assistant', content: '{"e":"r1"}' },
+    { role: 'user', content: 'Your proposal failed validation: b' }, { role: 'assistant', content: '{"e":"r2"}' },
+    { role: 'user', content: 'Your proposal failed validation: c' }, { role: 'assistant', content: '{"e":"r3"}' }
+  ];
+  const msgs = AI.buildMessages(turns, 'digest line', 'Your proposal failed validation: d', ORIGIN);
+  const pin = msgs.find(m => m.role === 'user' && m.content === '[request] ' + ORIGIN);
+  ok(!!pin, `round 4+ messages still carry the original request — got ${JSON.stringify(msgs.map(m => String(m.content).slice(0, 24)))}`);
+  ok(msgs.indexOf(pin) < msgs.length - 7, 'the pin rides ahead of the verbatim window');
+  ok(msgs[msgs.indexOf(pin) + 1].role === 'assistant', 'the pin is a paired context turn (alternation holds)');
+  // While the original is still verbatim in the window: no duplicate pin.
+  const early = AI.buildMessages(turns.slice(0, 2), '', 'Your proposal failed validation: a', ORIGIN);
+  ok(!early.some(m => String(m.content).startsWith('[request]')), 'no pin while the original is still verbatim');
+  // The first call (newUserContent IS the origin) never pins either.
+  const first = AI.buildMessages([], '', ORIGIN, ORIGIN);
+  ok(!first.some(m => String(m.content).startsWith('[request]')), 'the original turn itself is never doubled');
+  // No origin passed — unchanged legacy behavior.
+  const legacy = AI.buildMessages(turns, 'digest line', 'next');
+  ok(!legacy.some(m => String(m.content).startsWith('[request]')), 'origin-less calls are unchanged');
+}
+
+/* ---------------- critique remedy vocabulary (A10) ---------------- */
+section('buildCritique appends code-owned remedy hints per failing check type (A10)');
+{
+  const mk = (id, title) => ({ id, title, explain: 'x', value: 'v', threshold: 't' });
+  const sag = AI.buildCritique([mk('sag:p1', 'Sag — worktop')]);
+  ok(/laminate by stacking TWO 18 mm sheet slabs/.test(sag) && /add a rail or rib/.test(sag) && /shorten the span/.test(sag),
+    `sag failures get thicken/laminate/rail/shorten-span vocabulary — got "${sag.match(/Proven fixes[^\n]*/)}"`);
+  ok(/sheet stock tops out at 18 mm/.test(sag), 'the sag remedy names the sheet-thickness ceiling so lamination is proposed expressibly');
+  const str = AI.buildCritique([mk('str:p2', 'Strength — shelf')]);
+  ok(/thicker section or a stronger species/.test(str), 'str failures get thicker-section/stronger-species');
+  const tip = AI.buildCritique([mk('tip', 'Tipping stability')]);
+  ok(/widen the stance or lower the mass/.test(tip), 'tip failures get widen-stance/lower-mass');
+  const stand = AI.buildCritique([mk('stand', 'It must stand')]);
+  ok(/widen the stance/.test(stand), 'COG (stand) failures share the stance remedy');
+  const jnt = AI.buildCritique([mk('joints', 'Joint adequacy')]);
+  ok(/stronger joint allowed by the LEVEL MATRIX/.test(jnt), 'joint failures point at the level matrix');
+  // One line per TYPE — five sag fails produce the remedy once.
+  const many = AI.buildCritique([mk('sag:p1', 'a'), mk('sag:p2', 'b'), mk('sag:p3', 'c')]);
+  eq((many.match(/laminate by stacking/g) || []).length, 1, 'remedy lines dedupe per check type');
+  // Unmapped check types add no remedy line and never break the critique.
+  const other = AI.buildCritique([mk('collide', 'Collision check')]);
+  ok(!/Proven fixes/.test(other) && /Fix ONLY these problems/.test(other), 'unmapped types keep the plain critique');
+}
+
+/* ---------------- assembly walkthrough context (C10, merges B7) ---------------- */
+section('step walkthroughs inject the code-built assembly plan (C10)');
+{
+  const spec = Spec.correctSpec({
+    meta: { name: 'Walk NS', template: 'nightstand', level: 'intermediate', units: 'in' },
+    overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  // The reference numbering: exactly what the Plan tab renders (glue-ups included).
+  const model = Parametric.build(spec);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const cut = Plans.cutList(spec, model);
+  const stock = Packing.planStock(spec, model, cut, {});
+  const steps = Plans.assembly(spec, model, integ, { stockPlan: stock });
+  ok(steps.length >= 5, `fixture has at least 5 assembly steps (got ${steps.length})`);
+
+  const ctx = AI.stepContext('walk me through step 5', spec);
+  ok(!!ctx && /^\[assembly\]/.test(ctx), 'step ask produces an [assembly] context block');
+  ok(ctx.includes(`Step 5 = "${steps[4].title}"`), `block names the REAL step-5 title — got "${String(ctx).slice(0, 200)}"`);
+  ok(ctx.includes(`5. ${steps[4].title}`), 'the numbered title list matches the Plan tab numbering');
+  ok(ctx.includes('user level: intermediate'), 'the user skill level rides the block');
+  ok(steps[4].text ? ctx.includes(steps[4].text.slice(0, 40)) : true, 'the referenced step\'s full text is included');
+
+  // Out-of-range step numbers are answered honestly, not guessed.
+  const over = AI.stepContext('walk me through step 99', spec);
+  ok(!!over && over.includes(`no step 99`) && over.includes(`${steps.length} steps`), 'a step past the end says how many steps exist');
+
+  // Walkthrough phrasing without a number still ships the titles list.
+  const how = AI.stepContext('how do i assemble this?', spec);
+  ok(!!how && how.includes(`1. ${steps[0].title}`), 'general assembly asks get the numbered titles');
+
+  // Ordinary refinements never trigger the injection.
+  eq(AI.stepContext('make it walnut and 2 inches taller', spec), null, 'a plain refinement injects nothing');
 }
 
 /* ---------------- local model ---------------- */
@@ -349,6 +641,37 @@ section('local intent parser');
     const smug = AI.localModel('two drawers like a cabinet has', spec);
     ok(smug.kind === 'question' || !/drawer/.test((smug.explain || '') + JSON.stringify(smug.patch || {})),
       'drawers on a table are refused, never acked');
+    ok(smug.kind !== 'new', 'a feature-noun phrase head ("two drawers like a cabinet") never creates the cabinet');
+
+    // A8: the six-word descriptor allowance — reference request 1 verbatim.
+    const funky = AI.localModel('a super funky mid century modern bookshelf', spec);
+    eq(funky.kind, 'new', 'req1: five descriptors still read as a creation');
+    eq(funky.kind === 'new' && funky.spec.meta.template, 'bookshelf', 'req1: creates a bookshelf offline');
+
+    // A8: "workbench" creates a worktop-height table — reference request 4 verbatim.
+    const wb = AI.localModel('a workbench for someone who does woodworking and stained glass with organization integrated for both', spec);
+    eq(wb.kind, 'new', 'req4: workbench request creates offline');
+    eq(wb.kind === 'new' && wb.spec.meta.template, 'table', 'req4: workbench lands on the table template');
+    ok(wb.kind === 'new' && /workbench/i.test(wb.spec.meta.name), `req4: the piece is workbench-named — got "${wb.kind === 'new' ? wb.spec.meta.name : ''}"`);
+    const ergoWb = K.ergoRow('workbench_height');
+    ok(wb.kind === 'new' && wb.spec.overall.height >= ergoWb.min && wb.spec.overall.height <= ergoWb.max,
+      `req4: height comes from the workbench ergonomics row — got ${wb.kind === 'new' ? wb.spec.overall.height : '?'}`);
+    // Refining THE workbench never recreates it, and explicit heights win.
+    const wbSpec = Spec.correctSpec(wb.kind === 'new' ? wb.spec : spec);
+    eq(AI.localModel('make the workbench a bit deeper', wbSpec).kind, 'diff', 'refining the named workbench stays a refinement');
+    const wbTall = AI.localModel('a workbench 1000mm tall', spec);
+    ok(wbTall.kind === 'new' && wbTall.spec.overall.height === 1000, 'an explicit height beats the ergonomics default');
+
+    // A8: an unparseable creation-shaped request gets a creation-phrased
+    // fallback naming what offline CAN build — not the edit question.
+    const murph = AI.localModel('a murphy bed with zero hardware', spec);
+    eq(murph.kind, 'question', 'req3 offline: still a question');
+    ok(/rough out/.test(murph.question) && /workbench/.test(murph.question) && /cabinet/.test(murph.question),
+      `req3 offline: fallback names the buildable templates — got "${murph.question}"`);
+    // Edit-shaped no-parse keeps the edit question.
+    const fancy = AI.localModel('make it fancier', spec);
+    ok(fancy.kind === 'question' && /didn’t catch a change/.test(fancy.question),
+      'a back-referencing no-parse keeps the edit-phrased question');
 
     // Negation guard intact (FE-H10/H11): a negated template noun never creates.
     ok(AI.localModel('not a nightstand', spec).kind !== 'new', 'negated template noun never creates');
@@ -645,6 +968,17 @@ section('knowledge bases');
   }
   ok(K.ERGONOMICS.some(r => r.key === 'drawer_max_width'), 'drawer ergonomics rows present');
   ok(K.ERGONOMICS.some(r => r.key === 'workbench_height') && K.ERGONOMICS.some(r => r.key === 'coffee_table_height'), '2026 ergonomics anchors present');
+  // C1: bed-size width anchors exist and flow into the digest so "for my king
+  // bed" implications resolve to the real ~1930 mm mattress width.
+  const kingBed = K.ERGONOMICS.find(r => r.key === 'king_bed_width');
+  ok(kingBed && kingBed.axis === 'width' && kingBed.min >= 1900 && kingBed.max <= 2030, 'king bed width row anchors ~1930-1980 mm (C1)');
+  ok(['twin_bed_width', 'full_bed_width', 'queen_bed_width', 'cal_king_bed_width'].every(k => K.ERGONOMICS.some(r => r.key === k)), 'all five bed-size anchors present (C1)');
+  ok(K.knowledgeDigest().includes(`king_bed_width ${kingBed.min}–${kingBed.max}mm`), 'digest carries the king bed anchor (C1)');
+  // C12: the digest states the packer's true sheet, generated from LUMBER.SHEET.
+  ok(K.knowledgeDigest().includes(`SHEET(mm): ${K.LUMBER.SHEET.W}×${K.LUMBER.SHEET.L}, thickness ${K.LUMBER.SHEET.THICKNESSES.join('/')}`), 'digest states the standard sheet from LUMBER.SHEET (C12)');
+  // Bed rows name a furniture class ahead of any template, so template
+  // validation must not fire on them (appliesTo has no real template).
+  ok(kingBed.appliesTo.every(t => !['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet'].includes(t)), 'bed anchors never target a real template (C1)');
   ok(Object.keys(K.JOINERY).length >= 21, 'twenty-one+ joints (2026 expansion)');
   for (const j of Object.values(K.JOINERY)) {
     ok(j.strength >= 1 && j.strength <= 5 && j.tools.length && j.failure && j.bestFor, `${j.key} row complete`);
@@ -738,6 +1072,15 @@ section('geometric buildability audit');
   gapped.custom.connections.push({ a: 'p9', b: gapped.custom.parts[2].id, joint: 'butt_screws' });
   const gappedR = pipeline(gapped);
   ok(gappedR.report.errors.some(e => e.id.startsWith('geom_gap:')), 'joined-on-paper-but-never-touching is a blocking error');
+  // A9: the gap message carries geometry the model (and user) can act on —
+  // axis, separation distance, and both parts' nearest-face positions.
+  {
+    const gapErr = gappedR.report.errors.find(e => e.id.startsWith('geom_gap:'));
+    ok(/apart along [xyz]/.test(gapErr.text), `gap error names the axis — got "${gapErr.text}"`);
+    ok(/ends at [xyz]=/.test(gapErr.text) && /starts at [xyz]=/.test(gapErr.text),
+      `gap error names both parts' nearest faces — got "${gapErr.text}"`);
+    ok(/[\d.]+ (in|mm)/.test(gapErr.text), 'gap error carries formatted numbers');
+  }
 
   // Two internally-connected clusters are two pieces of furniture, not one.
   const splitR = pipeline({
@@ -910,6 +1253,10 @@ section('custom connections: joint KINDS are gated like template slots');
   eq(mk('staked_tenon', ['cylinder', 'slab']), 'staked_tenon', 'staked tenon leg-into-seat stays (frame kind, stick pair)');
   eq(mk('edge_glue', ['panel', 'panel']), 'edge_glue', 'edge glue-ups are legal panel-to-panel (the panel kind has a consumer)');
   eq(mk('mortise_tenon', ['post', 'rail']), 'dowels', 'level gating still applies on top of kind gating (M&T is advanced)');
+  // A1: kd_bolt is the one non-permanent joint the schema doc advertises for
+  // openable panels — case-kind pairs must keep it, never re-weld it to dado.
+  eq(mk('kd_bolt', ['panel', 'slab']), 'kd_bolt', 'kd_bolt survives on a panel-to-slab (case) pair — a tool-removable lid stays removable');
+  eq(mk('kd_bolt', ['post', 'rail']), 'kd_bolt', 'kd_bolt still legal on stick frames (bed rails)');
 }
 
 section('climate reaches the bench: wooden-runner clearance follows ΔMC');
@@ -964,14 +1311,31 @@ section('prompt budget: hard ceiling with measured headroom');
 {
   const sys = AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
   const tokens = Codec.estimateTokens(sys);
-  ok(tokens <= 1900, `system prompt stays under the 1900-token ceiling (measured ${tokens})`);
+  // Ceiling raised 1900 → 2000 for the A5 exclusion-binding line (~80 tokens,
+  // deliberate spend), then 2000 → 2040 for the C1 bed-size anchor rows
+  // (~35 tokens); the guard still catches accidental bloat.
+  ok(tokens <= 2040, `system prompt stays under the 2040-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
+  // A1: mechanism honesty — the wire cannot carry hinges/lids/doors, and the
+  // schema doc must SAY so (kd_bolt is the only non-permanent joint) so the
+  // model never narrates motion the parts lack.
+  ok(/NOT expressible/.test(Codec.SCHEMA_DOC) && /except kd_bolt/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC states mechanisms are inexpressible (kd_bolt the only non-permanent joint)');
+  ok(/hinge/.test(Codec.SCHEMA_DOC) && /never claim motion/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC names hinge-class mechanisms and forbids claiming motion the parts lack');
   // The ANSWER shape: pure advice is legal wire, not a validation failure.
   const info = AI.classify({ i: 'Use wipe-on poly.' });
   eq([info.kind, info.text], ['info', 'Use wipe-on poly.'], 'ANSWER replies classify as info');
   ok(AI.classify({ q: 'which?', a: ['a', 'b'] }).kind === 'question', 'question shape unchanged');
+  // A5: stated exclusions bind the session — the prompt must say so and name
+  // the all-wood joinery escape hatch, or "zero hardware" gets silently
+  // reframed over a screw-filled BOM (observed live: V-a5-2).
+  ok(/EXCLUSIONS:/.test(sys) && /binds the WHOLE session/.test(sys),
+    'system prompt states that stated exclusions bind the whole session');
+  ok(/screws\/bolts ARE metal/.test(sys) && /mortise_tenon/.test(sys) && /never silently reframe/.test(sys),
+    'the exclusion line names metal fasteners as metal, all-wood joints, and forbids silent reframes');
 }
 
 section('word-number lengths and storage driver honesty');
@@ -1045,10 +1409,145 @@ async function testNamePhrasing() {
   ok(/5 feet/i.test(name), 'chat-route name keeps "about 5 feet tall"');
 }
 
+/* C8, probe-P8 shape: an ANSWER reply arriving in a validation-refinement
+ * round classifies as info via respond() end-to-end, so the loop can show its
+ * text and stop instead of deep-merging undefined and burning the round. */
+async function testMidRoundInfo() {
+  section('respond(): a mid-round ANSWER reply triages as info (C8/P8)');
+  AI.setTransport(async () => ({ text: '{"i":"The overhang is the problem — shorten the top instead."}', stopReason: 'end_turn' }));
+  const spec = Spec.correctSpec(Spec.defaultSpec('table'));
+  const res = await AI.respond('Your proposal failed validation: parts never touch. Return a corrected reply, minified wire JSON only.', spec, { turns: [] });
+  AI.setTransport(null);
+  eq(AI.roundDecision(res), 'info', 'the refinement loop sees info, not an appliable no-op');
+  ok(/overhang/.test(res.reply.text), 'and the text survives for botSay');
+}
+
+/* C6: every model fetch carries an abort timeout so a hung connection can
+ * never pin the chat busy forever. The 60 s wall itself is not waited on in
+ * tests — we assert the signal is wired and that an abort rejection resolves
+ * into the existing fallback path. */
+async function testFetchTimeout() {
+  section('AI transport: model fetches carry an abort timeout (C6)');
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const load = globals => {
+    const ctx = vm.createContext(globals);
+    for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, { filename: 'C6-' + f });
+    return ctx.BB;
+  };
+  let seenOpts = null;
+  const wired = load({
+    console, window: {}, document: {}, AbortSignal,
+    fetch: async (url, opts) => { seenOpts = opts; return { status: 200, ok: true, json: async () => ({ content: [{ type: 'text', text: '{"o":{"h":700},"e":"ok"}' }], stop_reason: 'end_turn' }) }; }
+  });
+  const spec6 = wired.Spec.correctSpec({ meta: { template: 'table' } });
+  const okRes = await wired.AI.respond('make it walnut', spec6, { turns: [] });
+  ok(okRes.local === false, 'stubbed proxy answers remotely');
+  ok(seenOpts && seenOpts.signal instanceof AbortSignal, 'the proxy fetch receives an AbortSignal timeout');
+  // A timeout abort rejects the fetch and rides the existing offline-fallback
+  // catch path — never an unhandled hang.
+  const aborted = load({
+    console, window: {}, document: {}, AbortSignal,
+    fetch: async () => { const e = new Error('The operation was aborted'); e.name = 'TimeoutError'; throw e; }
+  });
+  const abRes = await aborted.AI.respond('make it walnut', aborted.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(abRes.local === true && abRes.reply && abRes.reply.kind === 'diff', 'an aborted fetch degrades to the local parser, not a hang');
+  // Environments without AbortSignal.timeout keep working (no signal, old behavior).
+  const legacy = load({
+    console, window: {}, document: {},
+    fetch: async () => ({ status: 200, ok: true, json: async () => ({ content: [{ type: 'text', text: '{"o":{"h":700},"e":"ok"}' }], stop_reason: 'end_turn' }) })
+  });
+  const lgRes = await legacy.AI.respond('make it walnut', legacy.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(lgRes.local === false, 'hosts without AbortSignal.timeout still transport');
+}
+
+/* C7: a single transient fetch rejection benches the proxy for a TTL, not
+ * forever — restored connectivity brings the model back without a reload. */
+async function testTransportTTL() {
+  section('AI transport: network death is a TTL bench, not forever (C7)');
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  let failures = 1;
+  const ctx = vm.createContext({
+    console, window: {}, document: {},
+    fetch: async () => {
+      if (failures > 0) { failures--; throw new Error('network blip'); }
+      return { status: 200, ok: true, json: async () => ({ content: [{ type: 'text', text: '{"o":{"h":700},"e":"ok"}' }], stop_reason: 'end_turn' }) };
+    }
+  });
+  for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, { filename: 'C7-' + f });
+  const B = ctx.BB;
+  const spec7 = B.Spec.correctSpec({ meta: { template: 'table' } });
+  const r1 = await B.AI.respond('make it walnut', spec7, { turns: [] });
+  ok(r1.local === true, 'the blip itself degrades that message to the local parser');
+  const r2 = await B.AI.respond('make it pine', spec7, { turns: [] });
+  ok(r2.local === true, 'within the TTL the proxy stays benched (no hammering a dead network)');
+  // The TTL elapses (fake the clock inside the context — ai.js reads Date.now()).
+  vm.runInContext('(() => { const real = Date.now.bind(Date); Date.now = () => real() + 31000; })()', ctx);
+  const r3 = await B.AI.respond('make it cherry', spec7, { turns: [] });
+  ok(r3.local === false && r3.reply && r3.reply.kind === 'diff',
+    'after the TTL the next message reaches the proxy again — never offline forever');
+  // Permanent deaths stay permanent: a 404 origin never retries.
+  const ctx404 = vm.createContext({
+    console, window: {}, document: {},
+    fetch: async () => ({ status: 404, ok: false, json: async () => ({}) })
+  });
+  for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx404, { filename: 'C7b-' + f });
+  const B4 = ctx404.BB;
+  await B4.AI.respond('make it walnut', B4.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  vm.runInContext('(() => { const real = Date.now.bind(Date); Date.now = () => real() + 31000; })()', ctx404);
+  const r404 = await B4.AI.respond('make it pine', B4.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(r404.local === true, 'a 404 (route truly absent) stays permanent — no TTL retry');
+}
+
+/* C15: when continuations exhaust and the stitched reply still parses to
+ * null, the error names TRUNCATION and the failed exchange stays in the
+ * returned turns (P7 4-chunk mock: the retry restarts from scratch and can
+ * never finish either). */
+async function testTruncationExhaustion() {
+  section('respond(): continuation exhaustion names truncation and keeps the exchange (C15)');
+  const novel = Spec.correctSpec(BB.SelfTest.bigComposition());
+  const wire = JSON.stringify({ N: Codec.encode(novel), e: 'oversized rack' });
+  const CH = Math.ceil(wire.length / 4);
+  const chunks = [0, 1, 2, 3].map(i => wire.slice(i * CH, (i + 1) * CH));
+  let call = 0, calls = 0;
+  AI.setTransport(async (system, messages) => {
+    calls++;
+    const last = messages[messages.length - 1];
+    if (/not valid wire-format JSON/.test(String(last.content))) call = 0; // model restarts on the retry
+    const i = Math.min(call, 3); call++;
+    // 4 chunks but only 1+2 continuations allowed: the 3rd call still says
+    // max_tokens, so the stitched text is 3/4 of the wire and unparseable.
+    return { text: chunks[i], stopReason: 'max_tokens' };
+  });
+  const base = Spec.correctSpec(Spec.defaultSpec('table'));
+  const res = await AI.respond('a forty part rack', base, { turns: [] });
+  AI.setTransport(null);
+  ok(res.reply === null && !!res.error, 'exhaustion still fails closed');
+  ok(res.truncated === true, 'the result is marked truncated');
+  ok(/overflow|response limit/i.test(res.error) && !/never produced a valid design reply/.test(res.error),
+    `the error names truncation, not the generic invalid-reply line — got "${res.error}"`);
+  eq(res.turns.length, 2, 'the failed user message and attempt stay in the returned turns');
+  ok(res.turns[0].role === 'user' && /forty part rack/.test(res.turns[0].content), 'the user message is retained');
+  ok(res.turns[1].role === 'assistant' && res.turns[1].content.length <= 1500, 'the attempt is retained, capped');
+  eq(calls, 6, 'hard-fails after 6 transport calls (3 + retry 3)');
+  // A plain invalid reply (no truncation) keeps the generic line.
+  AI.setTransport(async () => ({ text: 'no json here', stopReason: 'end_turn' }));
+  const res2 = await AI.respond('gibberish', base, { turns: [] });
+  AI.setTransport(null);
+  ok(!res2.truncated && /never produced a valid design reply/.test(res2.error), 'non-truncated failures keep the generic line');
+  // ui.js parity: the error path adopts the returned turns.
+  const uiSrc2 = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.js'), 'utf8');
+  ok(/if \(res\.error\) \{\n\s+\/\/ C15/.test(uiSrc2) && /res\.turns\.slice\(-24\)/.test(uiSrc2),
+    'ui.js adopts the failed exchange into state.turns on error');
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
   await testKeylessProxyState();
   await testNamePhrasing();
+  await testMidRoundInfo();
+  await testFetchTimeout();
+  await testTransportTTL();
+  await testTruncationExhaustion();
   section('self-test suite (headless run)');
   const results = await BB.SelfTest.run();
   for (const r of results) {

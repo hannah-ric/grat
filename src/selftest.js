@@ -254,6 +254,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       const wLine = K.knowledgeDigest().split('\n')[0];
       const wOk = Object.values(K.WOOD_SPECIES).every(s => wLine.includes(`${s.key}(janka ${s.janka}`));
       test('digest', 'wood digest line carries every species from the table', wOk, wOk ? 'all present' : 'missing species', 'all present');
+      // C1: bed-size anchors must regenerate into the digest, so a "for my
+      // king bed" implication resolves against the real mattress width.
+      const kingBed = K.ergoRow('king_bed_width');
+      test('digest', 'bed-size anchor rows ride the knowledge digest (C1)',
+        !!kingBed && kingBed.min >= 1900 && K.knowledgeDigest().includes(`king_bed_width ${kingBed.min}–${kingBed.max}mm`),
+        kingBed ? `king_bed_width ${kingBed.min}–${kingBed.max}` : 'row missing', 'king row generated into digest');
+      // C12: the standard sheet regenerates from LUMBER.SHEET — the table the
+      // packer actually packs onto — so sheet-budget asks design against it.
+      const sh = K.LUMBER.SHEET;
+      test('digest', 'sheet size line regenerates from LUMBER.SHEET (C12)',
+        K.knowledgeDigest().includes(`SHEET(mm): ${sh.W}×${sh.L}, thickness ${sh.THICKNESSES.join('/')}`),
+        'generated line present', 'generated line present');
     }
 
     /* ============ 2026 knowledge expansion: full engine coverage ============
@@ -426,7 +438,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 1900-token ceiling', tk <= 1900 && tk > 800, tk + ' tokens', '≤ 1900');
+      test('hardening', 'system prompt under the 2040-token ceiling', tk <= 2040 && tk > 800, tk + ' tokens', '≤ 2040'); // raised for the A5 exclusion line, then the C1 bed anchors
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
 

@@ -236,6 +236,62 @@ const summarize = (name, r, ig, extra) => {
     ok(bomb.spec.custom && bomb.spec.custom.parts.length <= 40, 'the 500-part bomb truncates to the cap', bomb.spec.custom && bomb.spec.custom.parts.length);
   }
 
+  /* ---------- custom-grammar partial diffs stay surgical (A4) ---------- */
+  {
+    const cbase = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: 'intermediate' } }));
+    // p-only diff (material/dimension edit): the connection graph must survive.
+    const wireP = Codec.encode(cbase).p.map(a => a.slice());
+    wireP.forEach(a => { a[11] = 1; }); // STK 1 = sheet, an all-parts material flip
+    const pRes = AI.apply(AI.classify(AI.extractJSON(JSON.stringify({ p: wireP, e: 'ply' }))), cbase);
+    const pR = pipeline(pRes.spec);
+    out.cases.push({ name: 'custom p-only diff', conns: pRes.spec.custom.connections.length, errors: pR.report.errors.map(e => e.id) });
+    console.log(`\n■ custom p-only diff: connections kept=${pRes.spec.custom.connections.length}, errors=${pR.report.errors.length}`);
+    ok(pRes.spec.custom.connections.length === 2, 'p-only diff commits with the connection graph intact', pRes.spec.custom.connections);
+    ok(!pR.report.errors.some(e => e.id.startsWith('float_')), 'no "appears in no connection" errors from a material edit', pR.report.errors);
+    // c-only diff (joint upgrade): decodes and changes the corrected joints.
+    const cRes = AI.apply(AI.classify(AI.extractJSON('{"c":[[1,0,3],[2,0,3]],"e":"dado the legs in"}')), cbase);
+    out.cases.push({ name: 'custom c-only diff', joints: cRes.spec.custom.connections.map(c => c.joint) });
+    console.log(`■ custom c-only diff: joints=${cRes.spec.custom.connections.map(c => c.joint).join(',')}`);
+    ok(cRes.spec.custom.connections.length === 2 && cRes.spec.custom.connections.every(c => c.joint === 'dado'),
+      'c-only joint upgrade decodes, applies, and changes the corrected joints', cRes.spec.custom.connections);
+    ok(cRes.spec.custom.parts.length === 3, 'c-only diff leaves the parts untouched', cRes.spec.custom.parts.length);
+  }
+
+  /* ---------- rejected proposals leave a marker in the conversation (B9) ---------- */
+  {
+    const base = Spec.correctSpec(Spec.defaultSpec('table'));
+    // The model proposes an unbuildable custom piece (two jointed parts that
+    // never touch). PRIM slab=3, rail=1; part = [PRIM,x,y,z,l,w,t,rx,ry,rz,GRAIN,STK,LB,SURF,role].
+    const badWire = {
+      N: {
+        v: 4, n: 'Bad', t: 6, l: 0, u: 1, o: [600, 300, 500], m: 3, s: {}, j: [1, 0, 1], f: 0, d: 0,
+        p: [[3, 0, 250, 0, 600, 300, 19, 0, 0, 0, 0, 0, 1, 2, 'top'],
+          [1, 0, 480, 900, 400, 60, 20, 0, 0, 0, 0, 0, 0, 0, 'rail']],
+        c: [[0, 1, 2]]
+      }, e: 'floating rail'
+    };
+    AI.setTransport(async () => ({ text: JSON.stringify(badWire), stopReason: 'end_turn' }));
+    const res = await AI.respond('add a floating rail', base, { turns: [] });
+    const applied = AI.apply(res.reply, base);
+    const r = pipeline(applied.spec);
+    ok(r.report.errors.length > 0, 'B9 fixture really is unbuildable', r.report.errors.map(e => e.id));
+    // The app's unbuildable path (ui.js aiPipeline / harness runner): the
+    // rejected exchange stays in the turns, followed by the code-built marker.
+    const kept = res.turns.concat(AI.rejectionMarker(r.report.errors)).slice(-24);
+    let seen = null;
+    AI.setTransport(async (system, messages) => { seen = messages; return { text: '{"e":"ok"}', stopReason: 'end_turn' }; });
+    await AI.respond('make it walnut', base, { turns: kept });
+    AI.setTransport(null);
+    const marked = !!seen && seen.some(m => m.role === 'user' && /REJECTED/.test(m.content) && /UNCHANGED/.test(m.content));
+    out.cases.push({ name: 'rejection marker', errors: r.report.errors.length, marked });
+    console.log(`\n■ rejection marker (B9): unbuildable errors=${r.report.errors.length}, next-turn marker seen=${marked}`);
+    ok(marked, 'the next turn\'s messages carry the rejection marker', seen && seen.map(m => m.role + ': ' + String(m.content).slice(0, 60)));
+    ok(seen.some(m => m.role === 'assistant' && /floating rail/.test(String(m.content))),
+      'the rejected reply itself is still in context (the marker explains it)');
+    // A buildable turn never gains a marker — the marker is rejection-only.
+    ok(!res.turns.some(m => /REJECTED/.test(String(m.content))), 'respond() itself never injects the marker');
+  }
+
   /* ---------- share-code round trip ---------- */
   {
     const r = pipeline({
@@ -272,6 +328,33 @@ const summarize = (name, r, ig, extra) => {
     console.log(`\n■ continuation protocol: ${calls} calls, 25 parts reassembled=${okParts}`);
     ok(calls === 3, 'exactly two continuations stitch the oversized reply', calls);
     ok(okParts, 'all 25 parts reassemble across the seams');
+  }
+
+  /* ---------- step walkthrough: the outgoing call carries the code-built plan (C10) ---------- */
+  {
+    const spec = Spec.correctSpec({
+      meta: { name: 'Walk NS', template: 'nightstand', level: 'intermediate', units: 'in' },
+      overall: { width: 508, depth: 406.4, height: 609.6 }, wood: { species: 'walnut' },
+      drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+    });
+    const r = pipeline(spec);
+    const ig = integ(r);
+    const cut = Plans.cutList(r.spec, r.model);
+    const stock = Packing.planStock(r.spec, r.model, cut, {});
+    const steps = Plans.assembly(r.spec, r.model, ig, { stockPlan: stock });
+    let seen = null;
+    AI.setTransport(async (system, messages) => {
+      seen = messages;
+      return { text: '{"i":"Step 5 walkthrough."}', stopReason: 'end_turn' };
+    });
+    const res = await AI.respond('walk me through step 5', r.spec, { turns: [] });
+    AI.setTransport(null);
+    const block = seen && seen.map(m => String(m.content)).find(c => c.startsWith('[assembly]'));
+    out.cases.push({ name: 'step walkthrough context', hasBlock: !!block, kind: res.reply && res.reply.kind });
+    console.log(`\n■ step walkthrough (C10): [assembly] block sent=${!!block}`);
+    ok(!!block, 'the outgoing messages carry the code-built [assembly] block', seen && seen.map(m => String(m.content).slice(0, 40)));
+    ok(!!block && block.includes(`Step 5 = "${steps[4].title}"`), 'the block names the real step-5 title', block && block.slice(0, 200));
+    ok(res.reply && res.reply.kind === 'info', 'the reply stays an ordinary info answer', res.reply && res.reply.kind);
   }
 
   /* ---------- ANSWER shape (2026): advice replies are legal wire ---------- */

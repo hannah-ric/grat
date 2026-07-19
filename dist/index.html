@@ -2574,7 +2574,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     { key: 'platform_bed_height', label: 'Platform bed height', min: 300, max: 450, axis: 'height', appliesTo: ['platform_bed'], note: 'Mattress top should land {500} to {650} off the floor.' },
     { key: 'media_height', label: 'Media console height', min: 400, max: 600, axis: 'height', appliesTo: ['media_console'], note: 'Screen center near seated eye line, about {1000} to {1100}.' },
     { key: 'media_depth', label: 'Media console depth', min: 420, max: 500, axis: 'depth', appliesTo: ['media_console'], note: 'AV gear wants {420}+ plus cable clearance behind.' },
-    { key: 'floating_shelf_depth', label: 'Floating shelf depth', min: 200, max: 300, axis: 'depth', appliesTo: ['floating_shelf'], note: 'Past {250} deep, use a {32}+ thick shelf and a full-length cleat.' }
+    { key: 'floating_shelf_depth', label: 'Floating shelf depth', min: 200, max: 300, axis: 'depth', appliesTo: ['floating_shelf'], note: 'Past {250} deep, use a {32}+ thick shelf and a full-length cleat.' },
+    /* Bed-size width anchors (AI-review C1): a "for my king bed" implication
+     * needs a real number to resolve against, or end-of-bed pieces ship 600 mm
+     * narrow while claiming king sizing. min–max are US standard mattress
+     * widths — twin 38–39 in, full/double 54–55 in, queen 60 in, king
+     * (Eastern) 76–78 in, California king 72 in; lengths ride the notes.
+     * appliesTo names the bed class ahead of any bed template, same as the
+     * 2026 rows above — validation only fires for templates that exist. */
+    { key: 'twin_bed_width', label: 'Twin bed width', min: 965, max: 990, axis: 'width', appliesTo: ['bed'], note: 'Mattress {965} to {990} wide × {1905} long.' },
+    { key: 'full_bed_width', label: 'Full bed width', min: 1372, max: 1397, axis: 'width', appliesTo: ['bed'], note: 'Mattress {1372} to {1397} wide × {1905} long.' },
+    { key: 'queen_bed_width', label: 'Queen bed width', min: 1524, max: 1524, axis: 'width', appliesTo: ['bed'], note: 'Mattress {1524} wide × {2030} long.' },
+    { key: 'king_bed_width', label: 'King bed width', min: 1930, max: 1980, axis: 'width', appliesTo: ['bed'], note: 'Eastern king mattress {1930} to {1980} wide × {2030} long; an end-of-bed piece matches the mattress width or is a stated narrower choice.' },
+    { key: 'cal_king_bed_width', label: 'California king bed width', min: 1829, max: 1829, axis: 'width', appliesTo: ['bed'], note: 'Mattress {1829} wide × {2134} long.' }
   ];
 
   /* ---------------- 3c. Joinery matrix ----------------
@@ -2740,7 +2752,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     },
     kd_bolt: {
       key: 'kd_bolt', label: 'Knockdown bolt', plural: 'knockdown bolts', strength: 4, difficulty: 2, level: 'beginner',
-      kinds: ['frame'],
+      // 'case' too (A1): barrel-nut bolts are the canonical knock-down CASE
+      // fastener (access panels, bolted carcasses) — and the only honest
+      // joint for a tool-removable lid/panel, so gating must not rewrite it
+      // into a permanent joint the explain then lies about.
+      kinds: ['frame', 'case'],
       tools: ['drill + brad-point bits', 'doweling jig', 'hex key'],
       bestFor: 'Bed rails, big tables, and anything that must fit through a doorway again someday — steel strength, tool-free service.',
       failure: 'The barrel-nut bore drifting off the bolt axis — drill both holes from the same reference face with a jig, never freehand.'
@@ -3085,7 +3101,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   function knowledgeDigest() {
     const w = Object.values(WOOD_SPECIES).map(s =>
       `${s.key}(janka ${s.janka},move ${s.movement},$${'●'.repeat(s.costTier)})`).join(' ');
-    const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min}–${r.max}mm`).join('; ');
+    // min===max rows (single standard sizes, e.g. queen_bed_width) print one
+    // number — "1524–1524mm" spent tokens saying nothing.
+    const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min === r.max ? r.min : `${r.min}–${r.max}`}mm`).join('; ');
     // strength only: each joint's level already rides the LEVEL MATRIX line —
     // repeating it here spent ~50 prompt tokens saying the same thing twice.
     const j = Object.values(JOINERY).map(x => `${x.key}(str ${x.strength})`).join(' ');
@@ -3094,7 +3112,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       'ERGONOMICS(mm): ' + e,
       'JOINERY: ' + j,
       levelMatrixLine(),
-      'SLIDES(mm): ' + SLIDE_LENGTHS.join(',')
+      'SLIDES(mm): ' + SLIDE_LENGTHS.join(','),
+      // C12: the packer's real sheet — sheet-budget requests ("one sheet of
+      // ply") must be designed against these dimensions, not a guessed prior.
+      `SHEET(mm): ${LUMBER.SHEET.W}×${LUMBER.SHEET.L}, thickness ${LUMBER.SHEET.THICKNESSES.join('/')}`
     ].join('\n');
   }
 
@@ -4586,9 +4607,107 @@ var BB = globalThis.BB = globalThis.BB || {};
     const out = [];
     for (const p of [...paths].sort()) {
       if (!p) continue;
+      if (p === 'custom' || p.startsWith('custom.')) continue; // summarized part-by-part below (B5)
       const va = get(a, p), vb = get(b, p);
       if (isObj(va) || isObj(vb)) continue;
       if (JSON.stringify(va) !== JSON.stringify(vb)) out.push({ path: p, from: va, to: vb });
+    }
+    out.push(...diffCustom(a, b));
+    return out;
+  }
+
+  /* Custom compositions used to diff as one array leaf ("10 items → 10
+   * items") — a full material flip or a joint change was invisible (B5).
+   * Summarize part- and connection-level changes in human terms instead,
+   * aggregating when the same change hits many parts. Entries may carry
+   * `label` (chip title override) or `text` (a whole pre-built chip); numeric
+   * dim entries keep raw mm so chips re-render on a display-unit switch. */
+  function diffCustom(a, b) {
+    const ca = (a && a.custom) || {};
+    const cb = (b && b.custom) || {};
+    const pa = Array.isArray(ca.parts) ? ca.parts : [];
+    const pb = Array.isArray(cb.parts) ? cb.parts : [];
+    if (!pa.length && !pb.length) return [];
+    const out = [];
+    if (pa.length !== pb.length) {
+      out.push({ path: 'custom.parts', label: 'composition', from: pa.length + ' parts', to: pb.length + ' parts' });
+    }
+    const partName = p => (p.role && p.role !== p.primitive ? p.role : p.id);
+    // A part's material is its stock resolved against that spec's wood choice.
+    const stockLabel = (p, spec) => {
+      const w = (spec && spec.wood) || {};
+      const key = p.stock === 'sheet' ? (w.sheetSpecies || 'baltic_birch') : (w.species || 'red_oak');
+      return (K.WOOD_SPECIES[key] && K.WOOD_SPECIES[key].label) || String(key).replace(/_/g, ' ');
+    };
+    // Per-part field diffs on parts present in both sides (canonical p1..pN
+    // ids match by index). Positions are deliberately skipped: re-grounding
+    // and re-centering shift every part and would drown the real changes.
+    const n = Math.min(pa.length, pb.length);
+    const FIELDS = [
+      { key: 'stock', label: 'stock', get: p => p.stock, fmtFrom: c => stockLabel(c.pa, a), fmtTo: c => stockLabel(c.pb, b) },
+      { key: 'primitive', label: 'primitive', get: p => p.primitive },
+      { key: 'len', label: 'length', get: p => p.dim.l },
+      { key: 'wid', label: 'width', get: p => p.dim.w },
+      { key: 'thk', label: 'thickness', get: p => p.dim.t }
+    ];
+    for (const f of FIELDS) {
+      const changed = [];
+      for (let i = 0; i < n; i++) {
+        if (JSON.stringify(f.get(pa[i])) !== JSON.stringify(f.get(pb[i]))) {
+          changed.push({ pa: pa[i], pb: pb[i] });
+        }
+      }
+      if (!changed.length) continue;
+      const path = 'custom.part.' + f.key; // mm formatting keys off this prefix
+      const vFrom = c => (f.fmtFrom ? f.fmtFrom(c) : f.get(c.pa));
+      const vTo = c => (f.fmtTo ? f.fmtTo(c) : f.get(c.pb));
+      const from0 = vFrom(changed[0]), to0 = vTo(changed[0]);
+      const uniform = changed.every(c => JSON.stringify(vFrom(c)) === JSON.stringify(from0) &&
+        JSON.stringify(vTo(c)) === JSON.stringify(to0));
+      if (uniform && changed.length > 2) {
+        const who = changed.length === n && pa.length === pb.length ? 'all parts' : changed.length + ' parts';
+        out.push({ path, label: who + ' ' + f.label, from: from0, to: to0 });
+      } else if (changed.length <= 4) {
+        for (const c of changed) out.push({ path, label: partName(c.pb) + ' ' + f.label, from: vFrom(c), to: vTo(c) });
+      } else {
+        out.push({ path, text: changed.length + ' parts changed ' + f.label });
+      }
+    }
+    // Connections: joint changes on surviving pairs, plus added/removed pairs.
+    const pairKey = c => (c.a < c.b ? c.a + '|' + c.b : c.b + '|' + c.a);
+    const mapA = new Map(), mapB = new Map();
+    for (const c of (Array.isArray(ca.connections) ? ca.connections : [])) mapA.set(pairKey(c), c);
+    for (const c of (Array.isArray(cb.connections) ? cb.connections : [])) mapB.set(pairKey(c), c);
+    const byIdA = new Map(pa.map(p => [p.id, p])), byIdB = new Map(pb.map(p => [p.id, p]));
+    const connName = (c, byId) => {
+      const x = byId.get(c.a), y = byId.get(c.b);
+      return (x ? partName(x) : c.a) + '–' + (y ? partName(y) : c.b);
+    };
+    const jointChanges = [], added = [], removed = [];
+    for (const [k, cn] of mapB) {
+      const prev = mapA.get(k);
+      if (!prev) added.push(cn);
+      else if (prev.joint !== cn.joint) jointChanges.push({ prev, cn });
+    }
+    for (const [k, cn] of mapA) if (!mapB.has(k)) removed.push(cn);
+    if (jointChanges.length) {
+      const jf0 = jointChanges[0].prev.joint, jt0 = jointChanges[0].cn.joint;
+      const uniformJ = jointChanges.every(j => j.prev.joint === jf0 && j.cn.joint === jt0);
+      if (uniformJ && jointChanges.length > 2) {
+        out.push({ path: 'custom.joint', label: jointChanges.length + ' joints', from: jf0, to: jt0 });
+      } else if (jointChanges.length <= 4) {
+        for (const j of jointChanges) out.push({ path: 'custom.joint', label: connName(j.cn, byIdB) + ' joint', from: j.prev.joint, to: j.cn.joint });
+      } else {
+        out.push({ path: 'custom.joint', text: jointChanges.length + ' joints changed' });
+      }
+    }
+    if (added.length) {
+      if (added.length <= 2) for (const c of added) out.push({ path: 'custom.conn', text: 'joined ' + connName(c, byIdB) + ' (' + fmtValue('custom.joint', c.joint) + ')' });
+      else out.push({ path: 'custom.conn', text: added.length + ' connections added' });
+    }
+    if (removed.length) {
+      if (removed.length <= 2) for (const c of removed) out.push({ path: 'custom.conn', text: 'disconnected ' + connName(c, byIdA) });
+      else out.push({ path: 'custom.conn', text: removed.length + ' connections removed' });
     }
     return out;
   }
@@ -4608,7 +4727,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     'finish': 'finish', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
   };
-  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness)/;
+  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|custom\.part\.(len|wid|thk)$)/;
 
   /* Diff-chip / inspector value rendering. Lengths route through BB.Units —
    * the current display preference, NOT a per-call unit, decides the text. */
@@ -4629,9 +4748,148 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function describeDiff(diffs) {
     return diffs.map(d => {
-      const label = PATH_LABELS[d.path] || d.path;
+      if (d.text) return d.text; // pre-built chip (custom composition summary)
+      const label = d.label || PATH_LABELS[d.path] || d.path;
       return `${label} ${fmtValue(d.path, d.from)} → ${fmtValue(d.path, d.to)}`;
     });
+  }
+
+  /* ---------------- ack reconciliation (A2, merges B4/C4) ----------------
+   * The chat ack is the model's FIRST "explain", shown after correction,
+   * validation-refinement, and critique rounds may have changed or reverted
+   * what it describes. Code — never the model — checks the enumerated
+   * contradiction classes seen live and appends the code-built truth:
+   *   - a species word that isn't the delivered wood ("hard maple" over soft maple)
+   *   - a drawer-count numeral vs the delivered drawers ("three drawers" over 2)
+   *   - leg words on a legless design ("splayed legs" on a bookshelf)
+   *   - mechanism words (hinge/fold/pivot/lift-off) no artifact contains
+   *   - a requested dimension that did not survive to the final spec (B4)
+   *   - a requested change that changed nothing (the false-ack surface)
+   * plus a caveat naming wire keys the codec ignored (C4).
+   * Pure: (explain, correctedSpec, chips, requested) -> ack text.
+   * requested = { patch: verbose patch of the shown reply, ignored: [keys] }. */
+  function reconcileAck(explain, spec, chips, requested) {
+    let text = String(explain || '').trim();
+    if (!text || !spec) return text;
+    const low = ' ' + text.toLowerCase().replace(/[’]/g, "'") + ' ';
+    const fixes = [];
+    // A mention is honest when its own clause already negates it ("no hinges",
+    // "a hinged lid isn't expressible") — never "correct" honesty.
+    const NEG = /\b(no|not|never|without|can't|cannot|isn't|aren't|won't|doesn't|don't|instead of|rather than|unable|lacks?|omit(?:ted|s)?)\b/;
+    const clauseAt = i => {
+      const before = low.slice(0, i).split(/[,.;:!?()]|\s[—–-]\s/).pop();
+      const after = low.slice(i).split(/[,.;:!?()]|\s[—–-]\s/)[0];
+      return before + after;
+    };
+    const mentioned = rx => {
+      const m = rx.exec(low);
+      return m ? !NEG.test(clauseAt(m.index)) : false;
+    };
+    const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
+
+    // 1. Species words vs the delivered wood (solid or sheet).
+    {
+      const actual = K.WOOD_SPECIES[spec.wood && spec.wood.species];
+      const sheetSp = K.WOOD_SPECIES[spec.wood && spec.wood.sheetSpecies];
+      const okNames = []
+        .concat(actual ? [actual.label.toLowerCase()].concat(actual.aliases || []) : [])
+        .concat(sheetSp ? [sheetSp.label.toLowerCase()].concat(sheetSp.aliases || []) : []);
+      const candidates = [];
+      for (const s of Object.values(K.WOOD_SPECIES)) {
+        if (spec.wood && (s.key === spec.wood.species || s.key === spec.wood.sheetSpecies)) continue;
+        for (const nm of [s.label.toLowerCase()].concat(s.aliases || [])) candidates.push(nm);
+      }
+      candidates.sort((x, y) => y.length - x.length); // "hard maple" beats "maple"
+      for (const nm of candidates) {
+        if (!mentioned(rxWord(nm))) continue;
+        // A generic word inside the real species' name ("maple" when the
+        // delivered wood is soft maple) is not a contradiction.
+        if (okNames.some(o => o.includes(nm) || nm.includes(o))) break;
+        if (actual) fixes.push('the delivered wood is ' + actual.label.toLowerCase());
+        break;
+      }
+    }
+
+    // 2. Drawer-count numerals vs the delivered drawers.
+    let drawerFixed = false;
+    {
+      const m = /\b(\d+|one|two|three|four)\s+drawers?\b/.exec(low);
+      if (m && !NEG.test(clauseAt(m.index))) {
+        const WORDS = { one: 1, two: 2, three: 3, four: 4 };
+        const n = WORDS[m[1]] || parseInt(m[1], 10);
+        const have = spec.drawers ? spec.drawers.count : 0;
+        if (isFinite(n) && n !== have) {
+          fixes.push(have ? 'the delivered design has ' + have + ' drawer' + (have === 1 ? '' : 's') : 'no drawers in this design');
+          drawerFixed = true;
+        }
+      }
+    }
+
+    // 3. Leg words on a legless design.
+    {
+      let hasLegs = ['table', 'desk', 'bench', 'nightstand'].includes(spec.meta && spec.meta.template);
+      if (spec.meta && spec.meta.template === 'custom' && spec.custom) {
+        hasLegs = (spec.custom.parts || []).some(p => /leg/.test(p.role || '') || p.primitive === 'post' || p.primitive === 'cylinder');
+      }
+      if (!hasLegs && mentioned(/\blegs?\b/)) fixes.push('no legs in this design');
+    }
+
+    // 4. Mechanism words no artifact can contain (kd_bolt is the only
+    // non-permanent joint, so an honest lift-off claim needs one).
+    {
+      const hasKD = ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'kd_bolt') ||
+        ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'kd_bolt');
+      if (mentioned(/\b(hinged?|hinges|pivot(?:s|ing)?|fold(?:s|ing|able)?(?:[\s-](?:down|out|up|flat))?)\b/)) {
+        fixes.push('nothing hinges, folds, or pivots in this plan — every connection is fixed' + (hasKD ? ' or bolted (kd_bolt)' : ''));
+      } else if (!hasKD && mentioned(/\blifts?[\s-]?off\b/)) {
+        fixes.push('the lid/top is permanently fastened — no lift-off connection exists in this plan');
+      }
+    }
+
+    // 5. Requested values that did not survive to the delivered spec (B4).
+    const patch = requested && requested.patch;
+    if (patch && patch.overall && spec.overall) {
+      for (const dim of ['width', 'depth', 'height']) {
+        const want = patch.overall[dim];
+        if (typeof want !== 'number' || !isFinite(want)) continue;
+        const got = spec.overall[dim];
+        if (typeof got === 'number' && Math.abs(want - got) > 5) {
+          fixes.push(dim + ' is ' + U().fmtLength(got) + ', not the proposed ' + U().fmtLength(want));
+        }
+      }
+    }
+    if (!drawerFixed && patch && patch.drawers && typeof patch.drawers.count === 'number') {
+      const have = spec.drawers ? spec.drawers.count : 0;
+      if (patch.drawers.count !== have) {
+        fixes.push(have ? 'the delivered design has ' + have + ' drawer' + (have === 1 ? '' : 's') : 'no drawers in this design');
+      }
+    }
+
+    // 6. A requested change that changed nothing at all.
+    if ((!chips || !chips.length) && !fixes.length && patch && Object.keys(patch).length) {
+      fixes.push('nothing in the delivered design actually changed');
+    }
+
+    let out = text;
+    if (fixes.length) out = out.replace(/[.\s]*$/, '') + '. Actually: ' + fixes.join('; ') + '.';
+    const ign = requested && Array.isArray(requested.ignored) ? requested.ignored.filter(Boolean) : [];
+    if (ign.length) out += ' (I couldn’t express and ignored: ' + ign.slice(0, 4).join(', ') + '.)';
+    return out;
+  }
+
+  /* Integrity honesty line for the chat ack (A3): a failing verdict is never
+   * hidden behind a cheerful blurb, whatever the commit source. Photo flows
+   * keep their fuller phrasing (proportions were estimated, so even a clean
+   * report is worth stating). */
+  function integrityLine(summary, opts) {
+    if (!summary) return '';
+    if (opts && opts.photo) {
+      const t = summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass';
+      return ` Integrity: ${t} — full report in the Safety tab.`;
+    }
+    return summary.fails
+      ? ` Integrity: ${summary.fails} failing check${summary.fails > 1 ? 's' : ''} — see the Safety tab before building.`
+      : '';
   }
 
   function snap(v, table) {
@@ -4808,6 +5066,48 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { w: r1(maxX - minX), d: r1(maxZ - minZ), h: r1(maxY) };
   }
 
+  /* Scale a custom composition to a target overall size (B3). Custom overall
+   * is DERIVED from part extents, so an overall-only refinement would be a
+   * silent no-op — instead code scales the composition: positions per world
+   * axis (about the floor plane and x/z center), and each part dim by the
+   * world axis its local dimension dominantly spans (same local axes as
+   * customPartSize, rotated by the part's rot). Thickness re-snaps in
+   * correctCustom. Returns new {parts, connections} or null when there is
+   * nothing to scale. */
+  const SCALE_LOCAL_AXES = {
+    post: { l: [0, 1, 0], w: [1, 0, 0], t: [0, 0, 1] },
+    cylinder: { l: [0, 1, 0], w: [1, 0, 0], t: [1, 0, 0] },
+    slab: { l: [1, 0, 0], w: [0, 0, 1], t: [0, 1, 0] },
+    rail: { l: [1, 0, 0], w: [0, 1, 0], t: [0, 0, 1] },
+    panel: { l: [1, 0, 0], w: [0, 1, 0], t: [0, 0, 1] }
+  };
+  function scaleCustom(spec, target) {
+    if (!spec || !spec.custom || !Array.isArray(spec.custom.parts) || !spec.custom.parts.length) return null;
+    const cur = customExtents(spec.custom.parts);
+    const f = {
+      x: num(target && target.width, 0) > 0 && cur.w > 0 ? clamp(target.width / cur.w, 0.05, 20) : 1,
+      y: num(target && target.height, 0) > 0 && cur.h > 0 ? clamp(target.height / cur.h, 0.05, 20) : 1,
+      z: num(target && target.depth, 0) > 0 && cur.d > 0 ? clamp(target.depth / cur.d, 0.05, 20) : 1
+    };
+    if (Math.abs(f.x - 1) < 1e-4 && Math.abs(f.y - 1) < 1e-4 && Math.abs(f.z - 1) < 1e-4) return null;
+    const out = clone(spec.custom);
+    for (const p of out.parts) {
+      const r = p.rot || { x: 0, y: 0, z: 0 };
+      const R = Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
+      const axes = SCALE_LOCAL_AXES[p.primitive] || SCALE_LOCAL_AXES.rail;
+      const scaled = {};
+      for (const dk of ['l', 'w', 't']) {
+        const v = Geo.mulMV(R, axes[dk]);
+        const ax = Math.abs(v[0]) >= Math.abs(v[1]) - 1e-9 && Math.abs(v[0]) >= Math.abs(v[2]) - 1e-9 ? 'x'
+          : (Math.abs(v[1]) >= Math.abs(v[2]) - 1e-9 ? 'y' : 'z');
+        scaled[dk] = r1(p.dim[dk] * f[ax]);
+      }
+      p.dim = scaled;
+      p.pos = { x: r1(p.pos.x * f.x), y: r1(p.pos.y * f.y), z: r1(p.pos.z * f.z) };
+    }
+    return out;
+  }
+
   /* ---------------- correction ----------------
    * Takes any proposed spec (AI or manual), returns the corrected spec the
    * whole app runs on. Deterministic, idempotent, never throws.
@@ -4947,6 +5247,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       corners.set(p.id, cs);
       minY.set(p.id, Math.min(...cs.map(c => c[1])));
     }
+    // World-axis bounds per part, for gap messages the model (and user) can
+    // act on numerically (A9).
+    const aabbOf = id => {
+      const cs = corners.get(id);
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      for (const c of cs) for (let ax = 0; ax < 3; ax++) {
+        min[ax] = Math.min(min[ax], c[ax]); max[ax] = Math.max(max[ax], c[ax]);
+      }
+      return { min, max };
+    };
 
     // 1. The floor plane is real: nothing passes through it, something rests on it.
     let globalMinY = Infinity;
@@ -5000,7 +5310,23 @@ var BB = globalThis.BB = globalThis.BB || {};
             const grown = Geo.partOBB(p);
             grown.e = grown.e.map(e => e + AUDIT.CONTACT_GAP);
             if (Geo.obbPenetration(grown, boxes.get(q.id)) == null) {
-              errors.push({ id: 'geom_gap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) are joined on paper but never touch — that joint can’t be built.` });
+              // Name the axis, the separation, and both parts' nearest faces
+              // (A9) — a purely verbal message gave the model nothing to fix.
+              const A = aabbOf(p.id), B = aabbOf(q.id);
+              let bestAx = 0, bestGap = -Infinity;
+              for (let ax = 0; ax < 3; ax++) {
+                const g = Math.max(B.min[ax] - A.max[ax], A.min[ax] - B.max[ax]);
+                if (g > bestGap) { bestGap = g; bestAx = ax; }
+              }
+              const AXIS = ['x', 'y', 'z'];
+              const geom = bestGap > 0.05
+                ? (() => {
+                  const aFirst = A.max[bestAx] <= B.min[bestAx];
+                  const [loP, loB, hiP, hiB] = aFirst ? [p, A, q, B] : [q, B, p, A];
+                  return ` They are ${fine(bestGap)} apart along ${AXIS[bestAx]}: “${loP.name}” ends at ${AXIS[bestAx]}=${fine(loB.max[bestAx])}, “${hiP.name}” starts at ${AXIS[bestAx]}=${fine(hiB.min[bestAx])} — move one so the faces meet.`;
+                })()
+                : '';
+              errors.push({ id: 'geom_gap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) are joined on paper but never touch — that joint can’t be built.${geom}` });
             }
           }
         } else if (!sameDrawer(p, q)) {
@@ -5212,9 +5538,9 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
-    defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
+    defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck, integrityLine,
     correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
-    customPartSize, customExtents, customGrainInfo, endGrainBearing
+    customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom
   };
 })();
 </script>
@@ -9425,18 +9751,34 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
       }
     }
+    /* Custom-grammar diffs stay surgical (A4): "p" and "c" are independent
+     * keys. A p-only diff must NOT wipe the existing connection graph
+     * (deepMerge clones arrays wholesale — omitting the key preserves it;
+     * correctCustom drops connections referencing removed parts), and a
+     * c-only diff (joint upgrades) must decode instead of nulling the turn. */
+    const mapConns = (list, max) => list
+      .filter(c => Array.isArray(c) && Number.isInteger(c[0]) && Number.isInteger(c[1]) &&
+        c[0] >= 0 && c[1] >= 0 && (max == null || (c[0] < max && c[1] < max)))
+      .map(c => ({ a: 'p' + (c[0] + 1), b: 'p' + (c[1] + 1), joint: at(JNT, c[2], 'butt_screws') }));
     if (Array.isArray(w.p)) {
       const parts = w.p.map(decodePart).filter(Boolean);
-      const conns = (Array.isArray(w.c) ? w.c : [])
-        .filter(c => Array.isArray(c) && c[0] >= 0 && c[1] >= 0 && c[0] < parts.length && c[1] < parts.length)
-        .map(c => ({ a: 'p' + (c[0] + 1), b: 'p' + (c[1] + 1), joint: at(JNT, c[2], 'butt_screws') }));
-      patch.custom = { parts, connections: conns };
+      patch.custom = { parts };
+      if (Array.isArray(w.c)) patch.custom.connections = mapConns(w.c, parts.length);
       patch.meta = patch.meta || {};
       patch.meta.template = 'custom';
+    } else if (Array.isArray(w.c)) {
+      // Ids map to p1..pN of the CURRENT parts; correctCustom validates them.
+      patch.custom = { connections: mapConns(w.c, null) };
     }
-    // Drop empty sub-objects so the merge stays surgical.
+    // Drop values that decoded to undefined (out-of-range enum indexes) so a
+    // bad index can never silently reset a field to its default (C4), then
+    // drop empty sub-objects so the merge stays surgical.
     for (const k of Object.keys(patch)) {
-      if (patch[k] && typeof patch[k] === 'object' && !Array.isArray(patch[k]) && !Object.keys(patch[k]).length) delete patch[k];
+      const v = patch[k];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const kk of Object.keys(v)) if (v[kk] === undefined) delete v[kk];
+        if (!Object.keys(v).length) delete patch[k];
+      } else if (v === undefined) delete patch[k];
     }
     return Object.keys(patch).length ? patch : null;
   }
@@ -9495,6 +9837,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
+    'Mechanisms (hinge/lift-off/fold/slide/door) NOT expressible — all JNT are permanent except kd_bolt (tool-removable). For openable asks build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
     'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
   ].join('\n');
 
@@ -9578,6 +9921,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
       'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
       'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
+      // A5: a stated exclusion must bind every later choice or be excepted
+      // out loud — never silently reframed (observed: "no metal hardware"
+      // acked over a 78-screw BOM).
+      'EXCLUSIONS: a stated exclusion ("no metal", "zero hardware", "no plywood") binds the WHOLE session — honor it in every joinery/hardware choice (screws/bolts ARE metal; all-wood JNT: dowels, mortise_tenon, loose_tenon, staked_tenon) or state the exception plainly in "e"; never silently reframe.',
       '--- knowledge digest ---',
       K.knowledgeDigest(),
       // Hardware style intent only — every count, rating, and bore is code
@@ -9589,18 +9936,23 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- JSON extraction ---------------- */
-  /* Extract the first balanced JSON object from model text. */
+  /* Extract the first PARSEABLE balanced JSON object from model text. A
+   * balanced-but-unparseable brace blob (prose like "dims ride keys {w,d,h}")
+   * no longer ends the scan (C5) — keep scanning from the next '{'. */
   function extractJSON(text) {
     const s = String(text || '');
-    const start = s.indexOf('{');
-    if (start < 0) return null;
-    let depth = 0, inStr = false, escp = false;
-    for (let i = start; i < s.length; i++) {
-      const c = s[i];
-      if (inStr) { if (escp) escp = false; else if (c === '\\') escp = true; else if (c === '"') inStr = false; continue; }
-      if (c === '"') inStr = true;
-      else if (c === '{') depth++;
-      else if (c === '}') { depth--; if (!depth) { try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { return null; } } }
+    let start = s.indexOf('{');
+    while (start >= 0) {
+      let depth = 0, inStr = false, escp = false, closed = false;
+      for (let i = start; i < s.length; i++) {
+        const c = s[i];
+        if (inStr) { if (escp) escp = false; else if (c === '\\') escp = true; else if (c === '"') inStr = false; continue; }
+        if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') { depth--; if (!depth) { try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { closed = true; break; } } }
+      }
+      if (!closed) return null; // ran off the end — nothing further to scan
+      start = s.indexOf('{', start + 1);
     }
     return null;
   }
@@ -9649,7 +10001,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain' && k !== 'i' && k !== 'info') wireDiff[k] = obj[k];
     const patch = Codec().decodePartial(wireDiff);
     if (!patch) return null;
-    return { kind: 'diff', patch, explain: explain || 'Updated.' };
+    // Wire keys outside the documented schema decode to nothing — record them
+    // so the ack can say what was ignored instead of implying it landed (C4).
+    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c'];
+    const ignored = Object.keys(wireDiff).filter(k => !KNOWN.includes(k));
+    return { kind: 'diff', patch, explain: explain || 'Updated.', ignored };
   }
 
   /* ---------------- local intent parser (offline fallback) ----------------
@@ -9699,7 +10055,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // New design? Longest template word first: "bedside table" must win
     // over "table".
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -9707,14 +10063,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     // A creation verb creates — and so does a bare noun-phrase description
     // (audit X-01): the hero placeholder "A walnut nightstand with two
     // drawers" names a piece with no verb at all. A description leads with
-    // the template noun (an article plus at most three descriptor words),
-    // never refers back to the current piece, and is not negated
-    // ("not a nightstand").
-    const bareDescription = !!tmplWord &&
+    // the template noun (an article plus up to six descriptor words — "a
+    // super funky mid century modern bookshelf" is five, A8), never refers
+    // back to the current piece, and is not negated ("not a nightstand").
+    const bdMatch = tmplWord &&
+      new RegExp('^((?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,6}?)' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').exec(t.trim());
+    const bareDescription = !!bdMatch &&
       !/\b(it|its|this|that|my|mine)\b/.test(t) &&
       !negated(t, rxWord(tmplWord)) &&
-      new RegExp('^(?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,3}?' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').test(t.trim());
-    const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && wantTemplate !== spec.meta.template;
+      // Feature nouns before the template word mean the phrase's head is the
+      // FEATURE, not the piece ("two drawers like a cabinet has") — never a
+      // creation (audit X-01 drawer smuggling stays refused).
+      !/\b(drawers?|shel(?:f|ves)|doors?)\b/.test(bdMatch[1] || '');
+    // A8: "workbench" lands on the table template, so asking for one while a
+    // plain table is on the bench must still CREATE — unless the current
+    // design already IS the workbench being refined (name carries the word).
+    const differentPiece = wantTemplate !== spec.meta.template ||
+      (tmplWord === 'workbench' && !/workbench/i.test((spec.meta && spec.meta.name) || ''));
+    const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && differentPiece;
 
     // Ambiguity checks first.
     if (/\b(bigger|larger|smaller)\b/.test(t) && !/\b(wide|width|deep|depth|tall|height|high|%|percent)\b/.test(t)) {
@@ -9855,13 +10221,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (creating) {
+      // A workbench is a table at working height: the WORD itself implies the
+      // height, from the ergonomics table (A8) — an explicit height still wins.
+      if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
+        const row = K.ergoRow('workbench_height');
+        if (row) set('overall.height', Math.round((row.min + row.max) / 2));
+      }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
-      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || wantTemplate : 'New ' + wantTemplate;
+      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord : 'New ' + tmplWord;
       merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
-      return { kind: 'new', spec: merged, explain: `Roughed out a ${wantTemplate} to standard proportions${drawerNote} — refine away.` };
+      return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }
 
     // A rejected species with nothing else asked: say so and ask which wood
@@ -9873,6 +10245,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (!Object.keys(patch).length) {
+      // A8: a creation-shaped request (no back-reference to the current
+      // piece) that didn't parse gets a creation-phrased answer naming what
+      // the offline parser CAN rough out — not the edit-phrased question.
+      const creationShaped = !/\b(it|its|this|that|my|mine)\b/.test(t) &&
+        (/\b(build|make|design|create)\b/.test(t) || /^(?:an?|the)\b/.test(t.trim()) || !!tmplWord);
+      if (creationShaped) {
+        return {
+          kind: 'question',
+          question: 'Offline I can rough out a table, desk, bench, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
+          options: ['A walnut nightstand with two drawers', 'A workbench', 'A bookshelf']
+        };
+      }
       return {
         kind: 'question',
         question: 'I didn’t catch a change I can make there. Try a dimension, species, joinery level, drawers, or finish — what should move?',
@@ -9884,13 +10268,30 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- transports ---------------- */
+  /* C6: every model fetch carries an abort timeout — a hung connection used
+   * to pin the chat in the busy state forever. Aborts reject the fetch and
+   * ride the existing catch paths (Node ≥ 18 / modern browsers; absent
+   * AbortSignal.timeout degrades to no timeout, exactly the old behavior). */
+  const FETCH_TIMEOUT_MS = 60000;
+  const fetchSignal = () =>
+    (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(FETCH_TIMEOUT_MS) : undefined;
   let injectedTransport = null; // (system, messages) => Promise<{text, stopReason}>
   function setTransport(fn) { injectedTransport = fn; }
-  let anthropicDead = false; // one hard network failure disables it for the session
+  /* C7: transport death comes in two grades. 404/405/503 (route truly absent
+   * or unconfigured) stays PERMANENT for the session; a plain fetch rejection
+   * is a NETWORK death — a blip or a hung hop — and only benches the
+   * transport for a TTL, so restored connectivity brings the model back
+   * without a reload (before: one rejection meant offline forever). */
+  const DEAD_TTL_MS = 30000;
+  let anthropicDead = false;   // permanent: browser host / no key / hard API error
+  let anthropicDeadAt = 0;     // network death — retried after the TTL
   // Same-origin proxy (api/chat.js) — present when hosted on Vercel or the
   // bundled dev server; absent on claude.ai, where it dies on first touch
   // and the direct transport takes over. Browser-only.
-  let proxyDead = typeof window === 'undefined';
+  let proxyDead = typeof window === 'undefined'; // permanent
+  let proxyDeadAt = 0;                           // network death — TTL retry
+  const proxyDown = () => proxyDead || (proxyDeadAt && Date.now() - proxyDeadAt < DEAD_TTL_MS);
+  const anthropicDown = () => anthropicDead || (anthropicDeadAt && Date.now() - anthropicDeadAt < DEAD_TTL_MS);
   // A proxy that EXISTS but answered 503 (no ANTHROPIC_API_KEY on the server)
   // is a broken deploy, not ordinary offline — remembered for the session so
   // the UI can say "AI not configured" instead of the generic offline label
@@ -9903,9 +10304,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system, messages, max_tokens: MAX_TOKENS })
+        body: JSON.stringify({ system, messages, max_tokens: MAX_TOKENS }),
+        signal: fetchSignal()
       });
-    } catch (e) { proxyDead = true; throw e; }
+    } catch (e) { proxyDeadAt = Date.now(); e.transient = true; throw e; } // network death — TTL, not forever (C7)
     // 404/405: no proxy at this origin. 503: proxy present but unconfigured.
     // Both are permanent for the session; other failures may be transient
     // upstream errors and leave the proxy alive for the next message.
@@ -9930,6 +10332,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     try { data = await response.json(); }
     catch (e) { proxyDead = true; throw new Error('proxy returned non-JSON'); }
     if (data.error) throw new Error(data.error.message || 'proxy error');
+    proxyDeadAt = 0; // a good answer clears any network-death bench (C7)
     return { text: (data.content || []).map(b => b.text || '').join(''), stopReason: data.stop_reason || 'end_turn' };
   }
 
@@ -9947,18 +10350,23 @@ var BB = globalThis.BB = globalThis.BB || {};
     const key = (typeof process !== 'undefined' && process.env) ? process.env.ANTHROPIC_API_KEY : '';
     if (!key) { anthropicDead = true; throw new Error('ANTHROPIC_API_KEY not set'); }
     const model = (typeof process !== 'undefined' && process.env && process.env.ANTHROPIC_MODEL) || 'claude-sonnet-5';
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages })
-    });
+    let response;
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages }),
+        signal: fetchSignal()
+      });
+    } catch (e) { anthropicDeadAt = Date.now(); e.transient = true; throw e; } // network death — TTL (C7)
     if (!response.ok) throw new Error('API returned ' + response.status);
     const data = await response.json();
     if (data.error) throw new Error(data.error.message || 'API error');
+    anthropicDeadAt = 0;
     // 1c: read stop_reason from EVERY response — max_tokens means continue.
     return { text: (data.content || []).map(b => b.text || '').join(''), stopReason: data.stop_reason || 'end_turn' };
   }
@@ -9984,31 +10392,33 @@ var BB = globalThis.BB = globalThis.BB || {};
     // In the browser, only the same-origin proxy (or window.claude) can reach
     // a model — never count bare Anthropic as "remote available".
     const inBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
-    if (typeof fetch === 'function' && !proxyDead && typeof window !== 'undefined') return true;
-    if (!inBrowser && typeof fetch === 'function' && !anthropicDead) return true;
+    if (typeof fetch === 'function' && !proxyDown() && typeof window !== 'undefined') return true;
+    if (!inBrowser && typeof fetch === 'function' && !anthropicDown()) return true;
     return typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
   }
   function supportsImages() {
     if (injectedTransport) return true;
-    if (typeof fetch === 'function' && !proxyDead) return true;
+    if (typeof fetch === 'function' && !proxyDown()) return true;
     return false;
   }
 
   async function rawCall(system, messages) {
     if (injectedTransport) return injectedTransport(system, messages);
-    if (typeof fetch === 'function' && !proxyDead) {
+    if (typeof fetch === 'function' && !proxyDown()) {
       try {
         return await proxyTransport(system, messages);
       } catch (e) {
-        if (!proxyDead) throw e; // proxy alive, upstream hiccup — surface it
-        // proxy absent/unconfigured: fall through to the direct transport
+        if (!proxyDown()) throw e; // proxy alive, upstream hiccup — surface it
+        // proxy absent/unconfigured/benched: fall through to the direct transport
       }
     }
-    if (typeof fetch === 'function' && !anthropicDead) {
+    if (typeof fetch === 'function' && !anthropicDown()) {
       try {
         return await anthropicTransport(system, messages);
       } catch (e) {
-        anthropicDead = true; // fall through once, stay fallen
+        // C7: a network blip benches it for the TTL only; every other failure
+        // (browser host, no key, hard API error) stays fallen for the session.
+        if (!e || !e.transient) anthropicDead = true;
       }
     }
     if (typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function') {
@@ -10038,18 +10448,64 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* ---------------- assembly walkthrough context (C10) ----------------
+   * "walk me through step 5": the model never sees the code-built plan, so it
+   * deflects or guesses (observed 4/4). When the user asks for a step or an
+   * assembly walkthrough, inject the plan's REAL numbered step titles — the
+   * same Plans.assembly list the Plan tab renders, glue-ups included, so
+   * "step 5" is the user's step 5 — plus the referenced step's full text and
+   * the spec's skill level. Code-built context, never computation in the
+   * prompt: the founding rule holds. */
+  const STEP_ASK = /\b(?:step\s*\d+|walk me through|talk me through|how do i (?:assemble|build|glue))\b/i;
+  function stepContext(text, spec) {
+    const src = String(text || '');
+    if (!STEP_ASK.test(src) || !BB.Plans || !BB.Parametric || !BB.Structural || !BB.Packing) return null;
+    const num = /\bstep\s*(\d+)\b/i.exec(src);
+    try {
+      const model = BB.Parametric.build(spec);
+      if (!model || !model.parts || !model.parts.length) return null;
+      const integ = BB.Structural.computeIntegrity(spec, model, {});
+      const cut = BB.Plans.cutList(spec, model);
+      const stock = BB.Packing.planStock(spec, model, cut, {});
+      const steps = BB.Plans.assembly(spec, model, integ, { stockPlan: stock });
+      if (!steps || !steps.length) return null;
+      const n = num ? parseInt(num[1], 10) : 0;
+      let block = `[assembly] Code-built plan for this spec (user level: ${spec.meta.level}) — numbered steps: ` +
+        steps.map((s, i) => `${i + 1}. ${s.title}`).join('; ') + '.';
+      if (n >= 1 && n <= steps.length) {
+        const s = steps[n - 1];
+        block += ` Step ${n} = "${s.title}": ${s.text || ''}`;
+      } else if (n > steps.length) {
+        block += ` There is no step ${n} — the plan has ${steps.length} steps.`;
+      }
+      return block + ' Answer from THIS plan at the user\'s level ({"i":...} unless a spec change is asked).';
+    } catch (e) { return null; } // context is best-effort — never block the turn
+  }
+
   /* ---------------- context budget (1b) ----------------
    * turns: [{role:'user'|'assistant', content}] maintained by the UI in wire
    * format. Send the last 6 verbatim; compress everything older into the
    * code-built digest (from history snapshots — zero extra AI calls).
    */
-  function buildMessages(turns, digest, newUserContent) {
+  function buildMessages(turns, digest, newUserContent, origin) {
     let recent = turns.slice(-VERBATIM_TURNS);
     while (recent.length && recent[0].role === 'assistant') recent = recent.slice(1);
     const out = [];
     if (digest && turns.length > VERBATIM_TURNS) {
       out.push({ role: 'user', content: '[context] ' + digest });
       out.push({ role: 'assistant', content: '{"e":"ok"}' });
+    }
+    // C11: refinement/critique rounds append two turns each, so in a deep
+    // pipeline the ORIGINAL request (the words carrying style/purpose/
+    // constraints) scrolls out of the verbatim window. Pin it with a compact
+    // context pair whenever it is no longer verbatim in what we send.
+    if (origin && typeof origin === 'string') {
+      const verbatim = c => typeof c === 'string' && c.includes(origin);
+      const inWindow = recent.some(m => verbatim(m.content)) || verbatim(newUserContent);
+      if (!inWindow) {
+        out.push({ role: 'user', content: '[request] ' + origin });
+        out.push({ role: 'assistant', content: '{"e":"ok"}' });
+      }
     }
     out.push(...recent);
     out.push({ role: 'user', content: newUserContent });
@@ -10076,14 +10532,26 @@ var BB = globalThis.BB = globalThis.BB || {};
           { type: 'text', text: userText }
         ]
       : userText;
-    const baseMessages = buildMessages(turns, digest, userContent);
+    const baseMessages = buildMessages(turns, digest, userContent, opts.origin);
+    // C10: a step/assembly walkthrough ask gets the code-built step list for
+    // THIS committed spec injected as a context pair (same pattern as the
+    // digest pair), so "step 5" means the Plan tab's step 5.
+    const stepCtx = opts.image ? null : stepContext(userText, spec);
+    if (stepCtx) {
+      baseMessages.splice(baseMessages.length - 1, 0,
+        { role: 'user', content: stepCtx },
+        { role: 'assistant', content: '{"e":"ok"}' });
+    }
 
     try {
-      let { text } = await callModel(system, baseMessages, onStatus);
+      const first = await callModel(system, baseMessages, onStatus);
+      let text = first.text;
+      let stopReason = first.stopReason;
       let parsed = classify(extractJSON(text));
       if (!parsed) {
-        // The single validation retry. Truncation never lands here — the
-        // continuation protocol already stitched partial outputs together.
+        // The single validation retry. A stitched-but-still-truncated reply
+        // CAN land here when the continuation ceiling is exhausted (C15) —
+        // the failure is then named as truncation, never "invalid JSON".
         onStatus('Re-asking for valid JSON');
         const retryMessages = [...baseMessages,
           { role: 'assistant', content: text || '(empty)' },
@@ -10091,6 +10559,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const second = await callModel(system, retryMessages, onStatus);
         parsed = classify(extractJSON(second.text));
         if (parsed) text = second.text;
+        else stopReason = second.stopReason;
       }
       if (parsed) {
         const newTurns = [...turns,
@@ -10098,7 +10567,19 @@ var BB = globalThis.BB = globalThis.BB || {};
           { role: 'assistant', content: text }];
         return { reply: parsed, turns: newTurns, local: false };
       }
-      return { reply: null, turns, error: 'The model never produced a valid design reply.' };
+      // C15: the failed exchange stays in the returned turns (capped) so the
+      // conversation remembers what was asked and attempted, and truncation
+      // exhaustion is named instead of the generic invalid-reply line.
+      const failTurns = [...turns,
+        { role: 'user', content: typeof userContent === 'string' ? userContent : userText + ' [photo]' },
+        { role: 'assistant', content: (String(text || '(no reply)')).slice(0, 1500) }];
+      const truncated = stopReason === 'max_tokens';
+      return {
+        reply: null, turns: failTurns, truncated,
+        error: truncated
+          ? 'That reply kept overflowing the response limit even after ' + (MAX_CONTINUATIONS + 1) + ' parts, so I couldn’t finish it. Try asking for a simpler piece, or split the request into smaller steps.'
+          : 'The model never produced a valid design reply.'
+      };
     } catch (err) {
       // Usage/rate limits are authoritative server answers, not outages — never
       // mask them behind the offline parser.
@@ -10109,10 +10590,64 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
-  /* Structured critique for the propose-validate-revise loop (novel pieces). */
+  /* Mid-loop reply triage for the orchestration loops (C8): billing and rate
+   * limits surface their own UX, a question goes to the user, an info reply
+   * shows its text — none of them are appliable patches. Before this, a
+   * question's text vanished on break, an info reply deep-merged into a no-op
+   * that burned the round, and limits fell through to "couldn't get a
+   * buildable design". */
+  function roundDecision(res) {
+    if (!res) return 'bail';
+    if (res.usageLimit) return 'billing';
+    if (res.rateLimited) return 'rate';
+    if (!res.reply) return 'bail';
+    // The loops only run remote; a local reply mid-round means the transport
+    // died mid-flight — bail to the honest unbuildable path, never surface
+    // the offline parser's guess as the model's answer.
+    if (res.local) return 'bail';
+    if (res.reply.kind === 'question') return 'question';
+    if (res.reply.kind === 'info') return 'info';
+    return 'apply';
+  }
+
+  /* Code-built marker pair appended to the retained turns after a rejected
+   * (unbuildable) proposal (B9). Without it the rejected diff sits in the
+   * conversation looking accepted, and a later turn silently builds on it —
+   * observed live as an all-ply material flip riding an unrelated edit.
+   * Same pattern as the digest context pair in buildMessages. */
+  function rejectionMarker(errors) {
+    const brief = (errors || []).slice(0, 2).map(e => (e && e.text) || String(e)).join(' ');
+    return [
+      { role: 'user', content: '[context] That proposal was REJECTED — validation failed' + (brief ? ': ' + brief : '.') + ' The committed design is UNCHANGED; do not build on the rejected values.' },
+      { role: 'assistant', content: '{"e":"understood, design unchanged"}' }
+    ];
+  }
+
+  /* Structured critique for the propose-validate-revise loop (novel pieces).
+   * A10: each failing check TYPE gets one code-owned remedy line — observed
+   * live, three sag rounds never once proposed lamination, so the loop
+   * shuffled geometry instead of converging. */
+  const CRITIQUE_REMEDIES = [
+    [/^sag:/, 'sag: thicken the part (sheet stock tops out at 18 mm — use solid stock, or laminate by stacking TWO 18 mm sheet slabs as separate touching parts joined edge_glue), add a rail or rib under the span, or shorten the span'],
+    [/^str:/, 'strength: use a thicker section or a stronger species'],
+    [/^(tip|stand)/, 'tipping/balance: widen the stance or lower the mass'],
+    [/^joints/, 'joints: pick a stronger joint allowed by the LEVEL MATRIX']
+  ];
+  function critiqueRemedies(failedChecks) {
+    const lines = [];
+    for (const c of failedChecks) {
+      const r = CRITIQUE_REMEDIES.find(([rx]) => rx.test(String(c.id || '')));
+      if (r && !lines.includes(r[1])) lines.push(r[1]);
+    }
+    return lines;
+  }
   function buildCritique(failedChecks) {
-    const lines = failedChecks.slice(0, 10).map(c => `- ${c.title}: ${c.explain} (${c.value}; required: ${c.threshold})`);
-    return `Structural validation of your composition FAILED. Problems:\n${lines.join('\n')}\nFix ONLY these problems — keep the design intent and everything that already works. Reply {"N":{corrected FULL wire spec}} as minified JSON, nothing else.`;
+    const shown = failedChecks.slice(0, 10);
+    const lines = shown.map(c => `- ${c.title}: ${c.explain} (${c.value}; required: ${c.threshold})`);
+    const fixes = critiqueRemedies(shown);
+    return `Structural validation of your composition FAILED. Problems:\n${lines.join('\n')}\n` +
+      (fixes.length ? `Proven fixes — ${fixes.join('; ')}.\n` : '') +
+      `Fix ONLY these problems — keep the design intent and everything that already works. Reply {"N":{corrected FULL wire spec}} as minified JSON, nothing else.`;
   }
 
   /* ---------------- photo-to-design (Phase 4 item 4) ----------------
@@ -10171,7 +10706,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (reply.unitsUnspecified && currentSpec && currentSpec.meta) {
         proposed = S.deepMerge(proposed, { meta: { units: currentSpec.meta.units } });
       }
-    } else proposed = S.deepMerge(currentSpec, reply.patch);
+    } else {
+      let patch = reply.patch;
+      // B3: custom overall is derived from part extents, so an overall-only
+      // diff would silently no-op behind a confident ack. Scale the
+      // composition in code (Spec.scaleCustom); the extents-derived overall
+      // then lands naturally, so the overall patch itself is dropped.
+      if (patch && patch.overall && !patch.custom && currentSpec && currentSpec.meta &&
+        currentSpec.meta.template === 'custom' &&
+        !(patch.meta && patch.meta.template && patch.meta.template !== 'custom')) {
+        const scaled = S.scaleCustom(currentSpec, patch.overall);
+        if (scaled) {
+          patch = Object.assign({}, patch, { custom: scaled });
+          delete patch.overall;
+        }
+      }
+      proposed = S.deepMerge(currentSpec, patch);
+    }
     const corrected = S.correctSpec(proposed);
     const diffs = S.diffSpecs(currentSpec, corrected);
     return { spec: corrected, diffs, chips: S.describeDiff(diffs) };
@@ -10179,7 +10730,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.AI = {
     systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
-    setTransport, callModel, buildMessages, buildCritique, downscaleImage,
+    setTransport, callModel, buildMessages, buildCritique, rejectionMarker, roundDecision, downscaleImage, stepContext,
     supportsImages, hasRemote, VISION_PROMPT,
     unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
     MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT
@@ -11325,6 +11876,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       const wLine = K.knowledgeDigest().split('\n')[0];
       const wOk = Object.values(K.WOOD_SPECIES).every(s => wLine.includes(`${s.key}(janka ${s.janka}`));
       test('digest', 'wood digest line carries every species from the table', wOk, wOk ? 'all present' : 'missing species', 'all present');
+      // C1: bed-size anchors must regenerate into the digest, so a "for my
+      // king bed" implication resolves against the real mattress width.
+      const kingBed = K.ergoRow('king_bed_width');
+      test('digest', 'bed-size anchor rows ride the knowledge digest (C1)',
+        !!kingBed && kingBed.min >= 1900 && K.knowledgeDigest().includes(`king_bed_width ${kingBed.min}–${kingBed.max}mm`),
+        kingBed ? `king_bed_width ${kingBed.min}–${kingBed.max}` : 'row missing', 'king row generated into digest');
+      // C12: the standard sheet regenerates from LUMBER.SHEET — the table the
+      // packer actually packs onto — so sheet-budget asks design against it.
+      const sh = K.LUMBER.SHEET;
+      test('digest', 'sheet size line regenerates from LUMBER.SHEET (C12)',
+        K.knowledgeDigest().includes(`SHEET(mm): ${sh.W}×${sh.L}, thickness ${sh.THICKNESSES.join('/')}`),
+        'generated line present', 'generated line present');
     }
 
     /* ============ 2026 knowledge expansion: full engine coverage ============
@@ -11497,7 +12060,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 1900-token ceiling', tk <= 1900 && tk > 800, tk + ' tokens', '≤ 1900');
+      test('hardening', 'system prompt under the 2040-token ceiling', tk <= 2040 && tk > 800, tk + ' tokens', '≤ 2040'); // raised for the A5 exclusion line, then the C1 bed anchors
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
 
@@ -15263,7 +15826,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       return null;
     }
     if (res.rateLimited) { botSay('Too many messages in a row — give it a few seconds, then try again.', []); return null; }
-    if (res.error) { botSay(res.error, []); return null; }
+    if (res.error) {
+      // C15: the failed exchange stays in conversation memory (respond returns
+      // it in turns), so the next message doesn't act as if it never happened.
+      if (res.turns) state.turns = res.turns.slice(-24);
+      botSay(res.error, []);
+      return null;
+    }
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
       askQuestion(res.reply);
@@ -15275,6 +15844,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay(res.reply.text, [], { noChange: true });
       return null;
     }
+    // What the shown reply asked for, so the ack can be reconciled against
+    // what actually survived correction/validation/critique (A2/B4/C4).
+    const requested = res.reply.kind === 'diff'
+      ? { patch: res.reply.patch, ignored: res.reply.ignored || [] }
+      : { patch: { overall: res.reply.spec && res.reply.spec.overall, drawers: res.reply.spec && res.reply.spec.drawers }, ignored: res.reply.ignored || [] };
     let applied = AI.apply(res.reply, state.spec);
     let turns = res.turns;
     let r = runPipeline(applied.spec);
@@ -15288,14 +15862,48 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (let round = 1; r.report.errors.length && !res.local && round <= 3; round++) {
       setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
       const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
-      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus });
-      if (!res2.reply || res2.reply.kind === 'question') break;
+      // C11: rounds pin the original in-flight request so deep pipelines
+      // never refine without the words stating style/purpose/constraints.
+      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text });
+      // Mid-round authoritative answers and model asides get the same UX as
+      // first-round ones instead of vanishing or burning the round (C8).
+      const act = AI.roundDecision(res2);
+      if (act === 'billing') {
+        if (res2.billing) Store.setBilling(res2.billing);
+        renderAccount();
+        const limit = (res2.billing && res2.billing.entitlements && res2.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
+        BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+        state.turns = turns.slice(-24);
+        return null;
+      }
+      if (act === 'rate') {
+        botSay('Too many messages in a row — give it a few seconds, then try again.', []);
+        state.turns = turns.slice(-24);
+        return null;
+      }
+      if (act === 'question') {
+        // The design is unchanged; the question is the model's next move —
+        // surface it instead of discarding its text.
+        state.turns = res2.turns.slice(-24);
+        askQuestion(res2.reply);
+        return null;
+      }
+      if (act === 'info') {
+        // Advice instead of a fix: show it and stop refining; the honest
+        // unbuildable line below still reports the design unchanged.
+        turns = res2.turns;
+        botSay(res2.reply.text, [], { noChange: true });
+        break;
+      }
+      if (act === 'bail') break;
       applied = AI.apply(res2.reply, applied.spec);
       turns = res2.turns;
       r = runPipeline(applied.spec);
     }
     if (r.report.errors.length) {
-      state.turns = turns.slice(-24);
+      // The rejected proposal stays in the turns — mark it as rejected so a
+      // later turn can't silently treat the failed diff as accepted (B9).
+      state.turns = turns.concat(AI.rejectionMarker(r.report.errors)).slice(-24);
       botSay(`I couldn't get a buildable design from that: ${r.report.errors.slice(0, 2).map(e => e.text).join(' ')} Your last valid design is untouched.`, []);
       return null;
     }
@@ -15314,8 +15922,21 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns };
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
-        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus });
-        if (!res3.reply || res3.reply.kind === 'question') break;
+        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text }); // C11: pin the original request
+        // Mid-critique triage (C8): the best attempt so far still commits —
+        // only the polish loop stops.
+        const act3 = AI.roundDecision(res3);
+        if (act3 === 'billing') {
+          if (res3.billing) Store.setBilling(res3.billing);
+          renderAccount();
+          const limit3 = (res3.billing && res3.billing.entitlements && res3.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
+          BB.Billing.open(`You’ve used this month’s ${limit3} AI messages. Upgrade to keep designing with AI.`);
+          break;
+        }
+        if (act3 === 'rate') { botSay('Too many messages in a row — give it a few seconds, then try again.', []); break; }
+        if (act3 === 'question') { askQuestion(res3.reply); break; }
+        if (act3 === 'info') { botSay(res3.reply.text, [], { noChange: true }); break; }
+        if (act3 === 'bail') break;
         const a3 = AI.apply(res3.reply, final);
         const r3 = runPipeline(a3.spec);
         if (r3.report.errors.length) break;
@@ -15327,7 +15948,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, local: !!res.local, unconfigured: !!res.unconfigured };
+    return { final, failReport, explain, requested, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -15379,8 +16000,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
-        const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Safety tab.` : '';
-        botSay((out.explain || 'Updated.') + integLine, chips, { noChange: !chips.length, caveat });
+        // Failing checks always make the ack, not just photo flows (A3);
+        // photos keep their fuller phrasing.
+        const integLine = Spec.integrityLine(summary, { photo: !!image });
+        // The ack is never the model's word alone: reconcile it against the
+        // committed spec and append the code-built truth (A2).
+        const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
+        botSay(ack + integLine, chips, { noChange: !chips.length, caveat });
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {
@@ -15656,8 +16282,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       ? `${cmp.diffs.length} parameter${cmp.diffs.length > 1 ? 's' : ''} differ${cmp.diffs.length > 1 ? '' : 's'}.`
       : 'These two snapshots are dimensionally identical.';
     const rows = $('compareRows');
-    rows.innerHTML = cmp.diffs.map(d => `<tr>
-      <td>${esc(Spec.PATH_LABELS[d.path] || d.path)}</td>
+    rows.innerHTML = cmp.diffs.map(d => d.text
+      ? `<tr><td colspan="3">${esc(d.text)}</td></tr>`
+      : `<tr>
+      <td>${esc(d.label || Spec.PATH_LABELS[d.path] || d.path)}</td>
       <td class="old num">${esc(Spec.fmtValue(d.path, d.from))}</td>
       <td class="new num">${esc(Spec.fmtValue(d.path, d.to))}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="color:var(--muted)">No differences.</td></tr>';

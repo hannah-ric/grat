@@ -161,9 +161,107 @@ var BB = globalThis.BB = globalThis.BB || {};
     const out = [];
     for (const p of [...paths].sort()) {
       if (!p) continue;
+      if (p === 'custom' || p.startsWith('custom.')) continue; // summarized part-by-part below (B5)
       const va = get(a, p), vb = get(b, p);
       if (isObj(va) || isObj(vb)) continue;
       if (JSON.stringify(va) !== JSON.stringify(vb)) out.push({ path: p, from: va, to: vb });
+    }
+    out.push(...diffCustom(a, b));
+    return out;
+  }
+
+  /* Custom compositions used to diff as one array leaf ("10 items → 10
+   * items") — a full material flip or a joint change was invisible (B5).
+   * Summarize part- and connection-level changes in human terms instead,
+   * aggregating when the same change hits many parts. Entries may carry
+   * `label` (chip title override) or `text` (a whole pre-built chip); numeric
+   * dim entries keep raw mm so chips re-render on a display-unit switch. */
+  function diffCustom(a, b) {
+    const ca = (a && a.custom) || {};
+    const cb = (b && b.custom) || {};
+    const pa = Array.isArray(ca.parts) ? ca.parts : [];
+    const pb = Array.isArray(cb.parts) ? cb.parts : [];
+    if (!pa.length && !pb.length) return [];
+    const out = [];
+    if (pa.length !== pb.length) {
+      out.push({ path: 'custom.parts', label: 'composition', from: pa.length + ' parts', to: pb.length + ' parts' });
+    }
+    const partName = p => (p.role && p.role !== p.primitive ? p.role : p.id);
+    // A part's material is its stock resolved against that spec's wood choice.
+    const stockLabel = (p, spec) => {
+      const w = (spec && spec.wood) || {};
+      const key = p.stock === 'sheet' ? (w.sheetSpecies || 'baltic_birch') : (w.species || 'red_oak');
+      return (K.WOOD_SPECIES[key] && K.WOOD_SPECIES[key].label) || String(key).replace(/_/g, ' ');
+    };
+    // Per-part field diffs on parts present in both sides (canonical p1..pN
+    // ids match by index). Positions are deliberately skipped: re-grounding
+    // and re-centering shift every part and would drown the real changes.
+    const n = Math.min(pa.length, pb.length);
+    const FIELDS = [
+      { key: 'stock', label: 'stock', get: p => p.stock, fmtFrom: c => stockLabel(c.pa, a), fmtTo: c => stockLabel(c.pb, b) },
+      { key: 'primitive', label: 'primitive', get: p => p.primitive },
+      { key: 'len', label: 'length', get: p => p.dim.l },
+      { key: 'wid', label: 'width', get: p => p.dim.w },
+      { key: 'thk', label: 'thickness', get: p => p.dim.t }
+    ];
+    for (const f of FIELDS) {
+      const changed = [];
+      for (let i = 0; i < n; i++) {
+        if (JSON.stringify(f.get(pa[i])) !== JSON.stringify(f.get(pb[i]))) {
+          changed.push({ pa: pa[i], pb: pb[i] });
+        }
+      }
+      if (!changed.length) continue;
+      const path = 'custom.part.' + f.key; // mm formatting keys off this prefix
+      const vFrom = c => (f.fmtFrom ? f.fmtFrom(c) : f.get(c.pa));
+      const vTo = c => (f.fmtTo ? f.fmtTo(c) : f.get(c.pb));
+      const from0 = vFrom(changed[0]), to0 = vTo(changed[0]);
+      const uniform = changed.every(c => JSON.stringify(vFrom(c)) === JSON.stringify(from0) &&
+        JSON.stringify(vTo(c)) === JSON.stringify(to0));
+      if (uniform && changed.length > 2) {
+        const who = changed.length === n && pa.length === pb.length ? 'all parts' : changed.length + ' parts';
+        out.push({ path, label: who + ' ' + f.label, from: from0, to: to0 });
+      } else if (changed.length <= 4) {
+        for (const c of changed) out.push({ path, label: partName(c.pb) + ' ' + f.label, from: vFrom(c), to: vTo(c) });
+      } else {
+        out.push({ path, text: changed.length + ' parts changed ' + f.label });
+      }
+    }
+    // Connections: joint changes on surviving pairs, plus added/removed pairs.
+    const pairKey = c => (c.a < c.b ? c.a + '|' + c.b : c.b + '|' + c.a);
+    const mapA = new Map(), mapB = new Map();
+    for (const c of (Array.isArray(ca.connections) ? ca.connections : [])) mapA.set(pairKey(c), c);
+    for (const c of (Array.isArray(cb.connections) ? cb.connections : [])) mapB.set(pairKey(c), c);
+    const byIdA = new Map(pa.map(p => [p.id, p])), byIdB = new Map(pb.map(p => [p.id, p]));
+    const connName = (c, byId) => {
+      const x = byId.get(c.a), y = byId.get(c.b);
+      return (x ? partName(x) : c.a) + '–' + (y ? partName(y) : c.b);
+    };
+    const jointChanges = [], added = [], removed = [];
+    for (const [k, cn] of mapB) {
+      const prev = mapA.get(k);
+      if (!prev) added.push(cn);
+      else if (prev.joint !== cn.joint) jointChanges.push({ prev, cn });
+    }
+    for (const [k, cn] of mapA) if (!mapB.has(k)) removed.push(cn);
+    if (jointChanges.length) {
+      const jf0 = jointChanges[0].prev.joint, jt0 = jointChanges[0].cn.joint;
+      const uniformJ = jointChanges.every(j => j.prev.joint === jf0 && j.cn.joint === jt0);
+      if (uniformJ && jointChanges.length > 2) {
+        out.push({ path: 'custom.joint', label: jointChanges.length + ' joints', from: jf0, to: jt0 });
+      } else if (jointChanges.length <= 4) {
+        for (const j of jointChanges) out.push({ path: 'custom.joint', label: connName(j.cn, byIdB) + ' joint', from: j.prev.joint, to: j.cn.joint });
+      } else {
+        out.push({ path: 'custom.joint', text: jointChanges.length + ' joints changed' });
+      }
+    }
+    if (added.length) {
+      if (added.length <= 2) for (const c of added) out.push({ path: 'custom.conn', text: 'joined ' + connName(c, byIdB) + ' (' + fmtValue('custom.joint', c.joint) + ')' });
+      else out.push({ path: 'custom.conn', text: added.length + ' connections added' });
+    }
+    if (removed.length) {
+      if (removed.length <= 2) for (const c of removed) out.push({ path: 'custom.conn', text: 'disconnected ' + connName(c, byIdA) });
+      else out.push({ path: 'custom.conn', text: removed.length + ' connections removed' });
     }
     return out;
   }
@@ -183,7 +281,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     'finish': 'finish', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
   };
-  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness)/;
+  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|custom\.part\.(len|wid|thk)$)/;
 
   /* Diff-chip / inspector value rendering. Lengths route through BB.Units —
    * the current display preference, NOT a per-call unit, decides the text. */
@@ -204,9 +302,148 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function describeDiff(diffs) {
     return diffs.map(d => {
-      const label = PATH_LABELS[d.path] || d.path;
+      if (d.text) return d.text; // pre-built chip (custom composition summary)
+      const label = d.label || PATH_LABELS[d.path] || d.path;
       return `${label} ${fmtValue(d.path, d.from)} → ${fmtValue(d.path, d.to)}`;
     });
+  }
+
+  /* ---------------- ack reconciliation (A2, merges B4/C4) ----------------
+   * The chat ack is the model's FIRST "explain", shown after correction,
+   * validation-refinement, and critique rounds may have changed or reverted
+   * what it describes. Code — never the model — checks the enumerated
+   * contradiction classes seen live and appends the code-built truth:
+   *   - a species word that isn't the delivered wood ("hard maple" over soft maple)
+   *   - a drawer-count numeral vs the delivered drawers ("three drawers" over 2)
+   *   - leg words on a legless design ("splayed legs" on a bookshelf)
+   *   - mechanism words (hinge/fold/pivot/lift-off) no artifact contains
+   *   - a requested dimension that did not survive to the final spec (B4)
+   *   - a requested change that changed nothing (the false-ack surface)
+   * plus a caveat naming wire keys the codec ignored (C4).
+   * Pure: (explain, correctedSpec, chips, requested) -> ack text.
+   * requested = { patch: verbose patch of the shown reply, ignored: [keys] }. */
+  function reconcileAck(explain, spec, chips, requested) {
+    let text = String(explain || '').trim();
+    if (!text || !spec) return text;
+    const low = ' ' + text.toLowerCase().replace(/[’]/g, "'") + ' ';
+    const fixes = [];
+    // A mention is honest when its own clause already negates it ("no hinges",
+    // "a hinged lid isn't expressible") — never "correct" honesty.
+    const NEG = /\b(no|not|never|without|can't|cannot|isn't|aren't|won't|doesn't|don't|instead of|rather than|unable|lacks?|omit(?:ted|s)?)\b/;
+    const clauseAt = i => {
+      const before = low.slice(0, i).split(/[,.;:!?()]|\s[—–-]\s/).pop();
+      const after = low.slice(i).split(/[,.;:!?()]|\s[—–-]\s/)[0];
+      return before + after;
+    };
+    const mentioned = rx => {
+      const m = rx.exec(low);
+      return m ? !NEG.test(clauseAt(m.index)) : false;
+    };
+    const rxWord = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '\\b');
+
+    // 1. Species words vs the delivered wood (solid or sheet).
+    {
+      const actual = K.WOOD_SPECIES[spec.wood && spec.wood.species];
+      const sheetSp = K.WOOD_SPECIES[spec.wood && spec.wood.sheetSpecies];
+      const okNames = []
+        .concat(actual ? [actual.label.toLowerCase()].concat(actual.aliases || []) : [])
+        .concat(sheetSp ? [sheetSp.label.toLowerCase()].concat(sheetSp.aliases || []) : []);
+      const candidates = [];
+      for (const s of Object.values(K.WOOD_SPECIES)) {
+        if (spec.wood && (s.key === spec.wood.species || s.key === spec.wood.sheetSpecies)) continue;
+        for (const nm of [s.label.toLowerCase()].concat(s.aliases || [])) candidates.push(nm);
+      }
+      candidates.sort((x, y) => y.length - x.length); // "hard maple" beats "maple"
+      for (const nm of candidates) {
+        if (!mentioned(rxWord(nm))) continue;
+        // A generic word inside the real species' name ("maple" when the
+        // delivered wood is soft maple) is not a contradiction.
+        if (okNames.some(o => o.includes(nm) || nm.includes(o))) break;
+        if (actual) fixes.push('the delivered wood is ' + actual.label.toLowerCase());
+        break;
+      }
+    }
+
+    // 2. Drawer-count numerals vs the delivered drawers.
+    let drawerFixed = false;
+    {
+      const m = /\b(\d+|one|two|three|four)\s+drawers?\b/.exec(low);
+      if (m && !NEG.test(clauseAt(m.index))) {
+        const WORDS = { one: 1, two: 2, three: 3, four: 4 };
+        const n = WORDS[m[1]] || parseInt(m[1], 10);
+        const have = spec.drawers ? spec.drawers.count : 0;
+        if (isFinite(n) && n !== have) {
+          fixes.push(have ? 'the delivered design has ' + have + ' drawer' + (have === 1 ? '' : 's') : 'no drawers in this design');
+          drawerFixed = true;
+        }
+      }
+    }
+
+    // 3. Leg words on a legless design.
+    {
+      let hasLegs = ['table', 'desk', 'bench', 'nightstand'].includes(spec.meta && spec.meta.template);
+      if (spec.meta && spec.meta.template === 'custom' && spec.custom) {
+        hasLegs = (spec.custom.parts || []).some(p => /leg/.test(p.role || '') || p.primitive === 'post' || p.primitive === 'cylinder');
+      }
+      if (!hasLegs && mentioned(/\blegs?\b/)) fixes.push('no legs in this design');
+    }
+
+    // 4. Mechanism words no artifact can contain (kd_bolt is the only
+    // non-permanent joint, so an honest lift-off claim needs one).
+    {
+      const hasKD = ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'kd_bolt') ||
+        ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'kd_bolt');
+      if (mentioned(/\b(hinged?|hinges|pivot(?:s|ing)?|fold(?:s|ing|able)?(?:[\s-](?:down|out|up|flat))?)\b/)) {
+        fixes.push('nothing hinges, folds, or pivots in this plan — every connection is fixed' + (hasKD ? ' or bolted (kd_bolt)' : ''));
+      } else if (!hasKD && mentioned(/\blifts?[\s-]?off\b/)) {
+        fixes.push('the lid/top is permanently fastened — no lift-off connection exists in this plan');
+      }
+    }
+
+    // 5. Requested values that did not survive to the delivered spec (B4).
+    const patch = requested && requested.patch;
+    if (patch && patch.overall && spec.overall) {
+      for (const dim of ['width', 'depth', 'height']) {
+        const want = patch.overall[dim];
+        if (typeof want !== 'number' || !isFinite(want)) continue;
+        const got = spec.overall[dim];
+        if (typeof got === 'number' && Math.abs(want - got) > 5) {
+          fixes.push(dim + ' is ' + U().fmtLength(got) + ', not the proposed ' + U().fmtLength(want));
+        }
+      }
+    }
+    if (!drawerFixed && patch && patch.drawers && typeof patch.drawers.count === 'number') {
+      const have = spec.drawers ? spec.drawers.count : 0;
+      if (patch.drawers.count !== have) {
+        fixes.push(have ? 'the delivered design has ' + have + ' drawer' + (have === 1 ? '' : 's') : 'no drawers in this design');
+      }
+    }
+
+    // 6. A requested change that changed nothing at all.
+    if ((!chips || !chips.length) && !fixes.length && patch && Object.keys(patch).length) {
+      fixes.push('nothing in the delivered design actually changed');
+    }
+
+    let out = text;
+    if (fixes.length) out = out.replace(/[.\s]*$/, '') + '. Actually: ' + fixes.join('; ') + '.';
+    const ign = requested && Array.isArray(requested.ignored) ? requested.ignored.filter(Boolean) : [];
+    if (ign.length) out += ' (I couldn’t express and ignored: ' + ign.slice(0, 4).join(', ') + '.)';
+    return out;
+  }
+
+  /* Integrity honesty line for the chat ack (A3): a failing verdict is never
+   * hidden behind a cheerful blurb, whatever the commit source. Photo flows
+   * keep their fuller phrasing (proportions were estimated, so even a clean
+   * report is worth stating). */
+  function integrityLine(summary, opts) {
+    if (!summary) return '';
+    if (opts && opts.photo) {
+      const t = summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass';
+      return ` Integrity: ${t} — full report in the Safety tab.`;
+    }
+    return summary.fails
+      ? ` Integrity: ${summary.fails} failing check${summary.fails > 1 ? 's' : ''} — see the Safety tab before building.`
+      : '';
   }
 
   function snap(v, table) {
@@ -383,6 +620,48 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { w: r1(maxX - minX), d: r1(maxZ - minZ), h: r1(maxY) };
   }
 
+  /* Scale a custom composition to a target overall size (B3). Custom overall
+   * is DERIVED from part extents, so an overall-only refinement would be a
+   * silent no-op — instead code scales the composition: positions per world
+   * axis (about the floor plane and x/z center), and each part dim by the
+   * world axis its local dimension dominantly spans (same local axes as
+   * customPartSize, rotated by the part's rot). Thickness re-snaps in
+   * correctCustom. Returns new {parts, connections} or null when there is
+   * nothing to scale. */
+  const SCALE_LOCAL_AXES = {
+    post: { l: [0, 1, 0], w: [1, 0, 0], t: [0, 0, 1] },
+    cylinder: { l: [0, 1, 0], w: [1, 0, 0], t: [1, 0, 0] },
+    slab: { l: [1, 0, 0], w: [0, 0, 1], t: [0, 1, 0] },
+    rail: { l: [1, 0, 0], w: [0, 1, 0], t: [0, 0, 1] },
+    panel: { l: [1, 0, 0], w: [0, 1, 0], t: [0, 0, 1] }
+  };
+  function scaleCustom(spec, target) {
+    if (!spec || !spec.custom || !Array.isArray(spec.custom.parts) || !spec.custom.parts.length) return null;
+    const cur = customExtents(spec.custom.parts);
+    const f = {
+      x: num(target && target.width, 0) > 0 && cur.w > 0 ? clamp(target.width / cur.w, 0.05, 20) : 1,
+      y: num(target && target.height, 0) > 0 && cur.h > 0 ? clamp(target.height / cur.h, 0.05, 20) : 1,
+      z: num(target && target.depth, 0) > 0 && cur.d > 0 ? clamp(target.depth / cur.d, 0.05, 20) : 1
+    };
+    if (Math.abs(f.x - 1) < 1e-4 && Math.abs(f.y - 1) < 1e-4 && Math.abs(f.z - 1) < 1e-4) return null;
+    const out = clone(spec.custom);
+    for (const p of out.parts) {
+      const r = p.rot || { x: 0, y: 0, z: 0 };
+      const R = Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
+      const axes = SCALE_LOCAL_AXES[p.primitive] || SCALE_LOCAL_AXES.rail;
+      const scaled = {};
+      for (const dk of ['l', 'w', 't']) {
+        const v = Geo.mulMV(R, axes[dk]);
+        const ax = Math.abs(v[0]) >= Math.abs(v[1]) - 1e-9 && Math.abs(v[0]) >= Math.abs(v[2]) - 1e-9 ? 'x'
+          : (Math.abs(v[1]) >= Math.abs(v[2]) - 1e-9 ? 'y' : 'z');
+        scaled[dk] = r1(p.dim[dk] * f[ax]);
+      }
+      p.dim = scaled;
+      p.pos = { x: r1(p.pos.x * f.x), y: r1(p.pos.y * f.y), z: r1(p.pos.z * f.z) };
+    }
+    return out;
+  }
+
   /* ---------------- correction ----------------
    * Takes any proposed spec (AI or manual), returns the corrected spec the
    * whole app runs on. Deterministic, idempotent, never throws.
@@ -522,6 +801,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       corners.set(p.id, cs);
       minY.set(p.id, Math.min(...cs.map(c => c[1])));
     }
+    // World-axis bounds per part, for gap messages the model (and user) can
+    // act on numerically (A9).
+    const aabbOf = id => {
+      const cs = corners.get(id);
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      for (const c of cs) for (let ax = 0; ax < 3; ax++) {
+        min[ax] = Math.min(min[ax], c[ax]); max[ax] = Math.max(max[ax], c[ax]);
+      }
+      return { min, max };
+    };
 
     // 1. The floor plane is real: nothing passes through it, something rests on it.
     let globalMinY = Infinity;
@@ -575,7 +864,23 @@ var BB = globalThis.BB = globalThis.BB || {};
             const grown = Geo.partOBB(p);
             grown.e = grown.e.map(e => e + AUDIT.CONTACT_GAP);
             if (Geo.obbPenetration(grown, boxes.get(q.id)) == null) {
-              errors.push({ id: 'geom_gap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) are joined on paper but never touch — that joint can’t be built.` });
+              // Name the axis, the separation, and both parts' nearest faces
+              // (A9) — a purely verbal message gave the model nothing to fix.
+              const A = aabbOf(p.id), B = aabbOf(q.id);
+              let bestAx = 0, bestGap = -Infinity;
+              for (let ax = 0; ax < 3; ax++) {
+                const g = Math.max(B.min[ax] - A.max[ax], A.min[ax] - B.max[ax]);
+                if (g > bestGap) { bestGap = g; bestAx = ax; }
+              }
+              const AXIS = ['x', 'y', 'z'];
+              const geom = bestGap > 0.05
+                ? (() => {
+                  const aFirst = A.max[bestAx] <= B.min[bestAx];
+                  const [loP, loB, hiP, hiB] = aFirst ? [p, A, q, B] : [q, B, p, A];
+                  return ` They are ${fine(bestGap)} apart along ${AXIS[bestAx]}: “${loP.name}” ends at ${AXIS[bestAx]}=${fine(loB.max[bestAx])}, “${hiP.name}” starts at ${AXIS[bestAx]}=${fine(hiB.min[bestAx])} — move one so the faces meet.`;
+                })()
+                : '';
+              errors.push({ id: 'geom_gap:' + key, text: `“${p.name}” (${p.id}) and “${q.name}” (${q.id}) are joined on paper but never touch — that joint can’t be built.${geom}` });
             }
           }
         } else if (!sameDrawer(p, q)) {
@@ -787,8 +1092,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
-    defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff,
+    defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck, integrityLine,
     correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
-    customPartSize, customExtents, customGrainInfo, endGrainBearing
+    customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom
   };
 })();

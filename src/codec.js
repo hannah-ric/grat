@@ -207,18 +207,34 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
       }
     }
+    /* Custom-grammar diffs stay surgical (A4): "p" and "c" are independent
+     * keys. A p-only diff must NOT wipe the existing connection graph
+     * (deepMerge clones arrays wholesale — omitting the key preserves it;
+     * correctCustom drops connections referencing removed parts), and a
+     * c-only diff (joint upgrades) must decode instead of nulling the turn. */
+    const mapConns = (list, max) => list
+      .filter(c => Array.isArray(c) && Number.isInteger(c[0]) && Number.isInteger(c[1]) &&
+        c[0] >= 0 && c[1] >= 0 && (max == null || (c[0] < max && c[1] < max)))
+      .map(c => ({ a: 'p' + (c[0] + 1), b: 'p' + (c[1] + 1), joint: at(JNT, c[2], 'butt_screws') }));
     if (Array.isArray(w.p)) {
       const parts = w.p.map(decodePart).filter(Boolean);
-      const conns = (Array.isArray(w.c) ? w.c : [])
-        .filter(c => Array.isArray(c) && c[0] >= 0 && c[1] >= 0 && c[0] < parts.length && c[1] < parts.length)
-        .map(c => ({ a: 'p' + (c[0] + 1), b: 'p' + (c[1] + 1), joint: at(JNT, c[2], 'butt_screws') }));
-      patch.custom = { parts, connections: conns };
+      patch.custom = { parts };
+      if (Array.isArray(w.c)) patch.custom.connections = mapConns(w.c, parts.length);
       patch.meta = patch.meta || {};
       patch.meta.template = 'custom';
+    } else if (Array.isArray(w.c)) {
+      // Ids map to p1..pN of the CURRENT parts; correctCustom validates them.
+      patch.custom = { connections: mapConns(w.c, null) };
     }
-    // Drop empty sub-objects so the merge stays surgical.
+    // Drop values that decoded to undefined (out-of-range enum indexes) so a
+    // bad index can never silently reset a field to its default (C4), then
+    // drop empty sub-objects so the merge stays surgical.
     for (const k of Object.keys(patch)) {
-      if (patch[k] && typeof patch[k] === 'object' && !Array.isArray(patch[k]) && !Object.keys(patch[k]).length) delete patch[k];
+      const v = patch[k];
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const kk of Object.keys(v)) if (v[kk] === undefined) delete v[kk];
+        if (!Object.keys(v).length) delete patch[k];
+      } else if (v === undefined) delete patch[k];
     }
     return Object.keys(patch).length ? patch : null;
   }
@@ -277,6 +293,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
+    'Mechanisms (hinge/lift-off/fold/slide/door) NOT expressible — all JNT are permanent except kd_bolt (tool-removable). For openable asks build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
     'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
   ].join('\n');
 

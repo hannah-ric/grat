@@ -1388,7 +1388,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       return null;
     }
     if (res.rateLimited) { botSay('Too many messages in a row — give it a few seconds, then try again.', []); return null; }
-    if (res.error) { botSay(res.error, []); return null; }
+    if (res.error) {
+      // C15: the failed exchange stays in conversation memory (respond returns
+      // it in turns), so the next message doesn't act as if it never happened.
+      if (res.turns) state.turns = res.turns.slice(-24);
+      botSay(res.error, []);
+      return null;
+    }
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
       askQuestion(res.reply);
@@ -1400,6 +1406,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay(res.reply.text, [], { noChange: true });
       return null;
     }
+    // What the shown reply asked for, so the ack can be reconciled against
+    // what actually survived correction/validation/critique (A2/B4/C4).
+    const requested = res.reply.kind === 'diff'
+      ? { patch: res.reply.patch, ignored: res.reply.ignored || [] }
+      : { patch: { overall: res.reply.spec && res.reply.spec.overall, drawers: res.reply.spec && res.reply.spec.drawers }, ignored: res.reply.ignored || [] };
     let applied = AI.apply(res.reply, state.spec);
     let turns = res.turns;
     let r = runPipeline(applied.spec);
@@ -1413,14 +1424,48 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (let round = 1; r.report.errors.length && !res.local && round <= 3; round++) {
       setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
       const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
-      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus });
-      if (!res2.reply || res2.reply.kind === 'question') break;
+      // C11: rounds pin the original in-flight request so deep pipelines
+      // never refine without the words stating style/purpose/constraints.
+      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text });
+      // Mid-round authoritative answers and model asides get the same UX as
+      // first-round ones instead of vanishing or burning the round (C8).
+      const act = AI.roundDecision(res2);
+      if (act === 'billing') {
+        if (res2.billing) Store.setBilling(res2.billing);
+        renderAccount();
+        const limit = (res2.billing && res2.billing.entitlements && res2.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
+        BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+        state.turns = turns.slice(-24);
+        return null;
+      }
+      if (act === 'rate') {
+        botSay('Too many messages in a row — give it a few seconds, then try again.', []);
+        state.turns = turns.slice(-24);
+        return null;
+      }
+      if (act === 'question') {
+        // The design is unchanged; the question is the model's next move —
+        // surface it instead of discarding its text.
+        state.turns = res2.turns.slice(-24);
+        askQuestion(res2.reply);
+        return null;
+      }
+      if (act === 'info') {
+        // Advice instead of a fix: show it and stop refining; the honest
+        // unbuildable line below still reports the design unchanged.
+        turns = res2.turns;
+        botSay(res2.reply.text, [], { noChange: true });
+        break;
+      }
+      if (act === 'bail') break;
       applied = AI.apply(res2.reply, applied.spec);
       turns = res2.turns;
       r = runPipeline(applied.spec);
     }
     if (r.report.errors.length) {
-      state.turns = turns.slice(-24);
+      // The rejected proposal stays in the turns — mark it as rejected so a
+      // later turn can't silently treat the failed diff as accepted (B9).
+      state.turns = turns.concat(AI.rejectionMarker(r.report.errors)).slice(-24);
       botSay(`I couldn't get a buildable design from that: ${r.report.errors.slice(0, 2).map(e => e.text).join(' ')} Your last valid design is untouched.`, []);
       return null;
     }
@@ -1439,8 +1484,21 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns };
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
-        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus });
-        if (!res3.reply || res3.reply.kind === 'question') break;
+        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text }); // C11: pin the original request
+        // Mid-critique triage (C8): the best attempt so far still commits —
+        // only the polish loop stops.
+        const act3 = AI.roundDecision(res3);
+        if (act3 === 'billing') {
+          if (res3.billing) Store.setBilling(res3.billing);
+          renderAccount();
+          const limit3 = (res3.billing && res3.billing.entitlements && res3.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
+          BB.Billing.open(`You’ve used this month’s ${limit3} AI messages. Upgrade to keep designing with AI.`);
+          break;
+        }
+        if (act3 === 'rate') { botSay('Too many messages in a row — give it a few seconds, then try again.', []); break; }
+        if (act3 === 'question') { askQuestion(res3.reply); break; }
+        if (act3 === 'info') { botSay(res3.reply.text, [], { noChange: true }); break; }
+        if (act3 === 'bail') break;
         const a3 = AI.apply(res3.reply, final);
         const r3 = runPipeline(a3.spec);
         if (r3.report.errors.length) break;
@@ -1452,7 +1510,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, local: !!res.local, unconfigured: !!res.unconfigured };
+    return { final, failReport, explain, requested, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -1504,8 +1562,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
-        const integLine = image ? ` Integrity: ${summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass'} — full report in the Safety tab.` : '';
-        botSay((out.explain || 'Updated.') + integLine, chips, { noChange: !chips.length, caveat });
+        // Failing checks always make the ack, not just photo flows (A3);
+        // photos keep their fuller phrasing.
+        const integLine = Spec.integrityLine(summary, { photo: !!image });
+        // The ack is never the model's word alone: reconcile it against the
+        // committed spec and append the code-built truth (A2).
+        const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
+        botSay(ack + integLine, chips, { noChange: !chips.length, caveat });
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {
@@ -1781,8 +1844,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       ? `${cmp.diffs.length} parameter${cmp.diffs.length > 1 ? 's' : ''} differ${cmp.diffs.length > 1 ? '' : 's'}.`
       : 'These two snapshots are dimensionally identical.';
     const rows = $('compareRows');
-    rows.innerHTML = cmp.diffs.map(d => `<tr>
-      <td>${esc(Spec.PATH_LABELS[d.path] || d.path)}</td>
+    rows.innerHTML = cmp.diffs.map(d => d.text
+      ? `<tr><td colspan="3">${esc(d.text)}</td></tr>`
+      : `<tr>
+      <td>${esc(d.label || Spec.PATH_LABELS[d.path] || d.path)}</td>
       <td class="old num">${esc(Spec.fmtValue(d.path, d.from))}</td>
       <td class="new num">${esc(Spec.fmtValue(d.path, d.to))}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="color:var(--muted)">No differences.</td></tr>';

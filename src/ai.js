@@ -52,6 +52,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
       'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
       'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
+      // A5: a stated exclusion must bind every later choice or be excepted
+      // out loud — never silently reframed (observed: "no metal hardware"
+      // acked over a 78-screw BOM).
+      'EXCLUSIONS: a stated exclusion ("no metal", "zero hardware", "no plywood") binds the WHOLE session — honor it in every joinery/hardware choice (screws/bolts ARE metal; all-wood JNT: dowels, mortise_tenon, loose_tenon, staked_tenon) or state the exception plainly in "e"; never silently reframe.',
       '--- knowledge digest ---',
       K.knowledgeDigest(),
       // Hardware style intent only — every count, rating, and bore is code
@@ -63,18 +67,23 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- JSON extraction ---------------- */
-  /* Extract the first balanced JSON object from model text. */
+  /* Extract the first PARSEABLE balanced JSON object from model text. A
+   * balanced-but-unparseable brace blob (prose like "dims ride keys {w,d,h}")
+   * no longer ends the scan (C5) — keep scanning from the next '{'. */
   function extractJSON(text) {
     const s = String(text || '');
-    const start = s.indexOf('{');
-    if (start < 0) return null;
-    let depth = 0, inStr = false, escp = false;
-    for (let i = start; i < s.length; i++) {
-      const c = s[i];
-      if (inStr) { if (escp) escp = false; else if (c === '\\') escp = true; else if (c === '"') inStr = false; continue; }
-      if (c === '"') inStr = true;
-      else if (c === '{') depth++;
-      else if (c === '}') { depth--; if (!depth) { try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { return null; } } }
+    let start = s.indexOf('{');
+    while (start >= 0) {
+      let depth = 0, inStr = false, escp = false, closed = false;
+      for (let i = start; i < s.length; i++) {
+        const c = s[i];
+        if (inStr) { if (escp) escp = false; else if (c === '\\') escp = true; else if (c === '"') inStr = false; continue; }
+        if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') { depth--; if (!depth) { try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { closed = true; break; } } }
+      }
+      if (!closed) return null; // ran off the end — nothing further to scan
+      start = s.indexOf('{', start + 1);
     }
     return null;
   }
@@ -123,7 +132,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain' && k !== 'i' && k !== 'info') wireDiff[k] = obj[k];
     const patch = Codec().decodePartial(wireDiff);
     if (!patch) return null;
-    return { kind: 'diff', patch, explain: explain || 'Updated.' };
+    // Wire keys outside the documented schema decode to nothing — record them
+    // so the ack can say what was ignored instead of implying it landed (C4).
+    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c'];
+    const ignored = Object.keys(wireDiff).filter(k => !KNOWN.includes(k));
+    return { kind: 'diff', patch, explain: explain || 'Updated.', ignored };
   }
 
   /* ---------------- local intent parser (offline fallback) ----------------
@@ -173,7 +186,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // New design? Longest template word first: "bedside table" must win
     // over "table".
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -181,14 +194,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     // A creation verb creates — and so does a bare noun-phrase description
     // (audit X-01): the hero placeholder "A walnut nightstand with two
     // drawers" names a piece with no verb at all. A description leads with
-    // the template noun (an article plus at most three descriptor words),
-    // never refers back to the current piece, and is not negated
-    // ("not a nightstand").
-    const bareDescription = !!tmplWord &&
+    // the template noun (an article plus up to six descriptor words — "a
+    // super funky mid century modern bookshelf" is five, A8), never refers
+    // back to the current piece, and is not negated ("not a nightstand").
+    const bdMatch = tmplWord &&
+      new RegExp('^((?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,6}?)' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').exec(t.trim());
+    const bareDescription = !!bdMatch &&
       !/\b(it|its|this|that|my|mine)\b/.test(t) &&
       !negated(t, rxWord(tmplWord)) &&
-      new RegExp('^(?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,3}?' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').test(t.trim());
-    const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && wantTemplate !== spec.meta.template;
+      // Feature nouns before the template word mean the phrase's head is the
+      // FEATURE, not the piece ("two drawers like a cabinet has") — never a
+      // creation (audit X-01 drawer smuggling stays refused).
+      !/\b(drawers?|shel(?:f|ves)|doors?)\b/.test(bdMatch[1] || '');
+    // A8: "workbench" lands on the table template, so asking for one while a
+    // plain table is on the bench must still CREATE — unless the current
+    // design already IS the workbench being refined (name carries the word).
+    const differentPiece = wantTemplate !== spec.meta.template ||
+      (tmplWord === 'workbench' && !/workbench/i.test((spec.meta && spec.meta.name) || ''));
+    const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && differentPiece;
 
     // Ambiguity checks first.
     if (/\b(bigger|larger|smaller)\b/.test(t) && !/\b(wide|width|deep|depth|tall|height|high|%|percent)\b/.test(t)) {
@@ -329,13 +352,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (creating) {
+      // A workbench is a table at working height: the WORD itself implies the
+      // height, from the ergonomics table (A8) — an explicit height still wins.
+      if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
+        const row = K.ergoRow('workbench_height');
+        if (row) set('overall.height', Math.round((row.min + row.max) / 2));
+      }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
-      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || wantTemplate : 'New ' + wantTemplate;
+      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord : 'New ' + tmplWord;
       merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
-      return { kind: 'new', spec: merged, explain: `Roughed out a ${wantTemplate} to standard proportions${drawerNote} — refine away.` };
+      return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }
 
     // A rejected species with nothing else asked: say so and ask which wood
@@ -347,6 +376,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (!Object.keys(patch).length) {
+      // A8: a creation-shaped request (no back-reference to the current
+      // piece) that didn't parse gets a creation-phrased answer naming what
+      // the offline parser CAN rough out — not the edit-phrased question.
+      const creationShaped = !/\b(it|its|this|that|my|mine)\b/.test(t) &&
+        (/\b(build|make|design|create)\b/.test(t) || /^(?:an?|the)\b/.test(t.trim()) || !!tmplWord);
+      if (creationShaped) {
+        return {
+          kind: 'question',
+          question: 'Offline I can rough out a table, desk, bench, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
+          options: ['A walnut nightstand with two drawers', 'A workbench', 'A bookshelf']
+        };
+      }
       return {
         kind: 'question',
         question: 'I didn’t catch a change I can make there. Try a dimension, species, joinery level, drawers, or finish — what should move?',
@@ -358,13 +399,30 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- transports ---------------- */
+  /* C6: every model fetch carries an abort timeout — a hung connection used
+   * to pin the chat in the busy state forever. Aborts reject the fetch and
+   * ride the existing catch paths (Node ≥ 18 / modern browsers; absent
+   * AbortSignal.timeout degrades to no timeout, exactly the old behavior). */
+  const FETCH_TIMEOUT_MS = 60000;
+  const fetchSignal = () =>
+    (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(FETCH_TIMEOUT_MS) : undefined;
   let injectedTransport = null; // (system, messages) => Promise<{text, stopReason}>
   function setTransport(fn) { injectedTransport = fn; }
-  let anthropicDead = false; // one hard network failure disables it for the session
+  /* C7: transport death comes in two grades. 404/405/503 (route truly absent
+   * or unconfigured) stays PERMANENT for the session; a plain fetch rejection
+   * is a NETWORK death — a blip or a hung hop — and only benches the
+   * transport for a TTL, so restored connectivity brings the model back
+   * without a reload (before: one rejection meant offline forever). */
+  const DEAD_TTL_MS = 30000;
+  let anthropicDead = false;   // permanent: browser host / no key / hard API error
+  let anthropicDeadAt = 0;     // network death — retried after the TTL
   // Same-origin proxy (api/chat.js) — present when hosted on Vercel or the
   // bundled dev server; absent on claude.ai, where it dies on first touch
   // and the direct transport takes over. Browser-only.
-  let proxyDead = typeof window === 'undefined';
+  let proxyDead = typeof window === 'undefined'; // permanent
+  let proxyDeadAt = 0;                           // network death — TTL retry
+  const proxyDown = () => proxyDead || (proxyDeadAt && Date.now() - proxyDeadAt < DEAD_TTL_MS);
+  const anthropicDown = () => anthropicDead || (anthropicDeadAt && Date.now() - anthropicDeadAt < DEAD_TTL_MS);
   // A proxy that EXISTS but answered 503 (no ANTHROPIC_API_KEY on the server)
   // is a broken deploy, not ordinary offline — remembered for the session so
   // the UI can say "AI not configured" instead of the generic offline label
@@ -377,9 +435,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system, messages, max_tokens: MAX_TOKENS })
+        body: JSON.stringify({ system, messages, max_tokens: MAX_TOKENS }),
+        signal: fetchSignal()
       });
-    } catch (e) { proxyDead = true; throw e; }
+    } catch (e) { proxyDeadAt = Date.now(); e.transient = true; throw e; } // network death — TTL, not forever (C7)
     // 404/405: no proxy at this origin. 503: proxy present but unconfigured.
     // Both are permanent for the session; other failures may be transient
     // upstream errors and leave the proxy alive for the next message.
@@ -404,6 +463,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     try { data = await response.json(); }
     catch (e) { proxyDead = true; throw new Error('proxy returned non-JSON'); }
     if (data.error) throw new Error(data.error.message || 'proxy error');
+    proxyDeadAt = 0; // a good answer clears any network-death bench (C7)
     return { text: (data.content || []).map(b => b.text || '').join(''), stopReason: data.stop_reason || 'end_turn' };
   }
 
@@ -421,18 +481,23 @@ var BB = globalThis.BB = globalThis.BB || {};
     const key = (typeof process !== 'undefined' && process.env) ? process.env.ANTHROPIC_API_KEY : '';
     if (!key) { anthropicDead = true; throw new Error('ANTHROPIC_API_KEY not set'); }
     const model = (typeof process !== 'undefined' && process.env && process.env.ANTHROPIC_MODEL) || 'claude-sonnet-5';
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages })
-    });
+    let response;
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, messages }),
+        signal: fetchSignal()
+      });
+    } catch (e) { anthropicDeadAt = Date.now(); e.transient = true; throw e; } // network death — TTL (C7)
     if (!response.ok) throw new Error('API returned ' + response.status);
     const data = await response.json();
     if (data.error) throw new Error(data.error.message || 'API error');
+    anthropicDeadAt = 0;
     // 1c: read stop_reason from EVERY response — max_tokens means continue.
     return { text: (data.content || []).map(b => b.text || '').join(''), stopReason: data.stop_reason || 'end_turn' };
   }
@@ -458,31 +523,33 @@ var BB = globalThis.BB = globalThis.BB || {};
     // In the browser, only the same-origin proxy (or window.claude) can reach
     // a model — never count bare Anthropic as "remote available".
     const inBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
-    if (typeof fetch === 'function' && !proxyDead && typeof window !== 'undefined') return true;
-    if (!inBrowser && typeof fetch === 'function' && !anthropicDead) return true;
+    if (typeof fetch === 'function' && !proxyDown() && typeof window !== 'undefined') return true;
+    if (!inBrowser && typeof fetch === 'function' && !anthropicDown()) return true;
     return typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function';
   }
   function supportsImages() {
     if (injectedTransport) return true;
-    if (typeof fetch === 'function' && !proxyDead) return true;
+    if (typeof fetch === 'function' && !proxyDown()) return true;
     return false;
   }
 
   async function rawCall(system, messages) {
     if (injectedTransport) return injectedTransport(system, messages);
-    if (typeof fetch === 'function' && !proxyDead) {
+    if (typeof fetch === 'function' && !proxyDown()) {
       try {
         return await proxyTransport(system, messages);
       } catch (e) {
-        if (!proxyDead) throw e; // proxy alive, upstream hiccup — surface it
-        // proxy absent/unconfigured: fall through to the direct transport
+        if (!proxyDown()) throw e; // proxy alive, upstream hiccup — surface it
+        // proxy absent/unconfigured/benched: fall through to the direct transport
       }
     }
-    if (typeof fetch === 'function' && !anthropicDead) {
+    if (typeof fetch === 'function' && !anthropicDown()) {
       try {
         return await anthropicTransport(system, messages);
       } catch (e) {
-        anthropicDead = true; // fall through once, stay fallen
+        // C7: a network blip benches it for the TTL only; every other failure
+        // (browser host, no key, hard API error) stays fallen for the session.
+        if (!e || !e.transient) anthropicDead = true;
       }
     }
     if (typeof window !== 'undefined' && window.claude && typeof window.claude.complete === 'function') {
@@ -512,18 +579,64 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* ---------------- assembly walkthrough context (C10) ----------------
+   * "walk me through step 5": the model never sees the code-built plan, so it
+   * deflects or guesses (observed 4/4). When the user asks for a step or an
+   * assembly walkthrough, inject the plan's REAL numbered step titles — the
+   * same Plans.assembly list the Plan tab renders, glue-ups included, so
+   * "step 5" is the user's step 5 — plus the referenced step's full text and
+   * the spec's skill level. Code-built context, never computation in the
+   * prompt: the founding rule holds. */
+  const STEP_ASK = /\b(?:step\s*\d+|walk me through|talk me through|how do i (?:assemble|build|glue))\b/i;
+  function stepContext(text, spec) {
+    const src = String(text || '');
+    if (!STEP_ASK.test(src) || !BB.Plans || !BB.Parametric || !BB.Structural || !BB.Packing) return null;
+    const num = /\bstep\s*(\d+)\b/i.exec(src);
+    try {
+      const model = BB.Parametric.build(spec);
+      if (!model || !model.parts || !model.parts.length) return null;
+      const integ = BB.Structural.computeIntegrity(spec, model, {});
+      const cut = BB.Plans.cutList(spec, model);
+      const stock = BB.Packing.planStock(spec, model, cut, {});
+      const steps = BB.Plans.assembly(spec, model, integ, { stockPlan: stock });
+      if (!steps || !steps.length) return null;
+      const n = num ? parseInt(num[1], 10) : 0;
+      let block = `[assembly] Code-built plan for this spec (user level: ${spec.meta.level}) — numbered steps: ` +
+        steps.map((s, i) => `${i + 1}. ${s.title}`).join('; ') + '.';
+      if (n >= 1 && n <= steps.length) {
+        const s = steps[n - 1];
+        block += ` Step ${n} = "${s.title}": ${s.text || ''}`;
+      } else if (n > steps.length) {
+        block += ` There is no step ${n} — the plan has ${steps.length} steps.`;
+      }
+      return block + ' Answer from THIS plan at the user\'s level ({"i":...} unless a spec change is asked).';
+    } catch (e) { return null; } // context is best-effort — never block the turn
+  }
+
   /* ---------------- context budget (1b) ----------------
    * turns: [{role:'user'|'assistant', content}] maintained by the UI in wire
    * format. Send the last 6 verbatim; compress everything older into the
    * code-built digest (from history snapshots — zero extra AI calls).
    */
-  function buildMessages(turns, digest, newUserContent) {
+  function buildMessages(turns, digest, newUserContent, origin) {
     let recent = turns.slice(-VERBATIM_TURNS);
     while (recent.length && recent[0].role === 'assistant') recent = recent.slice(1);
     const out = [];
     if (digest && turns.length > VERBATIM_TURNS) {
       out.push({ role: 'user', content: '[context] ' + digest });
       out.push({ role: 'assistant', content: '{"e":"ok"}' });
+    }
+    // C11: refinement/critique rounds append two turns each, so in a deep
+    // pipeline the ORIGINAL request (the words carrying style/purpose/
+    // constraints) scrolls out of the verbatim window. Pin it with a compact
+    // context pair whenever it is no longer verbatim in what we send.
+    if (origin && typeof origin === 'string') {
+      const verbatim = c => typeof c === 'string' && c.includes(origin);
+      const inWindow = recent.some(m => verbatim(m.content)) || verbatim(newUserContent);
+      if (!inWindow) {
+        out.push({ role: 'user', content: '[request] ' + origin });
+        out.push({ role: 'assistant', content: '{"e":"ok"}' });
+      }
     }
     out.push(...recent);
     out.push({ role: 'user', content: newUserContent });
@@ -550,14 +663,26 @@ var BB = globalThis.BB = globalThis.BB || {};
           { type: 'text', text: userText }
         ]
       : userText;
-    const baseMessages = buildMessages(turns, digest, userContent);
+    const baseMessages = buildMessages(turns, digest, userContent, opts.origin);
+    // C10: a step/assembly walkthrough ask gets the code-built step list for
+    // THIS committed spec injected as a context pair (same pattern as the
+    // digest pair), so "step 5" means the Plan tab's step 5.
+    const stepCtx = opts.image ? null : stepContext(userText, spec);
+    if (stepCtx) {
+      baseMessages.splice(baseMessages.length - 1, 0,
+        { role: 'user', content: stepCtx },
+        { role: 'assistant', content: '{"e":"ok"}' });
+    }
 
     try {
-      let { text } = await callModel(system, baseMessages, onStatus);
+      const first = await callModel(system, baseMessages, onStatus);
+      let text = first.text;
+      let stopReason = first.stopReason;
       let parsed = classify(extractJSON(text));
       if (!parsed) {
-        // The single validation retry. Truncation never lands here — the
-        // continuation protocol already stitched partial outputs together.
+        // The single validation retry. A stitched-but-still-truncated reply
+        // CAN land here when the continuation ceiling is exhausted (C15) —
+        // the failure is then named as truncation, never "invalid JSON".
         onStatus('Re-asking for valid JSON');
         const retryMessages = [...baseMessages,
           { role: 'assistant', content: text || '(empty)' },
@@ -565,6 +690,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const second = await callModel(system, retryMessages, onStatus);
         parsed = classify(extractJSON(second.text));
         if (parsed) text = second.text;
+        else stopReason = second.stopReason;
       }
       if (parsed) {
         const newTurns = [...turns,
@@ -572,7 +698,19 @@ var BB = globalThis.BB = globalThis.BB || {};
           { role: 'assistant', content: text }];
         return { reply: parsed, turns: newTurns, local: false };
       }
-      return { reply: null, turns, error: 'The model never produced a valid design reply.' };
+      // C15: the failed exchange stays in the returned turns (capped) so the
+      // conversation remembers what was asked and attempted, and truncation
+      // exhaustion is named instead of the generic invalid-reply line.
+      const failTurns = [...turns,
+        { role: 'user', content: typeof userContent === 'string' ? userContent : userText + ' [photo]' },
+        { role: 'assistant', content: (String(text || '(no reply)')).slice(0, 1500) }];
+      const truncated = stopReason === 'max_tokens';
+      return {
+        reply: null, turns: failTurns, truncated,
+        error: truncated
+          ? 'That reply kept overflowing the response limit even after ' + (MAX_CONTINUATIONS + 1) + ' parts, so I couldn’t finish it. Try asking for a simpler piece, or split the request into smaller steps.'
+          : 'The model never produced a valid design reply.'
+      };
     } catch (err) {
       // Usage/rate limits are authoritative server answers, not outages — never
       // mask them behind the offline parser.
@@ -583,10 +721,64 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
-  /* Structured critique for the propose-validate-revise loop (novel pieces). */
+  /* Mid-loop reply triage for the orchestration loops (C8): billing and rate
+   * limits surface their own UX, a question goes to the user, an info reply
+   * shows its text — none of them are appliable patches. Before this, a
+   * question's text vanished on break, an info reply deep-merged into a no-op
+   * that burned the round, and limits fell through to "couldn't get a
+   * buildable design". */
+  function roundDecision(res) {
+    if (!res) return 'bail';
+    if (res.usageLimit) return 'billing';
+    if (res.rateLimited) return 'rate';
+    if (!res.reply) return 'bail';
+    // The loops only run remote; a local reply mid-round means the transport
+    // died mid-flight — bail to the honest unbuildable path, never surface
+    // the offline parser's guess as the model's answer.
+    if (res.local) return 'bail';
+    if (res.reply.kind === 'question') return 'question';
+    if (res.reply.kind === 'info') return 'info';
+    return 'apply';
+  }
+
+  /* Code-built marker pair appended to the retained turns after a rejected
+   * (unbuildable) proposal (B9). Without it the rejected diff sits in the
+   * conversation looking accepted, and a later turn silently builds on it —
+   * observed live as an all-ply material flip riding an unrelated edit.
+   * Same pattern as the digest context pair in buildMessages. */
+  function rejectionMarker(errors) {
+    const brief = (errors || []).slice(0, 2).map(e => (e && e.text) || String(e)).join(' ');
+    return [
+      { role: 'user', content: '[context] That proposal was REJECTED — validation failed' + (brief ? ': ' + brief : '.') + ' The committed design is UNCHANGED; do not build on the rejected values.' },
+      { role: 'assistant', content: '{"e":"understood, design unchanged"}' }
+    ];
+  }
+
+  /* Structured critique for the propose-validate-revise loop (novel pieces).
+   * A10: each failing check TYPE gets one code-owned remedy line — observed
+   * live, three sag rounds never once proposed lamination, so the loop
+   * shuffled geometry instead of converging. */
+  const CRITIQUE_REMEDIES = [
+    [/^sag:/, 'sag: thicken the part (sheet stock tops out at 18 mm — use solid stock, or laminate by stacking TWO 18 mm sheet slabs as separate touching parts joined edge_glue), add a rail or rib under the span, or shorten the span'],
+    [/^str:/, 'strength: use a thicker section or a stronger species'],
+    [/^(tip|stand)/, 'tipping/balance: widen the stance or lower the mass'],
+    [/^joints/, 'joints: pick a stronger joint allowed by the LEVEL MATRIX']
+  ];
+  function critiqueRemedies(failedChecks) {
+    const lines = [];
+    for (const c of failedChecks) {
+      const r = CRITIQUE_REMEDIES.find(([rx]) => rx.test(String(c.id || '')));
+      if (r && !lines.includes(r[1])) lines.push(r[1]);
+    }
+    return lines;
+  }
   function buildCritique(failedChecks) {
-    const lines = failedChecks.slice(0, 10).map(c => `- ${c.title}: ${c.explain} (${c.value}; required: ${c.threshold})`);
-    return `Structural validation of your composition FAILED. Problems:\n${lines.join('\n')}\nFix ONLY these problems — keep the design intent and everything that already works. Reply {"N":{corrected FULL wire spec}} as minified JSON, nothing else.`;
+    const shown = failedChecks.slice(0, 10);
+    const lines = shown.map(c => `- ${c.title}: ${c.explain} (${c.value}; required: ${c.threshold})`);
+    const fixes = critiqueRemedies(shown);
+    return `Structural validation of your composition FAILED. Problems:\n${lines.join('\n')}\n` +
+      (fixes.length ? `Proven fixes — ${fixes.join('; ')}.\n` : '') +
+      `Fix ONLY these problems — keep the design intent and everything that already works. Reply {"N":{corrected FULL wire spec}} as minified JSON, nothing else.`;
   }
 
   /* ---------------- photo-to-design (Phase 4 item 4) ----------------
@@ -645,7 +837,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (reply.unitsUnspecified && currentSpec && currentSpec.meta) {
         proposed = S.deepMerge(proposed, { meta: { units: currentSpec.meta.units } });
       }
-    } else proposed = S.deepMerge(currentSpec, reply.patch);
+    } else {
+      let patch = reply.patch;
+      // B3: custom overall is derived from part extents, so an overall-only
+      // diff would silently no-op behind a confident ack. Scale the
+      // composition in code (Spec.scaleCustom); the extents-derived overall
+      // then lands naturally, so the overall patch itself is dropped.
+      if (patch && patch.overall && !patch.custom && currentSpec && currentSpec.meta &&
+        currentSpec.meta.template === 'custom' &&
+        !(patch.meta && patch.meta.template && patch.meta.template !== 'custom')) {
+        const scaled = S.scaleCustom(currentSpec, patch.overall);
+        if (scaled) {
+          patch = Object.assign({}, patch, { custom: scaled });
+          delete patch.overall;
+        }
+      }
+      proposed = S.deepMerge(currentSpec, patch);
+    }
     const corrected = S.correctSpec(proposed);
     const diffs = S.diffSpecs(currentSpec, corrected);
     return { spec: corrected, diffs, chips: S.describeDiff(diffs) };
@@ -653,7 +861,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.AI = {
     systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
-    setTransport, callModel, buildMessages, buildCritique, downscaleImage,
+    setTransport, callModel, buildMessages, buildCritique, rejectionMarker, roundDecision, downscaleImage, stepContext,
     supportsImages, hasRemote, VISION_PROMPT,
     unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
     MAX_TOKENS, MAX_CONTINUATIONS, VERBATIM_TURNS, CONTINUE_PROMPT

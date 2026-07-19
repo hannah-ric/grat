@@ -640,6 +640,70 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- chat: upstream fetch carries an abort timeout (C6) ---------------- */
+  section('chat: the upstream fetch carries an abort timeout (C6)');
+  {
+    const rmkv = useTempKV();
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    const realFetch = globalThis.fetch;
+    let seenOpts = null;
+    globalThis.fetch = async (url, opts) => { seenOpts = opts; return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) }; };
+    let res = fakeRes();
+    await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.90' }, body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
+    eq(res.statusCode, 200, 'stubbed upstream still proxies');
+    ok(seenOpts && seenOpts.signal instanceof AbortSignal, 'the upstream fetch receives an AbortSignal timeout');
+    // An abort rejection rides the existing 502 unreachable path — the
+    // request resolves instead of hanging forever.
+    globalThis.fetch = async () => { const e = new Error('The operation was aborted'); e.name = 'TimeoutError'; throw e; };
+    res = fakeRes();
+    await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.91' }, body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
+    eq(res.statusCode, 502, 'a timed-out upstream resolves into the 502 unreachable path');
+    globalThis.fetch = realFetch;
+    rmkv();
+    cleanEnv();
+  }
+
+  /* ---------------- chat: prompt caching via system split (C14) ---------------- */
+  section('chat: system prompt splits into a cached prefix + per-call tail (C14)');
+  {
+    const rmkv = useTempKV();
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    const realFetch = globalThis.fetch;
+    let seenPayload = null;
+    globalThis.fetch = async (url, opts) => { seenPayload = JSON.parse(opts.body); return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) }; };
+    const send = async system => {
+      const res = fakeRes();
+      const body = { messages: [{ role: 'user', content: 'hi' }] };
+      if (system !== undefined) body.system = system;
+      await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.95' }, body }), res);
+      return res;
+    };
+
+    // The real client shape: byte-stable prefix (schema doc + digests), then
+    // the marker line isolating the per-call wire spec (src/ai.js systemPrompt).
+    const prefix = 'WIRE FORMAT schema doc + knowledge digests (byte-stable)';
+    const tail = '\n--- current spec (wire format) ---\n{"v":4,"t":4}';
+    await send(prefix + tail);
+    ok(Array.isArray(seenPayload.system) && seenPayload.system.length === 2, 'system with the spec marker becomes two blocks');
+    eq(seenPayload.system[0], { type: 'text', text: prefix, cache_control: { type: 'ephemeral' } }, 'first block = byte-stable prefix with cache_control ephemeral');
+    eq(seenPayload.system[1], { type: 'text', text: tail }, 'second block = per-call tail (marker + wire spec), uncached');
+    eq(seenPayload.system.map(b => b.text).join(''), prefix + tail, 'the split loses no bytes');
+
+    await send('no marker in this system prompt');
+    eq(seenPayload.system, 'no marker in this system prompt', 'marker absent → plain string passes through unchanged');
+    await send(undefined);
+    ok(seenPayload.system === undefined, 'no system at all → undefined, exactly as before');
+
+    // The split only pays off if the marker still matches what the client
+    // emits — pin the marker line in src/ai.js systemPrompt.
+    const aiSrc = fs.readFileSync(path.join(__dirname, '../src/ai.js'), 'utf8');
+    ok(aiSrc.includes("'--- current spec (wire format) ---'"), 'src/ai.js systemPrompt still carries the split marker line');
+
+    globalThis.fetch = realFetch;
+    rmkv();
+    cleanEnv();
+  }
+
   /* ---------------- env audit + production readiness (A-03) ---------------- */
   section('env audit: AI + OAuth advisories and qualified readiness (A-03)');
   {
