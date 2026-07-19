@@ -1794,5 +1794,47 @@ section('G11 anchor verdicts reach the ack; failing acks name the governing chec
     'template anchor step wording is byte-stable (goldens cannot see this change)');
 }
 
+/* ================= G12: assembly steps never glue a knockdown joint ================= */
+section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
+{
+  // Template path (ref3/adapt3's live shape): a kd_bolt frame whose entire
+  // point is tool-only disassembly used to get "Glue, clamp, and check for
+  // square." — following the text welds the table shut and silently
+  // invalidates the model's verified flat-pack answer.
+  const kd = pipeline(Spec.deepMerge(Spec.defaultSpec('table'), { meta: { units: 'mm' }, joinery: { frame: 'kd_bolt' } }));
+  eq(kd.spec.joinery.frame, 'kd_bolt', 'kd_bolt survives correction on a beginner frame');
+  const kdSteps = Plans.assembly(kd.spec, kd.model, null, {});
+  const s1 = kdSteps.find(s => s.id === 's1');
+  ok(s1 && /knockdown bolts/.test(s1.text) && /Bolt together — hand-tight, then snug once square\./.test(s1.text),
+    `kd frame step bolts instead of gluing — got "${s1 && s1.text}"`);
+  ok(!kdSteps.some(s => (s.joints || []).some(j => j.type === 'kd_bolt') && /glue/i.test(s.text)),
+    'no step that makes a kd_bolt joint mentions glue');
+
+  // The glued wording stays byte-identical for glued frames (golden guard).
+  const gl = pipeline(Spec.defaultSpec('table'));
+  const g1 = Plans.assembly(gl.spec, gl.model, null, {}).find(s => s.id === 's1');
+  ok(g1 && /with pocket screws\. Glue, clamp, and check for square\./.test(g1.text),
+    `glued frames keep the original sentence — got "${g1 && g1.text}"`);
+
+  // Custom path: the unconditional " Dry-fit before glue." suffix (ref4's
+  // live bed rails: "…with knockdown bolts. Dry-fit before glue.").
+  const cu = Spec.correctSpec(Spec.defaultSpec('custom'));
+  cu.custom.connections[0].joint = 'kd_bolt';
+  const cuModel = Parametric.build(cu);
+  const cSteps = Plans.assembly(cu, cuModel, null, {});
+  const kdStep = cSteps.find(s => /knockdown bolts/.test(s.text));
+  ok(kdStep && /Bolt together — hand-tight, then snug once square\./.test(kdStep.text) && !/glue/i.test(kdStep.text),
+    `custom kd_bolt connection bolts, no glue — got "${kdStep && kdStep.text}"`);
+  const glStep = cSteps.find(s => /butt joint/.test(s.text));
+  ok(glStep && / Dry-fit before glue\./.test(glStep.text),
+    `glued custom connections keep the dry-fit suffix — got "${glStep && glStep.text}"`);
+
+  // No golden fixture uses kd_bolt, so this wording change cannot diff the
+  // corpus — assert it stays that way.
+  for (const f of fs.readdirSync(path.join(__dirname, 'golden'))) {
+    ok(!/kd_bolt/.test(fs.readFileSync(path.join(__dirname, 'golden', f), 'utf8')), `golden ${f} is kd_bolt-free`);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
