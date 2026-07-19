@@ -1513,5 +1513,53 @@ section('G4 custom shelf surfaces default to books; summary discloses assumed lo
     'derived surfaces land in surfaceLoads as assumed book duty');
 }
 
+/* ================= G5: frame-joint demand = worst apron end reaction (B7) ================= */
+section('G5 table-like frame joints see the apron end reaction, not total/8');
+{
+  // ref7-run1's committed cedar bench. The engine's own frame model (F-S2-1)
+  // says each apron carries half the spread load + ¾ of the point load — yet
+  // the joint check divided the surface total equally over all 8 frame
+  // joints (75 lb) when the loaded-apron end joint really carries
+  // R = 0.5·w·L/2 + 0.75·P/2 = 333.5 + 500.3 = 833.9 N ≈ 187 lb (2.5×).
+  const r = pipeline({
+    meta: { name: 'Deck Board Bench', template: 'bench', level: 'beginner', units: 'in' },
+    overall: { width: 1200, depth: 350, height: 450 },
+    wood: { species: 'western_red_cedar' },
+    structure: { topThickness: 25, legThickness: 45, apronHeight: 80, apronThickness: 25, apronInset: 12 },
+    joinery: { frame: 'butt_screws' }
+  });
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  const j = ig.checks.find(c => c.id === 'joints');
+  ok(j && j.data && typeof j.data.perN === 'number', 'apron-path joint demand ships as check data');
+  // seats(1070) = 2 → P = 1334.16 N point + one extra seat as spread:
+  // R = 0.5·(P/1070)·(1070/2) + 0.75·P/2 = 0.25·P + 0.375·P = 833.85 N.
+  near(j && j.data && j.data.perN, 833.85, 1.5, 'demand is the worst apron end reaction (hand statics)');
+  near(j && j.data && j.data.capN, 320, 1, 'capacity: butt screws 500 N × cedar SG factor 0.64');
+  ok(j && j.status === 'fail', 'the honest margin ≈0.38× is a clear fail (was flattered to 0.96×)');
+
+  // Carcass case joints keep the untouched model — the frozen ash-bookshelf
+  // honest-fail golden must not move (G27).
+  const bs = pipeline({
+    meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, wood: { species: 'ash' },
+    structure: { shelfCount: 4, sideThickness: 19, shelfThickness: 19, backPanel: true }
+  });
+  const jB = Structural.computeIntegrity(bs.spec, bs.model, {}).checks.find(c => c.id === 'joints');
+  ok(jB && !jB.data, 'carcass case joints carry no apron data (ash golden stays byte-stable)');
+  // Sanity: a stout frame still clears the honest demand — the Shaker table
+  // (dowel frame, cherry) sits just above the 1.5× gate, not in fail.
+  const sh = pipeline({
+    meta: { name: 'Shaker Dining Table', template: 'table', level: 'intermediate', units: 'in' },
+    overall: { width: 1828.8, depth: 914.4, height: 749.3 }, wood: { species: 'cherry' },
+    structure: { topThickness: 25, legThickness: 70, apronHeight: 101.6, apronThickness: 19, apronInset: 12.7 },
+    joinery: { frame: 'dowels' }
+  });
+  const jS = Structural.computeIntegrity(sh.spec, sh.model, {}).checks.find(c => c.id === 'joints');
+  // worktop duty: R = 0.5·(75·9.81)/2 + 0.75·(90·9.81)/2 = 515.0 N vs
+  // dowels 800 N × SG 1.0 → margin 1.55 — an honest pass, no flattery left.
+  ok(jS && jS.status === 'pass' && jS.data && Math.abs(jS.data.perN - 515.03) < 1,
+    'the Shaker classic still passes on the honest end-reaction demand');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

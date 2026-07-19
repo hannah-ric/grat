@@ -973,6 +973,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const s of surfaces) {
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
+        let demand = null, apron = false; // G5: apron end reaction overrides N/count
         if (custom) {
           const conns = ((spec.custom && spec.custom.connections) || []).filter(c => c.a === s.id || c.b === s.id);
           if (!conns.length) continue;
@@ -1006,16 +1007,32 @@ var BB = globalThis.BB = globalThis.BB || {};
             }
           }
         } else if (TABLE_LIKE.includes(t)) {
-          if (s.part.role === 'top') { joint = spec.joinery.frame; count = 8; where = 'apron–leg'; slot = 'frame'; }
-          else { joint = spec.joinery.case; count = 4; where = 'shelf–leg'; slot = 'case'; }
+          if (s.part.role === 'top') {
+            joint = spec.joinery.frame; count = 8; where = 'apron–leg'; slot = 'frame';
+            /* G5 (B7): the frame model above already says the aprons are the
+             * beams — each carries half the spread load and ¾ of the point
+             * load. The joint demand must be SELF-CONSISTENT with it: the
+             * loaded apron's end joint carries the apron END REACTION
+             * (Σ 0.5·w·L/2 for spread cases + Σ 0.75·P/2 for a midspan
+             * point), not an equal 1/count share of the surface total —
+             * which flattered the true worst joint by 2–3×. */
+            if (s.apron) {
+              apron = true;
+              demand = 0;
+              for (const c of loadCasesFor(s.presetKey, s.apron.span, 'ss')) {
+                if (c.fn === 'udlSS') demand += (0.5 * c.mag) * s.apron.span / 2;
+                else demand += (0.75 * c.mag) / 2;
+              }
+            }
+          } else { joint = spec.joinery.case; count = 4; where = 'shelf–leg'; slot = 'case'; }
         } else {
           joint = spec.joinery.case; count = 2; where = `${s.part.role}–side`; slot = 'case';
         }
         const rating = JOINT_RATING[joint] || JOINT_RATING.butt_screws;
         const cap = rating.capN * sgF * (endGrain ? 0.67 : 1);
-        const per = N / count;
+        const per = demand != null ? demand : N / count;
         const margin = cap / per;
-        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain };
+        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain, apron };
       }
       /* G1: load-path connections — every member-to-support joint is checked
        * with the member's end reaction as demand, so a joinery change on the
@@ -1068,8 +1085,10 @@ var BB = globalThis.BB = globalThis.BB || {};
               ? `The overhung load levers this joint group out of its support: the root moment resists as a pull-out couple across two-thirds of the ${fmtLen(weakest.h)} member thickness, and the ${jLabel(weakest.joint)} group at ${weakest.where} can't hold it.`
               : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`) +
             (custom && weakest.margin < 1.5 ? ` (Checked: ${coverage}.)` : '') +
+            (weakest.apron ? ' Demand is the loaded apron\'s end reaction from the same frame model the sag checks use (half the spread load + ¾ of the point load per apron).' : '') +
             (weakest.endGrain ? ' Screws at this joint bear on end grain, which holds about a third less (derated ×0.67) — a dowel, tenon, or cleat would restore full capacity.' : ''),
-          fixes
+          fixes,
+          ...(weakest.apron ? { data: { perN: weakest.per, capN: weakest.cap } } : {})
         });
       }
     }
