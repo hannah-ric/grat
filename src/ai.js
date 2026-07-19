@@ -51,6 +51,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       // per call saying the same thing twice.
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
       'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
+      // G6: ask-vs-guess was ungoverned chance — 2/4 fresh runs of an
+      // underdetermined request silently committed complete failing designs.
+      // Deliberate token spend; asking is load-bearing for soundness (every
+      // guessed ref7 commit failed integrity; the informed one passed).
+      'ASK OR DISCLOSE: if a load-bearing or fit-critical unknown (what piece; boards on hand when building from the user\'s stock; the size of a named object or count — "for 6", a queen mattress; a stated capacity) would change the design, ask ONE question (QUESTION shape), most consequential first; a follow-up turn may ask the next such unknown (inventory after piece) or state the assumption.',
+      'If you design without asking, OPEN "e" naming the assumptions you filled in; size to any named object/count and state that size in "e". Never ask styling/finish first; a complete, well-determined request gets ZERO questions.',
       'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
       // A5: a stated exclusion must bind every later choice or be excepted
       // out loud — never silently reframed (observed: "no metal hardware"

@@ -1370,9 +1370,11 @@ section('prompt budget: hard ceiling with measured headroom');
   const tokens = Codec.estimateTokens(sys);
   // Ceiling raised 1900 → 2000 for the A5 exclusion-binding line (~80 tokens,
   // deliberate spend), then 2000 → 2040 for the C1 bed-size anchor rows
-  // (~35 tokens), then 2040 → 2060 for the G7 e-budget clause (~18 tokens);
+  // (~35 tokens), then 2040 → 2060 for the G7 e-budget clause (~18 tokens),
+  // then 2060 → 2290 for the G6 ask-or-disclose policy (~170 tokens — the
+  // sev-5 silent-guessing fix) and the G10 floor-boundary line (~56 tokens);
   // the guard still catches accidental bloat.
-  ok(tokens <= 2060, `system prompt stays under the 2060-token ceiling (measured ${tokens})`);
+  ok(tokens <= 2290, `system prompt stays under the 2290-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
@@ -1394,6 +1396,21 @@ section('prompt budget: hard ceiling with measured headroom');
     'system prompt states that stated exclusions bind the whole session');
   ok(/screws\/bolts ARE metal/.test(sys) && /mortise_tenon/.test(sys) && /never silently reframe/.test(sys),
     'the exclusion line names metal fasteners as metal, all-wood joints, and forbids silent reframes');
+  // G6: ask-or-disclose policy — silent guessing on underdetermined requests
+  // was ungoverned chance (2/4 fresh runs committed complete failing designs
+  // with zero questions). The policy must name the unknown classes, the
+  // one-question rule, the assumption-disclosure duty, and the zero-question
+  // guarantee for complete requests.
+  ok(/ASK OR DISCLOSE:/.test(sys) && /load-bearing or fit-critical unknown/.test(sys) && /ONE question \(QUESTION shape\)/.test(sys),
+    'system prompt carries the ask-or-disclose policy with the one-question rule');
+  ok(/what piece; boards on hand/.test(sys) && /"for 6", a queen mattress/.test(sys) && /a stated capacity/.test(sys),
+    'the policy names the load-bearing unknown classes (piece, stock, named-object size, capacity)');
+  ok(/most consequential first/.test(sys) && /inventory after piece/.test(sys),
+    'the policy orders questions and allows a follow-up for the next load-bearing unknown');
+  ok(/OPEN "e" naming the assumptions/.test(sys) && /state that size in "e"/.test(sys),
+    'designing anyway requires opening "e" with the assumptions and the size-to-named-object statement');
+  ok(/Never ask styling\/finish first/.test(sys) && /ZERO questions/.test(sys),
+    'styling never leads and complete requests stay question-free');
 }
 
 section('word-number lengths and storage driver honesty');
