@@ -45,6 +45,23 @@ var BB = globalThis.BB = globalThis.BB || {};
   const partDensity = (p, spec) =>
     p.material === 'hardware' ? 3000 : densityOf(materialSpeciesKey(p, spec));
   const nextSolidUp = t => K.SOLID_THICKNESS.find(x => x > t) || null;
+  /* G15 (finding B12): the tappable thickness fix must be SOLVED against the
+   * failing check, not one blind stock step (simple2's "thicken to 20 mm"
+   * left the shelf at 5.33 mm vs a 2.87 limit). Closed form: sag scales
+   * 1/t³ (I = b·t³/12) and bending stress 1/t², so the first passing
+   * thickness is t·∛(sag/limit) or t·√(1.25·stress/allow) — whichever
+   * governs — snapped UP the stock table. When even the biggest stock
+   * falls short, it is offered honestly as a partial step. */
+  function solveThicknessFix(h, sagRatio, stress, allow) {
+    let need = h;
+    if (sagRatio > 1) need = Math.max(need, h * Math.cbrt(sagRatio));
+    if (allow > 0 && stress > 0 && allow / stress < 1.25) need = Math.max(need, h * Math.sqrt((1.25 * stress) / allow));
+    if (need <= h + 0.05) return null;
+    const t = K.SOLID_THICKNESS.find(x => x > h && x >= need - 1e-6);
+    if (t) return { t, partial: false };
+    const biggest = K.SOLID_THICKNESS[K.SOLID_THICKNESS.length - 1];
+    return biggest > h ? { t: biggest, partial: true } : null;
+  }
   // All display text routes through BB.Units — the check math stays SI.
   const U = () => BB.Units;
   const fmtFine = x => U().fmtSmall(x);      // sag / movement / margins: decimal in
@@ -490,16 +507,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       const ssp = speciesOf(materialSpeciesKey(s.part, spec));
       const Es = ssp.moe * 1000; // GPa -> MPa
       const fixes = [];
-      const up = nextSolidUp(s.h);
       const sIsSheet = !!(K.WOOD_SPECIES[s.part.material] && K.WOOD_SPECIES[s.part.material].sheet);
-      if (!custom && up) {
-        if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${fmtLen(up)}`, patch: { structure: { topThickness: up } } });
-        else if (!sIsSheet && !s.apron) fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
-      }
-      if (custom && up && !sIsSheet) {
-        const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: up } } : p);
-        fixes.push({ id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(up)}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
-      }
+      /* G15: the thickness fix is solved AGAINST the failing check (first
+       * stock that passes, or an honest partial step) — so it is built after
+       * the beam is evaluated, from the check's own ratio and stress. */
+      const thicknessFix = (sagRatio, stress, allow) => {
+        if (sIsSheet) return null; // sheet stock tops out — the remedy is structure, not a phantom thickness
+        const solved = solveThicknessFix(s.h, sagRatio, stress, allow);
+        if (!solved) return null;
+        const suffix = solved.partial ? ' (partial fix — still over the limit)' : '';
+        if (!custom) {
+          if (s.part.role === 'top' && TABLE_LIKE.includes(t)) return { id: 'thick-top', label: `Thicken top to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { topThickness: solved.t } } };
+          if (!s.apron) return { id: 'thick-shelf', label: `Thicken to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { shelfThickness: solved.t } } };
+          return null;
+        }
+        const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: solved.t } } : p);
+        return { id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(solved.t)}${suffix}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } };
+      };
       if (K.WOOD_SPECIES.hard_maple.moe > sp.moe * 1.1 && spec.wood.species !== 'hard_maple') {
         fixes.push({ id: 'maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } });
       }
@@ -549,6 +573,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         const limS = s.strip.span / SAG_LIMIT_RATIO;
         const rS = sagS / limS;
         if (rS > worstSagRatio) { worstSagRatio = rS; worstSag = { id: s.id, sag: sagS, limit: limS, span: s.strip.span }; }
+        const tFixS = thicknessFix(rS, Is > 0 ? (MS * (s.h / 2)) / Is : Infinity, ssp.mor / SAFETY_FACTOR);
+        if (tFixS) fixes.unshift(tFixS); // top thickness governs the strip, not the aprons
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label} between aprons`,
           status: sagStatus(rS),
@@ -568,6 +594,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
+        const tFix = thicknessFix(ratio, I > 0 ? (M * (s.h / 2)) / I : Infinity, ssp.mor / SAFETY_FACTOR);
+        if (tFix) fixes.unshift(tFix);
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label}`,
           status: sagStatus(ratio),
@@ -649,6 +677,40 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!recs.has(q.id)) recs.set(q.id, { part: q, distSus: 0, distTrans: 0, point: 0, from: [] });
         return recs.get(q.id);
       };
+      /* G15 for members: the deepen fix is solved against the member's own
+       * check (sag ∝ 1/h³, stress ∝ 1/h²) and patches the spec dimension
+       * that is world-vertical — only when the part's rotation keeps one
+       * (y-rotations do; tilted members get no phantom fix). Slab thickness
+       * snaps up the stock table; rail/panel depth is a rip cut, rounded to
+       * a clean 5 mm. */
+      const deepenFix = (m, h, sagRatio, stress, allow) => {
+        const sp2 = ((spec.custom && spec.custom.parts) || []).find(p => p.id === m.id);
+        if (!sp2) return null;
+        const rr = sp2.rot || { x: 0, y: 0, z: 0 };
+        const flat = a => { const d = ((a % 180) + 180) % 180; return d < 1 || d > 179; };
+        if (!flat(rr.x || 0) || !flat(rr.z || 0)) return null;
+        const key = sp2.primitive === 'slab' ? 't' : (sp2.primitive === 'rail' || sp2.primitive === 'panel') ? 'w' : null;
+        if (!key) return null; // a post/cylinder lies down only via x/z rotations (gated above)
+        let need = h;
+        if (sagRatio > 1) need = Math.max(need, h * Math.cbrt(sagRatio));
+        if (allow > 0 && stress > 0 && allow / stress < 1.25) need = Math.max(need, h * Math.sqrt((1.25 * stress) / allow));
+        if (need <= h + 0.05) return null;
+        let tNew, partial;
+        if (key === 't') {
+          const solved = solveThicknessFix(h, sagRatio, stress, allow);
+          if (!solved) return null;
+          tNew = solved.t; partial = solved.partial;
+        } else {
+          tNew = Math.min(1500, Math.ceil(need / 5) * 5);
+          partial = tNew < need - 0.05;
+        }
+        const newParts = spec.custom.parts.map(p => p.id === m.id ? { ...p, dim: { ...p.dim, [key]: tNew } } : p);
+        return {
+          id: 'deep-' + m.id,
+          label: `Deepen ${m.id} to ${fmtLen(tNew)}${partial ? ' (partial fix — still over the limit)' : ''}`,
+          patch: { custom: { parts: newParts, connections: spec.custom.connections } }
+        };
+      };
       for (const s of surfaces) {
         const p = LOAD_PRESETS[s.presetKey] || LOAD_PRESETS.display;
         let dist = 0, sus = false, point = 0;
@@ -718,6 +780,14 @@ var BB = globalThis.BB = globalThis.BB || {};
           if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: m.id, sag, limit, span }; }
           const srcs = [...new Set(rec.from)];
           const mFixes = [];
+          {
+            const allowM = msp.mor / SAFETY_FACTOR;
+            const stressM = I > 0 ? (M * (h / 2)) / I : Infinity;
+            if (ratio > 1 || allowM / stressM < 1.25) {
+              const mf = deepenFix(m, h, ratio, stressM, allowM);
+              if (mf) mFixes.push(mf);
+            }
+          }
           checks.push({
             id: 'sag:mbr:' + m.id, title: `Sag — ${m.name} (supporting member)`,
             status: sagStatus(ratio),

@@ -1561,5 +1561,69 @@ section('G5 table-like frame joints see the apron end reaction, not total/8');
     'the Shaker classic still passes on the honest end-reaction demand');
 }
 
+/* ================= G15: thickness fixes solve to the first PASSING stock (B12) ================= */
+section('G15 tappable thickness fixes are solved against the check, not one blind step');
+{
+  // simple2's live commit: 19 mm pine shelves at 862 mm span under books,
+  // crept sag 6.221 vs 2.873 limit (ratio 2.165). The old fix offered the
+  // next stock step (20 mm → still 5.33, still failing). Solved:
+  // t·∛ratio = 19 × 1.2936 = 24.58 → first passing stock = 25 mm.
+  const raw = {
+    meta: { name: 'Simple Pine Bookshelf', template: 'bookshelf', level: 'beginner', units: 'in' },
+    overall: { width: 900, depth: 300, height: 1524 }, wood: { species: 'pine' },
+    structure: { shelfCount: 4, shelfThickness: 19, sideThickness: 19, backPanel: true },
+    joinery: { frame: 'butt_screws', case: 'butt_screws', box: 'butt_screws' }
+  };
+  const r = pipeline(raw);
+  const sagChk = Structural.computeIntegrity(r.spec, r.model, {}).checks.find(c => c.id === 'sag:shelf_1');
+  ok(sagChk && sagChk.status === 'fail', 'fixture still fails honestly (5.33-class sag)');
+  const fx = sagChk && sagChk.fixes.find(f => f.id === 'thick-shelf');
+  ok(fx, 'the failing shelf offers a thickness fix');
+  eq(fx && fx.patch.structure.shelfThickness, 25, 'fix skips the still-failing 20 mm step and lands on 25 mm');
+  ok(fx && /25/.test(fx.label), 'the label names the solved thickness');
+  const r25 = pipeline(Object.assign(JSON.parse(JSON.stringify(raw)), { structure: { shelfCount: 4, shelfThickness: 25, sideThickness: 19, backPanel: true } }));
+  const sag25 = Structural.computeIntegrity(r25.spec, r25.model, {}).checks.find(c => c.id === 'sag:shelf_1');
+  ok(sag25 && sag25.status === 'pass', 'the offered fix actually passes (6.22 → 2.76 vs 2.80-class limit)');
+
+  // Custom surface path: a 12 mm pine slab spanning 840 mm at book duty
+  // (ratio 8.91) needs t·∛ratio = 24.9 — the fix lands on 25, not 15.
+  const cu = pipeline({
+    meta: { name: 'Plank Shelf', template: 'custom', level: 'beginner', units: 'mm' },
+    wood: { species: 'pine' },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'shelf', primitive: 'slab', dim: { l: 900, w: 250, t: 12 }, pos: { x: 0, y: 426, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'shelf' },
+        { id: 'p2', role: 'post_a', primitive: 'post', dim: { l: 420, w: 60, t: 60 }, pos: { x: -420, y: 210, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        { id: 'p3', role: 'post_b', primitive: 'post', dim: { l: 420, w: 60, t: 60 }, pos: { x: 420, y: 210, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: [{ a: 'p2', b: 'p1', joint: 'butt_screws' }, { a: 'p3', b: 'p1', joint: 'butt_screws' }]
+    }
+  });
+  const igC = Structural.computeIntegrity(cu.spec, cu.model, {});
+  const sagC = igC.checks.find(c => c.id === 'sag:p1');
+  const fxC = sagC && sagC.fixes.find(f => f.id === 'thick-p1');
+  ok(sagC && sagC.status === 'fail' && fxC, 'the failing custom slab offers a solved thickness fix');
+  const newT = fxC && fxC.patch.custom.parts.find(p => p.id === 'p1').dim.t;
+  eq(newT, 25, 'custom fix solves several stock steps at once (12 → 25, not 15)');
+
+  // Member checks (G1) get the same solver: adapt4's 40-tall rail needs
+  // 40·∛21.1 = 110.5 → deepen to 115 (rounded up to clean 5 mm rip width),
+  // which passes both sag (5.5 vs 6.1) and strength (14.0 vs 27.3 allow).
+  const bed = pipeline(adapt4Bed());
+  const igB = Structural.computeIntegrity(bed.spec, bed.model, {});
+  const mFx = igB.checks.find(c => c.id === 'sag:mbr:p7');
+  const deep = mFx && mFx.fixes.find(f => f.id === 'deep-p7');
+  ok(deep, 'a failing member offers a solved deepen fix');
+  eq(deep && deep.patch.custom.parts.find(p => p.id === 'p7').dim.w, 115, 'rail deepens to the solved 115 mm, not one step');
+
+  // When no stock can pass, the label says so instead of pretending.
+  const wide = pipeline(Object.assign(JSON.parse(JSON.stringify(raw)),
+    { overall: { width: 2000, depth: 300, height: 1524 } }));
+  const sagW = Structural.computeIntegrity(wide.spec, wide.model, {}).checks.find(c => c.id === 'sag:shelf_1');
+  const fxW = sagW && sagW.fixes.find(f => f.id === 'thick-shelf');
+  ok(fxW && fxW.patch.structure.shelfThickness === 45 && /partial/i.test(fxW.label),
+    'an unsolvable span offers the biggest stock as an honest partial step');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
