@@ -1413,6 +1413,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       : { patch: { overall: res.reply.spec && res.reply.spec.overall, drawers: res.reply.spec && res.reply.spec.drawers }, ignored: res.reply.ignored || [] };
     let applied = AI.apply(res.reply, state.spec);
     let turns = res.turns;
+    // G8: the committed ack must narrate the SURVIVING design — track the
+    // explain of the latest APPLIED reply. Captured once from round 1, it
+    // described phantom architecture ("carried only by the two angled side
+    // rails" over a design with no rails) after later rounds restructured
+    // the piece, while the accurate corrected explains were discarded.
+    let explain = res.reply.explain;
     let r = runPipeline(applied.spec);
 
     // Up to three validation-refinement rounds with the specific errors
@@ -1459,6 +1465,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       if (act === 'bail') break;
       applied = AI.apply(res2.reply, applied.spec);
+      explain = res2.reply.explain || explain; // G8: the applied round's story wins
       turns = res2.turns;
       r = runPipeline(applied.spec);
     }
@@ -1474,14 +1481,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     // attempt is presented honestly, failing report and all.
     let final = applied.spec;
     let failReport = null;
-    let explain = res.reply.explain;
     if (final.meta.template === 'custom' && !res.local) {
       let best = null, curTurns = turns;
       for (let round = 1; round <= 3; round++) {
         const built = runPipeline(final);
         const integ = Structural.computeIntegrity(built.spec, built.model, integrityOpts());
         const fails = integ.checks.filter(c => c.status === 'fail');
-        if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns };
+        // G8: best carries the explain that describes best.spec, so a
+        // rollback restores the matching story, never a later proposal's.
+        if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns, explain };
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
         const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text }); // C11: pin the original request
@@ -1503,10 +1511,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         const r3 = runPipeline(a3.spec);
         if (r3.report.errors.length) break;
         final = r3.spec;
+        explain = res3.reply.explain || explain; // G8: the adopted round's story wins
         curTurns = res3.turns;
       }
       final = best.spec;
       turns = best.turns;
+      explain = best.explain; // G8: the committed ack narrates best.spec
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
@@ -1558,7 +1568,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         out.local ? 'Working offline - plain-language edits still work.' : null
       ].filter(Boolean).join(' ') || null;
       if (out.failReport) {
-        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
+        // G8: the honest report narrates the committed design too — the
+        // surviving explain (reconciled like any ack) opens it, so the user
+        // learns what was built, not just what it fails.
+        const story = out.explain ? Spec.reconcileAck(out.explain, state.spec, chips, out.requested) + ' ' : '';
+        botSay(`${story}Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
         selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
