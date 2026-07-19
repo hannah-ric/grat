@@ -1411,6 +1411,13 @@ section('prompt budget: hard ceiling with measured headroom');
     'designing anyway requires opening "e" with the assumptions and the size-to-named-object statement');
   ok(/Never ask styling\/finish first/.test(sys) && /ZERO questions/.test(sys),
     'styling never leads and complete requests stay question-free');
+  // G10: the floor-standing boundary is documented next to the mechanisms
+  // line — the model kept proposing hangs and correction silently grounded
+  // them into mangled floor deliveries (ref1 both runs).
+  ok(/STAND ON THE FLOOR/.test(Codec.SCHEMA_DOC) && /hanging\/wall\/ceiling mounting does not exist/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC states the everything-stands-on-the-floor boundary');
+  ok(/nearest floor-standing design and say so in "e", or ask/.test(Codec.SCHEMA_DOC),
+    'the floor line instructs the same disclose-or-ask behavior as the mechanisms line');
 }
 
 section('word-number lengths and storage driver honesty');
