@@ -1625,5 +1625,95 @@ section('G15 tappable thickness fixes are solved against the check, not one blin
     'an unsolvable span offers the biggest stock as an honest partial step');
 }
 
+/* ================= G9: reconcileAck — phantom attachment / stock-source / "-free" / structure dims ================= */
+section('G9 acks never claim attachment, stock reuse, material-free builds, or dims the plan lacks');
+{
+  const none = { patch: {}, ignored: [] };
+
+  // ref2-run1 (live): "gets french-cleat screwed to it [the column]" over a
+  // delivered spec whose connections are all dowels — no cleat part, joint,
+  // BOM line, or step exists (the tip-critical claim lived only in the ack).
+  const REF2 = "Column itself isn't modeled (it's your existing structural post); a solid white-oak vertical spine gets french-cleat screwed to it, and 5 plywood shelves cantilever off it at 72° increments, rising 300mm each turn. Check the 900mm footprint clears your column plus walking space.";
+  const spiral = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: 'intermediate' }, wood: { species: 'white_oak', sheetSpecies: 'hardwood_ply' } }));
+  spiral.custom.connections.forEach(c => { c.joint = 'dowels'; });
+  const g1 = Spec.reconcileAck(REF2, spiral, ['x'], none);
+  ok(/Actually:.*no french cleat exists in this plan/.test(g1), `phantom cleat corrected — got "${g1}"`);
+  ok(/anti-tip strap/.test(g1), 'the correction names the one real building attachment');
+
+  // ref7-run1 t2 (live): stock-source claim over a catalog-shopping stock
+  // plan, plus a leg number correction silently clamped (50 → 45).
+  const REF7A = "Tuned the bench to the actual stock: 5/4 (~25mm) cedar deck boards, with legs laminated from two boards (50mm) for stiffness and the apron built from a single board (25mm) — top was already 25mm. That uses only your deck boards, no dimensional lumber. Want the small table next as a low coffee-table height or a standard side-table height?";
+  const bench1 = Spec.correctSpec({
+    meta: { name: 'Deck Board Bench', template: 'bench', level: 'beginner', units: 'in' },
+    overall: { width: 1200, depth: 350, height: 450 }, wood: { species: 'western_red_cedar' },
+    structure: { topThickness: 25, legThickness: 50, apronHeight: 80, apronThickness: 25 },
+    joinery: { frame: 'butt_screws' }
+  });
+  eq(bench1.structure.legThickness, 45, 'the proposed 50 mm laminated legs snapped to 45 (the claim the ack keeps making)');
+  const g2 = Spec.reconcileAck(REF7A, bench1, ['x'], none);
+  ok(/the stock plan buys catalog lumber — designing onto on-hand boards isn’t modeled yet/.test(g2), `stock reuse claim corrected — got "${g2}"`);
+  ok(/leg thickness is 45 mm, not the claimed 50 mm/.test(g2), `clamped leg number corrected — got "${g2}"`);
+  ok(!/apron thickness is/.test(g2) && !/top thickness is/.test(g2), 'true apron/top numbers are not flagged');
+
+  // ref7-run2 t2 (live): "legs/aprons doubled-up 2x6 (70mm)" over aprons the
+  // clamp delivered at 25 mm — the legs really are 70, only the apron lies.
+  const REF7B = "A simple outdoor bench sized to use six 6' 2x6s: legs/aprons doubled-up 2x6 (70mm), seat slats at full 38mm thickness with gaps to shed water. Pocket screws forgive the cupping better than tight joinery; spar urethane suits exterior cedar.";
+  const bench2 = Spec.correctSpec({
+    meta: { name: 'Cedar Deck-Board Bench', template: 'bench', level: 'beginner', units: 'in' },
+    overall: { width: 1200, depth: 350, height: 450 }, wood: { species: 'western_red_cedar' },
+    structure: { topThickness: 38, legThickness: 70, apronHeight: 100, apronThickness: 38 },
+    joinery: { frame: 'pocket_screws' }
+  });
+  eq(bench2.structure.apronThickness, 25, 'the proposed 38 mm (2x6) aprons clamped to 25');
+  const g3 = Spec.reconcileAck(REF7B, bench2, ['x'], none);
+  ok(/apron thickness is 25 mm, not the claimed 70 mm/.test(g3), `doubled-2x6 apron story corrected — got "${g3}"`);
+  ok(!/leg thickness is/.test(g3), 'the true 70 mm leg claim is untouched');
+  ok(!/top thickness is/.test(g3), 'the true 38 mm seat-slat claim is untouched');
+  ok(!/catalog lumber/.test(g3), '"sized to use six 2x6s" is sizing intent, not a reuse claim — no stock fix');
+
+  // simple2 (live): "plywood-free back panel" over a baltic birch ply back.
+  const SIMPLE2 = "A simple pine bookshelf, 900w x 300d x 1524h mm, with 4 shelves, plywood-free back panel, and beginner-friendly butt joints with screws for easy building.";
+  const pineShelf = Spec.correctSpec({
+    meta: { name: 'Pine Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1524 }, wood: { species: 'pine' },
+    structure: { shelfCount: 4, backPanel: true }
+  });
+  const g4 = Spec.reconcileAck(SIMPLE2, pineShelf, ['x'], none);
+  ok(/not plywood-free — the delivered design uses baltic birch ply/.test(g4), `"plywood-free" over a ply back corrected — got "${g4}"`);
+
+  // The same claim over a design with no sheet stock in it is TRUE — silent.
+  const bareTable = Spec.correctSpec(Spec.defaultSpec('table'));
+  const g5 = Spec.reconcileAck('A plywood-free solid oak table.', bareTable, ['x'], none);
+  ok(!/Actually:/.test(g5), `a true "plywood-free" claim passes — got "${g5}"`);
+
+  // Must-NOT-fire: honest mechanism disclosures pass through byte-identical.
+  const kdTable = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('table'), { joinery: { frame: 'kd_bolt' } }));
+  const ADAPT3 = "A true fold-flat hinge mechanism isn't something I can build—every joint is permanent except kd_bolt. Nearest real option: legs bolt to the apron frame with kd_bolt (hex-key) joints, so one person unbolts 4 legs solo and stacks top+frame+legs flat, well under 254mm, for storage.";
+  const REF3A = "True folding hinges aren't buildable here (all joints are permanent except kd_bolt), so I switched frame joinery to kd_bolt: one person can unbolt the aprons/legs from the top and knock it down for storage. Top, legs, and aprons are all ≤70mm thick, so the disassembled parts lean flat and slide into a 254mm gap.";
+  const REF3B = "A true hinged fold-flat isn't buildable — every joint is permanent except kd_bolt. This is a knock-down design instead: legs and aprons bolt to the top with kd_bolt hardware, so one person can unbolt it and stack the flat top, aprons, and legs (each well under 254mm) for storage, then rebolt it solo to set up again.";
+  for (const [nm, txt] of [['adapt3', ADAPT3], ['ref3-run1', REF3A], ['ref3-run2', REF3B]]) {
+    eq(Spec.reconcileAck(txt, kdTable, ['x'], none), txt, `${nm}'s honest mechanism disclosure passes through untouched`);
+  }
+
+  // ref8-run2 (live): the liner honesty ("not a modeled part") is preserved.
+  const REF8 = "Two cedar planter boxes (dadoed bottoms, rabbeted corners) anchor a slatted privacy screen on posts and rails. Solid wood alone isn't waterproof — drop a separate metal or plastic liner tray inside each planter (not a modeled part) to actually keep water off your hardwood floor.";
+  const planter = Spec.correctSpec(Spec.deepMerge(Spec.defaultSpec('custom'), { wood: { species: 'western_red_cedar' } }));
+  eq(Spec.reconcileAck(REF8, planter, ['x'], none), REF8, 'ref8-run2 liner honesty passes through untouched');
+
+  // A positive TRUE dimension claim is never "corrected".
+  const g7 = Spec.reconcileAck('A sturdy red oak table with a 25 mm top on 70 mm legs.', bareTable, ['x'], none);
+  ok(!/Actually:/.test(g7), `true dimension claims pass — got "${g7}"`);
+
+  // A delta claim is not a dimension claim (the unit suite's a3 text).
+  const g8 = Spec.reconcileAck('Grew the top 50.8 mm deeper.', bareTable, [], none);
+  ok(!/top thickness/.test(g8), `"50.8 mm deeper" is a delta, not a thickness claim — got "${g8}"`);
+
+  // Suspension narration with no artifact is corrected; honest negation is not.
+  const g9 = Spec.reconcileAck('The desk hangs from the ceiling on steel cables.', kdTable, ['x'], none);
+  ok(/no ceiling attachment exists in this plan/.test(g9), `suspension claim corrected — got "${g9}"`);
+  const g10 = Spec.reconcileAck('This bookshelf doesn’t attach to the wall — it stands on its own feet.', pineShelf, ['x'], none);
+  ok(!/Actually:/.test(g10), `negated attachment claim passes — got "${g10}"`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

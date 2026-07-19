@@ -308,16 +308,22 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- ack reconciliation (A2, merges B4/C4) ----------------
+  /* ---------------- ack reconciliation (A2, merges B4/C4; G9) ----------------
    * The chat ack is the model's FIRST "explain", shown after correction,
    * validation-refinement, and critique rounds may have changed or reverted
    * what it describes. Code — never the model — checks the enumerated
    * contradiction classes seen live and appends the code-built truth:
    *   - a species word that isn't the delivered wood ("hard maple" over soft maple)
+   *   - an "X-free" claim over a material the build actually uses (G9/C7)
    *   - a drawer-count numeral vs the delivered drawers ("three drawers" over 2)
    *   - leg words on a legless design ("splayed legs" on a bookshelf)
    *   - mechanism words (hinge/fold/pivot/lift-off) no artifact contains
+   *   - building-attachment claims (cleat / screwed-to-wall / hangs from the
+   *     ceiling) with no matching artifact in the spec (G9/A3/B14)
+   *   - stock-source claims ("uses only your deck boards") no plan can honor (G9/C2)
    *   - a requested dimension that did not survive to the final spec (B4)
+   *   - a structure number the explain pins to a leg/apron/top that correction
+   *     silently clamped away (G9/C4)
    *   - a requested change that changed nothing (the false-ack surface)
    * plus a caveat naming wire keys the codec ignored (C4).
    * Pure: (explain, correctedSpec, chips, requested) -> ack text.
@@ -329,7 +335,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const fixes = [];
     // A mention is honest when its own clause already negates it ("no hinges",
     // "a hinged lid isn't expressible") — never "correct" honesty.
-    const NEG = /\b(no|not|never|without|can't|cannot|isn't|aren't|won't|doesn't|don't|instead of|rather than|unable|lacks?|omit(?:ted|s)?)\b/;
+    const NEG = /\b(no|not|never|nothing|without|can't|cannot|isn't|aren't|won't|doesn't|don't|instead of|rather than|unable|lacks?|omit(?:ted|s)?)\b/;
     const clauseAt = i => {
       const before = low.slice(0, i).split(/[,.;:!?()]|\s[—–-]\s/).pop();
       const after = low.slice(i).split(/[,.;:!?()]|\s[—–-]\s/)[0];
@@ -362,6 +368,39 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (actual) fixes.push('the delivered wood is ' + actual.label.toLowerCase());
         break;
       }
+    }
+
+    // 1b. "X-free" claims over a material the build actually uses (G9/C7):
+    // the "-free" suffix negates its own noun, so the NEG grammar reads the
+    // clause as honest — parse the suffix form explicitly. Solid stock is
+    // always in the build; sheet stock only when the spec actually yields
+    // sheet parts (carcass back panels, drawer bottoms, sheet custom parts).
+    {
+      const t = spec.meta && spec.meta.template;
+      const usesSheet = t === 'custom'
+        ? ((spec.custom && spec.custom.parts) || []).some(p => p.stock === 'sheet')
+        : !!(spec.drawers && spec.drawers.count) ||
+          ((t === 'bookshelf' || t === 'cabinet') && spec.structure && spec.structure.backPanel);
+      const solidSp = K.WOOD_SPECIES[spec.wood && spec.wood.species];
+      const sheetSp = K.WOOD_SPECIES[spec.wood && spec.wood.sheetSpecies];
+      const inUse = [];
+      if (solidSp) inUse.push({ sp: solidSp, names: [solidSp.label.toLowerCase()].concat(solidSp.aliases || []) });
+      if (usesSheet && sheetSp) {
+        const names = [sheetSp.label.toLowerCase()].concat(sheetSp.aliases || []);
+        // Family words: any ply sheet answers to "plywood"/"ply".
+        if (names.some(nm => /\bply\b|plywood/.test(nm))) names.push('plywood', 'ply');
+        inUse.push({ sp: sheetSp, names });
+      }
+      const rxFree = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '[\\s-]?free\\b');
+      let hit = null;
+      for (const u of inUse) {
+        for (const nm of u.names) {
+          const m = rxFree(nm).exec(low);
+          if (m && !NEG.test(clauseAt(m.index))) { hit = { nm, sp: u.sp }; break; }
+        }
+        if (hit) break;
+      }
+      if (hit) fixes.push('not ' + hit.nm + '-free — the delivered design uses ' + hit.sp.label.toLowerCase());
     }
 
     // 2. Drawer-count numerals vs the delivered drawers.
@@ -400,6 +439,54 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    // 4b. Building-attachment claims (G9/A3/B14): no deliverable spec ever
+    // fastens to the building — correction refuses external joints inside
+    // custom graphs, template cleats join parts to parts, and the one
+    // modeled wall item is the integrity-mandated anti-tip strap (which is
+    // a strap, not a mount). A positive cleat/mount/hang claim over a spec
+    // with no matching artifact gets the code truth appended.
+    {
+      const isCustom = spec.meta && spec.meta.template === 'custom';
+      const hasCleat = isCustom
+        ? ((spec.custom && spec.custom.parts) || []).some(p => /cleat/.test(p.role || '')) ||
+          ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'french_cleat')
+        : ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'french_cleat');
+      const BUILDING = '(columns?|walls?|ceilings?|studs?|joists?|rafters?|masonry|brick)';
+      const mountRx = new RegExp('\\b(?:screw(?:ed|s)?|bolt(?:ed|s)?|lag(?:ged)?|mount(?:ed|s)?|attach(?:ed|es)?|fasten(?:ed|s)?|hangs?|hung|suspend(?:ed|s)?)\\b[^.;:!?]{0,40}?\\b' + BUILDING + '\\b');
+      const styleRx = new RegExp('\\b' + BUILDING + '[\\s-](?:mounted|mount|hung|suspended)\\b');
+      const target = w => (/^column/.test(w) ? 'column' : /^(ceiling|joist|rafter)/.test(w) ? 'ceiling' : 'wall');
+      const cleatM = /\bfrench[\s-]+cleats?\b/.exec(low);
+      if (!hasCleat && cleatM && !NEG.test(clauseAt(cleatM.index))) {
+        fixes.push('no french cleat exists in this plan — the only building attachment this tool ever adds is the anti-tip strap');
+      } else {
+        const m = mountRx.exec(low) || styleRx.exec(low);
+        if (m) {
+          const clause = clauseAt(m.index);
+          const noun = m[1];
+          const pre = low.slice(Math.max(0, m.index + m[0].lastIndexOf(noun) - 20), m.index + m[0].lastIndexOf(noun));
+          // "planter walls", "case sides" name parts, not the building; the
+          // anti-tip strap's own wall instruction is honest hardware talk.
+          const partNoun = /(planter|box|drawer|case|cabinet|screen|divider|side)\s+$/.test(pre);
+          if (!NEG.test(clause) && !/anti[\s-]?tip|strap/.test(clause) && !partNoun) {
+            fixes.push('no ' + target(noun) + ' attachment exists in this plan — the piece stands free on the floor; the only building attachment this tool ever adds is the anti-tip strap');
+          }
+        }
+      }
+    }
+
+    // 4c. Stock-source claims (G9/C2): no wire field, spec field, or packer
+    // input can represent boards the user already owns — every stock plan
+    // shops the catalog, so a reuse claim is never true of the delivered plan.
+    {
+      const c1 = /\bonly\s+(?:your|my)\b[^.;:!?]{0,30}?\b(?:boards?|lumber|stock|planks?|wood|decking)\b/;
+      const c2 = /\b(?:uses?|using|built|builds?|made|reuses?|reusing|repurposes?|repurposing)\s+only\b[^.;:!?]{0,30}?\b(?:reclaimed|leftover|salvaged|scrap|on[\s-]hand|existing)\b/;
+      const c3 = /\bno\s+(?:dimensional|new|store[\s-]bought|fresh|additional|extra)\s+(?:lumber|boards?|stock|wood)\b/;
+      const reuseCtx = /\b(?:your|my|reclaimed|leftover|salvaged|scrap|on[\s-]hand|deck\s+boards?)\b/;
+      if (mentioned(c1) || mentioned(c2) || (c3.test(low) && reuseCtx.test(low))) {
+        fixes.push('the stock plan buys catalog lumber — designing onto on-hand boards isn’t modeled yet');
+      }
+    }
+
     // 5. Requested values that did not survive to the delivered spec (B4).
     const patch = requested && requested.patch;
     if (patch && patch.overall && spec.overall) {
@@ -416,6 +503,57 @@ var BB = globalThis.BB = globalThis.BB || {};
       const have = spec.drawers ? spec.drawers.count : 0;
       if (patch.drawers.count !== have) {
         fixes.push(have ? 'the delivered design has ' + have + ' drawer' + (have === 1 ? '' : 's') : 'no drawers in this design');
+      }
+    }
+
+    // 5b. Structure-dimension claims (G9/C4): a number the explain pins to a
+    // leg/apron/top/shelf/side that differs >2 mm from the delivered
+    // structure value gets the delivered number appended — correction clamps
+    // silently, and the stock story ("aprons doubled-up 2x6") must not
+    // outlive the geometry. Conservative by construction: explicit mm/in
+    // numbers only, thickness-class magnitudes only (≤120 mm), bound claims
+    // ("well under 254mm", "≤70mm") and delta claims ("50.8 mm deeper")
+    // skipped, and an apron number matching the apron HEIGHT is a true
+    // claim too. Custom parts carry their own dims — template-only.
+    if (spec.meta && spec.meta.template !== 'custom' && spec.structure) {
+      const st = spec.structure;
+      const DIMS = [
+        { rx: 'legs?', vals: [st.legThickness], got: st.legThickness, name: 'leg thickness' },
+        { rx: 'aprons?', vals: [st.apronThickness, st.apronHeight], got: st.apronThickness, name: 'apron thickness' },
+        { rx: 'top|seat', vals: [st.topThickness], got: st.topThickness, name: 'top thickness' },
+        { rx: 'shelf|shelves', vals: [st.shelfThickness], got: st.shelfThickness, name: 'shelf thickness' },
+        { rx: 'sides?', vals: [st.sideThickness], got: st.sideThickness, name: 'side thickness' }
+      ];
+      const BOUND = /(?:under|below|within|up\s+to|at\s+most|less\s+than|max(?:imum)?|over|above|at\s+least|more\s+than|[≤<≥>])\s*(?:the\s+|a\s+|an\s+)?[~≈]?\s*$/;
+      const DELTA = /^\s*(?:deeper|wider|taller|longer|shorter|narrower|thicker|thinner|higher|lower)\b/;
+      const numRx = /(\d+(?:\.\d+)?)\s*(mm\b|millimet\w*|in\b|inch(?:es)?\b|["”])/g;
+      let m;
+      while ((m = numRx.exec(low))) {
+        const v = parseFloat(m[1]);
+        const mmVal = /^(?:in\b|inch|["”])/.test(m[2]) ? v * 25.4 : v;
+        if (!isFinite(mmVal) || mmVal <= 0 || mmVal > 120) continue;
+        if (BOUND.test(low.slice(Math.max(0, m.index - 16), m.index))) continue;
+        // A noun binds its number only inside the same clause: ahead stops at
+        // any clause break ("(70mm), seat slats…" must not bind 70 to the
+        // seat), while backward context survives an opening paren ("legs …
+        // (50mm)" is one claim).
+        const aheadRaw = low.slice(m.index + m[0].length, m.index + m[0].length + 20).split(/[.;:!?,()]/)[0];
+        if (DELTA.test(low.slice(m.index + m[0].length, m.index + m[0].length + 20).split(/[.;:!?]/)[0])) continue;
+        const back = low.slice(Math.max(0, m.index - 48), m.index).split(/[.;:!?,]/).pop();
+        let best = null;
+        for (const d of DIMS) {
+          const rxG = new RegExp('\\b(?:' + d.rx + ')\\b', 'g');
+          let dist = Infinity, bm;
+          while ((bm = rxG.exec(back))) dist = back.length - (bm.index + bm[0].length);
+          const am = new RegExp('\\b(?:' + d.rx + ')\\b').exec(aheadRaw);
+          if (am && am.index < dist) dist = am.index;
+          if (dist < (best ? best.dist : Infinity)) best = { d, dist };
+        }
+        if (!best) continue;
+        const delivered = best.d.vals.filter(x => typeof x === 'number' && isFinite(x));
+        if (!delivered.length || delivered.some(x => Math.abs(x - mmVal) <= 2)) continue;
+        const fixTxt = best.d.name + ' is ' + U().fmtLength(best.d.got) + ', not the claimed ' + U().fmtLength(mmVal);
+        if (!fixes.includes(fixTxt)) fixes.push(fixTxt);
       }
     }
 
