@@ -1395,6 +1395,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay(res.error, []);
       return null;
     }
+    // G13: the transport existed and died on this very call — the reply in
+    // hand is the offline parser's, not the model's. When this session had
+    // EVIDENCE of a live service (badge: online), name the network and stop:
+    // the design is untouched and the message is retryable — the parser
+    // never silently answers for the model. A session that never proved a
+    // service (offline/unconfigured badge — e.g. a static host whose first
+    // send discovers there is no proxy) keeps the documented offline
+    // degradation: the local reply proceeds with its offline caveat.
+    const aiBadge = $('aiBadge');
+    if (res.transportFailed && aiBadge && aiBadge.dataset.state === 'online') {
+      botSay('Connection dropped mid-refinement — your design is untouched. Send the message again to retry.', []);
+      return null;
+    }
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
       askQuestion(res.reply);
@@ -1463,6 +1476,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         botSay(res2.reply.text, [], { noChange: true });
         break;
       }
+      if (act === 'transport') {
+        // G13: the network died mid-round, the model never answered — name
+        // the connection and stop. The last valid design stays; no rejection
+        // marker and no "couldn't get a buildable design" blame for a
+        // dropped fetch (the offline parser never speaks for the model).
+        state.turns = turns.slice(-24);
+        botSay('Connection dropped mid-refinement — your design is untouched. Send the message again to retry.', []);
+        return null;
+      }
       if (act === 'bail') break;
       applied = AI.apply(res2.reply, applied.spec);
       explain = res2.reply.explain || explain; // G8: the applied round's story wins
@@ -1506,6 +1528,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (act3 === 'rate') { botSay('Too many messages in a row — give it a few seconds, then try again.', []); break; }
         if (act3 === 'question') { askQuestion(res3.reply); break; }
         if (act3 === 'info') { botSay(res3.reply.text, [], { noChange: true }); break; }
+        if (act3 === 'transport') {
+          // G13: network death mid-polish — the best attempt still commits
+          // below; name the connection instead of bailing silently.
+          botSay('Connection dropped mid-refinement — keeping the best attempt so far. Send another message to keep refining.', []);
+          break;
+        }
         if (act3 === 'bail') break;
         const a3 = AI.apply(res3.reply, final);
         const r3 = runPipeline(a3.spec);

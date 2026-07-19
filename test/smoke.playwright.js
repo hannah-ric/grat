@@ -1663,6 +1663,57 @@ const clickMoreCtl = async sel => {
   ok(welcomeImport.withProjects === 'Open a saved design', 'the has-projects welcome keeps "Open a saved design"');
 
 
+  /* ================= G13: transport death names the network ================= */
+  // A transport that existed and died — on the first call or inside a
+  // validation round — surfaces as a retryable connection message, never as
+  // "I couldn't get a buildable design" and never as the offline parser
+  // answering for the model. The design stays untouched both times.
+  const g13 = await page.evaluate(async () => {
+    const bubbles = () => [...document.querySelectorAll('#chatLog .msg.bot .bubble')].map(b => b.textContent.trim()).filter(Boolean);
+    const specBefore = JSON.stringify(__bb.state.spec);
+    const n0 = bubbles().length;
+    // This session has proven a live service (injected transport) — the badge
+    // gate distinguishes an online blip from a static host that never had one.
+    __bb.setAIState('online');
+    // (a) first call dies mid-flight.
+    BB.AI.setTransport(async () => { throw new Error('boom'); });
+    await __bb.sendMessage('make it walnut');
+    const firstMsg = bubbles().pop() || '';
+    // (b) death inside a validation round: reply 1 is a custom with an
+    // unjointed overlap (validation error), then the wire drops.
+    const bad = BB.Spec.correctSpec({
+      meta: { name: 'Overlap probe', template: 'custom', level: 'advanced', units: 'mm' },
+      custom: {
+        parts: [
+          { id: 'a', role: 'slab_a', primitive: 'slab', dim: { l: 300, w: 300, t: 30 }, pos: { x: 0, y: 15, z: 0 } },
+          { id: 'b', role: 'slab_b', primitive: 'slab', dim: { l: 300, w: 300, t: 30 }, pos: { x: 0, y: 25, z: 0 } }
+        ],
+        connections: []
+      }
+    });
+    let call = 0;
+    BB.AI.setTransport(async () => {
+      call++;
+      if (call === 1) return { text: JSON.stringify({ N: BB.Codec.encode(bad), e: 'Two overlapping slabs.' }), stopReason: 'end_turn' };
+      throw new Error('boom');
+    });
+    await __bb.sendMessage('two overlapping slabs please');
+    BB.AI.setTransport(null);
+    __bb.setAIState('offline'); // restore this host's truthful badge
+    const after = bubbles().slice(n0);
+    return {
+      firstMsg,
+      midMsg: after[after.length - 1] || '',
+      blamedDesign: after.some(t => t.includes("couldn't get a buildable design")),
+      untouched: JSON.stringify(__bb.state.spec) === specBefore,
+      roundsRan: call >= 2
+    };
+  });
+  ok(g13.firstMsg.startsWith('Connection dropped'), `first-call transport death names the network ("${g13.firstMsg.slice(0, 60)}")`);
+  ok(g13.roundsRan && g13.midMsg.startsWith('Connection dropped'), `mid-validation transport death names the network ("${g13.midMsg.slice(0, 60)}")`);
+  ok(!g13.blamedDesign, 'a dropped connection is never blamed on the design');
+  ok(g13.untouched, 'the last valid design survives both transport deaths untouched');
+
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.click('#tab-stock');
