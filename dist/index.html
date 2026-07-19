@@ -4754,16 +4754,22 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- ack reconciliation (A2, merges B4/C4) ----------------
+  /* ---------------- ack reconciliation (A2, merges B4/C4; G9) ----------------
    * The chat ack is the model's FIRST "explain", shown after correction,
    * validation-refinement, and critique rounds may have changed or reverted
    * what it describes. Code — never the model — checks the enumerated
    * contradiction classes seen live and appends the code-built truth:
    *   - a species word that isn't the delivered wood ("hard maple" over soft maple)
+   *   - an "X-free" claim over a material the build actually uses (G9/C7)
    *   - a drawer-count numeral vs the delivered drawers ("three drawers" over 2)
    *   - leg words on a legless design ("splayed legs" on a bookshelf)
    *   - mechanism words (hinge/fold/pivot/lift-off) no artifact contains
+   *   - building-attachment claims (cleat / screwed-to-wall / hangs from the
+   *     ceiling) with no matching artifact in the spec (G9/A3/B14)
+   *   - stock-source claims ("uses only your deck boards") no plan can honor (G9/C2)
    *   - a requested dimension that did not survive to the final spec (B4)
+   *   - a structure number the explain pins to a leg/apron/top that correction
+   *     silently clamped away (G9/C4)
    *   - a requested change that changed nothing (the false-ack surface)
    * plus a caveat naming wire keys the codec ignored (C4).
    * Pure: (explain, correctedSpec, chips, requested) -> ack text.
@@ -4775,7 +4781,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const fixes = [];
     // A mention is honest when its own clause already negates it ("no hinges",
     // "a hinged lid isn't expressible") — never "correct" honesty.
-    const NEG = /\b(no|not|never|without|can't|cannot|isn't|aren't|won't|doesn't|don't|instead of|rather than|unable|lacks?|omit(?:ted|s)?)\b/;
+    const NEG = /\b(no|not|never|nothing|without|can't|cannot|isn't|aren't|won't|doesn't|don't|instead of|rather than|unable|lacks?|omit(?:ted|s)?)\b/;
     const clauseAt = i => {
       const before = low.slice(0, i).split(/[,.;:!?()]|\s[—–-]\s/).pop();
       const after = low.slice(i).split(/[,.;:!?()]|\s[—–-]\s/)[0];
@@ -4808,6 +4814,39 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (actual) fixes.push('the delivered wood is ' + actual.label.toLowerCase());
         break;
       }
+    }
+
+    // 1b. "X-free" claims over a material the build actually uses (G9/C7):
+    // the "-free" suffix negates its own noun, so the NEG grammar reads the
+    // clause as honest — parse the suffix form explicitly. Solid stock is
+    // always in the build; sheet stock only when the spec actually yields
+    // sheet parts (carcass back panels, drawer bottoms, sheet custom parts).
+    {
+      const t = spec.meta && spec.meta.template;
+      const usesSheet = t === 'custom'
+        ? ((spec.custom && spec.custom.parts) || []).some(p => p.stock === 'sheet')
+        : !!(spec.drawers && spec.drawers.count) ||
+          ((t === 'bookshelf' || t === 'cabinet') && spec.structure && spec.structure.backPanel);
+      const solidSp = K.WOOD_SPECIES[spec.wood && spec.wood.species];
+      const sheetSp = K.WOOD_SPECIES[spec.wood && spec.wood.sheetSpecies];
+      const inUse = [];
+      if (solidSp) inUse.push({ sp: solidSp, names: [solidSp.label.toLowerCase()].concat(solidSp.aliases || []) });
+      if (usesSheet && sheetSp) {
+        const names = [sheetSp.label.toLowerCase()].concat(sheetSp.aliases || []);
+        // Family words: any ply sheet answers to "plywood"/"ply".
+        if (names.some(nm => /\bply\b|plywood/.test(nm))) names.push('plywood', 'ply');
+        inUse.push({ sp: sheetSp, names });
+      }
+      const rxFree = nm => new RegExp('\\b' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s-]+/g, '[\\s-]+') + '[\\s-]?free\\b');
+      let hit = null;
+      for (const u of inUse) {
+        for (const nm of u.names) {
+          const m = rxFree(nm).exec(low);
+          if (m && !NEG.test(clauseAt(m.index))) { hit = { nm, sp: u.sp }; break; }
+        }
+        if (hit) break;
+      }
+      if (hit) fixes.push('not ' + hit.nm + '-free — the delivered design uses ' + hit.sp.label.toLowerCase());
     }
 
     // 2. Drawer-count numerals vs the delivered drawers.
@@ -4846,6 +4885,54 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    // 4b. Building-attachment claims (G9/A3/B14): no deliverable spec ever
+    // fastens to the building — correction refuses external joints inside
+    // custom graphs, template cleats join parts to parts, and the one
+    // modeled wall item is the integrity-mandated anti-tip strap (which is
+    // a strap, not a mount). A positive cleat/mount/hang claim over a spec
+    // with no matching artifact gets the code truth appended.
+    {
+      const isCustom = spec.meta && spec.meta.template === 'custom';
+      const hasCleat = isCustom
+        ? ((spec.custom && spec.custom.parts) || []).some(p => /cleat/.test(p.role || '')) ||
+          ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'french_cleat')
+        : ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'french_cleat');
+      const BUILDING = '(columns?|walls?|ceilings?|studs?|joists?|rafters?|masonry|brick)';
+      const mountRx = new RegExp('\\b(?:screw(?:ed|s)?|bolt(?:ed|s)?|lag(?:ged)?|mount(?:ed|s)?|attach(?:ed|es)?|fasten(?:ed|s)?|hangs?|hung|suspend(?:ed|s)?)\\b[^.;:!?]{0,40}?\\b' + BUILDING + '\\b');
+      const styleRx = new RegExp('\\b' + BUILDING + '[\\s-](?:mounted|mount|hung|suspended)\\b');
+      const target = w => (/^column/.test(w) ? 'column' : /^(ceiling|joist|rafter)/.test(w) ? 'ceiling' : 'wall');
+      const cleatM = /\bfrench[\s-]+cleats?\b/.exec(low);
+      if (!hasCleat && cleatM && !NEG.test(clauseAt(cleatM.index))) {
+        fixes.push('no french cleat exists in this plan — the only building attachment this tool ever adds is the anti-tip strap');
+      } else {
+        const m = mountRx.exec(low) || styleRx.exec(low);
+        if (m) {
+          const clause = clauseAt(m.index);
+          const noun = m[1];
+          const pre = low.slice(Math.max(0, m.index + m[0].lastIndexOf(noun) - 20), m.index + m[0].lastIndexOf(noun));
+          // "planter walls", "case sides" name parts, not the building; the
+          // anti-tip strap's own wall instruction is honest hardware talk.
+          const partNoun = /(planter|box|drawer|case|cabinet|screen|divider|side)\s+$/.test(pre);
+          if (!NEG.test(clause) && !/anti[\s-]?tip|strap/.test(clause) && !partNoun) {
+            fixes.push('no ' + target(noun) + ' attachment exists in this plan — the piece stands free on the floor; the only building attachment this tool ever adds is the anti-tip strap');
+          }
+        }
+      }
+    }
+
+    // 4c. Stock-source claims (G9/C2): no wire field, spec field, or packer
+    // input can represent boards the user already owns — every stock plan
+    // shops the catalog, so a reuse claim is never true of the delivered plan.
+    {
+      const c1 = /\bonly\s+(?:your|my)\b[^.;:!?]{0,30}?\b(?:boards?|lumber|stock|planks?|wood|decking)\b/;
+      const c2 = /\b(?:uses?|using|built|builds?|made|reuses?|reusing|repurposes?|repurposing)\s+only\b[^.;:!?]{0,30}?\b(?:reclaimed|leftover|salvaged|scrap|on[\s-]hand|existing)\b/;
+      const c3 = /\bno\s+(?:dimensional|new|store[\s-]bought|fresh|additional|extra)\s+(?:lumber|boards?|stock|wood)\b/;
+      const reuseCtx = /\b(?:your|my|reclaimed|leftover|salvaged|scrap|on[\s-]hand|deck\s+boards?)\b/;
+      if (mentioned(c1) || mentioned(c2) || (c3.test(low) && reuseCtx.test(low))) {
+        fixes.push('the stock plan buys catalog lumber — designing onto on-hand boards isn’t modeled yet');
+      }
+    }
+
     // 5. Requested values that did not survive to the delivered spec (B4).
     const patch = requested && requested.patch;
     if (patch && patch.overall && spec.overall) {
@@ -4865,6 +4952,57 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    // 5b. Structure-dimension claims (G9/C4): a number the explain pins to a
+    // leg/apron/top/shelf/side that differs >2 mm from the delivered
+    // structure value gets the delivered number appended — correction clamps
+    // silently, and the stock story ("aprons doubled-up 2x6") must not
+    // outlive the geometry. Conservative by construction: explicit mm/in
+    // numbers only, thickness-class magnitudes only (≤120 mm), bound claims
+    // ("well under 254mm", "≤70mm") and delta claims ("50.8 mm deeper")
+    // skipped, and an apron number matching the apron HEIGHT is a true
+    // claim too. Custom parts carry their own dims — template-only.
+    if (spec.meta && spec.meta.template !== 'custom' && spec.structure) {
+      const st = spec.structure;
+      const DIMS = [
+        { rx: 'legs?', vals: [st.legThickness], got: st.legThickness, name: 'leg thickness' },
+        { rx: 'aprons?', vals: [st.apronThickness, st.apronHeight], got: st.apronThickness, name: 'apron thickness' },
+        { rx: 'top|seat', vals: [st.topThickness], got: st.topThickness, name: 'top thickness' },
+        { rx: 'shelf|shelves', vals: [st.shelfThickness], got: st.shelfThickness, name: 'shelf thickness' },
+        { rx: 'sides?', vals: [st.sideThickness], got: st.sideThickness, name: 'side thickness' }
+      ];
+      const BOUND = /(?:under|below|within|up\s+to|at\s+most|less\s+than|max(?:imum)?|over|above|at\s+least|more\s+than|[≤<≥>])\s*(?:the\s+|a\s+|an\s+)?[~≈]?\s*$/;
+      const DELTA = /^\s*(?:deeper|wider|taller|longer|shorter|narrower|thicker|thinner|higher|lower)\b/;
+      const numRx = /(\d+(?:\.\d+)?)\s*(mm\b|millimet\w*|in\b|inch(?:es)?\b|["”])/g;
+      let m;
+      while ((m = numRx.exec(low))) {
+        const v = parseFloat(m[1]);
+        const mmVal = /^(?:in\b|inch|["”])/.test(m[2]) ? v * 25.4 : v;
+        if (!isFinite(mmVal) || mmVal <= 0 || mmVal > 120) continue;
+        if (BOUND.test(low.slice(Math.max(0, m.index - 16), m.index))) continue;
+        // A noun binds its number only inside the same clause: ahead stops at
+        // any clause break ("(70mm), seat slats…" must not bind 70 to the
+        // seat), while backward context survives an opening paren ("legs …
+        // (50mm)" is one claim).
+        const aheadRaw = low.slice(m.index + m[0].length, m.index + m[0].length + 20).split(/[.;:!?,()]/)[0];
+        if (DELTA.test(low.slice(m.index + m[0].length, m.index + m[0].length + 20).split(/[.;:!?]/)[0])) continue;
+        const back = low.slice(Math.max(0, m.index - 48), m.index).split(/[.;:!?,]/).pop();
+        let best = null;
+        for (const d of DIMS) {
+          const rxG = new RegExp('\\b(?:' + d.rx + ')\\b', 'g');
+          let dist = Infinity, bm;
+          while ((bm = rxG.exec(back))) dist = back.length - (bm.index + bm[0].length);
+          const am = new RegExp('\\b(?:' + d.rx + ')\\b').exec(aheadRaw);
+          if (am && am.index < dist) dist = am.index;
+          if (dist < (best ? best.dist : Infinity)) best = { d, dist };
+        }
+        if (!best) continue;
+        const delivered = best.d.vals.filter(x => typeof x === 'number' && isFinite(x));
+        if (!delivered.length || delivered.some(x => Math.abs(x - mmVal) <= 2)) continue;
+        const fixTxt = best.d.name + ' is ' + U().fmtLength(best.d.got) + ', not the claimed ' + U().fmtLength(mmVal);
+        if (!fixes.includes(fixTxt)) fixes.push(fixTxt);
+      }
+    }
+
     // 6. A requested change that changed nothing at all.
     if ((!chips || !chips.length) && !fixes.length && patch && Object.keys(patch).length) {
       fixes.push('nothing in the delivered design actually changed');
@@ -4877,19 +5015,46 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
-  /* Integrity honesty line for the chat ack (A3): a failing verdict is never
-   * hidden behind a cheerful blurb, whatever the commit source. Photo flows
-   * keep their fuller phrasing (proportions were estimated, so even a clean
-   * report is worth stating). */
+  /* Integrity honesty line for the chat ack (A3/G11): a failing verdict is
+   * never hidden behind a cheerful blurb, an ANCHOR verdict is said in chat
+   * — not just a "REQUIRED" BOM line the user meets at checkout (B13) — and
+   * a failing line names the governing check when the worst sag is itself
+   * the failure. The assumed-load disclosure (G3/G4) rides here too:
+   * engine-DERIVED check surfaces always state their assumed duty, and
+   * defaulted presets are named whenever the line already speaks — but
+   * template defaults alone never turn a clean pass into ack noise. Photo
+   * flows keep their fuller phrasing (proportions were estimated, so even a
+   * clean report is worth stating). */
   function integrityLine(summary, opts) {
     if (!summary) return '';
     if (opts && opts.photo) {
       const t = summary.fails ? summary.fails + ' fail(s)' : summary.advisories ? summary.advisories + ' advisory(ies)' : 'all checks pass';
       return ` Integrity: ${t} — full report in the Safety tab.`;
     }
-    return summary.fails
-      ? ` Integrity: ${summary.fails} failing check${summary.fails > 1 ? 's' : ''} — see the Safety tab before building.`
-      : '';
+    let line = '';
+    if (summary.fails) {
+      // Name the worst sag only when it is truly a failing check (the fail
+      // threshold is 1.5× the limit) — the failures may live elsewhere.
+      const ws = summary.worstSag;
+      const worst = ws && ws.limit > 0 && ws.sag / ws.limit > 1.5
+        ? ` — worst: ${String(ws.id).replace(/_/g, ' ')} sag ${U().fmtSmall(ws.sag)} vs ${U().fmtSmall(ws.limit)} limit;`
+        : ' —';
+      line = ` Integrity: ${summary.fails} failing check${summary.fails > 1 ? 's' : ''}${worst} see the Safety tab before building.`;
+    } else if (summary.anchorRequired) {
+      line = ' This piece needs the included wall anchor — it tips without it.';
+    }
+    const assumed = Array.isArray(summary.surfaceLoads) ? summary.surfaceLoads.filter(l => l && l.assumed) : [];
+    const derived = Array.isArray(summary.assumedSurfaces) && summary.assumedSurfaces.length > 0;
+    if (assumed.length && (line || derived)) {
+      const byLabel = new Map();
+      for (const l of assumed) {
+        if (!byLabel.has(l.label)) byLabel.set(l.label, []);
+        byLabel.get(l.label).push(String(l.id).replace(/_/g, ' '));
+      }
+      const groups = [...byLabel].map(([lab, ids]) => `${lab} on ${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''}`);
+      line += ` Checked at ${groups.join(' and ')} (assumed — set the real duty in the Safety tab).`;
+    }
+    return line;
   }
 
   function snap(v, table) {
@@ -4920,9 +5085,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   const asObB = p => Geo.partOBB({ size: customPartSize(p), pos: p.pos, rot: p.rot });
 
   /* Sanitize a proposed composition: clamp everything, snap stock, canonical
-   * ids p1..pN, joint gating, then ground + center the whole piece. Silent,
-   * deterministic, idempotent — validation reports whatever remains wrong. */
-  function correctCustom(c, level) {
+   * ids p1..pN, joint gating. Grounding/centering happens in correctCustom —
+   * this half is shared with correctionNotes (G10), which must measure the
+   * proposal's altitude BEFORE the floor snap under the exact rules
+   * correction applies. Silent, deterministic, never mutates its input. */
+  function sanitizeCustom(c, level) {
     const rawParts = Array.isArray(c && c.parts) ? c.parts : [];
     const parts = [];
     const idMap = new Map();
@@ -5006,6 +5173,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         : K.JOINT_DEFAULTS[level][kinds.includes('frame') ? 'frame' : 'case'];
       conns.push({ a, b, joint });
     }
+    return { parts, connections: conns };
+  }
+
+  /* Correct a proposed composition: sanitize (above), then ground + center
+   * the whole piece. Silent, deterministic, idempotent — validation reports
+   * whatever remains wrong; correctionNotes (G10) reports what grounding
+   * silently changed. */
+  function correctCustom(c, level) {
+    const out = sanitizeCustom(c, level);
+    const parts = out.parts;
 
     // Ground on the floor plane and center on x/z — silent code-owned fixes.
     if (parts.length) {
@@ -5022,7 +5199,42 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (Math.abs(dz) > 0.05) p.pos.z = r1(p.pos.z - dz);
       }
     }
-    return { parts, connections: conns };
+    return out;
+  }
+
+  /* ---------------- correction notes (G10) ----------------
+   * Pure, user-facing record of the silent geometric fixes correction
+   * applied: compare the RAW proposal with the delivered spec and name what
+   * neither the user nor the model would otherwise learn. First class:
+   * custom grounding — correctCustom translates an airborne composition
+   * onto the floor with no disclosure (ref1: a "ceiling-suspended" desk
+   * delivered 610 mm lower, its ack still selling the hang, because
+   * grounding runs before the audit so geom_floats can never fire). Returns
+   * display-ready strings; [] when nothing notable happened. The raw spec
+   * is pre-correction — parts may lack dim/pos/rot — so it is sanitized
+   * (never mutated) with the same rules correction itself uses. Consumed by
+   * the ack pipeline and refinement-round context (P-UI wave). */
+  const GROUND_NOTE_MM = 50; // below this, snapping to the floor is cleanup, not a destroyed premise
+  function correctionNotes(rawSpec, correctedSpec) {
+    const notes = [];
+    const raw = migrateSpec(rawSpec);
+    const rawParts = raw && raw.custom && Array.isArray(raw.custom.parts) ? raw.custom.parts : [];
+    const corOk = correctedSpec && correctedSpec.custom && Array.isArray(correctedSpec.custom.parts) && correctedSpec.custom.parts.length;
+    if (rawParts.length && corOk) {
+      const level = correctedSpec.meta && K.LEVELS.includes(correctedSpec.meta.level) ? correctedSpec.meta.level : 'beginner';
+      const s = sanitizeCustom(raw.custom, level);
+      if (s.parts.length) {
+        let minY = Infinity;
+        for (const p of s.parts) for (const corner of Geo.obbCorners(asObB(p))) minY = Math.min(minY, corner[1]);
+        const dy = r1(minY);
+        if (isFinite(dy) && Math.abs(dy) > GROUND_NOTE_MM) {
+          notes.push(dy > 0
+            ? `The proposal floated ~${U().fmtLength(dy)} above the floor — everything was grounded (this tool only builds floor-standing pieces).`
+            : `The proposal sat ~${U().fmtLength(-dy)} below the floor — everything was raised onto it (this tool only builds floor-standing pieces).`);
+        }
+      }
+    }
+    return notes;
   }
 
   /* World grain axis + grain-run length for a custom part (audit F-S2-7).
@@ -5539,7 +5751,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck, integrityLine,
-    correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
+    correctSpec, correctionNotes, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
     customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom
   };
 })();
@@ -6170,6 +6382,23 @@ var BB = globalThis.BB = globalThis.BB || {};
   const partDensity = (p, spec) =>
     p.material === 'hardware' ? 3000 : densityOf(materialSpeciesKey(p, spec));
   const nextSolidUp = t => K.SOLID_THICKNESS.find(x => x > t) || null;
+  /* G15 (finding B12): the tappable thickness fix must be SOLVED against the
+   * failing check, not one blind stock step (simple2's "thicken to 20 mm"
+   * left the shelf at 5.33 mm vs a 2.87 limit). Closed form: sag scales
+   * 1/t³ (I = b·t³/12) and bending stress 1/t², so the first passing
+   * thickness is t·∛(sag/limit) or t·√(1.25·stress/allow) — whichever
+   * governs — snapped UP the stock table. When even the biggest stock
+   * falls short, it is offered honestly as a partial step. */
+  function solveThicknessFix(h, sagRatio, stress, allow) {
+    let need = h;
+    if (sagRatio > 1) need = Math.max(need, h * Math.cbrt(sagRatio));
+    if (allow > 0 && stress > 0 && allow / stress < 1.25) need = Math.max(need, h * Math.sqrt((1.25 * stress) / allow));
+    if (need <= h + 0.05) return null;
+    const t = K.SOLID_THICKNESS.find(x => x > h && x >= need - 1e-6);
+    if (t) return { t, partial: false };
+    const biggest = K.SOLID_THICKNESS[K.SOLID_THICKNESS.length - 1];
+    return biggest > h ? { t: biggest, partial: true } : null;
+  }
   // All display text routes through BB.Units — the check math stays SI.
   const U = () => BB.Units;
   const fmtFine = x => U().fmtSmall(x);      // sag / movement / margins: decimal in
@@ -6202,7 +6431,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (kind === 'seat') return 'seating';
     if (kind === 'top') return 'worktop';
     if (defaultLoad && defaultLoad !== 'auto' && LOAD_PRESETS[defaultLoad]) return defaultLoad;
-    if (template === 'bookshelf' || template === 'cabinet') return 'books';
+    /* A custom part tagged 'shelf' gets the same book duty the bookshelf
+     * template uses (G4/B3): a novel BOOKSHELF was being checked at display
+     * 10 kg/m — 1/6 of the duty its template twin assumes. Template shelf
+     * kinds (a table's lower shelf, a nightstand top) keep display duty. */
+    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom') return 'books';
     return 'display';
   }
 
@@ -6307,8 +6540,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const t = spec.meta.template;
     const out = [];
     const push = s => {
-      s.presetKey = (loadChoices && loadChoices[s.id] && LOAD_PRESETS[loadChoices[s.id]])
-        ? loadChoices[s.id] : defaultPresetFor(s.kind, t, defaultLoad);
+      const chosen = !!(loadChoices && loadChoices[s.id] && LOAD_PRESETS[loadChoices[s.id]]);
+      s.presetKey = chosen ? loadChoices[s.id] : defaultPresetFor(s.kind, t, defaultLoad);
+      s.userChosen = chosen; // a user pick is never an "assumed" load (G4)
       out.push(s);
     };
     const parts = model.parts;
@@ -6367,8 +6601,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else if (t === 'custom') {
       // Declared surfaces; span model inferred from the connection graph.
       const byId = new Map(parts.map(p => [p.id, p]));
-      for (const p of parts) {
-        if (!p.surface || p.surface === 'none') continue;
+      const mkSurface = (p, kind, assumed) => {
         const ext = Geo.worldExtents(p);
         const axis = ext.x >= ext.z ? [1, 0, 0] : [0, 0, 1];
         const len = Math.max(ext.x, ext.z);
@@ -6393,10 +6626,42 @@ var BB = globalThis.BB = globalThis.BB || {};
           span = Math.max(80, half + Math.abs(tbar));
         }
         const th = p.cutDim ? p.cutDim.T : Math.min(p.size.w, p.size.h, p.size.d);
-        push({
-          id: p.id, part: p, label: p.name, model: mdl, span, b: Math.max(20, bHoriz), h: th, over: 0,
-          kind: p.surface === 'seating' ? 'seat' : p.surface === 'worktop' ? 'top' : 'shelf'
-        });
+        push(Object.assign({
+          id: p.id, part: p, label: assumed ? `${p.name} (assumed shelf)` : p.name,
+          model: mdl, span, b: Math.max(20, bHoriz), h: th, over: 0, kind
+        }, assumed ? { assumed: true } : {}));
+      };
+      let tagged = 0;
+      for (const p of parts) {
+        if (!p.surface || p.surface === 'none') continue;
+        tagged++;
+        mkSurface(p, p.surface === 'seating' ? 'seat' : p.surface === 'worktop' ? 'top' : 'shelf', false);
+      }
+      /* G3 (finding B4): check coverage must never be model-discretionary.
+       * If the wire author tagged nothing, derive the check surfaces: the
+       * topmost horizontal slab/panel of each connected stack is what things
+       * get put on — treat it as shelf duty, flagged `assumed` so the ack
+       * and Safety tab disclose the assumption instead of skipping physics. */
+      if (!tagged && parts.length) {
+        const comp = new Map(parts.map(p => [p.id, p.id]));
+        const find = id => { while (comp.get(id) !== id) { comp.set(id, comp.get(comp.get(id))); id = comp.get(id); } return id; };
+        for (const c of (spec.custom && spec.custom.connections) || []) {
+          if (comp.has(c.a) && comp.has(c.b)) comp.set(find(c.a), find(c.b));
+        }
+        const topPer = new Map(); // component root -> topmost horizontal slab/panel y
+        const cand = [];
+        for (const p of parts) {
+          if (p.prim !== 'slab' && p.prim !== 'panel') continue;
+          const ext = Geo.worldExtents(p);
+          if (ext.y >= Math.max(ext.x, ext.z)) continue; // standing panel, not a surface
+          const top = p.pos.y + ext.y / 2;
+          const root = find(p.id);
+          cand.push({ p, top, root });
+          if (!topPer.has(root) || top > topPer.get(root)) topPer.set(root, top);
+        }
+        for (const c of cand) {
+          if (c.top >= topPer.get(c.root) - 5) mkSurface(c.p, 'shelf', true); // ties (a slat deck) all derive
+        }
       }
     }
     return out;
@@ -6533,6 +6798,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* G3 backstop: a custom with no tagged surface AND nothing derivable
+     * (no horizontal slab/panel anywhere) must still never roll up a clean
+     * pass with zero load physics — say so, out loud. */
+    if (custom && parts.length && !surfaces.length) {
+      checks.push({
+        id: 'loadcheck', title: 'Load coverage', status: 'advisory',
+        value: 'no load-bearing surface declared or derivable',
+        threshold: 'at least one checked load surface',
+        explain: 'No part is tagged as a load surface and none could be derived, so NO sag or strength physics ran on this design. Tag the parts things will rest or sit on.',
+        fixes: []
+      });
+    }
+
     /* ---- beam checks per load-bearing surface: sag (MOE), strength (MOR/SF4) ----
      * Frame surfaces (table/desk/bench/nightstand tops) run the honest model
      * from the audit (F-S2-1): the APRONS are the beams over the leg-to-leg
@@ -6566,16 +6844,23 @@ var BB = globalThis.BB = globalThis.BB || {};
       const ssp = speciesOf(materialSpeciesKey(s.part, spec));
       const Es = ssp.moe * 1000; // GPa -> MPa
       const fixes = [];
-      const up = nextSolidUp(s.h);
       const sIsSheet = !!(K.WOOD_SPECIES[s.part.material] && K.WOOD_SPECIES[s.part.material].sheet);
-      if (!custom && up) {
-        if (s.part.role === 'top' && TABLE_LIKE.includes(t)) fixes.push({ id: 'thick-top', label: `Thicken top to ${fmtLen(up)}`, patch: { structure: { topThickness: up } } });
-        else if (!sIsSheet && !s.apron) fixes.push({ id: 'thick-shelf', label: `Thicken to ${fmtLen(up)}`, patch: { structure: { shelfThickness: up } } });
-      }
-      if (custom && up && !sIsSheet) {
-        const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: up } } : p);
-        fixes.push({ id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(up)}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
-      }
+      /* G15: the thickness fix is solved AGAINST the failing check (first
+       * stock that passes, or an honest partial step) — so it is built after
+       * the beam is evaluated, from the check's own ratio and stress. */
+      const thicknessFix = (sagRatio, stress, allow) => {
+        if (sIsSheet) return null; // sheet stock tops out — the remedy is structure, not a phantom thickness
+        const solved = solveThicknessFix(s.h, sagRatio, stress, allow);
+        if (!solved) return null;
+        const suffix = solved.partial ? ' (partial fix — still over the limit)' : '';
+        if (!custom) {
+          if (s.part.role === 'top' && TABLE_LIKE.includes(t)) return { id: 'thick-top', label: `Thicken top to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { topThickness: solved.t } } };
+          if (!s.apron) return { id: 'thick-shelf', label: `Thicken to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { shelfThickness: solved.t } } };
+          return null;
+        }
+        const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: solved.t } } : p);
+        return { id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(solved.t)}${suffix}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } };
+      };
       if (K.WOOD_SPECIES.hard_maple.moe > sp.moe * 1.1 && spec.wood.species !== 'hard_maple') {
         fixes.push({ id: 'maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } });
       }
@@ -6625,6 +6910,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         const limS = s.strip.span / SAG_LIMIT_RATIO;
         const rS = sagS / limS;
         if (rS > worstSagRatio) { worstSagRatio = rS; worstSag = { id: s.id, sag: sagS, limit: limS, span: s.strip.span }; }
+        const tFixS = thicknessFix(rS, Is > 0 ? (MS * (s.h / 2)) / Is : Infinity, ssp.mor / SAFETY_FACTOR);
+        if (tFixS) fixes.unshift(tFixS); // top thickness governs the strip, not the aprons
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label} between aprons`,
           status: sagStatus(rS),
@@ -6640,9 +6927,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         const I = I_rect(s.b, s.h);
         const cases = loadCasesFor(s.presetKey, s.span, s.model);
         const { sag, M, crept } = evalBeam(cases, s.span, Es, I);
+        s._M = M; // root moment — the joint block prices cantilever couples off it (G2)
         const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
+        const tFix = thicknessFix(ratio, I > 0 ? (M * (s.h / 2)) / I : Infinity, ssp.mor / SAFETY_FACTOR);
+        if (tFix) fixes.unshift(tFix);
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label}`,
           status: sagStatus(ratio),
@@ -6683,6 +6973,182 @@ var BB = globalThis.BB = globalThis.BB || {};
             { id: 'duty-oak', label: 'Switch to red oak', patch: { wood: { species: 'red_oak' } } }
           ]
         });
+      }
+    }
+
+    /* ---- member load-path coverage (finding G1, 2026-07 generalization) ----
+     * A checked surface hands its load to the members it bears on; before this
+     * block those members were never examined (a bed deck on 40×20 rails
+     * presented verdict PASS while the rails ruptured on paper). For custom
+     * compositions: walk the connection graph downward from every checked
+     * surface, accumulate each member's tributary share, infer the member's
+     * own span between ITS supports exactly like surfacesOf infers surface
+     * spans, and run the same evalBeam + strength machinery per member.
+     *   · distributed load splits equally over the surface's direct supports;
+     *   · a point load (a person) acts in ONE place — each member is checked
+     *     with the full point at its worst position, never a stacked sum;
+     *   · a support that is itself a tagged surface keeps its own surface
+     *     check unchanged (no double-report);
+     *   · vertical members (posts, standing panels) carry axially, not in
+     *     bending — they terminate the walk (axial capacity is a future
+     *     check class); floor-resting members bear continuously and are safe.
+     * Template frames don't come through here: their aprons already run the
+     * audited frame model above. */
+    const memberChecks = []; // { part, supports, R } for the joint-adequacy block
+    if (custom && surfaces.length) {
+      const surfIds = new Set(surfaces.map(s => s.id));
+      const cconns = (spec.custom && spec.custom.connections) || [];
+      const bottoms = new Map(parts.map(p => [p.id, Math.min(...Geo.obbCorners(Geo.partOBB(p)).map(c => c[1]))]));
+      const supportsOf = p => {
+        const seen = new Set(), out = [];
+        for (const c of cconns) {
+          const oid = c.a === p.id ? c.b : c.b === p.id ? c.a : null;
+          if (!oid || seen.has(oid)) continue;
+          const q = byId.get(oid);
+          if (q && q.loadBearing && bottoms.get(oid) < bottoms.get(p.id) - 10) { seen.add(oid); out.push(q); }
+        }
+        return out;
+      };
+      const recs = new Map(); // member id -> accumulated tributary load
+      const recFor = q => {
+        if (!recs.has(q.id)) recs.set(q.id, { part: q, distSus: 0, distTrans: 0, point: 0, from: [] });
+        return recs.get(q.id);
+      };
+      /* G15 for members: the deepen fix is solved against the member's own
+       * check (sag ∝ 1/h³, stress ∝ 1/h²) and patches the spec dimension
+       * that is world-vertical — only when the part's rotation keeps one
+       * (y-rotations do; tilted members get no phantom fix). Slab thickness
+       * snaps up the stock table; rail/panel depth is a rip cut, rounded to
+       * a clean 5 mm. */
+      const deepenFix = (m, h, sagRatio, stress, allow) => {
+        const sp2 = ((spec.custom && spec.custom.parts) || []).find(p => p.id === m.id);
+        if (!sp2) return null;
+        const rr = sp2.rot || { x: 0, y: 0, z: 0 };
+        const flat = a => { const d = ((a % 180) + 180) % 180; return d < 1 || d > 179; };
+        if (!flat(rr.x || 0) || !flat(rr.z || 0)) return null;
+        const key = sp2.primitive === 'slab' ? 't' : (sp2.primitive === 'rail' || sp2.primitive === 'panel') ? 'w' : null;
+        if (!key) return null; // a post/cylinder lies down only via x/z rotations (gated above)
+        let need = h;
+        if (sagRatio > 1) need = Math.max(need, h * Math.cbrt(sagRatio));
+        if (allow > 0 && stress > 0 && allow / stress < 1.25) need = Math.max(need, h * Math.sqrt((1.25 * stress) / allow));
+        if (need <= h + 0.05) return null;
+        let tNew, partial;
+        if (key === 't') {
+          const solved = solveThicknessFix(h, sagRatio, stress, allow);
+          if (!solved) return null;
+          tNew = solved.t; partial = solved.partial;
+        } else {
+          tNew = Math.min(1500, Math.ceil(need / 5) * 5);
+          partial = tNew < need - 0.05;
+        }
+        const newParts = spec.custom.parts.map(p => p.id === m.id ? { ...p, dim: { ...p.dim, [key]: tNew } } : p);
+        return {
+          id: 'deep-' + m.id,
+          label: `Deepen ${m.id} to ${fmtLen(tNew)}${partial ? ' (partial fix — still over the limit)' : ''}`,
+          patch: { custom: { parts: newParts, connections: spec.custom.connections } }
+        };
+      };
+      for (const s of surfaces) {
+        const p = LOAD_PRESETS[s.presetKey] || LOAD_PRESETS.display;
+        let dist = 0, sus = false, point = 0;
+        if (p.kind === 'udl') { dist = (p.kgPerM * s.span / 1000) * GRAV; sus = !!p.sustained; }
+        else if (p.kind === 'seat') { point = p.kgSeat * GRAV; dist = (seatsFor(s.span) - 1) * p.kgSeat * GRAV; }
+        else { dist = p.kgDist * GRAV; sus = p.sustained === true; point = p.kgEdge * GRAV; }
+        const sup = supportsOf(s.part);
+        if (!sup.length) continue;
+        for (const q of sup) {
+          if (surfIds.has(q.id)) continue; // its own surface check stands
+          const r = recFor(q);
+          if (sus) r.distSus += dist / sup.length; else r.distTrans += dist / sup.length;
+          r.point = Math.max(r.point, point);
+          r.from.push(s.id);
+        }
+      }
+      // Highest member first, so multi-tier stacks flow their reactions down.
+      const done = new Set();
+      for (;;) {
+        let rec = null;
+        for (const r of recs.values()) if (!done.has(r.part.id) && (!rec || bottoms.get(r.part.id) > bottoms.get(rec.part.id))) rec = r;
+        if (!rec) break;
+        done.add(rec.part.id);
+        const m = rec.part;
+        const total = rec.distSus + rec.distTrans + rec.point;
+        const grounded = bottoms.get(m.id) < 5;
+        if (grounded || total < 1) continue;
+        const ext = Geo.worldExtents(m);
+        const horiz = Math.max(ext.x, ext.z) > ext.y;
+        const sup = supportsOf(m);
+        if (horiz) {
+          // Span between the member's own supports, surfacesOf-style.
+          const axis = ext.x >= ext.z ? [1, 0, 0] : [0, 0, 1];
+          const len = Math.max(ext.x, ext.z);
+          const half = len / 2;
+          const ts = sup.map(q => Math.max(-half, Math.min(half,
+            Geo.dot3([q.pos.x - m.pos.x, q.pos.y - m.pos.y, q.pos.z - m.pos.z], axis))));
+          let mdl = 'cant', span = half;
+          if (ts.length >= 2) {
+            const spread = Math.max(...ts) - Math.min(...ts);
+            if (spread >= 0.4 * len) {
+              mdl = 'ss';
+              // Clear span: back the extreme supports' own width out of the
+              // centre-to-centre spread (the frame model does the same).
+              const axExt = q => { const e = Geo.worldExtents(q); return axis[0] ? e.x : e.z; };
+              const qMin = sup[ts.indexOf(Math.min(...ts))], qMax = sup[ts.indexOf(Math.max(...ts))];
+              span = Math.max(100, spread - axExt(qMin) / 2 - axExt(qMax) / 2);
+            }
+          }
+          if (mdl === 'cant') {
+            const tbar = ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : 0;
+            span = Math.max(80, half + Math.abs(tbar));
+          }
+          const cases = [];
+          const udlFn = mdl === 'cant' ? 'udlCant' : 'udlSS';
+          const ptFn = mdl === 'cant' ? 'pointCant' : 'pointSS';
+          if (rec.distSus > 0) cases.push({ fn: udlFn, mag: rec.distSus / span, creep: CREEP_FACTOR });
+          if (rec.distTrans > 0) cases.push({ fn: udlFn, mag: rec.distTrans / span, creep: 1 });
+          if (rec.point > 0) cases.push({ fn: ptFn, mag: rec.point, creep: 1 });
+          const b = Math.max(10, Math.min(ext.x, ext.z));
+          const h = Math.max(5, ext.y);
+          const I = I_rect(b, h);
+          const msp = speciesOf(materialSpeciesKey(m, spec));
+          const { sag, M, crept } = evalBeam(cases, span, msp.moe * 1000, I);
+          const limit = mdl === 'cant' ? span / CANT_LIMIT_RATIO : span / SAG_LIMIT_RATIO;
+          const ratio = sag / limit;
+          if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: m.id, sag, limit, span }; }
+          const srcs = [...new Set(rec.from)];
+          const mFixes = [];
+          {
+            const allowM = msp.mor / SAFETY_FACTOR;
+            const stressM = I > 0 ? (M * (h / 2)) / I : Infinity;
+            if (ratio > 1 || allowM / stressM < 1.25) {
+              const mf = deepenFix(m, h, ratio, stressM, allowM);
+              if (mf) mFixes.push(mf);
+            }
+          }
+          checks.push({
+            id: 'sag:mbr:' + m.id, title: `Sag — ${m.name} (supporting member)`,
+            status: sagStatus(ratio),
+            value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(span)} ${mdl === 'cant' ? 'cantilever' : 'span'}`,
+            threshold: `≤ ${fmtFine(limit)} (${mdl === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
+            explain: `${m.name} carries the load from ${srcs.join(', ')} — a ${fmtLen(b)} × ${fmtLen(h)} ${msp.label} section spanning ${fmtLen(span)} between its own supports.${crept ? ` Sustained share includes ×${CREEP_FACTOR} creep.` : ''}`,
+            fixes: ratio > 1 ? mFixes : [],
+            data: { sagMM: sag, limitMM: limit, spanMM: span },
+            prov: { rule: `member beam: tributary load from ${srcs.join('+')}, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, ${mdl === 'cant' ? 'cantilever' : 'span'} ${Math.round(span)} mm` }
+          });
+          strengthCheck('str:mbr:' + m.id, `${m.name} (supporting member)`, M, h, I, { label: 'carried' }, mFixes, msp);
+          const R = mdl === 'cant' ? total : total / 2; // worst end reaction
+          memberChecks.push({ part: m, supports: sup, R });
+        }
+        // Flow this member's whole load onto whatever holds IT up (a joist
+        // deck on beams, a post standing on a beam): sustained share stays
+        // sustained, everything else lands as transient distributed load.
+        for (const q of sup) {
+          if (surfIds.has(q.id)) continue;
+          const r2 = recFor(q);
+          r2.distSus += rec.distSus / sup.length;
+          r2.distTrans += (rec.distTrans + rec.point) / sup.length;
+          r2.from.push(...rec.from);
+        }
       }
     }
 
@@ -6909,15 +7375,18 @@ var BB = globalThis.BB = globalThis.BB || {};
      * side-grain capacity (NDS end-grain factor; audit F-S2-7). */
     {
       let weakest = null;
+      let surfGroups = 0, coupleRoots = 0; // custom coverage tally (G2 honesty)
       const specParts = custom ? new Map(((spec.custom && spec.custom.parts) || []).map(p => [p.id, p])) : null;
       for (const s of surfaces) {
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
+        let demand = null, apron = false; // G5: apron end reaction overrides N/count
         if (custom) {
           const conns = ((spec.custom && spec.custom.connections) || []).filter(c => c.a === s.id || c.b === s.id);
           if (!conns.length) continue;
+          surfGroups++;
           count = conns.length;
-          let minCap = Infinity;
+          let minCap = Infinity, capGroup = 0;
           for (const c of conns) {
             const rating0 = JOINT_RATING[c.joint] || JOINT_RATING.butt_screws;
             let capC = rating0.capN;
@@ -6925,20 +7394,72 @@ var BB = globalThis.BB = globalThis.BB || {};
             const screwed = c.joint === 'butt_screws' || c.joint === 'pocket_screws';
             const eg = screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa));
             if (eg) capC *= 0.67;
+            capGroup += capC * sgF;
             if (capC < minCap) { minCap = capC; joint = c.joint; endGrain = !!eg; }
           }
           where = s.id;
+          /* G2: a cantilevered surface's real failure mode is the ROOT MOMENT,
+           * not vertical shear — the overhung load levers its fasteners out.
+           * Demand: the beam check's own root moment resisted as a couple
+           * inside the member — tension in the joint group over an arm bounded
+           * by the shelf thickness (⅔·h, compression at the far edge line).
+           * Capacity: the group's summed SG-scaled ratings — a conservative
+           * shear-equivalent stand-in, no new physics tables. Same 1.5× gate. */
+          if (s.model === 'cant' && s._M > 0) {
+            coupleRoots++;
+            const T = s._M / (0.67 * s.h);
+            const mC = capGroup / T;
+            if (!weakest || mC < weakest.margin) {
+              weakest = { margin: mC, joint, where: `${s.id} cantilever root`, per: T, cap: capGroup, slot: null, endGrain: false, couple: true, h: s.h };
+            }
+          }
         } else if (TABLE_LIKE.includes(t)) {
-          if (s.part.role === 'top') { joint = spec.joinery.frame; count = 8; where = 'apron–leg'; slot = 'frame'; }
-          else { joint = spec.joinery.case; count = 4; where = 'shelf–leg'; slot = 'case'; }
+          if (s.part.role === 'top') {
+            joint = spec.joinery.frame; count = 8; where = 'apron–leg'; slot = 'frame';
+            /* G5 (B7): the frame model above already says the aprons are the
+             * beams — each carries half the spread load and ¾ of the point
+             * load. The joint demand must be SELF-CONSISTENT with it: the
+             * loaded apron's end joint carries the apron END REACTION
+             * (Σ 0.5·w·L/2 for spread cases + Σ 0.75·P/2 for a midspan
+             * point), not an equal 1/count share of the surface total —
+             * which flattered the true worst joint by 2–3×. */
+            if (s.apron) {
+              apron = true;
+              demand = 0;
+              for (const c of loadCasesFor(s.presetKey, s.apron.span, 'ss')) {
+                if (c.fn === 'udlSS') demand += (0.5 * c.mag) * s.apron.span / 2;
+                else demand += (0.75 * c.mag) / 2;
+              }
+            }
+          } else { joint = spec.joinery.case; count = 4; where = 'shelf–leg'; slot = 'case'; }
         } else {
           joint = spec.joinery.case; count = 2; where = `${s.part.role}–side`; slot = 'case';
         }
         const rating = JOINT_RATING[joint] || JOINT_RATING.butt_screws;
         const cap = rating.capN * sgF * (endGrain ? 0.67 : 1);
-        const per = N / count;
+        const per = demand != null ? demand : N / count;
         const margin = cap / per;
-        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain };
+        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain, apron };
+      }
+      /* G1: load-path connections — every member-to-support joint is checked
+       * with the member's end reaction as demand, so a joinery change on the
+       * load path re-runs adequacy (the T2 mortise&tenon → pocket-screw swap
+       * used to pass unexamined). */
+      for (const mc of memberChecks) {
+        for (const q of mc.supports) {
+          const cn = ((spec.custom && spec.custom.connections) || []).find(c =>
+            (c.a === mc.part.id && c.b === q.id) || (c.b === mc.part.id && c.a === q.id));
+          if (!cn) continue;
+          const rating = JOINT_RATING[cn.joint] || JOINT_RATING.butt_screws;
+          const pa = specParts.get(cn.a), pb = specParts.get(cn.b);
+          const screwed = cn.joint === 'butt_screws' || cn.joint === 'pocket_screws';
+          const eg = !!(screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa)));
+          const cap = rating.capN * sgF * (eg ? 0.67 : 1);
+          const margin = cap / mc.R;
+          if (!weakest || margin < weakest.margin) {
+            weakest = { margin, joint: cn.joint, where: `${mc.part.id}–${q.id}`, per: mc.R, cap, slot: null, endGrain: eg };
+          }
+        }
       }
       if (weakest) {
         const jLabel = k => K.JOINERY[k] ? K.JOINERY[k].label.toLowerCase() : k;
@@ -6949,15 +7470,32 @@ var BB = globalThis.BB = globalThis.BB || {};
             (!weakest.slot || K.jointAllowed(j, level, weakest.slot)));
           if (stronger && weakest.slot) fixes.push({ id: 'upjoint', label: `Upgrade ${weakest.where} to ${jLabel(stronger)}`, patch: { joinery: { [weakest.slot]: stronger } } });
         }
+        /* The explain names exactly what was examined (G2): on customs only
+         * the load-surface groups, cantilever roots, and load-path support
+         * connections were checked — never "every joint", because decorative
+         * or off-path connections are not. Template joint models cover the
+         * structural joints by construction, so their wording stands. */
+        const coverage = `${surfGroups} load-surface joint group${surfGroups === 1 ? '' : 's'}` +
+          (coupleRoots ? `, ${coupleRoots} cantilever root${coupleRoots === 1 ? '' : 's'}` : '') +
+          (memberChecks.length ? ` and ${memberChecks.length} supporting member${memberChecks.length === 1 ? '' : 's'}` : '');
         checks.push({
           id: 'joints', title: 'Joint adequacy',
           status: weakest.margin >= 1.5 ? 'pass' : weakest.margin >= 1 ? 'advisory' : 'fail',
-          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where}${weakest.endGrain ? ' (end grain, ×0.67)' : ''} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
+          value: weakest.couple
+            ? `weakest: ${jLabel(weakest.joint)} at ${weakest.where} — cantilever couple pulls ${U().fmtPointLoad(weakest.per / GRAV)} vs ${U().fmtPointLoad(weakest.cap / GRAV)} group capacity`
+            : `weakest: ${jLabel(weakest.joint)} at ${weakest.where}${weakest.endGrain ? ' (end grain, ×0.67)' : ''} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
           threshold: '≥ 1.5× capacity margin (SG-scaled joint ratings)',
-          explain: (weakest.margin >= 1.5 ? 'Every joint carries its share of the load path with room to spare.'
-            : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`) +
+          explain: (weakest.margin >= 1.5
+            ? (custom ? `Checked ${coverage} — every checked connection holds its load with at least 1.5× in hand.`
+              : 'Every joint carries its share of the load path with room to spare.')
+            : weakest.couple
+              ? `The overhung load levers this joint group out of its support: the root moment resists as a pull-out couple across two-thirds of the ${fmtLen(weakest.h)} member thickness, and the ${jLabel(weakest.joint)} group at ${weakest.where} can't hold it.`
+              : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`) +
+            (custom && weakest.margin < 1.5 ? ` (Checked: ${coverage}.)` : '') +
+            (weakest.apron ? ' Demand is the loaded apron\'s end reaction from the same frame model the sag checks use (half the spread load + ¾ of the point load per apron).' : '') +
             (weakest.endGrain ? ' Screws at this joint bear on end grain, which holds about a third less (derated ×0.67) — a dowel, tenon, or cleat would restore full capacity.' : ''),
-          fixes
+          fixes,
+          ...(weakest.apron ? { data: { perN: weakest.per, capN: weakest.cap } } : {})
         });
       }
     }
@@ -7052,6 +7590,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       fails,
       advisories,
       anchorRequired: antiTip,
+      // G3: derived (assumed) check surfaces are disclosed, never silent.
+      assumedSurfaces: surfaces.filter(s => s.assumed).map(s => s.id),
+      /* G4 contract (consumed by Spec.integrityLine / the Safety tab): what
+       * load every checked surface was judged under, and whether that was an
+       * assumption (engine default or a derived surface) or the user's own
+       * pick. User loadChoices are never overridden. */
+      surfaceLoads: surfaces.map(s => ({
+        id: s.id,
+        presetKey: s.presetKey,
+        label: (LOAD_PRESETS[s.presetKey] || LOAD_PRESETS.display).label,
+        assumed: !!s.assumed || !s.userChosen
+      })),
       /* Rollup tier (audit M-18): a mandatory wall anchor is its own headline
        * tier — "safe only when anchored" — never rolled into plain advisory
        * under a "passes the required checks" banner. Order: fail > anchor >
@@ -8362,6 +8912,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     return [...jobs.values()];
   }
 
+  /* kd_bolt is the knowledge layer's only tool-removable joint (SCHEMA_DOC:
+   * "all joints permanent except kd_bolt") — an instruction to glue it would
+   * permanently weld the knockdown whose entire point is disassembly
+   * (G12/A4/C10). K.JOINERY carries no glued/removable flag, so the
+   * predicate lives here; if a second non-glued joint ever ships, promote
+   * this to a knowledge-table property. */
+  const isKnockdown = joint => joint === 'kd_bolt';
+  const KD_STEP_TEXT = 'Bolt together — hand-tight, then snug once square.';
+
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -8432,7 +8991,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         out.push(step('c' + (i + 1), `Join ${a.name.toLowerCase()} to ${b.name.toLowerCase()}`,
           `Fix ${a.name.toLowerCase()} (${c.a}) to ${b.name.toLowerCase()} (${c.b}) with ${j ? (j.plural || j.label.toLowerCase()) : c.joint}.` +
           (ang ? ` Angled joint: ${BB.Geo.angleText(ang)} — cut per the cut list before assembly.` : '') +
-          ' Dry-fit before glue.',
+          (isKnockdown(c.joint) ? ' ' + KD_STEP_TEXT : ' Dry-fit before glue.'),
           [c.a, c.b]));
       });
     } else if (t === 'bookshelf') {
@@ -8464,14 +9023,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
-      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. Glue, clamp, and check for square.`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
+      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
       out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. Work on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
       out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
     }
-    // Mandatory anti-tip anchoring: an instruction step, not an aside.
+    // Mandatory anti-tip anchoring: an instruction step, not an aside. A
+    // custom piece may not live against a wall at all (room dividers, column
+    // wraps, "hanging" desks) — say what that means instead of assuming
+    // studs behind it (G11/A7). Custom-scoped so template wording — and the
+    // golden corpus — stays byte-identical.
     if (integrity && integrity.antiTip) {
       out.push(step('antitip', 'Anchor to the wall (required)',
-        'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer.', []));
+        'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer'
+        + (t === 'custom' ? '; if it can’t back onto a wall, rethink placement — the tip risk is real.' : '.'), []));
     }
     safetyStep(spec, model, integrity, opts.stockPlan, out);
     sandingStep(spec, out);
@@ -15870,6 +16434,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* G10: the silent-correction disclosure for one applied reply — measure
+   * the RAW proposal (a new spec exactly as decoded; a diff as the
+   * pre-correction merge onto its base) against what correction delivered.
+   * Returns note strings, [] when correction changed nothing notable, or
+   * null when the reply carries nothing recomputable (the caller then keeps
+   * the previous notes — the custom composition is unchanged). */
+  function correctionNotesFor(reply, baseSpec, appliedSpec) {
+    if (reply.kind === 'new') return Spec.correctionNotes(reply.spec, appliedSpec);
+    if (reply.kind === 'diff' && reply.patch && reply.patch.custom) {
+      return Spec.correctionNotes(Spec.deepMerge(baseSpec, reply.patch), appliedSpec);
+    }
+    return null;
+  }
+
   /* The AI round-trip: wire protocol, continuation status, single validation
    * retry, and the propose–validate–revise loop for novel pieces. */
   async function aiPipeline(text, image, setStatus) {
@@ -15892,6 +16470,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay(res.error, []);
       return null;
     }
+    // G13: the transport existed and died on this very call — the reply in
+    // hand is the offline parser's, not the model's. When this session had
+    // EVIDENCE of a live service (badge: online), name the network and stop:
+    // the design is untouched and the message is retryable — the parser
+    // never silently answers for the model. A session that never proved a
+    // service (offline/unconfigured badge — e.g. a static host whose first
+    // send discovers there is no proxy) keeps the documented offline
+    // degradation: the local reply proceeds with its offline caveat.
+    const aiBadge = $('aiBadge');
+    if (res.transportFailed && aiBadge && aiBadge.dataset.state === 'online') {
+      botSay('Connection dropped mid-refinement — your design is untouched. Send the message again to retry.', []);
+      return null;
+    }
     if (res.reply.kind === 'question') {
       state.turns = res.turns.slice(-24);
       askQuestion(res.reply);
@@ -15910,6 +16501,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       : { patch: { overall: res.reply.spec && res.reply.spec.overall, drawers: res.reply.spec && res.reply.spec.drawers }, ignored: res.reply.ignored || [] };
     let applied = AI.apply(res.reply, state.spec);
     let turns = res.turns;
+    // G8: the committed ack must narrate the SURVIVING design — track the
+    // explain of the latest APPLIED reply. Captured once from round 1, it
+    // described phantom architecture ("carried only by the two angled side
+    // rails" over a design with no rails) after later rounds restructured
+    // the piece, while the accurate corrected explains were discarded.
+    let explain = res.reply.explain;
+    // G10: what silent correction did to the raw proposal (grounding an
+    // airborne composition). Recomputed per applied refinement round
+    // (latest applied proposal wins); shown to the model in round context
+    // and appended to the committed ack.
+    let notes = correctionNotesFor(res.reply, state.spec, applied.spec) || [];
     let r = runPipeline(applied.spec);
 
     // Up to three validation-refinement rounds with the specific errors
@@ -15920,7 +16522,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // these rounds is never presented; the last valid design stays.
     for (let round = 1; r.report.errors.length && !res.local && round <= 3; round++) {
       setStatus(round === 1 ? 'Refining to clear validation errors' : `Refining to clear validation errors, round ${round} of 3`);
-      const errText = 'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
+      // G10: the model refines against corrected geometry it never proposed —
+      // tell it what correction silently did (grounding) alongside the errors.
+      const errText = (notes.length ? 'Note: ' + notes.join(' ') + ' ' : '') +
+        'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
       // C11: rounds pin the original in-flight request so deep pipelines
       // never refine without the words stating style/purpose/constraints.
       const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text });
@@ -15954,8 +16559,21 @@ var BB = globalThis.BB = globalThis.BB || {};
         botSay(res2.reply.text, [], { noChange: true });
         break;
       }
+      if (act === 'transport') {
+        // G13: the network died mid-round, the model never answered — name
+        // the connection and stop. The last valid design stays; no rejection
+        // marker and no "couldn't get a buildable design" blame for a
+        // dropped fetch (the offline parser never speaks for the model).
+        state.turns = turns.slice(-24);
+        botSay('Connection dropped mid-refinement — your design is untouched. Send the message again to retry.', []);
+        return null;
+      }
       if (act === 'bail') break;
-      applied = AI.apply(res2.reply, applied.spec);
+      const base2 = applied.spec;
+      applied = AI.apply(res2.reply, base2);
+      explain = res2.reply.explain || explain; // G8: the applied round's story wins
+      const n2 = correctionNotesFor(res2.reply, base2, applied.spec); // G10: latest applied proposal wins
+      if (n2) notes = n2;
       turns = res2.turns;
       r = runPipeline(applied.spec);
     }
@@ -15971,14 +16589,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     // attempt is presented honestly, failing report and all.
     let final = applied.spec;
     let failReport = null;
-    let explain = res.reply.explain;
     if (final.meta.template === 'custom' && !res.local) {
       let best = null, curTurns = turns;
       for (let round = 1; round <= 3; round++) {
         const built = runPipeline(final);
         const integ = Structural.computeIntegrity(built.spec, built.model, integrityOpts());
         const fails = integ.checks.filter(c => c.status === 'fail');
-        if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns };
+        // G8: best carries the explain that describes best.spec, so a
+        // rollback restores the matching story, never a later proposal's.
+        if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns, explain };
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
         const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text }); // C11: pin the original request
@@ -15995,19 +16614,27 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (act3 === 'rate') { botSay('Too many messages in a row — give it a few seconds, then try again.', []); break; }
         if (act3 === 'question') { askQuestion(res3.reply); break; }
         if (act3 === 'info') { botSay(res3.reply.text, [], { noChange: true }); break; }
+        if (act3 === 'transport') {
+          // G13: network death mid-polish — the best attempt still commits
+          // below; name the connection instead of bailing silently.
+          botSay('Connection dropped mid-refinement — keeping the best attempt so far. Send another message to keep refining.', []);
+          break;
+        }
         if (act3 === 'bail') break;
         const a3 = AI.apply(res3.reply, final);
         const r3 = runPipeline(a3.spec);
         if (r3.report.errors.length) break;
         final = r3.spec;
+        explain = res3.reply.explain || explain; // G8: the adopted round's story wins
         curTurns = res3.turns;
       }
       final = best.spec;
       turns = best.turns;
+      explain = best.explain; // G8: the committed ack narrates best.spec
       if (best.fails.length) failReport = best.fails;
     }
     state.turns = turns.slice(-24);
-    return { final, failReport, explain, requested, local: !!res.local, unconfigured: !!res.unconfigured };
+    return { final, failReport, explain, notes, requested, local: !!res.local, unconfigured: !!res.unconfigured };
   }
 
   async function sendMessage(text, image) {
@@ -16054,8 +16681,17 @@ var BB = globalThis.BB = globalThis.BB || {};
         image ? 'Proportions estimated from photo. Verify dimensions.' : null,
         out.local ? 'Working offline - plain-language edits still work.' : null
       ].filter(Boolean).join(' ') || null;
+      // G10: silent-correction disclosures ride the committed ack — after the
+      // reconciled ack, before the integrity/honest-report line.
+      const noteText = out.notes && out.notes.length ? ' ' + out.notes.join(' ') : '';
       if (out.failReport) {
-        botSay(`Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
+        // G8: the honest report narrates the committed design too — the
+        // surviving explain (reconciled like any ack) opens it, so the user
+        // learns what was built, not just what it fails.
+        const story = out.explain
+          ? Spec.reconcileAck(out.explain, state.spec, chips, out.requested) + noteText + ' '
+          : (noteText ? noteText.trim() + ' ' : '');
+        botSay(`${story}Honest report: after 3 structural refinement rounds this is my best attempt, but it still fails ${out.failReport.length} check${out.failReport.length > 1 ? 's' : ''}: ${out.failReport.slice(0, 3).map(c => c.title).join('; ')}. The Safety tab has every number — tap a fix or ask me to change the approach.`, chips, { caveat });
         selectTab('integrity');
       } else {
         const summary = state.integrity.summary;
@@ -16065,7 +16701,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         // The ack is never the model's word alone: reconcile it against the
         // committed spec and append the code-built truth (A2).
         const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
-        botSay(ack + integLine, chips, { noChange: !chips.length, caveat });
+        botSay(ack + noteText + integLine, chips, { noChange: !chips.length, caveat });
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {
