@@ -754,7 +754,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
       if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
-      return { reply: localModel(userText, spec, { phrasing }), turns, local: true, unconfigured: proxyUnconfigured };
+      // G13: the transport EXISTED and died mid-flight (hasRemote() was true
+      // above — a session that starts offline returns early and never lands
+      // here). The local reply still ships for the first-turn offline
+      // feature, but the result is MARKED so the orchestration loops can
+      // name the network instead of blaming the design ("I couldn't get a
+      // buildable design from that…" over a dropped fetch). Additive: local
+      // stays true, the reply stays the parser's.
+      return { reply: localModel(userText, spec, { phrasing }), turns, local: true, transportFailed: true, unconfigured: proxyUnconfigured };
     }
   }
 
@@ -769,6 +776,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (res.usageLimit) return 'billing';
     if (res.rateLimited) return 'rate';
     if (!res.reply) return 'bail';
+    // G13: a transport death mid-loop is a NETWORK event, not a design
+    // verdict — name it distinctly so the loop can offer a retry ("connection
+    // dropped, design untouched") instead of falling through to the
+    // unbuildable rejection with unspent rounds. Checked before the local
+    // bail: the offline parser still never speaks for the model.
+    if (res.transportFailed) return 'transport';
     // The loops only run remote; a local reply mid-round means the transport
     // died mid-flight — bail to the honest unbuildable path, never surface
     // the offline parser's guess as the model's answer.

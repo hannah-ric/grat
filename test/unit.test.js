@@ -498,7 +498,13 @@ section('mid-round replies: info/question/limits are triaged, never burned (C8)'
   eq(AI.roundDecision({ reply: { kind: 'diff', patch: {} } }), 'apply', 'a diff applies');
   eq(AI.roundDecision({ reply: { kind: 'new', spec: {} } }), 'apply', 'a full respec applies');
   eq(AI.roundDecision({ reply: { kind: 'question', question: 'x' }, local: true }), 'bail',
-    'a mid-round transport death (local fallback) bails — the offline parser never speaks for the model');
+    'a mid-round local reply without the transport marking (benched/offline session) bails — the offline parser never speaks for the model');
+  // G13: a transport that EXISTED and died mid-flight is a network event,
+  // not a design verdict — named distinctly, checked before the local bail.
+  eq(AI.roundDecision({ reply: { kind: 'diff', patch: {} }, local: true, transportFailed: true }), 'transport',
+    'a mid-round transport death triages as \'transport\' (G13) — retryable, never blamed on the design');
+  eq(AI.roundDecision({ reply: null, usageLimit: true, transportFailed: true }), 'billing',
+    'authoritative limits still outrank the transport marking');
 }
 
 /* ---------------- deep pipelines pin the original request (C11) ---------------- */
@@ -1503,6 +1509,32 @@ async function testBareExplainCoercion() {
   ok(res2.reply && res2.reply.kind === 'info', 'the named escape hatch is honored on the retry');
 }
 
+/* G13: a transport that existed and then died mid-flight marks its result
+ * transportFailed, so the orchestration loops can surface a retryable
+ * network error instead of rejecting the design with unspent rounds
+ * (observed live: ref6-run1/ref4-run2 — "I couldn't get a buildable design
+ * from that" over a dropped call; an identical user retry then succeeded). */
+async function testTransportFailedMarking() {
+  section('respond(): a mid-flight transport death is marked, roundDecision names it (G13)');
+  const spec = Spec.correctSpec(Spec.defaultSpec('table'));
+  // An injected transport (hasRemote() true) that throws = the mid-loop shape.
+  AI.setTransport(async () => { throw new Error('socket dropped'); });
+  const res = await AI.respond('Your proposal failed validation: parts never touch. Return a corrected reply, minified wire JSON only.', spec, { turns: [] });
+  AI.setTransport(null);
+  eq(res.transportFailed, true, 'the result is marked transportFailed');
+  ok(res.local === true && res.reply, 'the marking is additive — the local reply and local:true still ship (first-turn offline feature)');
+  eq(AI.roundDecision(res), 'transport', 'roundDecision names the network, never a design bail');
+  // A session with NO transport at all (true offline) is NOT a transport
+  // failure — the early local return stays unmarked and bails as before.
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const octx = vm.createContext({ console });
+  for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), octx, { filename: 'G13-' + f });
+  const OB = octx.BB;
+  const off = await OB.AI.respond('make it walnut', OB.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(off.local === true && !off.transportFailed, 'a session that never had a transport is plain offline, never "transport failed"');
+  eq(OB.AI.roundDecision(off), 'bail', 'offline local replies keep the bail semantics');
+}
+
 /* C8, probe-P8 shape: an ANSWER reply arriving in a validation-refinement
  * round classifies as info via respond() end-to-end, so the loop can show its
  * text and stop instead of deep-merging undefined and burning the round. */
@@ -1639,6 +1671,7 @@ async function testTruncationExhaustion() {
   await testKeylessProxyState();
   await testNamePhrasing();
   await testBareExplainCoercion();
+  await testTransportFailedMarking();
   await testMidRoundInfo();
   await testFetchTimeout();
   await testTransportTTL();
