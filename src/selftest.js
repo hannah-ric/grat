@@ -1045,6 +1045,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       test('joints3d', 'dovetail assembles along the side face normal (Z)', dt.insertAxis[2] === 1, dt.insertAxis.join(','), '0,0,1');
     }
 
+    /* ============ shell structure (browser only) ============ */
+    if (typeof document !== 'undefined') {
+      // Print plans depend on #printRoot living OUTSIDE #app: the print
+      // stylesheet hides #app entirely, so a printRoot parsed inside it
+      // prints a blank sheet (B-01).
+      const pr = document.getElementById('printRoot');
+      test('shell', 'printRoot sits outside #app (print hides #app)',
+        !!pr && pr.parentElement === document.body,
+        pr ? (pr.parentElement === document.body ? 'body' : '#' + (pr.parentElement.id || pr.parentElement.tagName)) : 'missing',
+        'body');
+    }
+
     return results;
   }
 
