@@ -515,6 +515,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const I = I_rect(s.b, s.h);
         const cases = loadCasesFor(s.presetKey, s.span, s.model);
         const { sag, M, crept } = evalBeam(cases, s.span, Es, I);
+        s._M = M; // root moment — the joint block prices cantilever couples off it (G2)
         const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
@@ -918,6 +919,7 @@ var BB = globalThis.BB = globalThis.BB || {};
      * side-grain capacity (NDS end-grain factor; audit F-S2-7). */
     {
       let weakest = null;
+      let surfGroups = 0, coupleRoots = 0; // custom coverage tally (G2 honesty)
       const specParts = custom ? new Map(((spec.custom && spec.custom.parts) || []).map(p => [p.id, p])) : null;
       for (const s of surfaces) {
         const N = totalLoadN(s.presetKey, s.span);
@@ -925,8 +927,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (custom) {
           const conns = ((spec.custom && spec.custom.connections) || []).filter(c => c.a === s.id || c.b === s.id);
           if (!conns.length) continue;
+          surfGroups++;
           count = conns.length;
-          let minCap = Infinity;
+          let minCap = Infinity, capGroup = 0;
           for (const c of conns) {
             const rating0 = JOINT_RATING[c.joint] || JOINT_RATING.butt_screws;
             let capC = rating0.capN;
@@ -934,9 +937,25 @@ var BB = globalThis.BB = globalThis.BB || {};
             const screwed = c.joint === 'butt_screws' || c.joint === 'pocket_screws';
             const eg = screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa));
             if (eg) capC *= 0.67;
+            capGroup += capC * sgF;
             if (capC < minCap) { minCap = capC; joint = c.joint; endGrain = !!eg; }
           }
           where = s.id;
+          /* G2: a cantilevered surface's real failure mode is the ROOT MOMENT,
+           * not vertical shear — the overhung load levers its fasteners out.
+           * Demand: the beam check's own root moment resisted as a couple
+           * inside the member — tension in the joint group over an arm bounded
+           * by the shelf thickness (⅔·h, compression at the far edge line).
+           * Capacity: the group's summed SG-scaled ratings — a conservative
+           * shear-equivalent stand-in, no new physics tables. Same 1.5× gate. */
+          if (s.model === 'cant' && s._M > 0) {
+            coupleRoots++;
+            const T = s._M / (0.67 * s.h);
+            const mC = capGroup / T;
+            if (!weakest || mC < weakest.margin) {
+              weakest = { margin: mC, joint, where: `${s.id} cantilever root`, per: T, cap: capGroup, slot: null, endGrain: false, couple: true, h: s.h };
+            }
+          }
         } else if (TABLE_LIKE.includes(t)) {
           if (s.part.role === 'top') { joint = spec.joinery.frame; count = 8; where = 'apron–leg'; slot = 'frame'; }
           else { joint = spec.joinery.case; count = 4; where = 'shelf–leg'; slot = 'case'; }
@@ -978,13 +997,28 @@ var BB = globalThis.BB = globalThis.BB || {};
             (!weakest.slot || K.jointAllowed(j, level, weakest.slot)));
           if (stronger && weakest.slot) fixes.push({ id: 'upjoint', label: `Upgrade ${weakest.where} to ${jLabel(stronger)}`, patch: { joinery: { [weakest.slot]: stronger } } });
         }
+        /* The explain names exactly what was examined (G2): on customs only
+         * the load-surface groups, cantilever roots, and load-path support
+         * connections were checked — never "every joint", because decorative
+         * or off-path connections are not. Template joint models cover the
+         * structural joints by construction, so their wording stands. */
+        const coverage = `${surfGroups} load-surface joint group${surfGroups === 1 ? '' : 's'}` +
+          (coupleRoots ? `, ${coupleRoots} cantilever root${coupleRoots === 1 ? '' : 's'}` : '') +
+          (memberChecks.length ? ` and ${memberChecks.length} supporting member${memberChecks.length === 1 ? '' : 's'}` : '');
         checks.push({
           id: 'joints', title: 'Joint adequacy',
           status: weakest.margin >= 1.5 ? 'pass' : weakest.margin >= 1 ? 'advisory' : 'fail',
-          value: `weakest: ${jLabel(weakest.joint)} at ${weakest.where}${weakest.endGrain ? ' (end grain, ×0.67)' : ''} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
+          value: weakest.couple
+            ? `weakest: ${jLabel(weakest.joint)} at ${weakest.where} — cantilever couple pulls ${U().fmtPointLoad(weakest.per / GRAV)} vs ${U().fmtPointLoad(weakest.cap / GRAV)} group capacity`
+            : `weakest: ${jLabel(weakest.joint)} at ${weakest.where}${weakest.endGrain ? ' (end grain, ×0.67)' : ''} — ${U().fmtPointLoad(weakest.per / GRAV)} per joint vs ${U().fmtPointLoad(weakest.cap / GRAV)} capacity`,
           threshold: '≥ 1.5× capacity margin (SG-scaled joint ratings)',
-          explain: (weakest.margin >= 1.5 ? 'Every joint carries its share of the load path with room to spare.'
-            : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`) +
+          explain: (weakest.margin >= 1.5
+            ? (custom ? `Checked ${coverage} — every checked connection holds its load with at least 1.5× in hand.`
+              : 'Every joint carries its share of the load path with room to spare.')
+            : weakest.couple
+              ? `The overhung load levers this joint group out of its support: the root moment resists as a pull-out couple across two-thirds of the ${fmtLen(weakest.h)} member thickness, and the ${jLabel(weakest.joint)} group at ${weakest.where} can't hold it.`
+              : `The ${jLabel(weakest.joint)} joints at ${weakest.where} are the weak link in the load path.`) +
+            (custom && weakest.margin < 1.5 ? ` (Checked: ${coverage}.)` : '') +
             (weakest.endGrain ? ' Screws at this joint bear on end grain, which holds about a third less (derated ×0.67) — a dowel, tenon, or cleat would restore full capacity.' : ''),
           fixes
         });

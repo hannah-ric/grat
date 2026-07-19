@@ -1343,5 +1343,71 @@ section('G1 members carrying a checked surface get their own beam checks');
     'six tributary shares accumulate onto the rail (books duty)');
 }
 
+/* The ref2-run1 spiral column bookshelf: five 600×300×18 ply shelves, each
+ * cantilevered off a 50×45 white-oak spine on a single 2-dowel connection.
+ * The engine printed "10 lb per joint vs 245 lb capacity … room to spare"
+ * while the root moment sat at/beyond dowel ultimate (findings B2/B3,
+ * verify-B2-spiral-moment.py). */
+function spiralShelf() {
+  const S = (id, role, y, rotY, x, z) => ({
+    id, role, primitive: 'slab', dim: { l: 600, w: 300, t: 18 }, pos: { x, y, z },
+    rot: rotY ? { x: 0, y: rotY, z: 0 } : null,
+    grain: 'length', stock: 'sheet', loadBearing: true, surface: 'shelf'
+  });
+  return {
+    meta: { name: 'Spiral Column Bookshelf', template: 'custom', level: 'intermediate', units: 'in' },
+    overall: { width: 867.7, depth: 825.4, height: 2051 },
+    wood: { species: 'white_oak', sheetSpecies: 'hardwood_ply' },
+    custom: {
+      parts: [
+        { id: 'p1', role: 'mount_spine', primitive: 'post', dim: { l: 2050, w: 50, t: 45 }, pos: { x: 0, y: 1026, z: 27 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+        S('p2', 'shelf1', 301, 0, 0, 202),
+        S('p3', 'shelf2', 601, 72, 166, 81),
+        S('p4', 'shelf3', 901, 144, 103, -115),
+        S('p5', 'shelf4', 1201, 216, -103, -115),
+        S('p6', 'shelf5', 1501, 288, -166, 81),
+        { id: 'p7', role: 'stability_base', primitive: 'slab', dim: { l: 500, w: 400, t: 32 }, pos: { x: 0, y: 16, z: 150 }, rot: null, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+      ],
+      connections: ['p2', 'p3', 'p4', 'p5', 'p6', 'p7'].map(b => ({ a: 'p1', b, joint: 'dowels' }))
+    }
+  };
+}
+
+/* ================= G2: cantilever root moment reaches the joint check (B2) ================= */
+section('G2 cantilevered surface connections are checked as a moment couple');
+{
+  const r = pipeline(spiralShelf());
+  ok(!r.report.errors.length, 'spiral fixture passes the geometric audit (as it did live)');
+  const books = {};
+  for (const id of ['p2', 'p3', 'p4', 'p5', 'p6']) books[id] = 'books';
+  const ig = Structural.computeIntegrity(r.spec, r.model, { loadChoices: books });
+  const j = ig.checks.find(c => c.id === 'joints');
+  ok(j && j.status === 'fail', 'book duty FAILS the cantilever root (engine used to print 25× pass)');
+  ok(j && /cantilever|root/i.test(j.value + ' ' + j.explain), 'the check names the cantilever couple');
+  // verify-B2: worst shelf cantilevers 433 mm → M = w·L²/2 = 55.2 kN·mm,
+  // couple arm 0.67·18 = 12.06 mm → group tension ≈ 4.58 kN = 466 kg, vs
+  // two glued dowels rated 800 N × SG 1.36 = 1.09 kN. Demand ≈ 4.2× capacity.
+  const kg = j && parseFloat((j.value.match(/([\d.]+) kg/) || [])[1]);
+  near(kg, 466, 25, 'couple tension matches the verify-B2 class (≈4.6 kN pull-out)');
+  // Even the delivered display duty leaves no 1.5× margin at the root.
+  const disp = {};
+  for (const id of ['p2', 'p3', 'p4', 'p5', 'p6']) disp[id] = 'display';
+  const igD = Structural.computeIntegrity(r.spec, r.model, { loadChoices: disp });
+  const jD = igD.checks.find(c => c.id === 'joints');
+  ok(jD && jD.status !== 'pass', 'display duty is still no pass at the root (≈1.4×, under the 1.5× gate)');
+  // The joints explain never overclaims on customs: only checked connections
+  // are spoken for ("Every joint …" was printed over unexamined load paths).
+  ok(jD && !/every joint/i.test(jD.explain), 'custom joints explain names what was checked, never "every joint"');
+  const bench = pipeline(Object.assign(Spec.defaultSpec('custom'), { meta: { name: 'CB', template: 'custom', level: 'beginner', units: 'mm' } }));
+  const igCB = Structural.computeIntegrity(bench.spec, bench.model, {});
+  const jCB = igCB.checks.find(c => c.id === 'joints');
+  ok(jCB && !/every joint/i.test(jCB.explain), 'the default custom bench explain names its coverage too');
+  // Simply-supported surfaces gain no couple: the plain shear path still runs.
+  const igMT = Structural.computeIntegrity(pipeline(adapt4Bed({ frameJoint: 'mortise_tenon' })).spec,
+    pipeline(adapt4Bed({ frameJoint: 'mortise_tenon' })).model, {});
+  const jMT = igMT.checks.find(c => c.id === 'joints');
+  ok(jMT && !/cantilever root/.test(jMT.value), 'ss surfaces draw no phantom couple');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
