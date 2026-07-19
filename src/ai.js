@@ -145,7 +145,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (typeof info === 'string' && info.trim()) {
       return { kind: 'info', text: capText(info, INFO_CAP) };
     }
-    const explain = capText(obj.e !== undefined ? obj.e : (obj.explain || ''), EXPLAIN_CAP);
+    const eRaw = String(obj.e !== undefined ? obj.e : (obj.explain || ''));
+    const explain = capText(eRaw, EXPLAIN_CAP);
     const N = obj.N !== undefined ? obj.N : obj.new;
     if (N && typeof N === 'object') {
       const spec = Codec().decode(N);
@@ -156,6 +157,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     const wireDiff = {};
     for (const k of Object.keys(obj)) if (k !== 'e' && k !== 'explain' && k !== 'i' && k !== 'info') wireDiff[k] = obj[k];
+    // G14: a prose-only reply — non-empty "e", no wire keys — is a correct
+    // no-change answer wearing the wrong key (observed: adapt3-run2's
+    // verified constraint answer died as "never produced a valid design
+    // reply" because a bare explain parsed to null and the retry repeated
+    // it). Coerce to an info answer; the raw e rides the "i" budget.
+    if (!Object.keys(wireDiff).length && eRaw.trim()) {
+      return { kind: 'info', text: capText(eRaw, INFO_CAP) };
+    }
     const patch = Codec().decodePartial(wireDiff);
     if (!patch) return null;
     // Wire keys outside the documented schema decode to nothing — record them
@@ -712,7 +721,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         onStatus('Re-asking for valid JSON');
         const retryMessages = [...baseMessages,
           { role: 'assistant', content: text || '(empty)' },
-          { role: 'user', content: 'That was not valid wire-format JSON. Reply again with ONLY minified JSON in the documented wire format.' }];
+          // G14: name the escape hatch — a "not JSON" verdict alone made the
+          // model repeat a valid-JSON-wrong-shape reply until the turn died.
+          { role: 'user', content: 'That was not valid wire-format JSON. Reply again with ONLY minified JSON in the documented wire format. If you meant advice or an explanation with NO spec change, reply {"i":"..."}.' }];
         const second = await callModel(system, retryMessages, onStatus);
         parsed = classify(extractJSON(second.text));
         if (parsed) text = second.text;

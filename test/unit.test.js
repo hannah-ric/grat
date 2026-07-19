@@ -1461,6 +1461,48 @@ async function testNamePhrasing() {
   ok(/5 feet/i.test(name), 'chat-route name keeps "about 5 feet tall"');
 }
 
+/* G14: a prose-only reply (non-empty "e", no wire keys) coerces to an info
+ * answer instead of nulling the turn — adapt3-run2's CORRECT no-change
+ * constraint answer used to die as "The model never produced a valid design
+ * reply" because classify() nulled the bare explain and the retry
+ * misdiagnosed valid JSON as "not valid wire-format JSON". */
+async function testBareExplainCoercion() {
+  section('respond(): a bare-explain reply is an info answer, not an error (G14)');
+  // adapt3-run2 turn 2, both calls, verbatim.
+  const bareE = '{"e":"No change needed — legs (70mm thick), aprons (20mm thick), and top (25mm thick) are each well under the 152.4mm gap when disassembled via the kd_bolt joints, so it still flat-packs to fit."}';
+  const parsed = AI.classify(AI.extractJSON(bareE));
+  ok(parsed && parsed.kind === 'info', `the recorded adapt3-run2 bare-e reply classifies as info, not null — got ${parsed && parsed.kind}`);
+  ok(parsed && /152\.4mm gap/.test(parsed.text) && /flat-packs to fit/.test(parsed.text), 'the full answer text survives uncut');
+  // Boundary honesty: an empty bare "e" still has nothing to say, and an "e"
+  // riding real wire keys stays an ordinary diff.
+  eq(AI.classify({ e: '' }), null, 'an empty bare "e" still parses to null');
+  eq(AI.classify({ e: 'moved', o: { h: 650 } }).kind, 'diff', 'an "e" beside wire keys stays a diff');
+  // End-to-end: one call, no burned retry, info UX.
+  let calls = 0;
+  AI.setTransport(async () => { calls++; return { text: bareE, stopReason: 'end_turn' }; });
+  const spec = Spec.correctSpec(Spec.defaultSpec('table'));
+  const res = await AI.respond('the storage gap is actually only 6 inches, not 10', spec, { turns: [] });
+  AI.setTransport(null);
+  ok(res.reply && res.reply.kind === 'info' && !res.error, 'the turn lands as info, never a hard error');
+  eq(calls, 1, 'no validation retry is burned on a coerced reply');
+  eq(AI.roundDecision(res), 'info', 'mid-loop the same reply triages as info');
+  // When the retry DOES fire (genuinely unparseable reply), its message now
+  // names the {"i"} advice escape instead of only re-demanding wire JSON.
+  let retryMsg = null;
+  AI.setTransport(async (system, messages) => {
+    const last = messages[messages.length - 1];
+    if (/not valid wire-format JSON/.test(String(last.content))) {
+      retryMsg = String(last.content);
+      return { text: '{"i":"Advice only — nothing changes."}', stopReason: 'end_turn' };
+    }
+    return { text: 'no json here at all', stopReason: 'end_turn' };
+  });
+  const res2 = await AI.respond('what do you think?', spec, { turns: [] });
+  AI.setTransport(null);
+  ok(!!retryMsg && retryMsg.includes('{"i":"..."}'), `the JSON retry names the {"i":"..."} advice shape — got "${retryMsg}"`);
+  ok(res2.reply && res2.reply.kind === 'info', 'the named escape hatch is honored on the retry');
+}
+
 /* C8, probe-P8 shape: an ANSWER reply arriving in a validation-refinement
  * round classifies as info via respond() end-to-end, so the loop can show its
  * text and stop instead of deep-merging undefined and burning the round. */
@@ -1596,6 +1638,7 @@ async function testTruncationExhaustion() {
 (async () => {
   await testKeylessProxyState();
   await testNamePhrasing();
+  await testBareExplainCoercion();
   await testMidRoundInfo();
   await testFetchTimeout();
   await testTransportTTL();
