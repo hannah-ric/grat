@@ -639,9 +639,11 @@ var BB = globalThis.BB = globalThis.BB || {};
   const asObB = p => Geo.partOBB({ size: customPartSize(p), pos: p.pos, rot: p.rot });
 
   /* Sanitize a proposed composition: clamp everything, snap stock, canonical
-   * ids p1..pN, joint gating, then ground + center the whole piece. Silent,
-   * deterministic, idempotent — validation reports whatever remains wrong. */
-  function correctCustom(c, level) {
+   * ids p1..pN, joint gating. Grounding/centering happens in correctCustom —
+   * this half is shared with correctionNotes (G10), which must measure the
+   * proposal's altitude BEFORE the floor snap under the exact rules
+   * correction applies. Silent, deterministic, never mutates its input. */
+  function sanitizeCustom(c, level) {
     const rawParts = Array.isArray(c && c.parts) ? c.parts : [];
     const parts = [];
     const idMap = new Map();
@@ -725,6 +727,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         : K.JOINT_DEFAULTS[level][kinds.includes('frame') ? 'frame' : 'case'];
       conns.push({ a, b, joint });
     }
+    return { parts, connections: conns };
+  }
+
+  /* Correct a proposed composition: sanitize (above), then ground + center
+   * the whole piece. Silent, deterministic, idempotent — validation reports
+   * whatever remains wrong; correctionNotes (G10) reports what grounding
+   * silently changed. */
+  function correctCustom(c, level) {
+    const out = sanitizeCustom(c, level);
+    const parts = out.parts;
 
     // Ground on the floor plane and center on x/z — silent code-owned fixes.
     if (parts.length) {
@@ -741,7 +753,42 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (Math.abs(dz) > 0.05) p.pos.z = r1(p.pos.z - dz);
       }
     }
-    return { parts, connections: conns };
+    return out;
+  }
+
+  /* ---------------- correction notes (G10) ----------------
+   * Pure, user-facing record of the silent geometric fixes correction
+   * applied: compare the RAW proposal with the delivered spec and name what
+   * neither the user nor the model would otherwise learn. First class:
+   * custom grounding — correctCustom translates an airborne composition
+   * onto the floor with no disclosure (ref1: a "ceiling-suspended" desk
+   * delivered 610 mm lower, its ack still selling the hang, because
+   * grounding runs before the audit so geom_floats can never fire). Returns
+   * display-ready strings; [] when nothing notable happened. The raw spec
+   * is pre-correction — parts may lack dim/pos/rot — so it is sanitized
+   * (never mutated) with the same rules correction itself uses. Consumed by
+   * the ack pipeline and refinement-round context (P-UI wave). */
+  const GROUND_NOTE_MM = 50; // below this, snapping to the floor is cleanup, not a destroyed premise
+  function correctionNotes(rawSpec, correctedSpec) {
+    const notes = [];
+    const raw = migrateSpec(rawSpec);
+    const rawParts = raw && raw.custom && Array.isArray(raw.custom.parts) ? raw.custom.parts : [];
+    const corOk = correctedSpec && correctedSpec.custom && Array.isArray(correctedSpec.custom.parts) && correctedSpec.custom.parts.length;
+    if (rawParts.length && corOk) {
+      const level = correctedSpec.meta && K.LEVELS.includes(correctedSpec.meta.level) ? correctedSpec.meta.level : 'beginner';
+      const s = sanitizeCustom(raw.custom, level);
+      if (s.parts.length) {
+        let minY = Infinity;
+        for (const p of s.parts) for (const corner of Geo.obbCorners(asObB(p))) minY = Math.min(minY, corner[1]);
+        const dy = r1(minY);
+        if (isFinite(dy) && Math.abs(dy) > GROUND_NOTE_MM) {
+          notes.push(dy > 0
+            ? `The proposal floated ~${U().fmtLength(dy)} above the floor — everything was grounded (this tool only builds floor-standing pieces).`
+            : `The proposal sat ~${U().fmtLength(-dy)} below the floor — everything was raised onto it (this tool only builds floor-standing pieces).`);
+        }
+      }
+    }
+    return notes;
   }
 
   /* World grain axis + grain-run length for a custom part (audit F-S2-7).
@@ -1258,7 +1305,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck, integrityLine,
-    correctSpec, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
+    correctSpec, correctionNotes, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
     customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom
   };
 })();

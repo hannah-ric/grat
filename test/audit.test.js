@@ -1836,5 +1836,54 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
   }
 }
 
+/* ================= G10: silent custom grounding is recorded as a correction note ================= */
+section('G10 correctionNotes records the grounding translation correction never disclosed');
+{
+  // ref1-run1's recorded wire proposal, verbatim: the "Ceiling-Suspended
+  // Truss Desk" whose coherent hanging composition (desktop y=715, ceiling
+  // ledger frame y=2395) correctCustom silently translated 610 mm down onto
+  // the floor — no event ever told the model or the user that the
+  // suspension premise was destroyed (spec.js grounding runs before the
+  // audit, so geom_floats can never fire on an airborne composition).
+  const REF1_WIRE = JSON.parse('{"N":{"v":4,"n":"Ceiling-Suspended Truss Desk","t":6,"l":1,"u":1,"o":[1200,600,1830],"m":2,"j":[12,12,12],"f":2,"d":0,"p":[[3,0,715,0,1200,600,30,0,0,0,0,0,1,2,"desktop"],[0,-550,1525,-260,1650,70,70,0,0,0,0,0,1,0,"post_FL"],[0,550,1525,-260,1650,70,70,0,0,0,0,0,1,0,"post_FR"],[0,-550,1525,260,1650,70,70,0,0,0,0,0,1,0,"post_BL"],[0,550,1525,260,1650,70,70,0,0,0,0,0,1,0,"post_BR"],[1,0,655,-260,1100,90,20,0,0,0,0,0,1,0,"apron_front"],[1,0,655,260,1100,90,20,0,0,0,0,0,1,0,"apron_back"],[1,-550,655,0,520,90,20,0,90,0,0,0,1,0,"apron_left"],[1,550,655,0,520,90,20,0,90,0,0,0,1,0,"apron_right"],[1,0,2395,-260,1100,90,40,0,0,0,0,0,1,0,"ceiling_front"],[1,0,2395,260,1100,90,40,0,0,0,0,0,1,0,"ceiling_back"],[1,-550,2395,0,520,90,40,0,90,0,0,0,1,0,"ceiling_left"],[1,550,2395,0,520,90,40,0,90,0,0,0,1,0,"ceiling_right"]],"c":[[0,5,1],[0,6,1],[0,7,1],[0,8,1],[5,1,12],[5,2,12],[6,3,12],[6,4,12],[7,1,12],[7,3,12],[8,2,12],[8,4,12],[9,1,12],[9,2,12],[10,3,12],[10,4,12],[11,1,12],[11,3,12],[12,2,12],[12,4,12]]}}');
+  const raw = Codec.decode(REF1_WIRE.N);
+  const corrected = Spec.correctSpec(raw);
+  ok(corrected.custom && corrected.custom.parts.length === 13, 'the composition survives correction');
+  const notes = Spec.correctionNotes(raw, corrected);
+  eq(notes.length, 1, 'exactly one grounding note for the suspended proposal');
+  ok(/floated ~610 mm above the floor/.test(notes[0]), `the note carries the real translation — got "${notes[0]}"`);
+  ok(/grounded/.test(notes[0]) && /floor-standing/.test(notes[0]), 'the note states the fix and the product boundary');
+
+  // Display boundary: the note renders through BB.Units like everything else.
+  Units.set({ system: 'imperial', precision: 16, dual: false });
+  const impNote = Spec.correctionNotes(raw, corrected)[0];
+  ok(/floated ~24 in above the floor/.test(impNote), `the note re-renders imperial — got "${impNote}"`);
+  Units.set({ system: 'metric', precision: 16, dual: false });
+
+  // A grounded proposal earns no note; correctionNotes is pure and quiet.
+  const grounded = Spec.defaultSpec('custom');
+  eq(Spec.correctionNotes(grounded, Spec.correctSpec(Spec.clone(grounded))), [], 'a grounded proposal earns no note');
+
+  // Small hovers stay silent — grounding under the 50 mm threshold is the
+  // ordinary snap-to-floor cleanup, not a destroyed premise.
+  const hover = Spec.defaultSpec('custom');
+  hover.custom.parts.forEach(p => { p.pos.y += 40; });
+  eq(Spec.correctionNotes(hover, Spec.correctSpec(Spec.clone(hover))), [], 'a 40 mm hover is below the disclosure threshold');
+
+  // Template specs and non-custom corrections are out of scope.
+  eq(Spec.correctionNotes(Spec.defaultSpec('table'), Spec.correctSpec(Spec.defaultSpec('table'))), [], 'templates have no grounding notes');
+
+  // Defensive: a raw proposal with missing dim/pos/rot fields is measured
+  // with correction's own sanitization and never throws.
+  const junk = { meta: { template: 'custom', level: 'beginner' }, custom: { parts: [{ primitive: 'slab', dim: { l: 500 }, pos: { y: 900 } }, { id: 'x' }], connections: [] } };
+  ok(Array.isArray(Spec.correctionNotes(junk, Spec.correctSpec(Spec.clone(junk)))), 'junk raw parts are measured defensively');
+
+  // A proposal sunk below the floor is raised — and says so.
+  const sunk = Spec.defaultSpec('custom');
+  sunk.custom.parts.forEach(p => { p.pos.y -= 300; });
+  const sunkNotes = Spec.correctionNotes(sunk, Spec.correctSpec(Spec.clone(sunk)));
+  ok(sunkNotes.length === 1 && /sat ~300 mm below the floor/.test(sunkNotes[0]), `a sunk proposal is named too — got "${sunkNotes[0]}"`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
