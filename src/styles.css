@@ -114,9 +114,11 @@
   --s1: var(--space-3xs); --s2: var(--space-2xs); --s3: var(--space-s);
   --s4: var(--space-m); --s5: var(--space-l); --s6: var(--space-xl); --s7: var(--space-2xl);
 
-  /* one motion family */
+  /* one motion family; --t-pulse is the one ambient cadence outside the
+     interaction scale — every "working" pulse (AI badge, typing dots,
+     save dot, boot skeleton) breathes at the same rate (B-13) */
   --ease: cubic-bezier(.22, 1, .36, 1);
-  --t-fast: 150ms; --t-med: 240ms; --t-slow: 420ms;
+  --t-fast: 150ms; --t-med: 240ms; --t-slow: 420ms; --t-pulse: 1.2s;
 
   /* shape: drafting-crisp chips, friendly cards, generous dialogs, capsule buttons */
   --radius-s: 4px;
@@ -518,7 +520,7 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .ai-badge[data-state="unconfigured"] .dot { background: var(--brick); }
 .ai-badge[data-state="unconfigured"] { color: var(--brick); border-color: color-mix(in srgb, var(--brick) 40%, transparent); background: var(--brick-soft); }
 @keyframes badgePulse { 50% { opacity: .35; } }
-.ai-badge[data-state="checking"] .dot { animation: badgePulse 1.2s infinite var(--ease); }
+.ai-badge[data-state="checking"] .dot { animation: badgePulse var(--t-pulse) infinite var(--ease); }
 /* phones: the chat sheet hides this badge when collapsed — mirror it in the bar */
 .ai-badge-bar { display: none; }
 @media (max-width: 880px) {
@@ -632,7 +634,7 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .typing { display: inline-flex; gap: 4px; padding: 12px 14px; }
 .typing i {
   width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: .4;
-  animation: blink 1.2s infinite var(--ease);
+  animation: blink var(--t-pulse) infinite var(--ease);
 }
 .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
 @keyframes blink { 0%, 100% { opacity: .25; } 40% { opacity: 1; } }
@@ -705,7 +707,7 @@ body.drafting .viewport-wrap::after { display: none; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: var(--s3); text-align: center; pointer-events: none;
 }
-.boot-skeleton-mark { animation: boot-pulse 1.6s var(--ease) infinite; }
+.boot-skeleton-mark { animation: boot-pulse var(--t-pulse) var(--ease) infinite; }
 .boot-skeleton-note { font: 600 var(--text-l)/var(--leading-display) var(--display); color: var(--ink-2); }
 @keyframes boot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .viewport-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
@@ -736,7 +738,7 @@ body.drafting .viewport-wrap {
   40% { filter: saturate(.35) sepia(.4) hue-rotate(160deg) contrast(1.05) brightness(.94); }
   100% { filter: none; }
 }
-.viewport-wrap.inkwash #view3d { animation: inkwash 280ms var(--ease); }
+.viewport-wrap.inkwash #view3d { animation: inkwash var(--t-med) var(--ease); }
 
 .splitter {
   flex: none; height: 9px; margin: -2px 0; cursor: row-resize; z-index: 12;
@@ -1508,7 +1510,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   transition: opacity var(--t-med) var(--ease), transform var(--t-fast) var(--ease);
 }
 .save-dot.on { opacity: .9; }
-.save-dot.pending { background: var(--muted); opacity: .75; animation: badgePulse 1.2s infinite var(--ease); }
+.save-dot.pending { background: var(--muted); opacity: .75; animation: badgePulse var(--t-pulse) infinite var(--ease); }
 .save-dot.err { background: var(--amber); opacity: 1; }
 @media (min-width: 561px) { .save-dot { display: none !important; } }
 
