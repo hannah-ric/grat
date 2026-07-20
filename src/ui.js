@@ -2469,7 +2469,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!BB.Billing.gate('advancedFeatures', 'The full-screen workshop companion and advanced build tools are included with Pro.')) return;
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
-    state.bmTask = null; // pager re-lands on the first unfinished task
+    // Mid-build position survives interruptions (C-08): the pager resumes the
+    // last-viewed task, persisted alongside progress; a fresh checklist (no
+    // saved index yet) still lands on the first unfinished task.
+    const savedTask = state.project.progress.task;
+    state.bmTask = Number.isInteger(savedTask) ? savedTask : null;
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
     renderBuildChecklists();
@@ -2651,6 +2655,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       state.bmTask = firstOpen < 0 ? 0 : firstOpen;
     }
     state.bmTask = Math.max(0, Math.min(tasks.length - 1, state.bmTask));
+    // The position rides the progress record (pruneProgress only touches
+    // cuts/steps), so exit → re-enter and reload both restore it (C-08).
+    state.project.progress.task = state.bmTask;
     const t = tasks[state.bmTask];
     const card = el('section', 'bm-task');
     card.setAttribute('aria-label', t.title);
@@ -2692,6 +2699,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.bmTask = Math.max(0, next);
     renderBmTask();
     $('bmPager').scrollTop = 0;
+    scheduleAutosave(); // the new position persists like any other progress (C-08)
   }
 
   /* ---------------- install nudge (once, after the first finished build) --- */

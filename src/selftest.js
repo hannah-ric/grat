@@ -1057,6 +1057,17 @@ var BB = globalThis.BB = globalThis.BB || {};
         'body');
     }
 
+    /* ============ build-mode position persistence (C-08) ============ */
+    {
+      // The pager's last-viewed task index rides the progress record; pruning
+      // stale checklist keys must never drop it, or exit/reload loses the
+      // mid-build position.
+      const prog = { cuts: { 'b:0:0:stale:100': true }, steps: {}, task: 5 };
+      Plans.pruneProgress(prog, { cuts: [], steps: [] });
+      test('shell', 'progress prune keeps the build pager position (task index)',
+        prog.task === 5 && !prog.cuts['b:0:0:stale:100'], `task ${prog.task}, stale pruned`, 'task 5, stale pruned');
+    }
+
     /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
     if (BB.Engine && BB.Engine.minDolly) {
       // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction
