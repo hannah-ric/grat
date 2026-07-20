@@ -32,6 +32,7 @@
   --ink: #241813;        /* primary text — deep espresso-black */
   --ink-2: #593837;      /* espresso (brand) — secondary text + structure */
   --muted: #877063;      /* warm brown-grey */
+  --muted-2: #6F5B4C;    /* contrast-safe muted — holds AA (≥4.5:1) at small sizes on paper/panel */
   --line: color-mix(in oklab, #593837 24%, transparent);   /* crisper hairline */
   --line-2: color-mix(in oklab, #593837 44%, transparent); /* strong divider */
 
@@ -174,6 +175,7 @@
     --ink: #F2EADF;
     --ink-2: #CFBBAD;
     --muted: #9E8778;
+    --muted-2: #A89180; /* dark muted already clears AA — one step lighter for margin */
     --line: color-mix(in oklab, #F2EADF 15%, transparent);
     --line-2: color-mix(in oklab, #F2EADF 34%, transparent);
     --structure: #0F0A08;
@@ -208,7 +210,7 @@
 }
 :root[data-theme="light"] {
   --paper: #F1EBDD; --panel: #FBF8F1; --panel-2: #E7DFCD; --panel-3: #D8CDB6;
-  --ink: #241813; --ink-2: #593837; --muted: #877063;
+  --ink: #241813; --ink-2: #593837; --muted: #877063; --muted-2: #6F5B4C;
   --line: color-mix(in oklab, #593837 24%, transparent); --line-2: color-mix(in oklab, #593837 44%, transparent);
   --structure: #4A2E2A; --structure-2: #35201D; --structure-ink: #F3EADF;
   --accent: #942911; --accent-ink: #FCF4EC; --accent-soft: #F2DED5; --accent-line: color-mix(in oklab, #942911 34%, transparent);
@@ -223,7 +225,7 @@
 }
 :root[data-theme="dark"] {
   --paper: #17110F; --panel: #211814; --panel-2: #100B09; --panel-3: #2C201B;
-  --ink: #F2EADF; --ink-2: #CFBBAD; --muted: #9E8778;
+  --ink: #F2EADF; --ink-2: #CFBBAD; --muted: #9E8778; --muted-2: #A89180;
   --line: color-mix(in oklab, #F2EADF 15%, transparent); --line-2: color-mix(in oklab, #F2EADF 34%, transparent);
   --structure: #0F0A08; --structure-2: #060403; --structure-ink: #F2EADF;
   --accent: #E17B54; --accent-ink: #2A1008; --accent-soft: #3A1C13; --accent-line: color-mix(in oklab, #E17B54 40%, transparent);
@@ -1602,7 +1604,8 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .bm-check[aria-pressed="true"] .box { background: var(--green); border-color: var(--green); }
 .bm-check[aria-pressed="true"] .bm-check-label { text-decoration: line-through; text-decoration-thickness: 2px; }
 .bm-check .bm-check-label { flex: 1; min-width: 0; font-weight: 600; }
-.bm-check .bm-check-dims { font: 600 clamp(14px, 1.8vw, 17px) var(--mono); color: var(--accent); white-space: nowrap; }
+/* dimension numerals are THE machine value at the saw — never below 16px (C-09) */
+.bm-check .bm-check-dims { font: 600 clamp(16px, 1.8vw, 17px) var(--mono); color: var(--accent); white-space: nowrap; }
 .bm-step-play {
   flex: none; width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--accent);
   background: var(--accent-soft); color: var(--accent); font-size: 20px; cursor: pointer;
@@ -1625,7 +1628,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .bm-diagram-hero { border-left: 1px solid var(--line-2); border-right: 1px solid var(--line-2); }
 .bm-diagram-hero .cut-diagram-svg { min-width: 760px; min-height: 150px; }
 .bm-zoom-hint {
-  margin: 0; padding: 6px var(--s3); font-size: var(--text-s); color: var(--muted);
+  margin: 0; padding: 6px var(--s3); font-size: var(--text-s); color: var(--muted-2);
   background: var(--paper); border: 1px solid var(--line-2); border-top: 0;
 }
 .bm-step-text { font-size: var(--text-m); line-height: var(--leading-body); color: var(--ink-2); margin: var(--s2) 0; max-width: var(--measure); }
