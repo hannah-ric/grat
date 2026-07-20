@@ -1324,6 +1324,7 @@ const clickMoreCtl = async sel => {
     const firstKey = keys.cuts[0];
     prog.cuts[firstKey] = false;
     __bb.state.bmTask = 0;
+    prog.task = 0; // re-entry restores the persisted position (C-08)
     __bb.renderReadiness();
     document.querySelectorAll('#bmPager .bm-check[aria-pressed="false"]').length; // pager may be stale; re-render
     return (async () => {
