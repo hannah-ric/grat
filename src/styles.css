@@ -856,7 +856,9 @@ body.drafting .viewport-wrap {
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
-  border: 0; background: none; cursor: pointer; padding: 10px 14px 12px; color: var(--muted);
+  /* inactive labels are core navigation: --muted-2 holds AA at 15px/600,
+     where --muted measured 4.37:1 on the panel (C-11) */
+  border: 0; background: none; cursor: pointer; padding: 10px 14px 12px; color: var(--muted-2);
   min-height: var(--tap);
   font-size: var(--text-s); font-weight: 600; border-radius: 8px 8px 0 0; position: relative; white-space: nowrap;
   transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
