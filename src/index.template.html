@@ -261,6 +261,16 @@
                   <label class="menu-row-label" for="explodeRange">Explode</label>
                   <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
                 </div>
+                <!-- Render escape hatch in the viewport itself (A-10): the
+                     same two-state control as More → Render, one press away
+                     when the GPU is struggling. -->
+                <div class="menu-row">
+                  <span class="menu-row-label">Render</span>
+                  <div class="seg render-seg" role="group" aria-label="Render quality">
+                    <button id="vpRenderRich" aria-pressed="true" title="Wood grain and shadows">Wood</button>
+                    <button id="vpRenderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
+                  </div>
+                </div>
                 <div class="menu-sep"></div>
                 <button class="menu-help" id="vpHelpBtn" aria-haspopup="dialog" aria-expanded="false">Keyboard &amp; pointer help</button>
               </div>

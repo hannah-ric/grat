@@ -379,8 +379,12 @@ var BB = globalThis.BB = globalThis.BB || {};
    * both textures and shadows (grain without grounding looks worse, not better). */
   function applyRender() {
     const textured = !state.prefs4.render || state.prefs4.render.textured !== false;
-    $('renderRich').setAttribute('aria-pressed', String(textured));
-    $('renderFlat').setAttribute('aria-pressed', String(!textured));
+    // Two mirrored controls, one state: More → Render and the View popover
+    // row (A-10) always agree.
+    for (const [rich, flat] of [['renderRich', 'renderFlat'], ['vpRenderRich', 'vpRenderFlat']]) {
+      $(rich).setAttribute('aria-pressed', String(textured));
+      $(flat).setAttribute('aria-pressed', String(!textured));
+    }
     if (state.engine) state.engine.setQuality({ textured, shadows: textured });
   }
 
@@ -3293,6 +3297,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     $('renderRich').onclick = () => setRender(true);
     $('renderFlat').onclick = () => setRender(false);
+    $('vpRenderRich').onclick = () => setRender(true);
+    $('vpRenderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
