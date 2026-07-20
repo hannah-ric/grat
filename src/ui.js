@@ -594,12 +594,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     scrim.setAttribute('aria-modal', 'true');
     scrim.setAttribute('aria-labelledby', 'diagramTitle');
     scrim.innerHTML = `<div class="modal modal-wide">
-      <div class="drawer-head" style="margin-bottom:var(--s3)">
+      <div class="drawer-head zoom-head">
         <h2 id="diagramTitle">Cutting diagram</h2>
         <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">${BB.Icons.svg('close')}</button>
       </div>
-      <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
-      <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
+      <div class="diagram-zoom-body" id="diagramZoomBody"></div>
+      <p class="sub mt-2">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
     </div>`;
     document.body.append(scrim);
     const close = scrim.querySelector('#diagramClose');
@@ -668,7 +668,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
-      <td style="color:var(--muted);font-size:var(--text-s)">${esc(r.note || '')}</td></tr>`).join('');
+      <td class="txt-muted txt-small">${esc(r.note || '')}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
     wireProv(scroll);
     root.append(scroll);
@@ -706,13 +706,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     // composite stock names ("Cherry 1×6 × 6 ft (3/4 × 5 1/2 in)") are
     // machine values — the whole cell goes mono (B-03)
     const shopRows = plan.shopping.map(s => `<tr><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" style="color:var(--muted)">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" class="txt-muted">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
     root.append(scroll);
     const waste = [];
     if (plan.wasteSolidPct != null) waste.push(`solid waste <span class="mv">${plan.wasteSolidPct}%</span>`);
     if (plan.wasteSheetPct != null) waste.push(`sheet waste <span class="mv">${plan.wasteSheetPct}%</span>`);
     const tot = el('div', 'bom-total');
-    tot.innerHTML = `<span>Purchasable stock total${waste.length ? ` <span style="color:var(--muted);font-weight:400">· ${waste.join(' · ')}</span>` : ''}</span><strong>$${plan.totalCost.toFixed(2)}</strong>`;
+    tot.innerHTML = `<span>Purchasable stock total${waste.length ? ` <span class="txt-muted fw-normal">· ${waste.join(' · ')}</span>` : ''}</span><strong>$${plan.totalCost.toFixed(2)}</strong>`;
     root.append(tot);
     // $ amounts and dimension strings inside prose ride .mv spans (B-03)
     const mv = t => `<span class="mv">${t}</span>`;
@@ -824,7 +824,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const rows = state.bomData.items.map(i => `<tr>
       <td><span class="kind-tag">${esc(i.kind)}</span></td>
       <td class="mv">${esc(i.label)}</td><td class="num">${i.qty}</td>
-      <td class="mv" style="color:var(--muted)">${esc(i.detail || '')}</td>
+      <td class="mv txt-muted">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
     root.append(scroll);
@@ -1175,14 +1175,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td class="num">${s.moe.toFixed(1)}</td><td class="num">${s.mor}</td><td class="num">${s.sg.toFixed(2)}</td>
         <td class="num${s.sheet ? '' : ' movement-' + s.movement}">${s.sheet ? '—' : s.ct.toFixed(5)}</td>
         <td class="num">${'$'.repeat(s.costTier)}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(s.blurb)}</td></tr>`).join('');
     } else if (state.refTab === 'ergo') {
       head = '<th>Measure</th><th class="num">Range</th><th>Applies to</th><th>Note</th>';
       rows = K.ERGONOMICS.filter(r => hit(r.label, r.note)).map(r => `<tr>
         <td><strong>${esc(r.label)}</strong></td>
         <td class="num">${isFinite(r.max) ? `${fmt(r.min)} – ${fmt(r.max)}` : `≥ ${fmt(r.min)}`}</td>
         <td>${esc(r.appliesTo.join(', '))}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
       head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
@@ -1191,9 +1191,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td><span class="dots">${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span></td>
         <td><span class="dots">${'●'.repeat(j.difficulty)}${'○'.repeat(5 - j.difficulty)}</span></td>
         <td>${esc(j.level)}</td>
-        <td style="font-size:var(--text-s)">${esc(j.bestFor)}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(j.failure)}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
+        <td class="txt-small">${esc(j.bestFor)}</td>
+        <td class="txt-small txt-muted">${esc(j.failure)}</td>
+        <td class="txt-small txt-muted">${esc(j.tools.join(', '))}</td></tr>`).join('');
     } else if (state.refTab === 'hardware') {
       // The hardware repository: when, why, how, where — quantities and
       // ratings are computed by code (BB.HW rules), the table teaches the
@@ -1229,9 +1229,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         const body2 = list.filter(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))).map(x => `<tr>
           <td><strong>${esc(Units.fmtTemplate(x.label))}</strong><br><span class="kind-tag">${esc(gLabel)}</span></td>
           <td>${view3d[x.key] ? `<button type="button" class="btn small ghost joint-demo" data-joint="${esc(view3d[x.key])}" title="See it in 3D">${BB.Icons.svg('ruler', 13)} 3D</button>` : ''}</td>
-          <td class="num" style="font-size:var(--text-s)">${esc(classOf(x))}</td>
-          <td style="font-size:var(--text-s)">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
-          <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
+          <td class="num txt-small">${esc(classOf(x))}</td>
+          <td class="txt-small">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span class="txt-muted">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
+          <td class="txt-small txt-muted">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
         return body2;
       }).join('');
     } else if (state.refTab === 'lumber') {
@@ -1246,15 +1246,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       rows = [...f.screws, ...f.dowels, ...f.hardware].filter(x => hit(x.label, x.use)).map(x => `<tr>
         <td><strong>${esc(Units.fmtTemplate(x.label))}</strong></td>
         <td class="num">${x.pilot ? esc(fmtS(x.pilot)) + ' pilot' : (x.price ? '~$' + x.price : '—')}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
       rows += K.FINISHES.filter(x => hit(x.label, x.blurb)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}${x.exterior ? ' <span class="kind-tag">exterior</span>' : ''}</td>
         <td class="num">${x.coats} coats · ${x.recoatHrs} h recoat · ${x.cureDays} d cure</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(x.blurb)}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(x.blurb)}</td></tr>`).join('');
       rows += K.GLUES.filter(x => hit(x.label, x.blurb, x.water)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}</td>
         <td class="num">open ${x.openMin} min · clamp ${x.clampMin} min · ${x.cureHrs} h full</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
     }
     if (!rows) {
       body.append(el('div', 'empty-state', `<span class="big">No matches in the reference.</span>Try a different word — “dovetail”, “walnut”, “pilot”…`));
@@ -1665,9 +1665,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else {
       chatMsg('user', `<div class="bubble">${esc(text)}</div>`);
     }
-    const typing = chatMsg('bot', '<span class="typing"><i></i><i></i><i></i></span><span class="bubble" style="display:none"></span>');
+    const typing = chatMsg('bot', '<span class="typing"><i></i><i></i><i></i></span><span class="bubble" hidden></span>');
     const setStatus = t => {
       const b = typing.querySelector('.bubble');
+      b.hidden = false;
       b.style.display = 'block';
       b.textContent = t + '…';
     };
@@ -1869,7 +1870,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(dim('Depth', 'overall.depth', 200, 1200));
       body.append(dim('Height', 'overall.height', 120, 2400));
     } else {
-      body.append(el('p', '', '<span style="font-size:var(--text-s);color:var(--muted)">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
+      body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
     if (part.role === 'leg') body.append(dim('Leg thickness', 'structure.legThickness', 32, 100));
     if (part.role === 'apron' || part.role === 'rail') body.append(dim('Apron height', 'structure.apronHeight', 60, 160));
@@ -2012,7 +2013,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td>${esc(d.label || Spec.PATH_LABELS[d.path] || d.path)}</td>
       <td class="old num">${esc(Spec.fmtValue(d.path, d.from))}</td>
       <td class="new num">${esc(Spec.fmtValue(d.path, d.to))}</td></tr>`).join('') ||
-      '<tr><td colspan="3" style="color:var(--muted)">No differences.</td></tr>';
+      '<tr><td colspan="3" class="txt-muted">No differences.</td></tr>';
     openScrim('compareScrim');
   }
   function showCompareOverlay() {
@@ -2479,9 +2480,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody>
       <tr><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
       <tr><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
-      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span style="color:var(--muted)">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
+      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span class="txt-muted">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
       <tr><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(esc(fmtS(c.movementMM)), c.movementMM === bestMove)).join('')}</tr>
-      <tr><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span style="color:var(--muted)">${esc(c.duty)}</span>`)).join('')}</tr>
+      <tr><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span class="txt-muted">${esc(c.duty)}</span>`)).join('')}</tr>
       <tr><td>Failing checks</td>${cols.map(c => cell(c.fails, c.fails === 0)).join('')}</tr>
     </tbody></table>`;
     wrap.querySelectorAll('.species-col-btn').forEach(b => {
@@ -2506,7 +2507,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const r of results.filter(x => x.group === g)) {
         const row = el('div', 'diag-row' + (r.pass ? '' : ' fail'));
         row.innerHTML = `<span class="diag-dot" aria-hidden="true"></span>
-          <span style="flex:1">${esc(r.name)}${r.pass ? '' : `<div class="diag-detail">actual: ${esc(r.actual)} · expected: ${esc(r.expected)}</div>`}</span>`;
+          <span class="flex-1">${esc(r.name)}${r.pass ? '' : `<div class="diag-detail">actual: ${esc(r.actual)} · expected: ${esc(r.expected)}</div>`}</span>`;
         body.append(row);
       }
     }

@@ -362,7 +362,7 @@
       <p class="sub">Pick a starter to see full plans instantly — every one runs through the same parametric pipeline as a design you describe yourself. Refine it in the chat afterward.</p>
       <div class="gallery-grid" id="galleryGrid"></div>
       <div class="modal-foot">
-        <span class="sub" style="margin:0">…or close this and describe your own piece.</span>
+        <span class="sub m0">…or close this and describe your own piece.</span>
         <!-- The button only closes the dialog — its label says so (C-15). -->
         <button class="btn" id="galleryClose">Close</button>
       </div>
@@ -417,12 +417,12 @@
 
   <div class="scrim" inert id="diagramScrim" role="dialog" aria-modal="true" aria-labelledby="diagramTitle">
     <div class="modal modal-wide">
-      <div class="drawer-head" style="margin-bottom:var(--s3)">
+      <div class="drawer-head zoom-head">
         <h2 id="diagramTitle">Cutting diagram</h2>
         <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram"></button>
       </div>
-      <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
-      <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
+      <div class="diagram-zoom-body" id="diagramZoomBody"></div>
+      <p class="sub mt-2">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
     </div>
   </div>
 
@@ -434,7 +434,7 @@
         <table class="data diff-table"><thead><tr><th>Parameter</th><th>Older</th><th>Newer</th></tr></thead><tbody id="compareRows"></tbody></table>
       </div>
       <div class="modal-foot">
-        <span class="sub" style="margin:0">Close to see the older design ghosted in 3D.</span>
+        <span class="sub m0">Close to see the older design ghosted in 3D.</span>
         <button class="btn primary" id="compareClose">Show 3D overlay</button>
       </div>
     </div>
@@ -446,7 +446,7 @@
       <p class="sub" id="projectsSub">Designs autosave here as you work. Open, rename, duplicate, or delete — build progress travels with each project.</p>
       <div class="projects-grid" id="projectsGrid"></div>
       <div class="modal-foot">
-        <span class="sub" style="margin:0" id="storageNote"></span>
+        <span class="sub m0" id="storageNote"></span>
         <button class="btn" id="projectsClose">Close</button>
       </div>
     </div>
@@ -498,7 +498,7 @@
       <p class="sub">The same design recomputed side by side — purchasable cost, weight, sag margin on the critical span, seasonal movement, and surface duty. Tap a column to use that species.</p>
       <div class="species-pick" id="speciesPick" role="group" aria-label="Pick up to three species"></div>
       <div class="table-scroll" id="speciesTableWrap"></div>
-      <div class="modal-foot"><span class="sub" style="margin:0">Pure recomputation — nothing is changed until you tap a column.</span><button class="btn" id="speciesClose">Close</button></div>
+      <div class="modal-foot"><span class="sub m0">Pure recomputation — nothing is changed until you tap a column.</span><button class="btn" id="speciesClose">Close</button></div>
     </div>
   </div>
 

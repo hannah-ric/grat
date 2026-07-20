@@ -991,7 +991,7 @@ table.data tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel
 table.data tbody tr { transition: background var(--t-fast) var(--ease); }
 table.data tbody tr:hover { background: var(--panel-2); }
 .diagram-zoom-trigger { border-radius: var(--radius-m); }
-.diagram-zoom-body { max-height: min(72vh, 860px); }
+.diagram-zoom-body { max-height: min(72vh, 860px); overflow: auto; -webkit-overflow-scrolling: touch; }
 .diagram-zoom-body svg { display: block; width: 100%; min-width: 960px; height: auto; }
 
 .empty-state {
@@ -1145,6 +1145,16 @@ td.mv { font-size: var(--text-s); }
 @media (pointer: coarse) { .units-seg button { min-height: var(--tap); } }
 #dualBtn[aria-pressed="true"] { background: var(--seafoam-wash); border-color: var(--seafoam-line); color: var(--green); }
 
+
+/* Generated-markup utilities (B-12): the classes ui.js and the template
+   paint instead of inline style attributes — token debt made findable. */
+.txt-muted { color: var(--muted); }
+.txt-small { font-size: var(--text-s); }
+.sub.m0, .modal .sub.m0 { margin: 0; }
+.sub.mt-2, .modal .sub.mt-2 { margin-top: var(--s2); }
+.fw-normal { font-weight: 400; }
+.flex-1 { flex: 1; }
+.drawer-head.zoom-head { margin-bottom: var(--s3); }
 
 /* ---------------- history drawer ---------------- */
 .drawer-backdrop {
