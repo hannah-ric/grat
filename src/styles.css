@@ -262,6 +262,9 @@ body {
   color: var(--on-brand);
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* every placeholder speaks the muted family at AA — never the browser's
+ * default gray, which fails 4.5:1 on both themes' surfaces (C-10) */
+::placeholder { color: var(--muted-2); opacity: 1; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: 2px; border-radius: 4px; }
 
@@ -589,7 +592,7 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 }
 .chat-input textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 /* a placeholder longer than the column reads as one clean clipped line,
- * never a half-visible wrap */
+ * never a half-visible wrap (color comes from the global ::placeholder rule) */
 .chat-input textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* AI-allowance meter (A-05): one quiet line under the chat input */
 .ai-usage { margin-top: var(--s2); font-size: var(--text-xs); color: var(--muted); line-height: 1.4; }
@@ -771,7 +774,7 @@ body.drafting .viewport-wrap {
   transition: border-color var(--t-fast) var(--ease);
 }
 .hero-prompt textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.hero-prompt textarea::placeholder { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-prompt textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hero-prompt .btn.primary { font-size: var(--text-m); padding: var(--s2) var(--s4); }
 .hero-starters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin-top: var(--s2); }
 .hero-starter { min-width: 0; }
