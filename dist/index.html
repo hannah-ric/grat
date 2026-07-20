@@ -639,6 +639,17 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 }
 body.drafting .viewport-wrap::after { display: none; }
 .viewport-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; border-radius: 0; }
+/* Pre-JS boot skeleton (A-09): pure CSS so it paints with the shell markup,
+   long before the scripts parse on slow networks. boot() removes the node;
+   the reduced-motion rules below collapse the pulse like everything else. */
+.boot-skeleton {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s3); text-align: center; pointer-events: none;
+}
+.boot-skeleton-mark { animation: boot-pulse 1.6s var(--ease) infinite; }
+.boot-skeleton-note { font: 600 var(--text-l)/var(--leading-display) var(--display); color: var(--ink-2); }
+@keyframes boot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .viewport-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 /* Blueprint mode: the transparent canvas sits on a drafting field with a
  * faint grid — ink-on-paper in light, true cyanotype in dark. */
@@ -1026,6 +1037,10 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .inspector.open { opacity: 1; transform: none; pointer-events: auto; }
 .inspector-head { display: flex; align-items: center; padding: var(--s3) var(--s3) var(--s2); gap: var(--s2); }
+/* Touch path to isolate (A-07): shown on coarse pointers only — desktop
+   keeps double-click and the inspector head stays quiet. */
+.insp-isolate { display: none; }
+@media (pointer: coarse) { .insp-isolate { display: inline-flex; align-items: center; min-height: var(--tap); } }
 .inspector-head h3 { margin: 0; font-family: var(--display); font-size: var(--text-l); flex: 1; }
 .inspector-dims { font: 500 var(--text-s) var(--mono); color: var(--muted); padding: 0 var(--s3) var(--s2); font-variant-numeric: tabular-nums; }
 .inspector-body { padding: 0 var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
@@ -1937,6 +1952,19 @@ body.bm-playback .playback-bar { display: none !important; }
       <div class="viewport-wrap" id="viewportWrap">
         <canvas id="view3d" tabindex="0" aria-label="3D model viewport. Drag or use arrow keys to orbit, plus and minus to zoom, Home to reframe. Click a part to inspect it; double-click to isolate and frame it; F frames the selected part. During assembly playback, click a glowing joint dot to open its 3D close-up."></canvas>
 
+        <!-- Pre-JS boot skeleton (A-09): static markup + CSS only, so it
+             paints while the megabyte of inline scripts still streams on a
+             slow network; boot() removes it once the first model is in
+             place. The global reduced-motion rules collapse its pulse. -->
+        <div class="boot-skeleton" id="bootSkeleton" aria-hidden="true">
+          <svg class="boot-skeleton-mark" width="44" height="44" viewBox="0 0 26 26" aria-hidden="true">
+            <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+            <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+          </svg>
+          <span class="boot-skeleton-note">Drafting your bench&hellip;</span>
+        </div>
+
         <div class="advisories" id="advisories" aria-live="polite"></div>
 
         <!-- First-run hero: one question over the live model. The bench behind
@@ -1973,6 +2001,9 @@ body.bm-playback .playback-bar { display: none !important; }
         <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
             <h3 id="inspName">Part</h3>
+            <!-- Touch path to isolate (A-07): double-tap works, but this is the
+                 discoverable one. CSS shows it on coarse pointers only. -->
+            <button class="btn small ghost insp-isolate" id="inspIsolate" aria-pressed="false">Isolate</button>
             <button class="btn icon ghost" id="inspClose" aria-label="Close inspector"></button>
           </div>
           <div class="inspector-dims" id="inspDims"></div>
@@ -2005,6 +2036,16 @@ body.bm-playback .playback-bar { display: none !important; }
                   <label class="menu-row-label" for="explodeRange">Explode</label>
                   <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
                 </div>
+                <!-- Render escape hatch in the viewport itself (A-10): the
+                     same two-state control as More → Render, one press away
+                     when the GPU is struggling. -->
+                <div class="menu-row">
+                  <span class="menu-row-label">Render</span>
+                  <div class="seg render-seg" role="group" aria-label="Render quality">
+                    <button id="vpRenderRich" aria-pressed="true" title="Wood grain and shadows">Wood</button>
+                    <button id="vpRenderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
+                  </div>
+                </div>
                 <div class="menu-sep"></div>
                 <button class="menu-help" id="vpHelpBtn" aria-haspopup="dialog" aria-expanded="false">Keyboard &amp; pointer help</button>
               </div>
@@ -2017,7 +2058,7 @@ body.bm-playback .playback-bar { display: none !important; }
               <div><dt>Zoom</dt><dd>scroll or pinch · <kbd>+</kbd> <kbd>−</kbd></dd></div>
               <div><dt>Reframe</dt><dd><kbd>Home</kbd> or Fit</dd></div>
               <div><dt>Inspect a part</dt><dd>click / tap it</dd></div>
-              <div><dt>Isolate &amp; frame</dt><dd>double-click · <kbd>F</kbd></dd></div>
+              <div><dt>Isolate &amp; frame</dt><dd>double-click / double-tap · <kbd>F</kbd></dd></div>
               <div><dt>Joint close-up</dt><dd>tap a glowing dot (playback)</dd></div>
             </dl>
             <h3>Everywhere</h3>
@@ -2045,7 +2086,9 @@ body.bm-playback .playback-bar { display: none !important; }
           <button class="btn small" id="pbExit">Exit</button>
         </div>
 
-        <div class="viewport-hint" id="viewportHint">drag to orbit · scroll to zoom · click a part to tune it</div>
+        <!-- Static copy stays pointer-neutral (A-09): it can paint pre-JS on
+             any device; boot() specializes it per pointer type. -->
+        <div class="viewport-hint" id="viewportHint">orbit · zoom · pick a part to tune it</div>
       </div>
 
       <div class="splitter" id="vpSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize 3D viewport against the plans panel" aria-controls="viewportWrap" tabindex="0" aria-valuemin="24" aria-valuemax="78" aria-valuenow="58" title="Drag to resize — arrow keys work too">
@@ -13355,6 +13398,18 @@ var BB = globalThis.BB = globalThis.BB || {};
         'body');
     }
 
+    /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
+    if (BB.Engine && BB.Engine.minDolly) {
+      // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction
+      // of the bounding-sphere radius so the camera never enters the piece.
+      const tiny = BB.Engine.minDolly({ w: 120, d: 120, h: 120 });
+      test('shell', 'dolly floor keeps the 300 mm absolute minimum on tiny pieces', tiny === 300, tiny, 300);
+      const r = Math.sqrt(1500 * 1500 + 850 * 850 + 750 * 750) / 2;
+      const bench = BB.Engine.minDolly({ w: 1500, d: 850, h: 750 });
+      test('shell', 'dolly floor scales with the bounding sphere (camera stays outside the piece)',
+        bench >= r * 0.5 && bench <= r, bench.toFixed(0) + ' mm', `${(r * 0.5).toFixed(0)}–${r.toFixed(0)} mm (sphere r ${r.toFixed(0)})`);
+    }
+
     return results;
   }
 
@@ -14084,6 +14139,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const BUCKETS = { solid: 1, dim: 0.32, ghost: 0.3, faint: 0.07, hidden: 0.0 };
 
+  /* Interactive dolly floor (A-06): wheel, pinch, and keyboard zoom stop at
+   * a fraction of the piece's bounding-sphere radius (never under the 300 mm
+   * absolute floor), so the camera can never dive through the model into a
+   * blank scene. Pure — the self-test asserts it; code owns the number. */
+  const DOLLY_MIN_K = 0.9;
+  function minDolly(b) {
+    return Math.max(300, Math.sqrt(b.w * b.w + b.d * b.d + b.h * b.h) / 2 * DOLLY_MIN_K);
+  }
+
   function create(canvas, opts) {
     const THREE = globalThis.THREE;
     opts = opts || {};
@@ -14639,10 +14703,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     /* ---------------- camera controls ---------------- */
+    /* Fit distance for a sphere of `radius`: the tighter of the vertical and
+     * horizontal FOV governs, so portrait viewports (aspect < 1) pull back
+     * far enough that wide pieces clear the side edges too (A-05). */
+    function fitDist(radius, pad) {
+      const vHalf = (camera.fov * Math.PI / 180) / 2;
+      const hHalf = Math.atan(Math.tan(vHalf) * (viewAspect || 1));
+      return radius / Math.tan(Math.min(vHalf, hHalf)) * pad;
+    }
     function frame() {
       const b = E.bounds;
       const radius = Math.sqrt(b.w * b.w + b.d * b.d + b.h * b.h) / 2;
-      camGoal.dist = radius / Math.tan((camera.fov * Math.PI / 180) / 2) * 1.35;
+      camGoal.dist = Math.min(20000, fitDist(radius, 1.35));
       camGoal.theta = 0.72; camGoal.phi = 1.13;
       tgtGoal.set(0, b.h * 0.45, 0);
       focusRestore = null; // Home is the escape hatch from part framing
@@ -14658,7 +14730,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const t = rec.target;
       const radius = Math.max(60, Math.hypot(t.scale.x, t.scale.y, t.scale.z) / 2);
       tgtGoal.set(t.pos.x, t.pos.y, t.pos.z);
-      camGoal.dist = Math.max(300, radius / Math.tan((camera.fov * Math.PI / 180) / 2) * 1.55);
+      camGoal.dist = Math.max(300, fitDist(radius, 1.55));
       if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
     }
     function clearFocus() {
@@ -14668,6 +14740,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       focusRestore = null;
       if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
     }
+    /* The floor never sits above the current goal: part framing may already
+     * be closer than the piece-level floor, and a pinch or scroll must not
+     * kick that framing outward — it just can't dolly any further in. */
+    function dollyFloor() { return Math.min(camGoal.dist, minDolly(E.bounds)); }
     const pointers = new Map();
     let pinchStart = 0, moved = 0, lastTap = 0, downId = null;
     const _ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _v1 = new THREE.Vector3();
@@ -14719,9 +14795,42 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       return best;
     }
+    /* Touch double-tap (A-07): a touch tap's pick is HELD briefly instead of
+     * dispatched — dispatching immediately opens the part inspector over the
+     * canvas, which swallows the second tap on phones. A second tap-up within
+     * 250 ms and 24 px converts the pair into one double pick (isolate);
+     * otherwise the hold expires and the single pick fires. Pairing compares
+     * input timeStamps, so main-thread jank between the taps never breaks a
+     * genuine double. Mouse and pen keep the immediate dispatch path. */
+    let pendingTap = null;
+    function flushTap() {
+      if (!pendingTap) return;
+      clearTimeout(pendingTap.timer);
+      const p = pendingTap;
+      pendingTap = null;
+      if (opts.onPick) opts.onPick(p.part, { double: false });
+    }
+    function touchTap(part, e) {
+      const up = e.timeStamp || performance.now();
+      if (pendingTap && up - pendingTap.up <= 250 &&
+          Math.hypot(e.clientX - pendingTap.x, e.clientY - pendingTap.y) <= 24) {
+        clearTimeout(pendingTap.timer);
+        const held = pendingTap.part;
+        pendingTap = null;
+        if (opts.onPick) opts.onPick(part || held, { double: true });
+        return;
+      }
+      flushTap(); // an unrelated pending single fires before the new tap arms
+      if (!part) { if (opts.onPick) opts.onPick(null, { double: false }); return; }
+      pendingTap = { part, x: e.clientX, y: e.clientY, up, timer: setTimeout(flushTap, 300) };
+    }
     canvas.addEventListener('pointerdown', e => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button });
+      // A possible second tap is in flight: hold the pending single so the
+      // inspector can't open (and swallow it) mid-gesture. Every non-tap
+      // outcome ends in flushTap(), so the hold never strands the pick.
+      if (pendingTap) clearTimeout(pendingTap.timer);
       moved = 0; downId = e.pointerId;
       flick.on = false; flick.vT = 0; flick.vP = 0; flick.last = performance.now();
       if (pointers.size === 2) {
@@ -14743,7 +14852,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const [a, b2] = [...pointers.values()];
         const d = Math.hypot(a.x - b2.x, a.y - b2.y) || 1;
         const before = camGoal.dist;
-        camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist * (pinchStart / d)));
+        camGoal.dist = Math.max(dollyFloor(), Math.min(20000, camGoal.dist * (pinchStart / d)));
         dollyShift((a.x + b2.x) / 2, (a.y + b2.y) / 2, camGoal.dist / before); // pinch pivots on its midpoint
         pinchStart = d;
         return;
@@ -14791,7 +14900,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         flick.vP = Math.max(-cap, Math.min(cap, flick.vP));
         if (Math.abs(flick.vT) + Math.abs(flick.vP) > 0.35) flick.on = true;
       }
-      if (moved > 8) return;
+      if (moved > 8) { flushTap(); return; } // a drag supersedes the pairing window
       if (E.playback) {
         // Step playback: the glowing joint dots are doors to the close-up.
         const dot = pickDotAt(e);
@@ -14799,12 +14908,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         return;
       }
       const part = pickAt(e);
+      if (e.pointerType === 'touch') { touchTap(part, e); return; }
       const now = performance.now();
       const isDouble = now - lastTap < 350;
       lastTap = now;
       if (opts.onPick) opts.onPick(part, { double: isDouble });
     });
-    canvas.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
+    canvas.addEventListener('pointercancel', e => { pointers.delete(e.pointerId); flushTap(); });
     canvas.addEventListener('pointerleave', () => {
       hoverPt = null;
       E.hovered = null; E.hoverDot = null;
@@ -14813,7 +14923,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     canvas.addEventListener('wheel', e => {
       e.preventDefault();
       const before = camGoal.dist;
-      camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist * (1 + e.deltaY * 0.0011)));
+      camGoal.dist = Math.max(dollyFloor(), Math.min(20000, camGoal.dist * (1 + e.deltaY * 0.0011)));
       dollyShift(e.clientX, e.clientY, camGoal.dist / before); // zoom pivots on the cursor
     }, { passive: false });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -14823,7 +14933,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       else if (e.key === 'ArrowRight') { camGoal.theta -= step; e.preventDefault(); }
       else if (e.key === 'ArrowUp') { camGoal.phi = Math.max(0.12, camGoal.phi - step); e.preventDefault(); }
       else if (e.key === 'ArrowDown') { camGoal.phi = Math.min(1.52, camGoal.phi + step); e.preventDefault(); }
-      else if (e.key === '+' || e.key === '=') { camGoal.dist = Math.max(300, camGoal.dist * 0.88); e.preventDefault(); }
+      else if (e.key === '+' || e.key === '=') { camGoal.dist = Math.max(dollyFloor(), camGoal.dist * 0.88); e.preventDefault(); }
       else if (e.key === '-') { camGoal.dist = Math.min(20000, camGoal.dist * 1.14); e.preventDefault(); }
       else if (e.key === 'Home') { frame(); e.preventDefault(); }
       else if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -15074,6 +15184,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         camCur.dist = camGoal.dist * 1.3;
       },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
+      /* Read-only camera snapshot for probes and diagnostics: the damped
+       * goal pose plus the current interactive dolly floor (A-06). */
+      cameraPose() { return { theta: camGoal.theta, phi: camGoal.phi, dist: camGoal.dist, minDist: minDolly(E.bounds) }; },
       /* Synchronous render + return the canvas — thumbnails read pixels right
        * after this call (the drawing buffer is only valid in the same tick). */
       renderNow() { renderer.render(scene, activeCamera); return canvas; },
@@ -15113,15 +15226,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     applyEnvironment(curTheme);
     applyQuality();
+    resize(); // before frame(): the fit needs the real viewport aspect
     frame();
     Object.assign(camCur, camGoal);
     tgtCur.copy(tgtGoal);
-    resize();
     tick();
     return api;
   }
 
-  BB.Engine = { create };
+  BB.Engine = { create, minDolly };
 })();
 </script>
 <script>/* Blueprint Buddy — UI shell. All DOM wiring lives here; every design change
@@ -15505,8 +15618,12 @@ var BB = globalThis.BB = globalThis.BB || {};
    * both textures and shadows (grain without grounding looks worse, not better). */
   function applyRender() {
     const textured = !state.prefs4.render || state.prefs4.render.textured !== false;
-    $('renderRich').setAttribute('aria-pressed', String(textured));
-    $('renderFlat').setAttribute('aria-pressed', String(!textured));
+    // Two mirrored controls, one state: More → Render and the View popover
+    // row (A-10) always agree.
+    for (const [rich, flat] of [['renderRich', 'renderFlat'], ['vpRenderRich', 'vpRenderFlat']]) {
+      $(rich).setAttribute('aria-pressed', String(textured));
+      $(flat).setAttribute('aria-pressed', String(!textured));
+    }
     if (state.engine) state.engine.setQuality({ textured, shadows: textured });
   }
 
@@ -16871,6 +16988,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     return wrap;
   }
 
+  /* The coarse-pointer Isolate control (A-07) mirrors double-tap state:
+   * label + aria-pressed re-sync on every open/toggle/clear. */
+  function renderInspIsolate(id) {
+    const b = $('inspIsolate');
+    if (!b || !id) return;
+    const on = state.engine.getIsolated() === id;
+    b.textContent = on ? 'Show all' : 'Isolate';
+    b.setAttribute('aria-pressed', String(on));
+  }
   function openInspector(part) {
     state.selected = part.id;
     state.engine.select(part.id);
@@ -16878,6 +17004,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     insp.classList.add('open');
     insp.inert = false;
     $('inspName').textContent = part.name;
+    renderInspIsolate(part.id);
     const dims = $('inspDims');
     dims.innerHTML = `<button type="button" class="prov-btn num" aria-label="${esc(part.name)} dimensions ${esc(fmt(part.size.w))} by ${esc(fmt(part.size.h))} by ${esc(fmt(part.size.d))} — show the formulas">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
     dims.querySelector('.prov-btn').onclick = e => {
@@ -18236,8 +18363,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       reducedMotion: reduceMq.matches,
       onPick(part, info) {
         if (!part) {
-          if (state.engine.getIsolated()) { state.engine.isolate(null); state.engine.clearFocus(); }
-          else closeInspector();
+          if (state.engine.getIsolated()) {
+            state.engine.isolate(null); state.engine.clearFocus();
+            renderInspIsolate(state.selected);
+          } else closeInspector();
           return;
         }
         if (info.double) {
@@ -18321,6 +18450,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
     state.engine.snapNow();
+    // The pre-JS boot skeleton (A-09) has done its job: a model is in place.
+    const bootSk = $('bootSkeleton');
+    if (bootSk) bootSk.remove();
     applyHash(); // a deep-linked tab survives the reload
     if (state.mode === 'plan') autoSplitForPlanPhone(); // deep-linked Plan gets the phone floor too (X-07)
     renderAll();
@@ -18404,6 +18536,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     $('renderRich').onclick = () => setRender(true);
     $('renderFlat').onclick = () => setRender(false);
+    $('vpRenderRich').onclick = () => setRender(true);
+    $('vpRenderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
     $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
     $('projectsBtn').onclick = openProjects;
@@ -18686,6 +18820,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;
+    $('inspIsolate').onclick = () => {
+      const id = state.selected;
+      if (!id) return;
+      const clearing = state.engine.getIsolated() === id;
+      state.engine.isolate(clearing ? null : id);
+      // Same pairing as double-tap (design §4b): isolation frames the part,
+      // clearing restores the stored pose.
+      if (clearing) state.engine.clearFocus(); else state.engine.focusPart(id);
+      renderInspIsolate(id);
+    };
     /* viewport help: a small non-modal card under the toolbar */
     const setVpHelp = open => {
       $('vpHelp').hidden = !open;
@@ -18769,6 +18913,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     const hint = $('viewportHint');
     if (matchMedia('(pointer: coarse)').matches) {
       hint.textContent = 'one finger to orbit · pinch to zoom · tap a part to tune it';
+    } else {
+      // The static template copy is pointer-neutral so it can paint pre-JS
+      // (A-09); once booted, each pointer type gets its own verbs.
+      hint.textContent = 'drag to orbit · scroll to zoom · click a part to tune it';
     }
     const dismissHint = () => {
       hint.style.opacity = '0';
