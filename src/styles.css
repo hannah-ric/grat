@@ -621,6 +621,17 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 }
 body.drafting .viewport-wrap::after { display: none; }
 .viewport-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; border-radius: 0; }
+/* Pre-JS boot skeleton (A-09): pure CSS so it paints with the shell markup,
+   long before the scripts parse on slow networks. boot() removes the node;
+   the reduced-motion rules below collapse the pulse like everything else. */
+.boot-skeleton {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s3); text-align: center; pointer-events: none;
+}
+.boot-skeleton-mark { animation: boot-pulse 1.6s var(--ease) infinite; }
+.boot-skeleton-note { font: 600 var(--text-l)/var(--leading-display) var(--display); color: var(--ink-2); }
+@keyframes boot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .viewport-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 /* Blueprint mode: the transparent canvas sits on a drafting field with a
  * faint grid — ink-on-paper in light, true cyanotype in dark. */

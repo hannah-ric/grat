@@ -3207,6 +3207,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
     state.engine.snapNow();
+    // The pre-JS boot skeleton (A-09) has done its job: a model is in place.
+    const bootSk = $('bootSkeleton');
+    if (bootSk) bootSk.remove();
     applyHash(); // a deep-linked tab survives the reload
     if (state.mode === 'plan') autoSplitForPlanPhone(); // deep-linked Plan gets the phone floor too (X-07)
     renderAll();
@@ -3665,6 +3668,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     const hint = $('viewportHint');
     if (matchMedia('(pointer: coarse)').matches) {
       hint.textContent = 'one finger to orbit · pinch to zoom · tap a part to tune it';
+    } else {
+      // The static template copy is pointer-neutral so it can paint pre-JS
+      // (A-09); once booted, each pointer type gets its own verbs.
+      hint.textContent = 'drag to orbit · scroll to zoom · click a part to tune it';
     }
     const dismissHint = () => {
       hint.style.opacity = '0';

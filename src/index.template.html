@@ -177,6 +177,19 @@
       <div class="viewport-wrap" id="viewportWrap">
         <canvas id="view3d" tabindex="0" aria-label="3D model viewport. Drag or use arrow keys to orbit, plus and minus to zoom, Home to reframe. Click a part to inspect it; double-click to isolate and frame it; F frames the selected part. During assembly playback, click a glowing joint dot to open its 3D close-up."></canvas>
 
+        <!-- Pre-JS boot skeleton (A-09): static markup + CSS only, so it
+             paints while the megabyte of inline scripts still streams on a
+             slow network; boot() removes it once the first model is in
+             place. The global reduced-motion rules collapse its pulse. -->
+        <div class="boot-skeleton" id="bootSkeleton" aria-hidden="true">
+          <svg class="boot-skeleton-mark" width="44" height="44" viewBox="0 0 26 26" aria-hidden="true">
+            <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+            <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+          </svg>
+          <span class="boot-skeleton-note">Drafting your bench&hellip;</span>
+        </div>
+
         <div class="advisories" id="advisories" aria-live="polite"></div>
 
         <!-- First-run hero: one question over the live model. The bench behind
@@ -288,7 +301,9 @@
           <button class="btn small" id="pbExit">Exit</button>
         </div>
 
-        <div class="viewport-hint" id="viewportHint">drag to orbit · scroll to zoom · click a part to tune it</div>
+        <!-- Static copy stays pointer-neutral (A-09): it can paint pre-JS on
+             any device; boot() specializes it per pointer type. -->
+        <div class="viewport-hint" id="viewportHint">orbit · zoom · pick a part to tune it</div>
       </div>
 
       <div class="splitter" id="vpSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize 3D viewport against the plans panel" aria-controls="viewportWrap" tabindex="0" aria-valuemin="24" aria-valuemax="78" aria-valuenow="58" title="Drag to resize — arrow keys work too">
