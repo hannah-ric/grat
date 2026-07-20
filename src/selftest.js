@@ -1057,6 +1057,18 @@ var BB = globalThis.BB = globalThis.BB || {};
         'body');
     }
 
+    /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
+    if (BB.Engine && BB.Engine.minDolly) {
+      // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction
+      // of the bounding-sphere radius so the camera never enters the piece.
+      const tiny = BB.Engine.minDolly({ w: 120, d: 120, h: 120 });
+      test('shell', 'dolly floor keeps the 300 mm absolute minimum on tiny pieces', tiny === 300, tiny, 300);
+      const r = Math.sqrt(1500 * 1500 + 850 * 850 + 750 * 750) / 2;
+      const bench = BB.Engine.minDolly({ w: 1500, d: 850, h: 750 });
+      test('shell', 'dolly floor scales with the bounding sphere (camera stays outside the piece)',
+        bench >= r * 0.5 && bench <= r, bench.toFixed(0) + ' mm', `${(r * 0.5).toFixed(0)}–${r.toFixed(0)} mm (sphere r ${r.toFixed(0)})`);
+    }
+
     return results;
   }
 

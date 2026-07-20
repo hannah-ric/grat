@@ -36,6 +36,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const BUCKETS = { solid: 1, dim: 0.32, ghost: 0.3, faint: 0.07, hidden: 0.0 };
 
+  /* Interactive dolly floor (A-06): wheel, pinch, and keyboard zoom stop at
+   * a fraction of the piece's bounding-sphere radius (never under the 300 mm
+   * absolute floor), so the camera can never dive through the model into a
+   * blank scene. Pure — the self-test asserts it; code owns the number. */
+  const DOLLY_MIN_K = 0.9;
+  function minDolly(b) {
+    return Math.max(300, Math.sqrt(b.w * b.w + b.d * b.d + b.h * b.h) / 2 * DOLLY_MIN_K);
+  }
+
   function create(canvas, opts) {
     const THREE = globalThis.THREE;
     opts = opts || {};
@@ -628,6 +637,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       focusRestore = null;
       if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
     }
+    /* The floor never sits above the current goal: part framing may already
+     * be closer than the piece-level floor, and a pinch or scroll must not
+     * kick that framing outward — it just can't dolly any further in. */
+    function dollyFloor() { return Math.min(camGoal.dist, minDolly(E.bounds)); }
     const pointers = new Map();
     let pinchStart = 0, moved = 0, lastTap = 0, downId = null;
     const _ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _v1 = new THREE.Vector3();
@@ -703,7 +716,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const [a, b2] = [...pointers.values()];
         const d = Math.hypot(a.x - b2.x, a.y - b2.y) || 1;
         const before = camGoal.dist;
-        camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist * (pinchStart / d)));
+        camGoal.dist = Math.max(dollyFloor(), Math.min(20000, camGoal.dist * (pinchStart / d)));
         dollyShift((a.x + b2.x) / 2, (a.y + b2.y) / 2, camGoal.dist / before); // pinch pivots on its midpoint
         pinchStart = d;
         return;
@@ -773,7 +786,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     canvas.addEventListener('wheel', e => {
       e.preventDefault();
       const before = camGoal.dist;
-      camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist * (1 + e.deltaY * 0.0011)));
+      camGoal.dist = Math.max(dollyFloor(), Math.min(20000, camGoal.dist * (1 + e.deltaY * 0.0011)));
       dollyShift(e.clientX, e.clientY, camGoal.dist / before); // zoom pivots on the cursor
     }, { passive: false });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -783,7 +796,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       else if (e.key === 'ArrowRight') { camGoal.theta -= step; e.preventDefault(); }
       else if (e.key === 'ArrowUp') { camGoal.phi = Math.max(0.12, camGoal.phi - step); e.preventDefault(); }
       else if (e.key === 'ArrowDown') { camGoal.phi = Math.min(1.52, camGoal.phi + step); e.preventDefault(); }
-      else if (e.key === '+' || e.key === '=') { camGoal.dist = Math.max(300, camGoal.dist * 0.88); e.preventDefault(); }
+      else if (e.key === '+' || e.key === '=') { camGoal.dist = Math.max(dollyFloor(), camGoal.dist * 0.88); e.preventDefault(); }
       else if (e.key === '-') { camGoal.dist = Math.min(20000, camGoal.dist * 1.14); e.preventDefault(); }
       else if (e.key === 'Home') { frame(); e.preventDefault(); }
       else if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1034,6 +1047,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         camCur.dist = camGoal.dist * 1.3;
       },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
+      /* Read-only camera snapshot for probes and diagnostics: the damped
+       * goal pose plus the current interactive dolly floor (A-06). */
+      cameraPose() { return { theta: camGoal.theta, phi: camGoal.phi, dist: camGoal.dist, minDist: minDolly(E.bounds) }; },
       /* Synchronous render + return the canvas — thumbnails read pixels right
        * after this call (the drawing buffer is only valid in the same tick). */
       renderNow() { renderer.render(scene, activeCamera); return canvas; },
@@ -1081,5 +1097,5 @@ var BB = globalThis.BB = globalThis.BB || {};
     return api;
   }
 
-  BB.Engine = { create };
+  BB.Engine = { create, minDolly };
 })();
