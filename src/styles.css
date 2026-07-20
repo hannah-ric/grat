@@ -1029,7 +1029,9 @@ table.data tbody tr:hover { background: var(--panel-2); }
 /* Header units control: the same segmented pattern, compact. Switching only
  * changes text produced by BB.Units, so no layout jump. */
 .units-seg { flex: none; }
-.units-seg button { flex: none; min-width: 34px; padding: var(--s1) 9px; font-family: var(--mono); }
+.units-seg button { flex: none; min-width: var(--tap); min-height: 40px; padding: var(--s1) 9px; font-family: var(--mono); }
+/* under a thumb the pair holds the full --tap floor (A-08) */
+@media (pointer: coarse) { .units-seg button { min-height: var(--tap); } }
 #dualBtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 
@@ -1181,7 +1183,8 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   }
   .chat.expanded { transform: none; }
   .sheet-handle {
-    display: flex; justify-content: center; padding: 8px 0 2px; cursor: grab; border: 0; background: none; width: 100%;
+    /* 12+5+7 = 24px — the drag/tap hit floor for the sheet grab (A-08) */
+    display: flex; justify-content: center; padding: 12px 0 7px; cursor: grab; border: 0; background: none; width: 100%;
   }
   .sheet-handle::after { content: ""; width: 44px; height: 5px; border-radius: 3px; background: var(--line-2); }
   /* collapsed: last message peeks above the input so the thread has a pulse */
@@ -1219,10 +1222,11 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .viewport-toolbar .vt-sep { display: none; }
   .viewport-toolbar .vt-long { display: none; }
   .viewport-toolbar .vt-short { display: inline; }
-  .viewport-toolbar .toggle { font-size: var(--text-s); min-height: 40px; padding: 8px 10px; }
-  .viewport-toolbar #frameBtn, .viewport-toolbar #viewBtn { min-height: 40px; }
-  .view-seg button { min-width: 36px; min-height: 40px; padding: 8px 10px; font-size: var(--text-s); }
-  .view-menu input[type="range"] { width: 120px; min-height: 40px; }
+  /* --tap floor (A-08): every phone control a thumb aims at is >=44px */
+  .viewport-toolbar .toggle { font-size: var(--text-s); min-height: var(--tap); padding: 8px 10px; }
+  .viewport-toolbar #frameBtn, .viewport-toolbar #viewBtn { min-height: var(--tap); min-width: var(--tap); }
+  .view-seg button { min-width: var(--tap); min-height: var(--tap); padding: 8px 10px; font-size: var(--text-s); }
+  .view-menu input[type="range"] { width: 120px; min-height: var(--tap); }
   .btn { padding: 9px 13px; }
   /* the chat sheet (z 50, above the topbar's z 30 subtree) owns the bottom
      --sheet-peek strip — menus must stop above it or their tail items sit
@@ -1234,11 +1238,15 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .topbar { flex-wrap: nowrap; gap: var(--s1); padding: 6px var(--s2); min-height: 48px; }
   .brand-name { display: none; }
   .brand-short { display: inline-block; }
+  /* the diagnostics glyph keeps its 26px footprint but earns a 44px hit area
+     through padding pulled back by negative margins (A-08); taps are inert —
+     only a deliberate 650ms hold (or Enter) opens diagnostics */
+  .brand-button { padding: 9px; margin: -9px -9px -9px -8px; }
   .design-name { width: auto; flex: 1 1 96px; min-width: 96px; }
   .topbar .btn { padding: 8px 9px; font-size: var(--text-s); min-height: 40px; }
-  .topbar .btn.icon { min-width: 40px; }
+  .topbar .btn.icon { min-width: var(--tap); min-height: var(--tap); margin-inline: -2px; }
   .mode-nav { padding: 2px; }
-  .mode-btn { padding: 6px 9px; min-height: 44px; }
+  .mode-btn { padding: 6px 9px; min-height: 44px; min-width: var(--tap); }
   /* phones: Design/Plan are never unlabeled dots (X-06) — each segment
      stacks its state dot over a small visible word, holding the 44px floor */
   .mode-btn:not(.build-cta) { flex-direction: column; justify-content: center; gap: 3px; padding: 4px 8px; }
