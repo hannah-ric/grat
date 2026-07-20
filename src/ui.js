@@ -2124,7 +2124,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.dismissed.clear();
     state.project = null;   // a starter begins a fresh project
     state.turns = [];
-    commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
+    // Skill level is the user's preference, not starter content (C-06):
+    // only the level dropdown changes it — the loaded spec inherits the
+    // chosen level (or whatever the user was already working at).
+    const level = state.prefs4.level || (state.spec && state.spec.meta.level) || 'beginner';
+    commit(Spec.deepMerge(g.spec, { meta: { level } }), 'gallery', ['loaded “' + r.spec.meta.name + '”']);
     state.engine.frame();
     // First starter ever: the piece assembles itself once — the pipeline
     // dramatized in one shot. Reduced motion snaps it (engine-side).
@@ -2346,7 +2350,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.turns = [];
     state.dismissed.clear();
     state.previewing = false; // the loaded project replaces any pending preview
-    const r = runPipeline(state.history.currentSpec() || spec);
+    // A dropdown-chosen level outranks whatever the project was saved at
+    // (C-06); with no explicit choice the project's own level stands.
+    let cur = state.history.currentSpec() || spec;
+    if (state.prefs4.level && cur.meta && cur.meta.level !== state.prefs4.level) {
+      cur = Spec.deepMerge(cur, { meta: { level: state.prefs4.level } });
+    }
+    const r = runPipeline(cur);
     adopt(r);
     renderAll();
     state.engine.frame();
@@ -3404,7 +3414,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('vpRenderRich').onclick = () => setRender(true);
     $('vpRenderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
-    $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
+    $('levelSelect').addEventListener('change', e => {
+      // The dropdown is the ONE owner of skill level (C-06): the choice is a
+      // persisted user preference that survives starter and project loads.
+      state.prefs4.level = e.target.value;
+      Store.savePrefs(state.prefs4);
+      merge({ meta: { level: e.target.value } }, 'manual');
+    });
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
