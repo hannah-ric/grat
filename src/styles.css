@@ -774,7 +774,7 @@ body.welcome-open .viewport-hint { display: none; }
   background: var(--panel); box-shadow: 0 1px 2px rgba(0,0,0,.3);
   transition: transform var(--t-fast) var(--ease);
 }
-.toggle[aria-pressed="true"] .track { background: var(--accent); }
+.toggle[aria-pressed="true"] .track { background: var(--green); }
 .toggle[aria-pressed="true"] .track::after { transform: translateX(14px); }
 
 .advisories {
@@ -1048,7 +1048,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
   cursor: pointer; font-size: var(--text-s); font-weight: 550; color: var(--ink-2);
   transition: all var(--t-fast) var(--ease);
 }
-.ref-tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.ref-tab[aria-selected="true"] { background: var(--seafoam); border-color: var(--seafoam); color: var(--seafoam-ink); }
 .dots { color: var(--accent); letter-spacing: 2px; }
 .movement-low { color: var(--green); } .movement-medium { color: var(--amber); } .movement-high { color: var(--brick); }
 /* Sheet-good rows in the wood reference: badged, Janka/movement dashed (M-12). */
@@ -1108,7 +1108,8 @@ td.mv { font-size: var(--text-s); }
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .seg button + button { border-left: 1px solid var(--line-2); }
-.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+/* selection is seafoam's job — rust stays action-only (B-06) */
+.seg button[aria-pressed="true"] { background: var(--seafoam); color: var(--seafoam-ink); }
 
 /* Header units control: the same segmented pattern, compact. Switching only
  * changes text produced by BB.Units, so no layout jump. */
@@ -1116,7 +1117,7 @@ td.mv { font-size: var(--text-s); }
 .units-seg button { flex: none; min-width: var(--tap); min-height: 40px; padding: var(--s1) 9px; font-family: var(--mono); }
 /* under a thumb the pair holds the full --tap floor (A-08) */
 @media (pointer: coarse) { .units-seg button { min-height: var(--tap); } }
-#dualBtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+#dualBtn[aria-pressed="true"] { background: var(--seafoam-wash); border-color: var(--seafoam-line); color: var(--green); }
 
 
 /* ---------------- history drawer ---------------- */
@@ -1662,7 +1663,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   min-height: 40px;
   font-size: var(--text-s); cursor: pointer; color: var(--ink-2);
 }
-.species-pick button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.species-pick button[aria-pressed="true"] { background: var(--seafoam); border-color: var(--seafoam); color: var(--seafoam-ink); }
 .species-col-btn { background: none; border: 0; font: inherit; color: var(--link); cursor: pointer; font-weight: 650; padding: 0; }
 .species-col-btn:hover { text-decoration: underline; }
 .species-best { color: var(--green); font-weight: 650; }
