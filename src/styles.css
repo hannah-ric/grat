@@ -576,6 +576,25 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .answer-row .btn { min-height: 40px; }
 .answer-row { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .answer-row .btn { border-radius: 999px; }
+/* The explicit next step after a design lands (C-03) — quiet-strong like
+   Share, never a second filled primary. Own class, never .answer-row: the
+   clarifying-answer machinery must not mistake it for an answer. */
+.plan-cta-row { display: flex; margin-top: var(--s2); }
+.plan-cta-row .btn.plan-cta {
+  min-height: 40px; border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
+.plan-cta-row .btn.plan-cta:hover:not(:disabled) {
+  background: var(--accent-soft); color: var(--accent); border-color: var(--accent);
+}
+/* Phone variant (C-03): the chat sheet is collapsed, so the same next-step
+   action floats under the viewer until taken; the gesture hint yields. */
+.btn.plan-cta-pill {
+  position: absolute; bottom: var(--s2); left: 50%; transform: translateX(-50%);
+  z-index: 4; min-height: var(--tap);
+  border-color: var(--accent); color: var(--accent); font-weight: 600;
+  background: var(--panel); box-shadow: var(--shadow);
+}
+.viewport-wrap:has(.plan-cta-pill) .viewport-hint { opacity: 0; }
 .typing { display: inline-flex; gap: 4px; padding: 12px 14px; }
 .typing i {
   width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: .4;

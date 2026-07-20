@@ -33,6 +33,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     busy: false,
     firstRun: true,
     hasDesign: false,               // a design the user chose/committed exists (not the boot seed) — C-02
+    heroPending: false,             // the in-flight send came from the welcome hero (C-03)
     previewing: false,
     advisoriesExpanded: false,
     // Phase 4
@@ -1366,6 +1367,34 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title">Changed</span>' : ''}${chipHTML.join('')}</div>`;
     return chatMsg('bot', html);
   }
+  /* A design just landed while the plans sit folded away in Design mode:
+   * give the journey its explicit next step (C-03) — the Plan segment's 6px
+   * state dot is not an affordance. One quiet-strong chat action, kept to a
+   * single instance in the log, that opens Plan mode on the Overview tab. */
+  function offerPlanCta() {
+    if (state.buildMode || state.mode !== 'design') return;
+    const old = $('chatLog').querySelector('.plan-cta-row');
+    if (old) old.closest('.msg').remove();
+    const m = chatMsg('bot', '');
+    const row = el('div', 'plan-cta-row');
+    const b = el('button', 'btn small plan-cta', 'See your plan →');
+    b.onclick = () => selectTab('overview');
+    row.append(b);
+    m.append(row);
+    // The phone chat is a collapsed sheet — a CTA buried in its log is not
+    // an affordance. Float the same action under the viewer until taken.
+    if (matchMedia('(max-width: 880px)').matches && !$('chatPanel').classList.contains('expanded')) {
+      removePlanCtaPill();
+      const pill = el('button', 'btn small plan-cta plan-cta-pill', 'See your plan →');
+      pill.id = 'planCtaPill';
+      pill.onclick = () => selectTab('overview'); // setMode('plan') removes the pill
+      $('viewportWrap').append(pill);
+    }
+  }
+  function removePlanCtaPill() {
+    const pill = $('planCtaPill');
+    if (pill) pill.remove();
+  }
   function askQuestion(q) {
     const m = chatMsg('bot', `<div class="bubble">${esc(q.question)}</div>`);
     if (q.options && q.options.length) {
@@ -1611,6 +1640,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       setBusy(false);
       if (!out) return;
       const okc = commit(out.final, 'ai');
+      const fromHero = state.heroPending;
+      state.heroPending = false;
       if (!okc) {
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
         return;
@@ -1647,6 +1678,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         // committed spec and append the code-built truth (A2).
         const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
         botSay(ack + noteText + integLine, chips, { noChange: !chips.length, caveat });
+        // A hero prompt or a whole new piece deserves its next step (C-03):
+        // refinements stay quiet, creation offers the route to the plans.
+        if (chips.length && (fromHero || realDiffs.some(d => d.path === 'meta.template'))) offerPlanCta();
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {
@@ -2071,6 +2105,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       Store.savePrefs(state.prefs4);
       botSay('First build tips: 1) Check the Buy tab before you shop. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Safety tab shows red, fix that before you build.', []);
     }
+    offerPlanCta(); // the loaded design's plans are one explicit tap away (C-03)
   }
   function renderGallery() {
     const grid = $('galleryGrid');
@@ -2325,6 +2360,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!ok) return { error: 'That design decoded but won’t build.' };
     state.engine.frame();
     botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+    offerPlanCta(); // an imported design gets the same explicit next step (C-03)
     return { ok: true };
   }
   function importShare() {
@@ -2873,6 +2909,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function setMode(m, opts) {
     if (m === 'build') { enterBuildMode(); return; }
+    if (m === 'plan') removePlanCtaPill(); // the floating next-step is taken/answered (C-03)
     state.mode = m === 'plan' ? 'plan' : 'design';
     document.body.dataset.mode = state.mode;
     if (state.mode === 'plan') autoSplitForPlanPhone();
@@ -3347,6 +3384,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const t = $('heroText').value.trim();
       if (!t) { hideWelcome(); focusChat(); return; }
       hideWelcome();
+      state.heroPending = true; // the reply offers "See your plan" (C-03)
       sendMessage(t);
     };
     $('heroSend').onclick = heroSubmit;
