@@ -213,6 +213,9 @@
         <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
             <h3 id="inspName">Part</h3>
+            <!-- Touch path to isolate (A-07): double-tap works, but this is the
+                 discoverable one. CSS shows it on coarse pointers only. -->
+            <button class="btn small ghost insp-isolate" id="inspIsolate" aria-pressed="false">Isolate</button>
             <button class="btn icon ghost" id="inspClose" aria-label="Close inspector"></button>
           </div>
           <div class="inspector-dims" id="inspDims"></div>
@@ -257,7 +260,7 @@
               <div><dt>Zoom</dt><dd>scroll or pinch · <kbd>+</kbd> <kbd>−</kbd></dd></div>
               <div><dt>Reframe</dt><dd><kbd>Home</kbd> or Fit</dd></div>
               <div><dt>Inspect a part</dt><dd>click / tap it</dd></div>
-              <div><dt>Isolate &amp; frame</dt><dd>double-click · <kbd>F</kbd></dd></div>
+              <div><dt>Isolate &amp; frame</dt><dd>double-click / double-tap · <kbd>F</kbd></dd></div>
               <div><dt>Joint close-up</dt><dd>tap a glowing dot (playback)</dd></div>
             </dl>
             <h3>Everywhere</h3>

@@ -692,9 +692,42 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       return best;
     }
+    /* Touch double-tap (A-07): a touch tap's pick is HELD briefly instead of
+     * dispatched — dispatching immediately opens the part inspector over the
+     * canvas, which swallows the second tap on phones. A second tap-up within
+     * 250 ms and 24 px converts the pair into one double pick (isolate);
+     * otherwise the hold expires and the single pick fires. Pairing compares
+     * input timeStamps, so main-thread jank between the taps never breaks a
+     * genuine double. Mouse and pen keep the immediate dispatch path. */
+    let pendingTap = null;
+    function flushTap() {
+      if (!pendingTap) return;
+      clearTimeout(pendingTap.timer);
+      const p = pendingTap;
+      pendingTap = null;
+      if (opts.onPick) opts.onPick(p.part, { double: false });
+    }
+    function touchTap(part, e) {
+      const up = e.timeStamp || performance.now();
+      if (pendingTap && up - pendingTap.up <= 250 &&
+          Math.hypot(e.clientX - pendingTap.x, e.clientY - pendingTap.y) <= 24) {
+        clearTimeout(pendingTap.timer);
+        const held = pendingTap.part;
+        pendingTap = null;
+        if (opts.onPick) opts.onPick(part || held, { double: true });
+        return;
+      }
+      flushTap(); // an unrelated pending single fires before the new tap arms
+      if (!part) { if (opts.onPick) opts.onPick(null, { double: false }); return; }
+      pendingTap = { part, x: e.clientX, y: e.clientY, up, timer: setTimeout(flushTap, 300) };
+    }
     canvas.addEventListener('pointerdown', e => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button });
+      // A possible second tap is in flight: hold the pending single so the
+      // inspector can't open (and swallow it) mid-gesture. Every non-tap
+      // outcome ends in flushTap(), so the hold never strands the pick.
+      if (pendingTap) clearTimeout(pendingTap.timer);
       moved = 0; downId = e.pointerId;
       flick.on = false; flick.vT = 0; flick.vP = 0; flick.last = performance.now();
       if (pointers.size === 2) {
@@ -764,7 +797,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         flick.vP = Math.max(-cap, Math.min(cap, flick.vP));
         if (Math.abs(flick.vT) + Math.abs(flick.vP) > 0.35) flick.on = true;
       }
-      if (moved > 8) return;
+      if (moved > 8) { flushTap(); return; } // a drag supersedes the pairing window
       if (E.playback) {
         // Step playback: the glowing joint dots are doors to the close-up.
         const dot = pickDotAt(e);
@@ -772,12 +805,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         return;
       }
       const part = pickAt(e);
+      if (e.pointerType === 'touch') { touchTap(part, e); return; }
       const now = performance.now();
       const isDouble = now - lastTap < 350;
       lastTap = now;
       if (opts.onPick) opts.onPick(part, { double: isDouble });
     });
-    canvas.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
+    canvas.addEventListener('pointercancel', e => { pointers.delete(e.pointerId); flushTap(); });
     canvas.addEventListener('pointerleave', () => {
       hoverPt = null;
       E.hovered = null; E.hoverDot = null;

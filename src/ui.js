@@ -1745,6 +1745,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     return wrap;
   }
 
+  /* The coarse-pointer Isolate control (A-07) mirrors double-tap state:
+   * label + aria-pressed re-sync on every open/toggle/clear. */
+  function renderInspIsolate(id) {
+    const b = $('inspIsolate');
+    if (!b || !id) return;
+    const on = state.engine.getIsolated() === id;
+    b.textContent = on ? 'Show all' : 'Isolate';
+    b.setAttribute('aria-pressed', String(on));
+  }
   function openInspector(part) {
     state.selected = part.id;
     state.engine.select(part.id);
@@ -1752,6 +1761,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     insp.classList.add('open');
     insp.inert = false;
     $('inspName').textContent = part.name;
+    renderInspIsolate(part.id);
     const dims = $('inspDims');
     dims.innerHTML = `<button type="button" class="prov-btn num" aria-label="${esc(part.name)} dimensions ${esc(fmt(part.size.w))} by ${esc(fmt(part.size.h))} by ${esc(fmt(part.size.d))} — show the formulas">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
     dims.querySelector('.prov-btn').onclick = e => {
@@ -3110,8 +3120,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       reducedMotion: reduceMq.matches,
       onPick(part, info) {
         if (!part) {
-          if (state.engine.getIsolated()) { state.engine.isolate(null); state.engine.clearFocus(); }
-          else closeInspector();
+          if (state.engine.getIsolated()) {
+            state.engine.isolate(null); state.engine.clearFocus();
+            renderInspIsolate(state.selected);
+          } else closeInspector();
           return;
         }
         if (info.double) {
@@ -3560,6 +3572,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;
+    $('inspIsolate').onclick = () => {
+      const id = state.selected;
+      if (!id) return;
+      const clearing = state.engine.getIsolated() === id;
+      state.engine.isolate(clearing ? null : id);
+      // Same pairing as double-tap (design §4b): isolation frames the part,
+      // clearing restores the stored pose.
+      if (clearing) state.engine.clearFocus(); else state.engine.focusPart(id);
+      renderInspIsolate(id);
+    };
     /* viewport help: a small non-modal card under the toolbar */
     const setVpHelp = open => {
       $('vpHelp').hidden = !open;

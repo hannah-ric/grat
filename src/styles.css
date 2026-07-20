@@ -1008,6 +1008,10 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .inspector.open { opacity: 1; transform: none; pointer-events: auto; }
 .inspector-head { display: flex; align-items: center; padding: var(--s3) var(--s3) var(--s2); gap: var(--s2); }
+/* Touch path to isolate (A-07): shown on coarse pointers only — desktop
+   keeps double-click and the inspector head stays quiet. */
+.insp-isolate { display: none; }
+@media (pointer: coarse) { .insp-isolate { display: inline-flex; align-items: center; min-height: var(--tap); } }
 .inspector-head h3 { margin: 0; font-family: var(--display); font-size: var(--text-l); flex: 1; }
 .inspector-dims { font: 500 var(--text-s) var(--mono); color: var(--muted); padding: 0 var(--s3) var(--s2); font-variant-numeric: tabular-nums; }
 .inspector-body { padding: 0 var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
