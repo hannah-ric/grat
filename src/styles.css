@@ -1242,7 +1242,10 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
      through padding pulled back by negative margins (A-08); taps are inert —
      only a deliberate 650ms hold (or Enter) opens diagnostics */
   .brand-button { padding: 9px; margin: -9px -9px -9px -8px; }
-  .design-name { width: auto; flex: 1 1 96px; min-width: 96px; }
+  /* grow-8 lets the name outbid the two spacers for tablet free space, so
+     starter-length names ("Shaker Dining Table") render whole at 768 (A-12);
+     at phone widths the row is packed and shrink still governs. */
+  .design-name { width: auto; flex: 8 1 96px; min-width: 96px; }
   .topbar .btn { padding: 8px 9px; font-size: var(--text-s); min-height: 40px; }
   .topbar .btn.icon { min-width: var(--tap); min-height: var(--tap); margin-inline: -2px; }
   .mode-nav { padding: 2px; }
