@@ -1248,6 +1248,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .save-state { display: none; }
   .save-dot:not([hidden]) { display: inline-block; }
   .brand-short { display: none; }
+  /* the glyph is the whole brand here — its breathing room comes from the
+     topbar gap, so the extra padding would only push More off 320 (A-01) */
+  .brand { padding-right: 0; }
   .design-name { min-width: 72px; flex-basis: 72px; }
   /* redo folds out of the row — the labeled mode nav (X-06) takes its width;
      touch users keep a redo affordance via the More menu (P1-1) */
@@ -1682,16 +1685,20 @@ body.bm-playback .playback-bar { display: none !important; }
 }
 
 @media (max-width: 400px) {
-  .topbar { gap: 2px; }
-  .topbar .btn { padding-left: 8px; padding-right: 8px; }
-  .design-name { min-width: 64px; flex-basis: 64px; }
+  .topbar { gap: 2px; padding-left: 4px; padding-right: 4px; }
+  .topbar .btn { padding-left: 7px; padding-right: 7px; }
+  .design-name { min-width: 40px; flex-basis: 48px; }
+  .mode-nav { gap: 2px; }
+  /* the save dot leaves the flow and rides the design name's trailing edge —
+     its 11px of row width is what keeps More on the 320 viewport (A-01) */
+  .save-dot { position: absolute; margin-left: -13px; pointer-events: none; }
   /* the caret is decoration; the narrow header needs its 21px more */
   #moreBtn svg { display: none; }
   .mode-btn { padding-inline: 7px; }
   .mode-btn:not(.build-cta) { padding-inline: 6px; }
 }
 @media (max-width: 360px) {
-  .design-name { min-width: 56px; flex-basis: 56px; }
+  .design-name { min-width: 36px; flex-basis: 40px; }
   .mode-btn { padding-inline: 6px; }
   .mode-btn:not(.build-cta) { padding-inline: 5px; }
 }
