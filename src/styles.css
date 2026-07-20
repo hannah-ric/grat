@@ -1377,21 +1377,70 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 /* ---------------- print ---------------- */
 #printRoot { display: none; }
 @media print {
-  body { overflow: visible; background: #fff; color: #111; }
+  /* The build sheet keeps the brand voice (B-02): Fraunces heads over a
+     Hanken body with Plex Mono machine values, walnut inks on the white
+     sheet — never neutral gray. The palette is pinned to the light family
+     (`:root[data-theme]` included) so a dark-theme screen still prints
+     ink-on-paper, and the inlined SVG diagrams resolve their var() inks
+     to the same walnut set. */
+  :root, :root[data-theme] {
+    --paper: #fff; --panel: #fff; --panel-2: #E7DFCD; --panel-3: #D8CDB6;
+    --ink: #241813; --ink-2: #593837; --muted: #877063; --muted-2: #6F5B4C;
+    --line: color-mix(in oklab, #593837 24%, transparent); --line-2: color-mix(in oklab, #593837 44%, transparent);
+    --accent: #942911; --accent-soft: #F2DED5;
+    --amber: #9D8420; --amber-ink: #5E4E0C;
+    --seafoam: #94B9AF; --seafoam-ink: #1E3A34; --seafoam-wash: #E0EBE6;
+    --green: #2C6456; --fern: #90A583; --fern-wash: #E6EADB;
+    /* print-adjusted type scale: the fluid clamp() steps collapse to fixed
+       sizes on paper — same ladder, no viewport term */
+    --print-xs: 9px; --print-s: 11px; --print-m: 12px;
+    --print-l: 14px; --print-xl: 17px; --print-2xl: 26px;
+  }
+  body { overflow: visible; background: #fff; color: var(--ink); }
   #app { display: none !important; }
-  #printRoot { display: block; font: 12px/1.5 Georgia, serif; color: #111; }
-  .print-head { border-bottom: 3px double #333; padding-bottom: 12px; margin-bottom: 20px; }
-  .print-head h1 { font: 700 26px Georgia, serif; margin: 0 0 6px; }
-  .print-head p { margin: 2px 0; color: #444; }
-  .print-sub { text-transform: uppercase; letter-spacing: .1em; font-size: 10px; }
+  #printRoot { display: block; font: 400 var(--print-m)/1.5 var(--body); color: var(--ink); }
+  .print-head { border-bottom: 3px double var(--ink-2); padding-bottom: 12px; margin-bottom: 20px; }
+  .print-head h1 { font: 700 var(--print-2xl)/1.15 var(--display); letter-spacing: -.01em; margin: 0 0 6px; }
+  .print-head p { margin: 2px 0; color: var(--ink-2); }
+  /* the stamp voice: small-caps mono marks, walnut-inked */
+  .print-sub { text-transform: uppercase; letter-spacing: .14em; font: 600 var(--print-xs)/1.6 var(--mono); color: var(--muted-2); }
   .print-section { margin-bottom: 24px; }
-  .print-section h2 { font-size: 17px; border-bottom: 1px solid #999; padding-bottom: 4px; }
-  .print-section table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  .print-section th, .print-section td { border: 1px solid #bbb; padding: 5px 8px; text-align: left; }
-  .print-section th { background: #eee; }
+  .print-section h2 {
+    font: 600 var(--print-xl)/1.3 var(--display);
+    border-bottom: 3px double color-mix(in srgb, var(--amber) 62%, transparent); padding-bottom: 4px;
+  }
+  .print-section table { width: 100%; border-collapse: collapse; font-size: var(--print-s); }
+  .print-section th, .print-section td { border: 1px solid color-mix(in srgb, var(--ink-2) 38%, transparent); padding: 5px 8px; text-align: left; vertical-align: top; }
+  .print-section th { font: 600 var(--print-xs)/1.5 var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted-2); background: var(--panel-2); }
   .print-steps li { margin-bottom: 10px; }
-  .print-total { font-weight: 700; margin-top: 8px; }
+  .print-total { font: 700 var(--print-s)/1.5 var(--mono); font-variant-numeric: tabular-nums; margin-top: 8px; }
   .page-break { break-before: page; }
+  /* The diagram SVGs arrive with fixed hexes baked in by the exporter's
+     var() swap (grays + a machinist blue). They are presentation attributes,
+     so these rules re-ink them to the same walnut/rust family as the sheet. */
+  #printRoot svg text, #printRoot svg tspan { font-family: var(--mono); }
+  #printRoot svg [fill="#1c1a14"] { fill: var(--ink); }
+  #printRoot svg [fill="#444444"], #printRoot svg [fill="#333"] { fill: var(--ink-2); }
+  #printRoot svg [fill="#777777"] { fill: var(--muted-2); }
+  #printRoot svg [fill="#eeeeee"] { fill: var(--panel-2); }
+  #printRoot svg [fill="#e8eef3"] { fill: var(--accent-soft); }
+  #printRoot svg [fill="#1b5d82"] { fill: var(--accent); }
+  #printRoot svg [fill="#999999"] { fill: var(--line-2); }
+  #printRoot svg [stroke="#1c1a14"] { stroke: var(--ink); }
+  #printRoot svg [stroke="#444444"], #printRoot svg [stroke="#333"] { stroke: var(--ink-2); }
+  #printRoot svg [stroke="#777777"] { stroke: var(--muted-2); }
+  #printRoot svg [stroke="#999999"] { stroke: var(--line-2); }
+  #printRoot svg [stroke="#1b5d82"] { stroke: var(--accent); }
+  /* the elevation SVGs carry the same swapped hexes in embedded <style>
+     class rules — mirror the class selectors and re-ink those too */
+  #printRoot svg .body rect, #printRoot svg .body polygon { stroke: var(--ink); fill: var(--panel); }
+  #printRoot svg .dim line, #printRoot svg .opening rect { stroke: var(--accent); }
+  #printRoot svg .dim text { fill: var(--accent); }
+  #printRoot svg .opening text { fill: var(--muted-2); }
+  #printRoot svg .vtitle { fill: var(--ink-2); }
+  #printRoot svg .frame, #printRoot svg .tb line { stroke: var(--ink); }
+  #printRoot svg .tb text { fill: var(--ink); }
+  #printRoot svg .tb .sub { fill: var(--muted-2); }
 }
 
 /* ================= Phase 4 ================= */
@@ -1802,7 +1851,7 @@ body.bm-playback .playback-bar { display: none !important; }
 /* print: stock diagrams */
 @media print {
   .print-board { margin: 10px 0; break-inside: avoid; }
-  .print-board p { margin: 0 0 4px; font: 600 11px ui-monospace, monospace; }
+  .print-board p { margin: 0 0 4px; font: 600 var(--print-s)/1.5 var(--mono); color: var(--ink-2); }
   .print-board svg { width: 100%; height: auto; }
   .print-drawings { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .print-elevation { break-inside: avoid; }
