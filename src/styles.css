@@ -407,6 +407,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: absolute; right: 0; top: calc(100% + var(--s2)); min-width: 240px;
   background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg); padding: var(--s1);
+  /* the menu can outgrow a short viewport (phones, 1024x768) — cap it below
+     the fold and scroll inside so the last items stay tappable (A-02) */
+  max-height: calc(100dvh - 76px); overflow-y: auto; overscroll-behavior: contain;
   opacity: 0; transform: translateY(-6px) scale(.98); pointer-events: none;
   transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
   z-index: 60;
@@ -1212,6 +1215,10 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .view-seg button { min-width: 36px; min-height: 40px; padding: 8px 10px; font-size: var(--text-s); }
   .view-menu input[type="range"] { width: 120px; min-height: 40px; }
   .btn { padding: 9px 13px; }
+  /* the chat sheet (z 50, above the topbar's z 30 subtree) owns the bottom
+     --sheet-peek strip — menus must stop above it or their tail items sit
+     under the sheet and can't be tapped (A-02) */
+  .menu { max-height: calc(100dvh - 76px - var(--sheet-peek)); }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,
      Build shortens — nothing wraps into a second row. */
