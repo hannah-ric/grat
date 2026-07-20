@@ -703,20 +703,24 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // shopping list
     const scroll = el('div', 'table-scroll');
-    const shopRows = plan.shopping.map(s => `<tr><td>${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
+    // composite stock names ("Cherry 1×6 × 6 ft (3/4 × 5 1/2 in)") are
+    // machine values — the whole cell goes mono (B-03)
+    const shopRows = plan.shopping.map(s => `<tr><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" style="color:var(--muted)">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
     root.append(scroll);
     const waste = [];
-    if (plan.wasteSolidPct != null) waste.push(`solid waste ${plan.wasteSolidPct}%`);
-    if (plan.wasteSheetPct != null) waste.push(`sheet waste ${plan.wasteSheetPct}%`);
+    if (plan.wasteSolidPct != null) waste.push(`solid waste <span class="mv">${plan.wasteSolidPct}%</span>`);
+    if (plan.wasteSheetPct != null) waste.push(`sheet waste <span class="mv">${plan.wasteSheetPct}%</span>`);
     const tot = el('div', 'bom-total');
     tot.innerHTML = `<span>Purchasable stock total${waste.length ? ` <span style="color:var(--muted);font-weight:400">· ${waste.join(' · ')}</span>` : ''}</span><strong>$${plan.totalCost.toFixed(2)}</strong>`;
     root.append(tot);
+    // $ amounts and dimension strings inside prose ride .mv spans (B-03)
+    const mv = t => `<span class="mv">${t}</span>`;
     if (plan.mode === 'dimensional' && plan.bdft.exact > 0) {
-      root.append(el('p', 'stock-note', `Reference: rough-sawn equivalent ≈ ${Units.fmtBoardFeet(plan.bdft.withWaste)} (incl. 30% waste) ≈ $${plan.bdft.cost.toFixed(2)} at $${plan.bdft.rate.toFixed(2)}/bd ft.`));
+      root.append(el('p', 'stock-note', `Reference: rough-sawn equivalent ≈ ${mv(Units.fmtBoardFeet(plan.bdft.withWaste))} (incl. 30% waste) ≈ ${mv('$' + plan.bdft.cost.toFixed(2))} at ${mv('$' + plan.bdft.rate.toFixed(2) + '/bd ft')}.`));
     }
-    for (const g of plan.glueups) root.append(el('p', 'stock-note', `“${esc(g.name)}” is wider than any board: edge-glue ${g.n} × ${esc(g.nominal)} strips, then trim to ${fmt(g.W)}.`));
-    for (const l of plan.laminations) root.append(el('p', 'stock-note', `“${esc(l.name)}” is thicker than any board: face-laminate ${l.n} × ${esc(l.nominal)} layers, then plane to ${fmt(l.T)}.`));
+    for (const g of plan.glueups) root.append(el('p', 'stock-note', `“${esc(g.name)}” is wider than any board: edge-glue ${mv(`${g.n} × ${esc(g.nominal)}`)} strips, then trim to ${mv(fmt(g.W))}.`));
+    for (const l of plan.laminations) root.append(el('p', 'stock-note', `“${esc(l.name)}” is thicker than any board: face-laminate ${mv(`${l.n} × ${esc(l.nominal)}`)} layers, then plane to ${mv(fmt(l.T))}.`));
 
     // board diagrams
     if (plan.boards.length) {
@@ -815,10 +819,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(compareBtn);
     root.append(el('div', '', '&nbsp;'));
     const scroll = el('div', 'table-scroll');
+    // labels and detail strings carry lengths and per-unit prices — mono
+    // machine-value cells (B-03)
     const rows = state.bomData.items.map(i => `<tr>
       <td><span class="kind-tag">${esc(i.kind)}</span></td>
-      <td>${esc(i.label)}</td><td class="num">${i.qty}</td>
-      <td style="color:var(--muted);font-size:var(--text-s)">${esc(i.detail || '')}</td>
+      <td class="mv">${esc(i.label)}</td><td class="num">${i.qty}</td>
+      <td class="mv" style="color:var(--muted)">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
     root.append(scroll);

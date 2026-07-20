@@ -158,7 +158,8 @@
 .price-card.featured { border-color: var(--accent); background: var(--accent-soft); }
 .price-card > div { display: flex; align-items: baseline; gap: .4rem; }
 .plan-label { margin-right: auto; font: 700 var(--text-l)/1 var(--display); }
-.price-card strong { font: 700 var(--text-xl)/1 var(--display); }
+/* the $ figure is a machine value (B-03): mono, tabular */
+.price-card strong { font: 600 var(--text-xl)/1 var(--mono); font-variant-numeric: tabular-nums; }
 .price-card small { color: var(--muted); font-size: var(--text-xs); }
 .price-card ul { display: flex; flex-direction: column; gap: .65rem; min-height: 10rem; margin: 0; padding: 0; list-style: none; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-caption); }
 .price-card li::before { content: '✓'; margin-right: .55rem; color: var(--green); font-weight: 700; }
@@ -1059,7 +1060,13 @@ table.data tbody tr:hover { background: var(--panel-2); }
   margin-top: var(--s3); padding: var(--s3); border-radius: var(--radius-m); background: var(--panel-2);
   display: flex; justify-content: space-between; align-items: baseline; border: 1px solid var(--line);
 }
-.bom-total strong { font-family: var(--display); font-size: var(--text-l); }
+/* totals are machine values — mono, like every other number (B-03) */
+.bom-total strong { font: 600 var(--text-l) var(--mono); font-variant-numeric: tabular-nums; }
+/* machine-value marks (B-03): composite stock names, per-unit prices, and
+   detail strings are dimension/price text — the display-boundary rule
+   spoken in type. Inline .mv spans mark $ amounts inside prose notes. */
+.mv { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.mv { font-size: var(--text-s); }
 .kind-tag {
   display: inline-block; font: 600 var(--text-xs) var(--body); letter-spacing: .06em; text-transform: uppercase;
   padding: 2px 8px; border-radius: var(--radius-s); background: var(--panel-2); color: var(--muted); border: 1px solid var(--line);
