@@ -2976,6 +2976,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (state.mode !== 'plan') setMode('plan');
     renderTabs();
     renderPanel();
+    // Narrow screens scroll the tab bar: the chosen tab must never sit
+    // offscreen (Safety at 320 was 8px visible) — bring it fully into view.
+    const tab = $('tab-' + t);
+    if (tab) tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduceMq.matches ? 'auto' : 'smooth' });
   }
   function renderTabs() {
     $('tab-reference').hidden = state.tab !== 'reference';

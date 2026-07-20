@@ -827,7 +827,16 @@ body.drafting .viewport-wrap {
 /* ---------------- tabs + panel ---------------- */
 .tabs {
   display: flex; gap: var(--s1); padding: var(--s1) var(--s3) 0;
-  background: var(--panel); flex: none; overflow-x: auto; scrollbar-width: none;
+  flex: none; overflow-x: auto; scrollbar-width: none;
+  /* scroll affordance (A-03): the bar hides its scrollbar, so a warm walnut
+     shadow marks a clipped edge; panel-colored covers scroll with the content
+     and mask the shadow once the bar is flush with that edge. */
+  background:
+    linear-gradient(to right, var(--panel) 50%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--panel) 50%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--ink-2) 30%, transparent), transparent) left / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--ink-2) 30%, transparent), transparent) right / 14px 100% no-repeat scroll
+    var(--panel);
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
