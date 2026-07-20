@@ -3432,7 +3432,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* The hero prompt IS the chat pipeline — one path for every input. */
     const heroSubmit = () => {
       const t = $('heroText').value.trim();
-      if (!t) { hideWelcome(); focusChat(); return; }
+      if (!t) {
+        // An empty "Design it" never silently dismisses the card (C-17):
+        // nudge inline and stay — close, a starter, or a real prompt exits.
+        $('heroNudge').hidden = false;
+        $('heroText').focus();
+        return;
+      }
       hideWelcome();
       state.heroPending = true; // the reply offers "See your plan" (C-03)
       sendMessage(t);
@@ -3441,6 +3447,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('heroText').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); heroSubmit(); }
     });
+    $('heroText').addEventListener('input', () => { $('heroNudge').hidden = true; });
     $('welcomePhoto').onclick = () => $('photoInput').click();
     $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
     $('welcomeResume').onclick = () => {

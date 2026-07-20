@@ -209,6 +209,9 @@
             <textarea id="heroText" rows="1" placeholder="A walnut nightstand with two drawers" aria-label="Describe your piece" spellcheck="false"></textarea>
             <button class="btn primary" id="heroSend">Design it</button>
           </div>
+          <!-- An empty "Design it" never silently dismisses the card (C-17):
+               this inline nudge shows instead; typing clears it. -->
+          <p class="hero-nudge" id="heroNudge" role="status" hidden>Type what you&rsquo;d like to build, or tap a starter below.</p>
           <div class="welcome-paths">
             <button class="welcome-card" id="welcomePhoto">
               <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="1.8" y="4.8" width="18.4" height="13.4" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11.4" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 4.8 8.6 2.4 h4.8 L15 4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>

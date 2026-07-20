@@ -576,6 +576,10 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .answer-row .btn { min-height: 40px; }
 .answer-row { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .answer-row .btn { border-radius: 999px; }
+/* Inline nudge under the hero prompt (C-17): an empty "Design it" keeps
+   the card and explains itself in the advisory voice. */
+.hero-nudge { margin: var(--s2) 0 0; font-size: var(--text-s); color: var(--amber-ink); line-height: 1.4; }
+
 /* The explicit next step after a design lands (C-03) — quiet-strong like
    Share, never a second filled primary. Own class, never .answer-row: the
    clarifying-answer machinery must not mistake it for an answer. */
