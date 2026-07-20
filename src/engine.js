@@ -36,6 +36,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const BUCKETS = { solid: 1, dim: 0.32, ghost: 0.3, faint: 0.07, hidden: 0.0 };
 
+  /* Interactive dolly floor (A-06): wheel, pinch, and keyboard zoom stop at
+   * a fraction of the piece's bounding-sphere radius (never under the 300 mm
+   * absolute floor), so the camera can never dive through the model into a
+   * blank scene. Pure — the self-test asserts it; code owns the number. */
+  const DOLLY_MIN_K = 0.9;
+  function minDolly(b) {
+    return Math.max(300, Math.sqrt(b.w * b.w + b.d * b.d + b.h * b.h) / 2 * DOLLY_MIN_K);
+  }
+
   function create(canvas, opts) {
     const THREE = globalThis.THREE;
     opts = opts || {};
@@ -591,10 +600,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     /* ---------------- camera controls ---------------- */
+    /* Fit distance for a sphere of `radius`: the tighter of the vertical and
+     * horizontal FOV governs, so portrait viewports (aspect < 1) pull back
+     * far enough that wide pieces clear the side edges too (A-05). */
+    function fitDist(radius, pad) {
+      const vHalf = (camera.fov * Math.PI / 180) / 2;
+      const hHalf = Math.atan(Math.tan(vHalf) * (viewAspect || 1));
+      return radius / Math.tan(Math.min(vHalf, hHalf)) * pad;
+    }
     function frame() {
       const b = E.bounds;
       const radius = Math.sqrt(b.w * b.w + b.d * b.d + b.h * b.h) / 2;
-      camGoal.dist = radius / Math.tan((camera.fov * Math.PI / 180) / 2) * 1.35;
+      camGoal.dist = Math.min(20000, fitDist(radius, 1.35));
       camGoal.theta = 0.72; camGoal.phi = 1.13;
       tgtGoal.set(0, b.h * 0.45, 0);
       focusRestore = null; // Home is the escape hatch from part framing
@@ -610,7 +627,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const t = rec.target;
       const radius = Math.max(60, Math.hypot(t.scale.x, t.scale.y, t.scale.z) / 2);
       tgtGoal.set(t.pos.x, t.pos.y, t.pos.z);
-      camGoal.dist = Math.max(300, radius / Math.tan((camera.fov * Math.PI / 180) / 2) * 1.55);
+      camGoal.dist = Math.max(300, fitDist(radius, 1.55));
       if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
     }
     function clearFocus() {
@@ -620,6 +637,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       focusRestore = null;
       if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
     }
+    /* The floor never sits above the current goal: part framing may already
+     * be closer than the piece-level floor, and a pinch or scroll must not
+     * kick that framing outward — it just can't dolly any further in. */
+    function dollyFloor() { return Math.min(camGoal.dist, minDolly(E.bounds)); }
     const pointers = new Map();
     let pinchStart = 0, moved = 0, lastTap = 0, downId = null;
     const _ray = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _v1 = new THREE.Vector3();
@@ -671,9 +692,42 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       return best;
     }
+    /* Touch double-tap (A-07): a touch tap's pick is HELD briefly instead of
+     * dispatched — dispatching immediately opens the part inspector over the
+     * canvas, which swallows the second tap on phones. A second tap-up within
+     * 250 ms and 24 px converts the pair into one double pick (isolate);
+     * otherwise the hold expires and the single pick fires. Pairing compares
+     * input timeStamps, so main-thread jank between the taps never breaks a
+     * genuine double. Mouse and pen keep the immediate dispatch path. */
+    let pendingTap = null;
+    function flushTap() {
+      if (!pendingTap) return;
+      clearTimeout(pendingTap.timer);
+      const p = pendingTap;
+      pendingTap = null;
+      if (opts.onPick) opts.onPick(p.part, { double: false });
+    }
+    function touchTap(part, e) {
+      const up = e.timeStamp || performance.now();
+      if (pendingTap && up - pendingTap.up <= 250 &&
+          Math.hypot(e.clientX - pendingTap.x, e.clientY - pendingTap.y) <= 24) {
+        clearTimeout(pendingTap.timer);
+        const held = pendingTap.part;
+        pendingTap = null;
+        if (opts.onPick) opts.onPick(part || held, { double: true });
+        return;
+      }
+      flushTap(); // an unrelated pending single fires before the new tap arms
+      if (!part) { if (opts.onPick) opts.onPick(null, { double: false }); return; }
+      pendingTap = { part, x: e.clientX, y: e.clientY, up, timer: setTimeout(flushTap, 300) };
+    }
     canvas.addEventListener('pointerdown', e => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button });
+      // A possible second tap is in flight: hold the pending single so the
+      // inspector can't open (and swallow it) mid-gesture. Every non-tap
+      // outcome ends in flushTap(), so the hold never strands the pick.
+      if (pendingTap) clearTimeout(pendingTap.timer);
       moved = 0; downId = e.pointerId;
       flick.on = false; flick.vT = 0; flick.vP = 0; flick.last = performance.now();
       if (pointers.size === 2) {
@@ -695,7 +749,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const [a, b2] = [...pointers.values()];
         const d = Math.hypot(a.x - b2.x, a.y - b2.y) || 1;
         const before = camGoal.dist;
-        camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist * (pinchStart / d)));
+        camGoal.dist = Math.max(dollyFloor(), Math.min(20000, camGoal.dist * (pinchStart / d)));
         dollyShift((a.x + b2.x) / 2, (a.y + b2.y) / 2, camGoal.dist / before); // pinch pivots on its midpoint
         pinchStart = d;
         return;
@@ -743,7 +797,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         flick.vP = Math.max(-cap, Math.min(cap, flick.vP));
         if (Math.abs(flick.vT) + Math.abs(flick.vP) > 0.35) flick.on = true;
       }
-      if (moved > 8) return;
+      if (moved > 8) { flushTap(); return; } // a drag supersedes the pairing window
       if (E.playback) {
         // Step playback: the glowing joint dots are doors to the close-up.
         const dot = pickDotAt(e);
@@ -751,12 +805,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         return;
       }
       const part = pickAt(e);
+      if (e.pointerType === 'touch') { touchTap(part, e); return; }
       const now = performance.now();
       const isDouble = now - lastTap < 350;
       lastTap = now;
       if (opts.onPick) opts.onPick(part, { double: isDouble });
     });
-    canvas.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
+    canvas.addEventListener('pointercancel', e => { pointers.delete(e.pointerId); flushTap(); });
     canvas.addEventListener('pointerleave', () => {
       hoverPt = null;
       E.hovered = null; E.hoverDot = null;
@@ -765,7 +820,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     canvas.addEventListener('wheel', e => {
       e.preventDefault();
       const before = camGoal.dist;
-      camGoal.dist = Math.max(300, Math.min(20000, camGoal.dist * (1 + e.deltaY * 0.0011)));
+      camGoal.dist = Math.max(dollyFloor(), Math.min(20000, camGoal.dist * (1 + e.deltaY * 0.0011)));
       dollyShift(e.clientX, e.clientY, camGoal.dist / before); // zoom pivots on the cursor
     }, { passive: false });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -775,7 +830,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       else if (e.key === 'ArrowRight') { camGoal.theta -= step; e.preventDefault(); }
       else if (e.key === 'ArrowUp') { camGoal.phi = Math.max(0.12, camGoal.phi - step); e.preventDefault(); }
       else if (e.key === 'ArrowDown') { camGoal.phi = Math.min(1.52, camGoal.phi + step); e.preventDefault(); }
-      else if (e.key === '+' || e.key === '=') { camGoal.dist = Math.max(300, camGoal.dist * 0.88); e.preventDefault(); }
+      else if (e.key === '+' || e.key === '=') { camGoal.dist = Math.max(dollyFloor(), camGoal.dist * 0.88); e.preventDefault(); }
       else if (e.key === '-') { camGoal.dist = Math.min(20000, camGoal.dist * 1.14); e.preventDefault(); }
       else if (e.key === 'Home') { frame(); e.preventDefault(); }
       else if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1026,6 +1081,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         camCur.dist = camGoal.dist * 1.3;
       },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
+      /* Read-only camera snapshot for probes and diagnostics: the damped
+       * goal pose plus the current interactive dolly floor (A-06). */
+      cameraPose() { return { theta: camGoal.theta, phi: camGoal.phi, dist: camGoal.dist, minDist: minDolly(E.bounds) }; },
       /* Synchronous render + return the canvas — thumbnails read pixels right
        * after this call (the drawing buffer is only valid in the same tick). */
       renderNow() { renderer.render(scene, activeCamera); return canvas; },
@@ -1065,13 +1123,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     applyEnvironment(curTheme);
     applyQuality();
+    resize(); // before frame(): the fit needs the real viewport aspect
     frame();
     Object.assign(camCur, camGoal);
     tgtCur.copy(tgtGoal);
-    resize();
     tick();
     return api;
   }
 
-  BB.Engine = { create };
+  BB.Engine = { create, minDolly };
 })();

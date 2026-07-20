@@ -21,6 +21,10 @@
 </head>
 <body>
 
+<!-- While the welcome card is up its one primary action leads the skip
+     links (C-13); ui.js unhides it with the card and hides it again on
+     dismiss so the link never points at an invisible input. -->
+<a class="skip-link" href="#heroText" id="skipToHero" hidden>Skip to describe your piece</a>
 <a class="skip-link" href="#chatText">Skip to chat</a>
 <a class="skip-link" href="#view3d">Skip to the 3D model</a>
 <a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
@@ -53,7 +57,9 @@
     <nav class="mode-nav" id="modeNav" aria-label="Workflow">
       <button class="mode-btn" id="mode-design" data-mode="design" aria-current="page"><span class="dot" aria-hidden="true"></span><span class="mode-label">Design</span></button>
       <button class="mode-btn" id="mode-plan" data-mode="plan"><span class="dot" aria-hidden="true"></span><span class="mode-label">Plan</span></button>
-      <button class="mode-btn build-cta" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span><span class="mode-lock" id="buildModeLock" hidden aria-hidden="true"></span></button>
+      <!-- build-quiet is the pre-boot default: Build only takes its rust fill
+           once a chosen design exists (C-02) — renderReadiness owns the class. -->
+      <button class="mode-btn build-cta build-quiet" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span><span class="mode-lock" id="buildModeLock" hidden aria-hidden="true"></span></button>
     </nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
@@ -77,7 +83,9 @@
           <div class="menu-sep"></div>
           <div class="menu-group" id="moreExportGroup">
             <div class="menu-group-label">Export</div>
-            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+            <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
+                 means nothing to a thumb (C-14). -->
+            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
             <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
             <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
             <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
@@ -177,6 +185,19 @@
       <div class="viewport-wrap" id="viewportWrap">
         <canvas id="view3d" tabindex="0" aria-label="3D model viewport. Drag or use arrow keys to orbit, plus and minus to zoom, Home to reframe. Click a part to inspect it; double-click to isolate and frame it; F frames the selected part. During assembly playback, click a glowing joint dot to open its 3D close-up."></canvas>
 
+        <!-- Pre-JS boot skeleton (A-09): static markup + CSS only, so it
+             paints while the megabyte of inline scripts still streams on a
+             slow network; boot() removes it once the first model is in
+             place. The global reduced-motion rules collapse its pulse. -->
+        <div class="boot-skeleton" id="bootSkeleton" aria-hidden="true">
+          <svg class="boot-skeleton-mark" width="44" height="44" viewBox="0 0 26 26" aria-hidden="true">
+            <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+            <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+          </svg>
+          <span class="boot-skeleton-note">Drafting your bench&hellip;</span>
+        </div>
+
         <div class="advisories" id="advisories" aria-live="polite"></div>
 
         <!-- First-run hero: one question over the live model. The bench behind
@@ -190,6 +211,9 @@
             <textarea id="heroText" rows="1" placeholder="A walnut nightstand with two drawers" aria-label="Describe your piece" spellcheck="false"></textarea>
             <button class="btn primary" id="heroSend">Design it</button>
           </div>
+          <!-- An empty "Design it" never silently dismisses the card (C-17):
+               this inline nudge shows instead; typing clears it. -->
+          <p class="hero-nudge" id="heroNudge" role="status" hidden>Type what you&rsquo;d like to build, or tap a starter below.</p>
           <div class="welcome-paths">
             <button class="welcome-card" id="welcomePhoto">
               <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="1.8" y="4.8" width="18.4" height="13.4" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11.4" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 4.8 8.6 2.4 h4.8 L15 4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
@@ -213,6 +237,9 @@
         <div class="inspector" id="inspector" role="region" aria-label="Part inspector" inert>
           <div class="inspector-head">
             <h3 id="inspName">Part</h3>
+            <!-- Touch path to isolate (A-07): double-tap works, but this is the
+                 discoverable one. CSS shows it on coarse pointers only. -->
+            <button class="btn small ghost insp-isolate" id="inspIsolate" aria-pressed="false">Isolate</button>
             <button class="btn icon ghost" id="inspClose" aria-label="Close inspector"></button>
           </div>
           <div class="inspector-dims" id="inspDims"></div>
@@ -245,6 +272,16 @@
                   <label class="menu-row-label" for="explodeRange">Explode</label>
                   <input type="range" id="explodeRange" min="0" max="100" value="0" aria-label="Exploded view amount">
                 </div>
+                <!-- Render escape hatch in the viewport itself (A-10): the
+                     same two-state control as More → Render, one press away
+                     when the GPU is struggling. -->
+                <div class="menu-row">
+                  <span class="menu-row-label">Render</span>
+                  <div class="seg render-seg" role="group" aria-label="Render quality">
+                    <button id="vpRenderRich" aria-pressed="true" title="Wood grain and shadows">Wood</button>
+                    <button id="vpRenderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
+                  </div>
+                </div>
                 <div class="menu-sep"></div>
                 <button class="menu-help" id="vpHelpBtn" aria-haspopup="dialog" aria-expanded="false">Keyboard &amp; pointer help</button>
               </div>
@@ -257,7 +294,7 @@
               <div><dt>Zoom</dt><dd>scroll or pinch · <kbd>+</kbd> <kbd>−</kbd></dd></div>
               <div><dt>Reframe</dt><dd><kbd>Home</kbd> or Fit</dd></div>
               <div><dt>Inspect a part</dt><dd>click / tap it</dd></div>
-              <div><dt>Isolate &amp; frame</dt><dd>double-click · <kbd>F</kbd></dd></div>
+              <div><dt>Isolate &amp; frame</dt><dd>double-click / double-tap · <kbd>F</kbd></dd></div>
               <div><dt>Joint close-up</dt><dd>tap a glowing dot (playback)</dd></div>
             </dl>
             <h3>Everywhere</h3>
@@ -285,7 +322,9 @@
           <button class="btn small" id="pbExit">Exit</button>
         </div>
 
-        <div class="viewport-hint" id="viewportHint">drag to orbit · scroll to zoom · click a part to tune it</div>
+        <!-- Static copy stays pointer-neutral (A-09): it can paint pre-JS on
+             any device; boot() specializes it per pointer type. -->
+        <div class="viewport-hint" id="viewportHint">orbit · zoom · pick a part to tune it</div>
       </div>
 
       <div class="splitter" id="vpSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize 3D viewport against the plans panel" aria-controls="viewportWrap" tabindex="0" aria-valuemin="24" aria-valuemax="78" aria-valuenow="58" title="Drag to resize — arrow keys work too">
@@ -323,8 +362,9 @@
       <p class="sub">Pick a starter to see full plans instantly — every one runs through the same parametric pipeline as a design you describe yourself. Refine it in the chat afterward.</p>
       <div class="gallery-grid" id="galleryGrid"></div>
       <div class="modal-foot">
-        <span class="sub" style="margin:0">…or close this and describe your own piece.</span>
-        <button class="btn" id="galleryClose">Start from scratch</button>
+        <span class="sub m0">…or close this and describe your own piece.</span>
+        <!-- The button only closes the dialog — its label says so (C-15). -->
+        <button class="btn" id="galleryClose">Close</button>
       </div>
     </div>
   </div>
@@ -377,12 +417,12 @@
 
   <div class="scrim" inert id="diagramScrim" role="dialog" aria-modal="true" aria-labelledby="diagramTitle">
     <div class="modal modal-wide">
-      <div class="drawer-head" style="margin-bottom:var(--s3)">
+      <div class="drawer-head zoom-head">
         <h2 id="diagramTitle">Cutting diagram</h2>
         <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram"></button>
       </div>
-      <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
-      <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
+      <div class="diagram-zoom-body" id="diagramZoomBody"></div>
+      <p class="sub mt-2">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
     </div>
   </div>
 
@@ -394,7 +434,7 @@
         <table class="data diff-table"><thead><tr><th>Parameter</th><th>Older</th><th>Newer</th></tr></thead><tbody id="compareRows"></tbody></table>
       </div>
       <div class="modal-foot">
-        <span class="sub" style="margin:0">Close to see the older design ghosted in 3D.</span>
+        <span class="sub m0">Close to see the older design ghosted in 3D.</span>
         <button class="btn primary" id="compareClose">Show 3D overlay</button>
       </div>
     </div>
@@ -406,7 +446,7 @@
       <p class="sub" id="projectsSub">Designs autosave here as you work. Open, rename, duplicate, or delete — build progress travels with each project.</p>
       <div class="projects-grid" id="projectsGrid"></div>
       <div class="modal-foot">
-        <span class="sub" style="margin:0" id="storageNote"></span>
+        <span class="sub m0" id="storageNote"></span>
         <button class="btn" id="projectsClose">Close</button>
       </div>
     </div>
@@ -458,7 +498,7 @@
       <p class="sub">The same design recomputed side by side — purchasable cost, weight, sag margin on the critical span, seasonal movement, and surface duty. Tap a column to use that species.</p>
       <div class="species-pick" id="speciesPick" role="group" aria-label="Pick up to three species"></div>
       <div class="table-scroll" id="speciesTableWrap"></div>
-      <div class="modal-foot"><span class="sub" style="margin:0">Pure recomputation — nothing is changed until you tap a column.</span><button class="btn" id="speciesClose">Close</button></div>
+      <div class="modal-foot"><span class="sub m0">Pure recomputation — nothing is changed until you tap a column.</span><button class="btn" id="speciesClose">Close</button></div>
     </div>
   </div>
 
@@ -536,8 +576,8 @@
     </div>
   </div>
 
-  <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance">
-</div>
+  <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance"></div>
+</div><!-- /#app — printRoot must stay OUTSIDE it: print hides #app entirely -->
 
 <div id="printRoot"></div>
 

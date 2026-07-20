@@ -1045,6 +1045,59 @@ var BB = globalThis.BB = globalThis.BB || {};
       test('joints3d', 'dovetail assembles along the side face normal (Z)', dt.insertAxis[2] === 1, dt.insertAxis.join(','), '0,0,1');
     }
 
+    /* ============ shell structure (browser only) ============ */
+    if (typeof document !== 'undefined') {
+      // Print plans depend on #printRoot living OUTSIDE #app: the print
+      // stylesheet hides #app entirely, so a printRoot parsed inside it
+      // prints a blank sheet (B-01).
+      const pr = document.getElementById('printRoot');
+      test('shell', 'printRoot sits outside #app (print hides #app)',
+        !!pr && pr.parentElement === document.body,
+        pr ? (pr.parentElement === document.body ? 'body' : '#' + (pr.parentElement.id || pr.parentElement.tagName)) : 'missing',
+        'body');
+    }
+
+    /* ============ chat diff-chip humanizer (C-05, browser only) ============ */
+    if (globalThis.__bb && globalThis.__bb.humanizeDiffs) {
+      // The "Changed" ledger must speak user vocabulary: no wire field
+      // names, no "null", creates phrased as additions.
+      const chips = globalThis.__bb.humanizeDiffs([
+        { path: 'drawers.count', from: null, to: 2 },
+        { path: 'meta.template', from: 'table', to: 'nightstand' },
+        { path: 'structure.backPanel', from: false, to: true },
+        { path: 'made.up.path', from: 'a_b', to: 'c_d' }
+      ]);
+      test('shell', 'diff chips: null drawer count reads as an addition',
+        chips[0] === 'Added 2 drawers', chips[0], 'Added 2 drawers');
+      test('shell', 'diff chips: no chip ever contains "null" or "→ undefined"',
+        chips.every(c => !/null|undefined/.test(c)), chips.join(' | '), 'no null/undefined');
+      test('shell', 'diff chips: booleans and unknown paths still read as words',
+        chips[2] === 'Added back panel' && !/_/.test(chips[3]), `${chips[2]} | ${chips[3]}`, 'Added back panel | no underscores');
+    }
+
+    /* ============ build-mode position persistence (C-08) ============ */
+    {
+      // The pager's last-viewed task index rides the progress record; pruning
+      // stale checklist keys must never drop it, or exit/reload loses the
+      // mid-build position.
+      const prog = { cuts: { 'b:0:0:stale:100': true }, steps: {}, task: 5 };
+      Plans.pruneProgress(prog, { cuts: [], steps: [] });
+      test('shell', 'progress prune keeps the build pager position (task index)',
+        prog.task === 5 && !prog.cuts['b:0:0:stale:100'], `task ${prog.task}, stale pruned`, 'task 5, stale pruned');
+    }
+
+    /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
+    if (BB.Engine && BB.Engine.minDolly) {
+      // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction
+      // of the bounding-sphere radius so the camera never enters the piece.
+      const tiny = BB.Engine.minDolly({ w: 120, d: 120, h: 120 });
+      test('shell', 'dolly floor keeps the 300 mm absolute minimum on tiny pieces', tiny === 300, tiny, 300);
+      const r = Math.sqrt(1500 * 1500 + 850 * 850 + 750 * 750) / 2;
+      const bench = BB.Engine.minDolly({ w: 1500, d: 850, h: 750 });
+      test('shell', 'dolly floor scales with the bounding sphere (camera stays outside the piece)',
+        bench >= r * 0.5 && bench <= r, bench.toFixed(0) + ' mm', `${(r * 0.5).toFixed(0)}–${r.toFixed(0)} mm (sphere r ${r.toFixed(0)})`);
+    }
+
     return results;
   }
 

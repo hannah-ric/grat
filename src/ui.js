@@ -32,6 +32,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     compare: null,
     busy: false,
     firstRun: true,
+    hasDesign: false,               // a design the user chose/committed exists (not the boot seed) — C-02
+    heroPending: false,             // the in-flight send came from the welcome hero (C-03)
     previewing: false,
     advisoriesExpanded: false,
     // Phase 4
@@ -101,6 +103,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     hideWelcome(); // a committed design is a chosen path
     state.previewing = false; // any pending slider preview is superseded by this commit
     state.advisoriesExpanded = false; // a new change re-folds the warning stack
+    state.hasDesign = true; // every accepted change past the boot seed is a chosen design (C-02)
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -379,8 +382,12 @@ var BB = globalThis.BB = globalThis.BB || {};
    * both textures and shadows (grain without grounding looks worse, not better). */
   function applyRender() {
     const textured = !state.prefs4.render || state.prefs4.render.textured !== false;
-    $('renderRich').setAttribute('aria-pressed', String(textured));
-    $('renderFlat').setAttribute('aria-pressed', String(!textured));
+    // Two mirrored controls, one state: More → Render and the View popover
+    // row (A-10) always agree.
+    for (const [rich, flat] of [['renderRich', 'renderFlat'], ['vpRenderRich', 'vpRenderFlat']]) {
+      $(rich).setAttribute('aria-pressed', String(textured));
+      $(flat).setAttribute('aria-pressed', String(!textured));
+    }
     if (state.engine) state.engine.setQuality({ textured, shadows: textured });
   }
 
@@ -587,12 +594,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     scrim.setAttribute('aria-modal', 'true');
     scrim.setAttribute('aria-labelledby', 'diagramTitle');
     scrim.innerHTML = `<div class="modal modal-wide">
-      <div class="drawer-head" style="margin-bottom:var(--s3)">
+      <div class="drawer-head zoom-head">
         <h2 id="diagramTitle">Cutting diagram</h2>
         <button class="btn icon ghost" id="diagramClose" aria-label="Close diagram">${BB.Icons.svg('close')}</button>
       </div>
-      <div class="diagram-zoom-body" id="diagramZoomBody" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>
-      <p class="sub" style="margin-top:var(--s2)">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
+      <div class="diagram-zoom-body" id="diagramZoomBody"></div>
+      <p class="sub mt-2">Pinch or scroll to pan. Tap outside or press Esc to close.</p>
     </div>`;
     document.body.append(scrim);
     const close = scrim.querySelector('#diagramClose');
@@ -661,7 +668,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
-      <td style="color:var(--muted);font-size:var(--text-s)">${esc(r.note || '')}</td></tr>`).join('');
+      <td class="txt-muted txt-small">${esc(r.note || '')}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
     wireProv(scroll);
     root.append(scroll);
@@ -696,20 +703,24 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // shopping list
     const scroll = el('div', 'table-scroll');
-    const shopRows = plan.shopping.map(s => `<tr><td>${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" style="color:var(--muted)">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
+    // composite stock names ("Cherry 1×6 × 6 ft (3/4 × 5 1/2 in)") are
+    // machine values — the whole cell goes mono (B-03)
+    const shopRows = plan.shopping.map(s => `<tr><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" class="txt-muted">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
     root.append(scroll);
     const waste = [];
-    if (plan.wasteSolidPct != null) waste.push(`solid waste ${plan.wasteSolidPct}%`);
-    if (plan.wasteSheetPct != null) waste.push(`sheet waste ${plan.wasteSheetPct}%`);
+    if (plan.wasteSolidPct != null) waste.push(`solid waste <span class="mv">${plan.wasteSolidPct}%</span>`);
+    if (plan.wasteSheetPct != null) waste.push(`sheet waste <span class="mv">${plan.wasteSheetPct}%</span>`);
     const tot = el('div', 'bom-total');
-    tot.innerHTML = `<span>Purchasable stock total${waste.length ? ` <span style="color:var(--muted);font-weight:400">· ${waste.join(' · ')}</span>` : ''}</span><strong>$${plan.totalCost.toFixed(2)}</strong>`;
+    tot.innerHTML = `<span>Purchasable stock total${waste.length ? ` <span class="txt-muted fw-normal">· ${waste.join(' · ')}</span>` : ''}</span><strong>$${plan.totalCost.toFixed(2)}</strong>`;
     root.append(tot);
+    // $ amounts and dimension strings inside prose ride .mv spans (B-03)
+    const mv = t => `<span class="mv">${t}</span>`;
     if (plan.mode === 'dimensional' && plan.bdft.exact > 0) {
-      root.append(el('p', 'stock-note', `Reference: rough-sawn equivalent ≈ ${Units.fmtBoardFeet(plan.bdft.withWaste)} (incl. 30% waste) ≈ $${plan.bdft.cost.toFixed(2)} at $${plan.bdft.rate.toFixed(2)}/bd ft.`));
+      root.append(el('p', 'stock-note', `Reference: rough-sawn equivalent ≈ ${mv(Units.fmtBoardFeet(plan.bdft.withWaste))} (incl. 30% waste) ≈ ${mv('$' + plan.bdft.cost.toFixed(2))} at ${mv('$' + plan.bdft.rate.toFixed(2) + '/bd ft')}.`));
     }
-    for (const g of plan.glueups) root.append(el('p', 'stock-note', `“${esc(g.name)}” is wider than any board: edge-glue ${g.n} × ${esc(g.nominal)} strips, then trim to ${fmt(g.W)}.`));
-    for (const l of plan.laminations) root.append(el('p', 'stock-note', `“${esc(l.name)}” is thicker than any board: face-laminate ${l.n} × ${esc(l.nominal)} layers, then plane to ${fmt(l.T)}.`));
+    for (const g of plan.glueups) root.append(el('p', 'stock-note', `“${esc(g.name)}” is wider than any board: edge-glue ${mv(`${g.n} × ${esc(g.nominal)}`)} strips, then trim to ${mv(fmt(g.W))}.`));
+    for (const l of plan.laminations) root.append(el('p', 'stock-note', `“${esc(l.name)}” is thicker than any board: face-laminate ${mv(`${l.n} × ${esc(l.nominal)}`)} layers, then plane to ${mv(fmt(l.T))}.`));
 
     // board diagrams
     if (plan.boards.length) {
@@ -808,10 +819,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     root.append(compareBtn);
     root.append(el('div', '', '&nbsp;'));
     const scroll = el('div', 'table-scroll');
+    // labels and detail strings carry lengths and per-unit prices — mono
+    // machine-value cells (B-03)
     const rows = state.bomData.items.map(i => `<tr>
       <td><span class="kind-tag">${esc(i.kind)}</span></td>
-      <td>${esc(i.label)}</td><td class="num">${i.qty}</td>
-      <td style="color:var(--muted);font-size:var(--text-s)">${esc(i.detail || '')}</td>
+      <td class="mv">${esc(i.label)}</td><td class="num">${i.qty}</td>
+      <td class="mv txt-muted">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
     root.append(scroll);
@@ -1162,14 +1175,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td class="num">${s.moe.toFixed(1)}</td><td class="num">${s.mor}</td><td class="num">${s.sg.toFixed(2)}</td>
         <td class="num${s.sheet ? '' : ' movement-' + s.movement}">${s.sheet ? '—' : s.ct.toFixed(5)}</td>
         <td class="num">${'$'.repeat(s.costTier)}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(s.blurb)}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(s.blurb)}</td></tr>`).join('');
     } else if (state.refTab === 'ergo') {
       head = '<th>Measure</th><th class="num">Range</th><th>Applies to</th><th>Note</th>';
       rows = K.ERGONOMICS.filter(r => hit(r.label, r.note)).map(r => `<tr>
         <td><strong>${esc(r.label)}</strong></td>
         <td class="num">${isFinite(r.max) ? `${fmt(r.min)} – ${fmt(r.max)}` : `≥ ${fmt(r.min)}`}</td>
         <td>${esc(r.appliesTo.join(', '))}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
       head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
@@ -1178,9 +1191,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td><span class="dots">${'●'.repeat(j.strength)}${'○'.repeat(5 - j.strength)}</span></td>
         <td><span class="dots">${'●'.repeat(j.difficulty)}${'○'.repeat(5 - j.difficulty)}</span></td>
         <td>${esc(j.level)}</td>
-        <td style="font-size:var(--text-s)">${esc(j.bestFor)}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(j.failure)}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(j.tools.join(', '))}</td></tr>`).join('');
+        <td class="txt-small">${esc(j.bestFor)}</td>
+        <td class="txt-small txt-muted">${esc(j.failure)}</td>
+        <td class="txt-small txt-muted">${esc(j.tools.join(', '))}</td></tr>`).join('');
     } else if (state.refTab === 'hardware') {
       // The hardware repository: when, why, how, where — quantities and
       // ratings are computed by code (BB.HW rules), the table teaches the
@@ -1216,9 +1229,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         const body2 = list.filter(x => hit(x.label, x.bestFor || '', x.failure || '', (x.setout || []).join(' '))).map(x => `<tr>
           <td><strong>${esc(Units.fmtTemplate(x.label))}</strong><br><span class="kind-tag">${esc(gLabel)}</span></td>
           <td>${view3d[x.key] ? `<button type="button" class="btn small ghost joint-demo" data-joint="${esc(view3d[x.key])}" title="See it in 3D">${BB.Icons.svg('ruler', 13)} 3D</button>` : ''}</td>
-          <td class="num" style="font-size:var(--text-s)">${esc(classOf(x))}</td>
-          <td style="font-size:var(--text-s)">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span style="color:var(--muted)">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
-          <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
+          <td class="num txt-small">${esc(classOf(x))}</td>
+          <td class="txt-small">${esc(Units.fmtTemplate(x.bestFor || ''))}${x.setout ? `<br><span class="txt-muted">${esc(Units.fmtTemplate(x.setout.join(' ')))}</span>` : ''}</td>
+          <td class="txt-small txt-muted">${esc(Units.fmtTemplate(x.failure || ''))}</td></tr>`).join('');
         return body2;
       }).join('');
     } else if (state.refTab === 'lumber') {
@@ -1233,15 +1246,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       rows = [...f.screws, ...f.dowels, ...f.hardware].filter(x => hit(x.label, x.use)).map(x => `<tr>
         <td><strong>${esc(Units.fmtTemplate(x.label))}</strong></td>
         <td class="num">${x.pilot ? esc(fmtS(x.pilot)) + ' pilot' : (x.price ? '~$' + x.price : '—')}</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(Units.fmtTemplate(x.use))}</td></tr>`).join('');
       rows += K.FINISHES.filter(x => hit(x.label, x.blurb)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}${x.exterior ? ' <span class="kind-tag">exterior</span>' : ''}</td>
         <td class="num">${x.coats} coats · ${x.recoatHrs} h recoat · ${x.cureDays} d cure</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(x.blurb)}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(x.blurb)}</td></tr>`).join('');
       rows += K.GLUES.filter(x => hit(x.label, x.blurb, x.water)).map(x => `<tr>
         <td><strong>${esc(x.label)}</strong>${x.foodContact ? ' <span class="kind-tag">food-contact</span>' : ''}</td>
         <td class="num">open ${x.openMin} min · clamp ${x.clampMin} min · ${x.cureHrs} h full</td>
-        <td style="font-size:var(--text-s);color:var(--muted)">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
+        <td class="txt-small txt-muted">${esc(x.water)} — ${esc(x.blurb)}</td></tr>`).join('');
     }
     if (!rows) {
       body.append(el('div', 'empty-state', `<span class="big">No matches in the reference.</span>Try a different word — “dovetail”, “walnut”, “pilot”…`));
@@ -1359,6 +1372,68 @@ var BB = globalThis.BB = globalThis.BB || {};
     const hasDiff = (chips || []).length > 0;
     if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title">Changed</span>' : ''}${chipHTML.join('')}</div>`;
     return chatMsg('bot', html);
+  }
+  /* ---------------- diff-chip humanizer (C-05) ----------------
+   * The "Changed" ledger speaks user vocabulary. Spec.diffSpecs hands the
+   * display layer structured diffs ({path, from, to, label?, text?}); this
+   * formatter — display-only, spec.js untouched — turns them into phrases
+   * ("Added 2 drawers", "Height 24 in → 22 1/16 in") so wire field names
+   * and "null" never reach a Beginner's chip. Pre-built d.text chips (the
+   * custom-composition summaries) pass through untouched, and values still
+   * route through Spec.fmtValue → BB.Units, so chips follow display units. */
+  const DIFF_NOUNS = { 'drawers.count': ['drawer', 'drawers'], 'structure.shelfCount': ['shelf', 'shelves'] };
+  function humanizeDiffs(diffs) {
+    const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    return diffs.map(d => {
+      if (d.text) return d.text;
+      const label = d.label || Spec.PATH_LABELS[d.path] ||
+        d.path.split('.').pop().replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase();
+      const v = x => Spec.fmtValue(d.path, x);
+      const noun = DIFF_NOUNS[d.path];
+      if (noun) {
+        const was = +d.from || 0, now = +d.to || 0;
+        if (!was && now) return `Added ${now} ${now === 1 ? noun[0] : noun[1]}`;
+        if (was && !now) return `Removed the ${was === 1 ? noun[0] : noun[1]}`;
+        return `${cap(noun[1])} ${was} → ${now}`;
+      }
+      if (typeof d.to === 'boolean' || typeof d.from === 'boolean') {
+        return d.to ? `Added ${label}` : `Removed ${label}`;
+      }
+      if (d.path === 'meta.template') return `Rebuilt as a ${v(d.to)}`;
+      if (d.path === 'meta.name') return `Renamed to “${d.to}”`;
+      if (d.from == null && d.to != null) return `${cap(label)}: ${v(d.to)}`;
+      if (d.from != null && d.to == null) return `Removed ${label}`;
+      return `${cap(label)} ${v(d.from)} → ${v(d.to)}`;
+    });
+  }
+
+  /* A design just landed while the plans sit folded away in Design mode:
+   * give the journey its explicit next step (C-03) — the Plan segment's 6px
+   * state dot is not an affordance. One quiet-strong chat action, kept to a
+   * single instance in the log, that opens Plan mode on the Overview tab. */
+  function offerPlanCta() {
+    if (state.buildMode || state.mode !== 'design') return;
+    const old = $('chatLog').querySelector('.plan-cta-row');
+    if (old) old.closest('.msg').remove();
+    const m = chatMsg('bot', '');
+    const row = el('div', 'plan-cta-row');
+    const b = el('button', 'btn small plan-cta', 'See your plan →');
+    b.onclick = () => selectTab('overview');
+    row.append(b);
+    m.append(row);
+    // The phone chat is a collapsed sheet — a CTA buried in its log is not
+    // an affordance. Float the same action under the viewer until taken.
+    if (matchMedia('(max-width: 880px)').matches && !$('chatPanel').classList.contains('expanded')) {
+      removePlanCtaPill();
+      const pill = el('button', 'btn small plan-cta plan-cta-pill', 'See your plan →');
+      pill.id = 'planCtaPill';
+      pill.onclick = () => selectTab('overview'); // setMode('plan') removes the pill
+      $('viewportWrap').append(pill);
+    }
+  }
+  function removePlanCtaPill() {
+    const pill = $('planCtaPill');
+    if (pill) pill.remove();
   }
   function askQuestion(q) {
     const m = chatMsg('bot', `<div class="bubble">${esc(q.question)}</div>`);
@@ -1590,9 +1665,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     } else {
       chatMsg('user', `<div class="bubble">${esc(text)}</div>`);
     }
-    const typing = chatMsg('bot', '<span class="typing"><i></i><i></i><i></i></span><span class="bubble" style="display:none"></span>');
+    const typing = chatMsg('bot', '<span class="typing"><i></i><i></i><i></i></span><span class="bubble" hidden></span>');
     const setStatus = t => {
       const b = typing.querySelector('.bubble');
+      b.hidden = false;
       b.style.display = 'block';
       b.textContent = t + '…';
     };
@@ -1605,12 +1681,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       setBusy(false);
       if (!out) return;
       const okc = commit(out.final, 'ai');
+      const fromHero = state.heroPending;
+      state.heroPending = false;
       if (!okc) {
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
-      const chips = Spec.describeDiff(realDiffs);
+      const chips = humanizeDiffs(realDiffs); // user vocabulary, never wire names (C-05)
       // The badge reflects what actually just happened — the strongest
       // evidence there is about the connection state. A keyless proxy (503)
       // reads "AI not configured", never plain offline (audit L-14).
@@ -1641,6 +1719,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         // committed spec and append the code-built truth (A2).
         const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
         botSay(ack + noteText + integLine, chips, { noChange: !chips.length, caveat });
+        // A hero prompt or a whole new piece deserves its next step (C-03):
+        // refinements stay quiet, creation offers the route to the plans.
+        if (chips.length && (fromHero || realDiffs.some(d => d.path === 'meta.template'))) offerPlanCta();
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {
@@ -1745,6 +1826,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     return wrap;
   }
 
+  /* The coarse-pointer Isolate control (A-07) mirrors double-tap state:
+   * label + aria-pressed re-sync on every open/toggle/clear. */
+  function renderInspIsolate(id) {
+    const b = $('inspIsolate');
+    if (!b || !id) return;
+    const on = state.engine.getIsolated() === id;
+    b.textContent = on ? 'Show all' : 'Isolate';
+    b.setAttribute('aria-pressed', String(on));
+  }
   function openInspector(part) {
     state.selected = part.id;
     state.engine.select(part.id);
@@ -1752,6 +1842,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     insp.classList.add('open');
     insp.inert = false;
     $('inspName').textContent = part.name;
+    renderInspIsolate(part.id);
     const dims = $('inspDims');
     dims.innerHTML = `<button type="button" class="prov-btn num" aria-label="${esc(part.name)} dimensions ${esc(fmt(part.size.w))} by ${esc(fmt(part.size.h))} by ${esc(fmt(part.size.d))} — show the formulas">${fmt(part.size.w)} × ${fmt(part.size.h)} × ${fmt(part.size.d)}</button>`;
     dims.querySelector('.prov-btn').onclick = e => {
@@ -1779,7 +1870,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(dim('Depth', 'overall.depth', 200, 1200));
       body.append(dim('Height', 'overall.height', 120, 2400));
     } else {
-      body.append(el('p', '', '<span style="font-size:var(--text-s);color:var(--muted)">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
+      body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
     if (part.role === 'leg') body.append(dim('Leg thickness', 'structure.legThickness', 32, 100));
     if (part.role === 'apron' || part.role === 'rail') body.append(dim('Apron height', 'structure.apronHeight', 60, 160));
@@ -1922,7 +2013,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       <td>${esc(d.label || Spec.PATH_LABELS[d.path] || d.path)}</td>
       <td class="old num">${esc(Spec.fmtValue(d.path, d.from))}</td>
       <td class="new num">${esc(Spec.fmtValue(d.path, d.to))}</td></tr>`).join('') ||
-      '<tr><td colspan="3" style="color:var(--muted)">No differences.</td></tr>';
+      '<tr><td colspan="3" class="txt-muted">No differences.</td></tr>';
     openScrim('compareScrim');
   }
   function showCompareOverlay() {
@@ -2040,7 +2131,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.dismissed.clear();
     state.project = null;   // a starter begins a fresh project
     state.turns = [];
-    commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
+    // Skill level is the user's preference, not starter content (C-06):
+    // only the level dropdown changes it — the loaded spec inherits the
+    // chosen level (or whatever the user was already working at).
+    const level = state.prefs4.level || (state.spec && state.spec.meta.level) || 'beginner';
+    commit(Spec.deepMerge(g.spec, { meta: { level } }), 'gallery', ['loaded “' + r.spec.meta.name + '”']);
     state.engine.frame();
     // First starter ever: the piece assembles itself once — the pipeline
     // dramatized in one shot. Reduced motion snaps it (engine-side).
@@ -2055,6 +2150,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       Store.savePrefs(state.prefs4);
       botSay('First build tips: 1) Check the Buy tab before you shop. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Safety tab shows red, fix that before you build.', []);
     }
+    offerPlanCta(); // the loaded design's plans are one explicit tap away (C-03)
   }
   function renderGallery() {
     const grid = $('galleryGrid');
@@ -2257,10 +2353,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!hist) hist = History.createHistory(spec, 'project');
     state.history = hist;
     state.project = { id, progress: rec.progress || { cuts: {}, steps: {} } };
+    state.hasDesign = true; // a restored project is a chosen design (C-02)
     state.turns = [];
     state.dismissed.clear();
     state.previewing = false; // the loaded project replaces any pending preview
-    const r = runPipeline(state.history.currentSpec() || spec);
+    // A dropdown-chosen level outranks whatever the project was saved at
+    // (C-06); with no explicit choice the project's own level stands.
+    let cur = state.history.currentSpec() || spec;
+    if (state.prefs4.level && cur.meta && cur.meta.level !== state.prefs4.level) {
+      cur = Spec.deepMerge(cur, { meta: { level: state.prefs4.level } });
+    }
+    const r = runPipeline(cur);
     adopt(r);
     renderAll();
     state.engine.frame();
@@ -2308,6 +2411,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!ok) return { error: 'That design decoded but won’t build.' };
     state.engine.frame();
     botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+    offerPlanCta(); // an imported design gets the same explicit next step (C-03)
     return { ok: true };
   }
   function importShare() {
@@ -2376,9 +2480,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody>
       <tr><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
       <tr><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
-      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span style="color:var(--muted)">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
+      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span class="txt-muted">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
       <tr><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(esc(fmtS(c.movementMM)), c.movementMM === bestMove)).join('')}</tr>
-      <tr><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span style="color:var(--muted)">${esc(c.duty)}</span>`)).join('')}</tr>
+      <tr><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span class="txt-muted">${esc(c.duty)}</span>`)).join('')}</tr>
       <tr><td>Failing checks</td>${cols.map(c => cell(c.fails, c.fails === 0)).join('')}</tr>
     </tbody></table>`;
     wrap.querySelectorAll('.species-col-btn').forEach(b => {
@@ -2403,7 +2507,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const r of results.filter(x => x.group === g)) {
         const row = el('div', 'diag-row' + (r.pass ? '' : ' fail'));
         row.innerHTML = `<span class="diag-dot" aria-hidden="true"></span>
-          <span style="flex:1">${esc(r.name)}${r.pass ? '' : `<div class="diag-detail">actual: ${esc(r.actual)} · expected: ${esc(r.expected)}</div>`}</span>`;
+          <span class="flex-1">${esc(r.name)}${r.pass ? '' : `<div class="diag-detail">actual: ${esc(r.actual)} · expected: ${esc(r.expected)}</div>`}</span>`;
         body.append(row);
       }
     }
@@ -2455,7 +2559,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!BB.Billing.gate('advancedFeatures', 'The full-screen workshop companion and advanced build tools are included with Pro.')) return;
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
-    state.bmTask = null; // pager re-lands on the first unfinished task
+    // Mid-build position survives interruptions (C-08): the pager resumes the
+    // last-viewed task, persisted alongside progress; a fresh checklist (no
+    // saved index yet) still lands on the first unfinished task.
+    const savedTask = state.project.progress.task;
+    state.bmTask = Number.isInteger(savedTask) ? savedTask : null;
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
     renderBuildChecklists();
@@ -2637,20 +2745,30 @@ var BB = globalThis.BB = globalThis.BB || {};
       state.bmTask = firstOpen < 0 ? 0 : firstOpen;
     }
     state.bmTask = Math.max(0, Math.min(tasks.length - 1, state.bmTask));
+    // The position rides the progress record (pruneProgress only touches
+    // cuts/steps), so exit → re-enter and reload both restore it (C-08).
+    state.project.progress.task = state.bmTask;
     const t = tasks[state.bmTask];
     const card = el('section', 'bm-task');
     card.setAttribute('aria-label', t.title);
-    card.append(el('div', 'bm-board-title', esc(t.title)));
+    // Two halves — board media (title/diagram/hint) and the work stack
+    // (check-offs / step controls). The wrappers are display:contents
+    // no-ops everywhere except short landscape, where they sit side by
+    // side so the first check-off stays above the fold (A-11).
+    const media = el('div', 'bm-task-media');
+    const work = el('div', 'bm-task-checks');
+    card.append(media, work);
+    media.append(el('div', 'bm-board-title', esc(t.title)));
     if (t.svg) {
       const d = el('div', 'bm-diagram bm-diagram-hero');
       d.dataset.diagramTitle = t.title;
       d.innerHTML = t.largeSvg();
       wireDiagramZoom(d, t.largeSvg);
-      card.append(d);
-      card.append(el('p', 'bm-zoom-hint', 'Tap the diagram to enlarge · drag sideways to see the whole board'));
+      media.append(d);
+      media.append(el('p', 'bm-zoom-hint', 'Tap the diagram to enlarge · drag sideways to see the whole board'));
     }
     if (t.kind === 'step') {
-      if (t.text) card.append(el('p', 'bm-step-text', esc(t.text)));
+      if (t.text) work.append(el('p', 'bm-step-text', esc(t.text)));
       const row = el('div', 'bm-step-row');
       const btn = checkButton('Done — ' + t.title.replace(/^Step \d+ — /, ''), null, prog.steps[t.stepId],
         b => toggleProgress(prog.steps, t.stepId, b, 'pager'));
@@ -2659,10 +2777,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       play.setAttribute('aria-label', `Play 3D animation for this step`);
       play.onclick = () => enterBmPlayback(t.stepIndex);
       row.append(btn, play);
-      card.append(row);
+      work.append(row);
     } else {
       for (const c of t.checks) {
-        card.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn, 'pager')));
+        work.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn, 'pager')));
       }
     }
     pager.append(card);
@@ -2678,6 +2796,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.bmTask = Math.max(0, next);
     renderBmTask();
     $('bmPager').scrollTop = 0;
+    scheduleAutosave(); // the new position persists like any other progress (C-08)
   }
 
   /* ---------------- install nudge (once, after the first finished build) --- */
@@ -2841,6 +2960,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function setMode(m, opts) {
     if (m === 'build') { enterBuildMode(); return; }
+    if (m === 'plan') removePlanCtaPill(); // the floating next-step is taken/answered (C-03)
     state.mode = m === 'plan' ? 'plan' : 'design';
     document.body.dataset.mode = state.mode;
     if (state.mode === 'plan') autoSplitForPlanPhone();
@@ -2875,10 +2995,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!state.integrity) return;
     const states = modeStates();
     // Build is Pro-gated: the lock glyph + aria announce the paywall BEFORE
-    // the tap (X-04) — activation still opens the pricing dialog.
-    const buildLocked = !BB.Billing.entitled('advancedFeatures');
+    // the tap (X-04) — activation still opens the pricing dialog. On a
+    // providerless host there is no paywall to announce: gate() never fires
+    // there (C-01), so the lock stays hidden too.
+    const buildLocked = billingConfigured(Store.auth()) && !BB.Billing.entitled('advancedFeatures');
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
+    // One filled primary per screen (C-02): Build takes the rust fill only
+    // once a design the user chose exists AND no paywall stands in front of
+    // it — on the landing it reads as the quiet third step of the journey.
+    $('buildModeBtn').classList.toggle('build-quiet', !state.hasDesign || buildLocked);
     for (const m of ['design', 'plan', 'build']) {
       const b = $(m === 'build' ? 'buildModeBtn' : 'mode-' + m);
       if (!b) continue;
@@ -2905,9 +3031,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
     renderHeroStarters();
     $('welcomeOverlay').hidden = false;
+    // The card owns the first impression: body.welcome-open lets CSS quiet
+    // the workspace behind it (C-02 one-primary, B-08 advisory/toolbar hush).
+    document.body.classList.add('welcome-open');
+    // The card's one primary action must be reachable immediately by keyboard
+    // (C-13): "Skip to describe your piece" leads the skip links while the
+    // card is up, so Tab 1 + Enter lands in the hero input.
+    $('skipToHero').hidden = false;
   }
   function hideWelcome() {
     $('welcomeOverlay').hidden = true;
+    $('skipToHero').hidden = true;
+    document.body.classList.remove('welcome-open');
+    // A dismissed card must not strand a keyboard user on its hidden input.
+    if (document.activeElement === $('heroText')) focusChat();
   }
 
   /* ---------------- shell: URL-restorable tabs ----------------
@@ -2974,6 +3111,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (state.mode !== 'plan') setMode('plan');
     renderTabs();
     renderPanel();
+    // Narrow screens scroll the tab bar: the chosen tab must never sit
+    // offscreen (Safety at 320 was 8px visible) — bring it fully into view.
+    const tab = $('tab-' + t);
+    if (tab) tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduceMq.matches ? 'auto' : 'smooth' });
   }
   function renderTabs() {
     $('tab-reference').hidden = state.tab !== 'reference';
@@ -3104,8 +3245,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       reducedMotion: reduceMq.matches,
       onPick(part, info) {
         if (!part) {
-          if (state.engine.getIsolated()) { state.engine.isolate(null); state.engine.clearFocus(); }
-          else closeInspector();
+          if (state.engine.getIsolated()) {
+            state.engine.isolate(null); state.engine.clearFocus();
+            renderInspIsolate(state.selected);
+          } else closeInspector();
           return;
         }
         if (info.double) {
@@ -3189,6 +3332,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     adopt(r);
     state.history = History.createHistory(r.spec, 'seed');
     state.engine.snapNow();
+    // The pre-JS boot skeleton (A-09) has done its job: a model is in place.
+    const bootSk = $('bootSkeleton');
+    if (bootSk) bootSk.remove();
     applyHash(); // a deep-linked tab survives the reload
     if (state.mode === 'plan') autoSplitForPlanPhone(); // deep-linked Plan gets the phone floor too (X-07)
     renderAll();
@@ -3272,8 +3418,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     $('renderRich').onclick = () => setRender(true);
     $('renderFlat').onclick = () => setRender(false);
+    $('vpRenderRich').onclick = () => setRender(true);
+    $('vpRenderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
-    $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
+    $('levelSelect').addEventListener('change', e => {
+      // The dropdown is the ONE owner of skill level (C-06): the choice is a
+      // persisted user preference that survives starter and project loads.
+      state.prefs4.level = e.target.value;
+      Store.savePrefs(state.prefs4);
+      merge({ meta: { level: e.target.value } }, 'manual');
+    });
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
@@ -3285,14 +3439,22 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* The hero prompt IS the chat pipeline — one path for every input. */
     const heroSubmit = () => {
       const t = $('heroText').value.trim();
-      if (!t) { hideWelcome(); focusChat(); return; }
+      if (!t) {
+        // An empty "Design it" never silently dismisses the card (C-17):
+        // nudge inline and stay — close, a starter, or a real prompt exits.
+        $('heroNudge').hidden = false;
+        $('heroText').focus();
+        return;
+      }
       hideWelcome();
+      state.heroPending = true; // the reply offers "See your plan" (C-03)
       sendMessage(t);
     };
     $('heroSend').onclick = heroSubmit;
     $('heroText').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); heroSubmit(); }
     });
+    $('heroText').addEventListener('input', () => { $('heroNudge').hidden = true; });
     $('welcomePhoto').onclick = () => $('photoInput').click();
     $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
     $('welcomeResume').onclick = () => {
@@ -3418,6 +3580,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('mode-design').onclick = () => setMode('design');
     $('mode-plan').onclick = () => setMode('plan');
     $('skipToPlans').addEventListener('click', () => { if (state.mode !== 'plan') setMode('plan'); });
+    /* Fragment navigation won't focus a textarea and would dirty the managed
+     * location.hash — focus the hero input directly (C-13). */
+    $('skipToHero').addEventListener('click', e => { e.preventDefault(); $('heroText').focus(); });
     /* "Learn why" links anywhere in the app open the reference on the right
      * shelf — the Shop Reference relocated from peer tab to contextual door. */
     document.addEventListener('click', e => {
@@ -3554,6 +3719,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     $('frameBtn').onclick = () => state.engine.frame();
     $('inspClose').onclick = closeInspector;
+    $('inspIsolate').onclick = () => {
+      const id = state.selected;
+      if (!id) return;
+      const clearing = state.engine.getIsolated() === id;
+      state.engine.isolate(clearing ? null : id);
+      // Same pairing as double-tap (design §4b): isolation frames the part,
+      // clearing restores the stored pose.
+      if (clearing) state.engine.clearFocus(); else state.engine.focusPart(id);
+      renderInspIsolate(id);
+    };
     /* viewport help: a small non-modal card under the toolbar */
     const setVpHelp = open => {
       $('vpHelp').hidden = !open;
@@ -3628,7 +3803,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
       preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
-      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness,
+      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness, humanizeDiffs,
       setMode, probeAI, setAIState, renderAccount
     };
 
@@ -3637,6 +3812,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     const hint = $('viewportHint');
     if (matchMedia('(pointer: coarse)').matches) {
       hint.textContent = 'one finger to orbit · pinch to zoom · tap a part to tune it';
+    } else {
+      // The static template copy is pointer-neutral so it can paint pre-JS
+      // (A-09); once booted, each pointer type gets its own verbs.
+      hint.textContent = 'drag to orbit · scroll to zoom · click a part to tune it';
     }
     const dismissHint = () => {
       hint.style.opacity = '0';

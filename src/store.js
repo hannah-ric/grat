@@ -338,7 +338,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     units: { system: 'imperial', precision: 16, dual: false },
     render: { textured: true },
     ui: { chatCollapsed: false, split: 58 },
-    seenHero: false // the one-shot assemble moment on first starter pick
+    seenHero: false, // the one-shot assemble moment on first starter pick
+    level: null      // skill level the USER chose via the dropdown (C-06); null = never chosen
   };
 
   /* Sheet prices migrated in place (2026 expansion): the legacy flat shape

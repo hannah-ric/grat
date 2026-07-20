@@ -130,7 +130,9 @@ const clickMoreCtl = async sel => {
   await page.click('#sendBtn');
   await page.waitForSelector('.msg.bot .chip', { timeout: 8000 });
   const chip = await page.locator('.msg.bot:last-child .chip:not(.caveat)').first().textContent();
-  ok(/height 24 in → 22 1\/16 in/.test(chip), `diff chip shows code-computed change in display units (${chip.trim()})`);
+  // C-05: chips are humanized in the display layer — sentence case, same
+  // code-computed values in display units.
+  ok(/Height 24 in → 22 1\/16 in/.test(chip), `diff chip shows code-computed change in display units (${chip.trim()})`);
   ok(await page.evaluate(() => document.getElementById('aiBadge').dataset.state === 'offline'),
     'AI badge tells the truth: no service here, offline basic edits');
   ok(await page.evaluate(() => __bb.state.spec.overall.height === 559.6), 'spec height merged to 559.6 mm internally');
@@ -1324,6 +1326,7 @@ const clickMoreCtl = async sel => {
     const firstKey = keys.cuts[0];
     prog.cuts[firstKey] = false;
     __bb.state.bmTask = 0;
+    prog.task = 0; // re-entry restores the persisted position (C-08)
     __bb.renderReadiness();
     document.querySelectorAll('#bmPager .bm-check[aria-pressed="false"]').length; // pager may be stale; re-render
     return (async () => {
