@@ -32,6 +32,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     compare: null,
     busy: false,
     firstRun: true,
+    hasDesign: false,               // a design the user chose/committed exists (not the boot seed) — C-02
     previewing: false,
     advisoriesExpanded: false,
     // Phase 4
@@ -101,6 +102,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     hideWelcome(); // a committed design is a chosen path
     state.previewing = false; // any pending slider preview is superseded by this commit
     state.advisoriesExpanded = false; // a new change re-folds the warning stack
+    state.hasDesign = true; // every accepted change past the boot seed is a chosen design (C-02)
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -2271,6 +2273,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!hist) hist = History.createHistory(spec, 'project');
     state.history = hist;
     state.project = { id, progress: rec.progress || { cuts: {}, steps: {} } };
+    state.hasDesign = true; // a restored project is a chosen design (C-02)
     state.turns = [];
     state.dismissed.clear();
     state.previewing = false; // the loaded project replaces any pending preview
@@ -2910,6 +2913,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     const buildLocked = billingConfigured(Store.auth()) && !BB.Billing.entitled('advancedFeatures');
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
+    // One filled primary per screen (C-02): Build takes the rust fill only
+    // once a design the user chose exists AND no paywall stands in front of
+    // it — on the landing it reads as the quiet third step of the journey.
+    $('buildModeBtn').classList.toggle('build-quiet', !state.hasDesign || buildLocked);
     for (const m of ['design', 'plan', 'build']) {
       const b = $(m === 'build' ? 'buildModeBtn' : 'mode-' + m);
       if (!b) continue;
@@ -2936,6 +2943,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
     renderHeroStarters();
     $('welcomeOverlay').hidden = false;
+    // The card owns the first impression: body.welcome-open lets CSS quiet
+    // the workspace behind it (C-02 one-primary, B-08 advisory/toolbar hush).
+    document.body.classList.add('welcome-open');
     // The card's one primary action must be reachable immediately by keyboard
     // (C-13): "Skip to describe your piece" leads the skip links while the
     // card is up, so Tab 1 + Enter lands in the hero input.
@@ -2944,6 +2954,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function hideWelcome() {
     $('welcomeOverlay').hidden = true;
     $('skipToHero').hidden = true;
+    document.body.classList.remove('welcome-open');
     // A dismissed card must not strand a keyboard user on its hidden input.
     if (document.activeElement === $('heroText')) focusChat();
   }

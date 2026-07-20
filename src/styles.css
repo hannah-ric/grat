@@ -375,6 +375,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mode-btn.build-cta:hover { background: var(--accent); color: var(--accent-ink); filter: brightness(1.06); }
 .mode-btn.build-cta .dot { display: none; }
 .mode-btn.build-cta[aria-current="page"] { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* One filled primary per screen (C-02): until a chosen design exists (or
+   while Build sits behind a paywall) the segment stands down to the quiet
+   tier, state dot restored — the landing keeps its single rust CTA. */
+.mode-btn.build-cta.build-quiet {
+  background: none; color: var(--muted); font-weight: 600;
+  border-color: transparent; box-shadow: none;
+}
+.mode-btn.build-cta.build-quiet:hover { background: none; color: var(--ink-2); filter: none; }
+.mode-btn.build-cta.build-quiet .dot { display: block; }
 
 /* Share: the quiet-strong companion action */
 .share-cta { border-color: var(--accent); color: var(--accent); font-weight: 600; }
@@ -591,6 +600,15 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
   transition: border-color var(--t-fast) var(--ease);
 }
 .chat-input textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* While the welcome card is up, its "Design it" holds the one rust fill
+   (C-02): the chat Send steps back to the quiet capsule tier until the
+   card goes — the control stays, only its weight changes. */
+body.welcome-open .chat-input .btn.primary {
+  background: var(--panel); border-color: var(--line-2); color: var(--ink-2); box-shadow: none;
+}
+body.welcome-open .chat-input .btn.primary:hover:not(:disabled) {
+  background: var(--panel-2); color: var(--ink); filter: none;
+}
 /* a placeholder longer than the column reads as one clean clipped line,
  * never a half-visible wrap (color comes from the global ::placeholder rule) */
 .chat-input textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

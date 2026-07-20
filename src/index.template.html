@@ -57,7 +57,9 @@
     <nav class="mode-nav" id="modeNav" aria-label="Workflow">
       <button class="mode-btn" id="mode-design" data-mode="design" aria-current="page"><span class="dot" aria-hidden="true"></span><span class="mode-label">Design</span></button>
       <button class="mode-btn" id="mode-plan" data-mode="plan"><span class="dot" aria-hidden="true"></span><span class="mode-label">Plan</span></button>
-      <button class="mode-btn build-cta" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span><span class="mode-lock" id="buildModeLock" hidden aria-hidden="true"></span></button>
+      <!-- build-quiet is the pre-boot default: Build only takes its rust fill
+           once a chosen design exists (C-02) — renderReadiness owns the class. -->
+      <button class="mode-btn build-cta build-quiet" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span><span class="mode-lock" id="buildModeLock" hidden aria-hidden="true"></span></button>
     </nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
