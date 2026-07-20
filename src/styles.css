@@ -983,7 +983,8 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .shop-time { font-size: var(--text-s); color: var(--ink-2); cursor: help; }
 /* time estimates are machine values at caption size — mono, never small Fraunces (B-04) */
 .shop-time strong { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
-.tool-wall summary { cursor: pointer; font-size: var(--text-s); color: var(--accent); font-weight: 600; }
+/* interactive text speaks one voice — var(--link): rust in light, seafoam in dark (B-05) */
+.tool-wall summary { cursor: pointer; font-size: var(--text-s); color: var(--link); font-weight: 600; }
 .tool-wall ul { margin: var(--s2) 0 0; padding-left: 20px; font-size: var(--text-s); color: var(--ink-2); line-height: 1.7; columns: 2; }
 @media (max-width: 880px) { .tool-wall ul { columns: 1; } }
 
@@ -1020,7 +1021,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
 }
 .why-joint > button {
   border: 0; background: none; cursor: pointer; padding: 0;
-  color: var(--accent); font-size: var(--text-s); font-weight: 600; text-decoration: underline dotted;
+  color: var(--link); font-size: var(--text-s); font-weight: 600; text-decoration: underline dotted;
 }
 .why-tip {
   position: absolute; bottom: calc(100% + 8px); left: 0; width: 300px; z-index: 40;
@@ -1193,7 +1194,7 @@ td.mv { font-size: var(--text-s); }
 .gallery-card .g-thumb.on { opacity: 1; }
 .gallery-card .g-name { font-family: var(--body); font-weight: 650; font-size: var(--text-m); }
 .gallery-card .g-caption { color: var(--muted); font-size: var(--text-s); line-height: 1.4; }
-.gallery-card .g-meta { font: 500 var(--text-s) var(--mono); color: var(--accent); margin-top: auto; padding-top: var(--s2); }
+.gallery-card .g-meta { font: 500 var(--text-s) var(--mono); color: var(--link); margin-top: auto; padding-top: var(--s2); }
 .modal-foot { margin-top: var(--s4); display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 
 /* Joint Inspector modal */
@@ -1574,7 +1575,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .climate-row { display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s3); font-size: var(--text-s); color: var(--ink-2); flex-wrap: wrap; }
 .climate-row select { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px; padding: 6px 8px; font-size: var(--text-m); }
 .integrity-details > summary {
-  cursor: pointer; font-weight: 600; color: var(--accent); margin-bottom: var(--s3);
+  cursor: pointer; font-weight: 600; color: var(--link); margin-bottom: var(--s3);
 }
 
 /* ---------------- stock tab ---------------- */
@@ -1584,7 +1585,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .stock-board .sb-title { display: flex; justify-content: space-between; align-items: baseline; font: 600 var(--text-s) var(--mono); margin-bottom: var(--s2); }
 .stock-board .sb-title .offcut { color: var(--muted); font-weight: 500; }
 .stock-note { font-size: var(--text-s); color: var(--muted); margin: var(--s2) 0; max-width: var(--measure); }
-.price-editor summary { cursor: pointer; font-weight: 600; font-size: var(--text-s); padding: var(--s2) 0; color: var(--ink-2); }
+.price-editor summary { cursor: pointer; font-weight: 600; font-size: var(--text-s); padding: var(--s2) 0; color: var(--link); }
 .price-editor-note { margin: 0 0 var(--s2); }
 .price-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--s2); margin: var(--s2) 0 var(--s3); }
 .price-grid label { display: flex; flex-direction: column; gap: 3px; font: 550 var(--text-s) var(--body); color: var(--muted); }
@@ -1607,7 +1608,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit;
   border-bottom: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
 }
-.prov-btn:hover { color: var(--accent); }
+.prov-btn:hover { color: var(--link); }
 .prov-pop {
   position: fixed; z-index: 90; max-width: 420px; background: var(--ink); color: var(--paper);
   border-radius: var(--radius-m); padding: var(--s3); box-shadow: var(--shadow-lg); font-size: var(--text-s); line-height: 1.5;
@@ -1662,7 +1663,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   font-size: var(--text-s); cursor: pointer; color: var(--ink-2);
 }
 .species-pick button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.species-col-btn { background: none; border: 0; font: inherit; color: var(--accent); cursor: pointer; font-weight: 650; padding: 0; }
+.species-col-btn { background: none; border: 0; font: inherit; color: var(--link); cursor: pointer; font-weight: 650; padding: 0; }
 .species-col-btn:hover { text-decoration: underline; }
 .species-best { color: var(--green); font-weight: 650; }
 
