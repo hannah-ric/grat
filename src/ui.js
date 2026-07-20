@@ -2661,17 +2661,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     const t = tasks[state.bmTask];
     const card = el('section', 'bm-task');
     card.setAttribute('aria-label', t.title);
-    card.append(el('div', 'bm-board-title', esc(t.title)));
+    // Two halves — board media (title/diagram/hint) and the work stack
+    // (check-offs / step controls). The wrappers are display:contents
+    // no-ops everywhere except short landscape, where they sit side by
+    // side so the first check-off stays above the fold (A-11).
+    const media = el('div', 'bm-task-media');
+    const work = el('div', 'bm-task-checks');
+    card.append(media, work);
+    media.append(el('div', 'bm-board-title', esc(t.title)));
     if (t.svg) {
       const d = el('div', 'bm-diagram bm-diagram-hero');
       d.dataset.diagramTitle = t.title;
       d.innerHTML = t.largeSvg();
       wireDiagramZoom(d, t.largeSvg);
-      card.append(d);
-      card.append(el('p', 'bm-zoom-hint', 'Tap the diagram to enlarge · drag sideways to see the whole board'));
+      media.append(d);
+      media.append(el('p', 'bm-zoom-hint', 'Tap the diagram to enlarge · drag sideways to see the whole board'));
     }
     if (t.kind === 'step') {
-      if (t.text) card.append(el('p', 'bm-step-text', esc(t.text)));
+      if (t.text) work.append(el('p', 'bm-step-text', esc(t.text)));
       const row = el('div', 'bm-step-row');
       const btn = checkButton('Done — ' + t.title.replace(/^Step \d+ — /, ''), null, prog.steps[t.stepId],
         b => toggleProgress(prog.steps, t.stepId, b, 'pager'));
@@ -2680,10 +2687,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       play.setAttribute('aria-label', `Play 3D animation for this step`);
       play.onclick = () => enterBmPlayback(t.stepIndex);
       row.append(btn, play);
-      card.append(row);
+      work.append(row);
     } else {
       for (const c of t.checks) {
-        card.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn, 'pager')));
+        work.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn, 'pager')));
       }
     }
     pager.append(card);
