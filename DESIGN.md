@@ -115,6 +115,10 @@ rendered thumbnails, the hero assemble moment, and the pipeline dramatized in
 one shot. Returning users land in the studio with their latest project — the
 front porch never gets in a regular's way.
 
+> **Designed (July 2026):** the full landing concept — the Materialization
+> overture and the scroll-told porch — is specified in
+> [`docs/ui/front-porch.md`](docs/ui/front-porch.md).
+
 ## Optimization doctrine
 
 - Single-file constraint: every texture, environment, and drawing is

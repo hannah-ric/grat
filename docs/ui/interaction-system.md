@@ -328,7 +328,8 @@ one licensed scrub: a sticky viewport whose `explodeT` follows scroll
 progress through a damped follower (`target = f(scrollProgress)`, current
 damps at `c = 9` — never bind a transform to raw `scrollY`), narrating
 intent → drafted → proven → built. Reduced motion: static exploded poster
-frames per section. **Tier 3, gated on the front-porch concept.**
+frames per section. **Tier 3, gated on the front-porch concept** — that
+concept is now designed: [`front-porch.md`](front-porch.md).
 
 ## 9 · Immersive effects & direct manipulation
 
