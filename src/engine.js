@@ -591,10 +591,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     /* ---------------- camera controls ---------------- */
+    /* Fit distance for a sphere of `radius`: the tighter of the vertical and
+     * horizontal FOV governs, so portrait viewports (aspect < 1) pull back
+     * far enough that wide pieces clear the side edges too (A-05). */
+    function fitDist(radius, pad) {
+      const vHalf = (camera.fov * Math.PI / 180) / 2;
+      const hHalf = Math.atan(Math.tan(vHalf) * (viewAspect || 1));
+      return radius / Math.tan(Math.min(vHalf, hHalf)) * pad;
+    }
     function frame() {
       const b = E.bounds;
       const radius = Math.sqrt(b.w * b.w + b.d * b.d + b.h * b.h) / 2;
-      camGoal.dist = radius / Math.tan((camera.fov * Math.PI / 180) / 2) * 1.35;
+      camGoal.dist = Math.min(20000, fitDist(radius, 1.35));
       camGoal.theta = 0.72; camGoal.phi = 1.13;
       tgtGoal.set(0, b.h * 0.45, 0);
       focusRestore = null; // Home is the escape hatch from part framing
@@ -610,7 +618,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const t = rec.target;
       const radius = Math.max(60, Math.hypot(t.scale.x, t.scale.y, t.scale.z) / 2);
       tgtGoal.set(t.pos.x, t.pos.y, t.pos.z);
-      camGoal.dist = Math.max(300, radius / Math.tan((camera.fov * Math.PI / 180) / 2) * 1.55);
+      camGoal.dist = Math.max(300, fitDist(radius, 1.55));
       if (E.reducedMotion) { Object.assign(camCur, camGoal); tgtCur.copy(tgtGoal); }
     }
     function clearFocus() {
@@ -1065,10 +1073,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
     applyEnvironment(curTheme);
     applyQuality();
+    resize(); // before frame(): the fit needs the real viewport aspect
     frame();
     Object.assign(camCur, camGoal);
     tgtCur.copy(tgtGoal);
-    resize();
     tick();
     return api;
   }
