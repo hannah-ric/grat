@@ -50,6 +50,7 @@
   --ink: #241813;        /* primary text — deep espresso-black */
   --ink-2: #593837;      /* espresso (brand) — secondary text + structure */
   --muted: #877063;      /* warm brown-grey */
+  --muted-2: #6F5B4C;    /* contrast-safe muted — holds AA (≥4.5:1) at small sizes on paper/panel */
   --line: color-mix(in oklab, #593837 24%, transparent);   /* crisper hairline */
   --line-2: color-mix(in oklab, #593837 44%, transparent); /* strong divider */
 
@@ -192,6 +193,7 @@
     --ink: #F2EADF;
     --ink-2: #CFBBAD;
     --muted: #9E8778;
+    --muted-2: #A89180; /* dark muted already clears AA — one step lighter for margin */
     --line: color-mix(in oklab, #F2EADF 15%, transparent);
     --line-2: color-mix(in oklab, #F2EADF 34%, transparent);
     --structure: #0F0A08;
@@ -226,7 +228,7 @@
 }
 :root[data-theme="light"] {
   --paper: #F1EBDD; --panel: #FBF8F1; --panel-2: #E7DFCD; --panel-3: #D8CDB6;
-  --ink: #241813; --ink-2: #593837; --muted: #877063;
+  --ink: #241813; --ink-2: #593837; --muted: #877063; --muted-2: #6F5B4C;
   --line: color-mix(in oklab, #593837 24%, transparent); --line-2: color-mix(in oklab, #593837 44%, transparent);
   --structure: #4A2E2A; --structure-2: #35201D; --structure-ink: #F3EADF;
   --accent: #942911; --accent-ink: #FCF4EC; --accent-soft: #F2DED5; --accent-line: color-mix(in oklab, #942911 34%, transparent);
@@ -241,7 +243,7 @@
 }
 :root[data-theme="dark"] {
   --paper: #17110F; --panel: #211814; --panel-2: #100B09; --panel-3: #2C201B;
-  --ink: #F2EADF; --ink-2: #CFBBAD; --muted: #9E8778;
+  --ink: #F2EADF; --ink-2: #CFBBAD; --muted: #9E8778; --muted-2: #A89180;
   --line: color-mix(in oklab, #F2EADF 15%, transparent); --line-2: color-mix(in oklab, #F2EADF 34%, transparent);
   --structure: #0F0A08; --structure-2: #060403; --structure-ink: #F2EADF;
   --accent: #E17B54; --accent-ink: #2A1008; --accent-soft: #3A1C13; --accent-line: color-mix(in oklab, #E17B54 40%, transparent);
@@ -278,6 +280,9 @@ body {
   color: var(--on-brand);
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* every placeholder speaks the muted family at AA — never the browser's
+ * default gray, which fails 4.5:1 on both themes' surfaces (C-10) */
+::placeholder { color: var(--muted-2); opacity: 1; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: 2px; border-radius: 4px; }
 
@@ -605,7 +610,7 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 }
 .chat-input textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 /* a placeholder longer than the column reads as one clean clipped line,
- * never a half-visible wrap */
+ * never a half-visible wrap (color comes from the global ::placeholder rule) */
 .chat-input textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* AI-allowance meter (A-05): one quiet line under the chat input */
 .ai-usage { margin-top: var(--s2); font-size: var(--text-xs); color: var(--muted); line-height: 1.4; }
@@ -699,7 +704,9 @@ body.drafting .viewport-wrap {
 }
 .splitter:hover .splitter-grip, .splitter.dragging .splitter-grip { background: var(--accent); }
 .splitter:hover::before, .splitter.dragging::before { background: var(--accent); }
-.splitter:focus-visible { outline: none; }
+/* keyboard focus paints the ring on the splitter itself — the grip-only
+   highlight left this the one indicator-less stop in the focus walk (C-12) */
+.splitter:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .splitter:focus-visible .splitter-grip { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 /* motion micro-polish (roadmap #13): the grip acknowledges the grab */
 .splitter.dragging .splitter-grip, .splitter:active .splitter-grip { transform: scaleX(1.5); }
@@ -787,7 +794,7 @@ body.drafting .viewport-wrap {
   transition: border-color var(--t-fast) var(--ease);
 }
 .hero-prompt textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.hero-prompt textarea::placeholder { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-prompt textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hero-prompt .btn.primary { font-size: var(--text-m); padding: var(--s2) var(--s4); }
 .hero-starters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin-top: var(--s2); }
 .hero-starter { min-width: 0; }
@@ -869,7 +876,9 @@ body.drafting .viewport-wrap {
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
-  border: 0; background: none; cursor: pointer; padding: 10px 14px 12px; color: var(--muted);
+  /* inactive labels are core navigation: --muted-2 holds AA at 15px/600,
+     where --muted measured 4.37:1 on the panel (C-11) */
+  border: 0; background: none; cursor: pointer; padding: 10px 14px 12px; color: var(--muted-2);
   min-height: var(--tap);
   font-size: var(--text-s); font-weight: 600; border-radius: 8px 8px 0 0; position: relative; white-space: nowrap;
   transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
@@ -1620,7 +1629,8 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .bm-check[aria-pressed="true"] .box { background: var(--green); border-color: var(--green); }
 .bm-check[aria-pressed="true"] .bm-check-label { text-decoration: line-through; text-decoration-thickness: 2px; }
 .bm-check .bm-check-label { flex: 1; min-width: 0; font-weight: 600; }
-.bm-check .bm-check-dims { font: 600 clamp(14px, 1.8vw, 17px) var(--mono); color: var(--accent); white-space: nowrap; }
+/* dimension numerals are THE machine value at the saw — never below 16px (C-09) */
+.bm-check .bm-check-dims { font: 600 clamp(16px, 1.8vw, 17px) var(--mono); color: var(--accent); white-space: nowrap; }
 .bm-step-play {
   flex: none; width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--accent);
   background: var(--accent-soft); color: var(--accent); font-size: 20px; cursor: pointer;
@@ -1636,6 +1646,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 
 /* ---------------- phone build pager: one task at a time ---------------- */
 .bm-pager, .bm-tasknav { display: none; }
+/* Task-card halves: board media vs work stack. display:contents keeps the
+   portrait flow and border chaining exactly as before (A-11). */
+.bm-task-media, .bm-task-checks { display: contents; }
 .bm-task .bm-board-title {
   border-radius: var(--radius-m) var(--radius-m) 0 0;
   font-size: var(--text-m);
@@ -1643,7 +1656,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .bm-diagram-hero { border-left: 1px solid var(--line-2); border-right: 1px solid var(--line-2); }
 .bm-diagram-hero .cut-diagram-svg { min-width: 760px; min-height: 150px; }
 .bm-zoom-hint {
-  margin: 0; padding: 6px var(--s3); font-size: var(--text-s); color: var(--muted);
+  margin: 0; padding: 6px var(--s3); font-size: var(--text-s); color: var(--muted-2);
   background: var(--paper); border: 1px solid var(--line-2); border-top: 0;
 }
 .bm-step-text { font-size: var(--text-m); line-height: var(--leading-body); color: var(--ink-2); margin: var(--s2) 0; max-width: var(--measure); }
@@ -1730,6 +1743,26 @@ body.bm-playback .playback-bar { display: none !important; }
   }
 }
 
+/* A-11: landscape phones (e.g. 844x390) — a fold-high hero diagram must not
+   push every check-off below the fold. Board media takes the left column and
+   the work stack rides beside it, so the first checklist row is on screen
+   the moment the pager opens; the pager still scrolls for the rest. */
+@media (max-width: 880px) and (max-height: 500px) and (orientation: landscape) {
+  .build-mode .bm-head { padding-top: var(--s1); padding-bottom: var(--s1); }
+  .bm-task { display: flex; align-items: flex-start; gap: var(--s3); }
+  .bm-task-media { display: block; flex: 1 1 55%; min-width: 0; }
+  .bm-task-checks { display: block; flex: 1 1 45%; min-width: 250px; }
+  /* the work stack opens without a board title above it — give it its own
+     top border and lid radius */
+  .bm-task-checks > .bm-check:first-child {
+    border-top: 1px solid var(--line-2);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .bm-task-checks .bm-step-row .bm-check { border-top: 1px solid var(--line-2); }
+  /* the narrower pane keeps the 560px legibility floor and scrolls sideways */
+  .bm-diagram-hero .cut-diagram-svg { min-width: 560px; }
+}
+
 /* photo bubble in chat */
 .msg .photo-thumb { max-width: 180px; border-radius: 10px; border: 1px solid var(--line-2); display: block; margin-bottom: var(--s2); }
 .chip.caveat { background: var(--amber-soft); color: var(--amber-ink); }
@@ -1796,6 +1829,10 @@ body.bm-playback .playback-bar { display: none !important; }
 </head>
 <body>
 
+<!-- While the welcome card is up its one primary action leads the skip
+     links (C-13); ui.js unhides it with the card and hides it again on
+     dismiss so the link never points at an invisible input. -->
+<a class="skip-link" href="#heroText" id="skipToHero" hidden>Skip to describe your piece</a>
 <a class="skip-link" href="#chatText">Skip to chat</a>
 <a class="skip-link" href="#view3d">Skip to the 3D model</a>
 <a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
@@ -13398,6 +13435,17 @@ var BB = globalThis.BB = globalThis.BB || {};
         'body');
     }
 
+    /* ============ build-mode position persistence (C-08) ============ */
+    {
+      // The pager's last-viewed task index rides the progress record; pruning
+      // stale checklist keys must never drop it, or exit/reload loses the
+      // mid-build position.
+      const prog = { cuts: { 'b:0:0:stale:100': true }, steps: {}, task: 5 };
+      Plans.pruneProgress(prog, { cuts: [], steps: [] });
+      test('shell', 'progress prune keeps the build pager position (task index)',
+        prog.task === 5 && !prog.cuts['b:0:0:stale:100'], `task ${prog.task}, stale pruned`, 'task 5, stale pruned');
+    }
+
     /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
     if (BB.Engine && BB.Engine.minDolly) {
       // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction
@@ -17708,7 +17756,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!BB.Billing.gate('advancedFeatures', 'The full-screen workshop companion and advanced build tools are included with Pro.')) return;
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
-    state.bmTask = null; // pager re-lands on the first unfinished task
+    // Mid-build position survives interruptions (C-08): the pager resumes the
+    // last-viewed task, persisted alongside progress; a fresh checklist (no
+    // saved index yet) still lands on the first unfinished task.
+    const savedTask = state.project.progress.task;
+    state.bmTask = Number.isInteger(savedTask) ? savedTask : null;
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
     renderBuildChecklists();
@@ -17890,20 +17942,30 @@ var BB = globalThis.BB = globalThis.BB || {};
       state.bmTask = firstOpen < 0 ? 0 : firstOpen;
     }
     state.bmTask = Math.max(0, Math.min(tasks.length - 1, state.bmTask));
+    // The position rides the progress record (pruneProgress only touches
+    // cuts/steps), so exit → re-enter and reload both restore it (C-08).
+    state.project.progress.task = state.bmTask;
     const t = tasks[state.bmTask];
     const card = el('section', 'bm-task');
     card.setAttribute('aria-label', t.title);
-    card.append(el('div', 'bm-board-title', esc(t.title)));
+    // Two halves — board media (title/diagram/hint) and the work stack
+    // (check-offs / step controls). The wrappers are display:contents
+    // no-ops everywhere except short landscape, where they sit side by
+    // side so the first check-off stays above the fold (A-11).
+    const media = el('div', 'bm-task-media');
+    const work = el('div', 'bm-task-checks');
+    card.append(media, work);
+    media.append(el('div', 'bm-board-title', esc(t.title)));
     if (t.svg) {
       const d = el('div', 'bm-diagram bm-diagram-hero');
       d.dataset.diagramTitle = t.title;
       d.innerHTML = t.largeSvg();
       wireDiagramZoom(d, t.largeSvg);
-      card.append(d);
-      card.append(el('p', 'bm-zoom-hint', 'Tap the diagram to enlarge · drag sideways to see the whole board'));
+      media.append(d);
+      media.append(el('p', 'bm-zoom-hint', 'Tap the diagram to enlarge · drag sideways to see the whole board'));
     }
     if (t.kind === 'step') {
-      if (t.text) card.append(el('p', 'bm-step-text', esc(t.text)));
+      if (t.text) work.append(el('p', 'bm-step-text', esc(t.text)));
       const row = el('div', 'bm-step-row');
       const btn = checkButton('Done — ' + t.title.replace(/^Step \d+ — /, ''), null, prog.steps[t.stepId],
         b => toggleProgress(prog.steps, t.stepId, b, 'pager'));
@@ -17912,10 +17974,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       play.setAttribute('aria-label', `Play 3D animation for this step`);
       play.onclick = () => enterBmPlayback(t.stepIndex);
       row.append(btn, play);
-      card.append(row);
+      work.append(row);
     } else {
       for (const c of t.checks) {
-        card.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn, 'pager')));
+        work.append(checkButton(c.label, c.dims, prog.cuts[c.key], btn => toggleProgress(prog.cuts, c.key, btn, 'pager')));
       }
     }
     pager.append(card);
@@ -17931,6 +17993,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.bmTask = Math.max(0, next);
     renderBmTask();
     $('bmPager').scrollTop = 0;
+    scheduleAutosave(); // the new position persists like any other progress (C-08)
   }
 
   /* ---------------- install nudge (once, after the first finished build) --- */
@@ -18160,9 +18223,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
     renderHeroStarters();
     $('welcomeOverlay').hidden = false;
+    // The card's one primary action must be reachable immediately by keyboard
+    // (C-13): "Skip to describe your piece" leads the skip links while the
+    // card is up, so Tab 1 + Enter lands in the hero input.
+    $('skipToHero').hidden = false;
   }
   function hideWelcome() {
     $('welcomeOverlay').hidden = true;
+    $('skipToHero').hidden = true;
+    // A dismissed card must not strand a keyboard user on its hidden input.
+    if (document.activeElement === $('heroText')) focusChat();
   }
 
   /* ---------------- shell: URL-restorable tabs ----------------
@@ -18684,6 +18754,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('mode-design').onclick = () => setMode('design');
     $('mode-plan').onclick = () => setMode('plan');
     $('skipToPlans').addEventListener('click', () => { if (state.mode !== 'plan') setMode('plan'); });
+    /* Fragment navigation won't focus a textarea and would dirty the managed
+     * location.hash — focus the hero input directly (C-13). */
+    $('skipToHero').addEventListener('click', e => { e.preventDefault(); $('heroText').focus(); });
     /* "Learn why" links anywhere in the app open the reference on the right
      * shelf — the Shop Reference relocated from peer tab to contextual door. */
     document.addEventListener('click', e => {
