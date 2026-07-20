@@ -21,6 +21,10 @@
 </head>
 <body>
 
+<!-- While the welcome card is up its one primary action leads the skip
+     links (C-13); ui.js unhides it with the card and hides it again on
+     dismiss so the link never points at an invisible input. -->
+<a class="skip-link" href="#heroText" id="skipToHero" hidden>Skip to describe your piece</a>
 <a class="skip-link" href="#chatText">Skip to chat</a>
 <a class="skip-link" href="#view3d">Skip to the 3D model</a>
 <a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>

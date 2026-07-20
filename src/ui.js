@@ -2929,9 +2929,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
     renderHeroStarters();
     $('welcomeOverlay').hidden = false;
+    // The card's one primary action must be reachable immediately by keyboard
+    // (C-13): "Skip to describe your piece" leads the skip links while the
+    // card is up, so Tab 1 + Enter lands in the hero input.
+    $('skipToHero').hidden = false;
   }
   function hideWelcome() {
     $('welcomeOverlay').hidden = true;
+    $('skipToHero').hidden = true;
+    // A dismissed card must not strand a keyboard user on its hidden input.
+    if (document.activeElement === $('heroText')) focusChat();
   }
 
   /* ---------------- shell: URL-restorable tabs ----------------
@@ -3453,6 +3460,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('mode-design').onclick = () => setMode('design');
     $('mode-plan').onclick = () => setMode('plan');
     $('skipToPlans').addEventListener('click', () => { if (state.mode !== 'plan') setMode('plan'); });
+    /* Fragment navigation won't focus a textarea and would dirty the managed
+     * location.hash — focus the hero input directly (C-13). */
+    $('skipToHero').addEventListener('click', e => { e.preventDefault(); $('heroText').focus(); });
     /* "Learn why" links anywhere in the app open the reference on the right
      * shelf — the Shop Reference relocated from peer tab to contextual door. */
     document.addEventListener('click', e => {
