@@ -1057,6 +1057,24 @@ var BB = globalThis.BB = globalThis.BB || {};
         'body');
     }
 
+    /* ============ chat diff-chip humanizer (C-05, browser only) ============ */
+    if (globalThis.__bb && globalThis.__bb.humanizeDiffs) {
+      // The "Changed" ledger must speak user vocabulary: no wire field
+      // names, no "null", creates phrased as additions.
+      const chips = globalThis.__bb.humanizeDiffs([
+        { path: 'drawers.count', from: null, to: 2 },
+        { path: 'meta.template', from: 'table', to: 'nightstand' },
+        { path: 'structure.backPanel', from: false, to: true },
+        { path: 'made.up.path', from: 'a_b', to: 'c_d' }
+      ]);
+      test('shell', 'diff chips: null drawer count reads as an addition',
+        chips[0] === 'Added 2 drawers', chips[0], 'Added 2 drawers');
+      test('shell', 'diff chips: no chip ever contains "null" or "→ undefined"',
+        chips.every(c => !/null|undefined/.test(c)), chips.join(' | '), 'no null/undefined');
+      test('shell', 'diff chips: booleans and unknown paths still read as words',
+        chips[2] === 'Added back panel' && !/_/.test(chips[3]), `${chips[2]} | ${chips[3]}`, 'Added back panel | no underscores');
+    }
+
     /* ============ build-mode position persistence (C-08) ============ */
     {
       // The pager's last-viewed task index rides the progress record; pruning

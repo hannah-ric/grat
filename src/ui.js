@@ -1367,6 +1367,40 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title">Changed</span>' : ''}${chipHTML.join('')}</div>`;
     return chatMsg('bot', html);
   }
+  /* ---------------- diff-chip humanizer (C-05) ----------------
+   * The "Changed" ledger speaks user vocabulary. Spec.diffSpecs hands the
+   * display layer structured diffs ({path, from, to, label?, text?}); this
+   * formatter — display-only, spec.js untouched — turns them into phrases
+   * ("Added 2 drawers", "Height 24 in → 22 1/16 in") so wire field names
+   * and "null" never reach a Beginner's chip. Pre-built d.text chips (the
+   * custom-composition summaries) pass through untouched, and values still
+   * route through Spec.fmtValue → BB.Units, so chips follow display units. */
+  const DIFF_NOUNS = { 'drawers.count': ['drawer', 'drawers'], 'structure.shelfCount': ['shelf', 'shelves'] };
+  function humanizeDiffs(diffs) {
+    const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    return diffs.map(d => {
+      if (d.text) return d.text;
+      const label = d.label || Spec.PATH_LABELS[d.path] ||
+        d.path.split('.').pop().replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase();
+      const v = x => Spec.fmtValue(d.path, x);
+      const noun = DIFF_NOUNS[d.path];
+      if (noun) {
+        const was = +d.from || 0, now = +d.to || 0;
+        if (!was && now) return `Added ${now} ${now === 1 ? noun[0] : noun[1]}`;
+        if (was && !now) return `Removed the ${was === 1 ? noun[0] : noun[1]}`;
+        return `${cap(noun[1])} ${was} → ${now}`;
+      }
+      if (typeof d.to === 'boolean' || typeof d.from === 'boolean') {
+        return d.to ? `Added ${label}` : `Removed ${label}`;
+      }
+      if (d.path === 'meta.template') return `Rebuilt as a ${v(d.to)}`;
+      if (d.path === 'meta.name') return `Renamed to “${d.to}”`;
+      if (d.from == null && d.to != null) return `${cap(label)}: ${v(d.to)}`;
+      if (d.from != null && d.to == null) return `Removed ${label}`;
+      return `${cap(label)} ${v(d.from)} → ${v(d.to)}`;
+    });
+  }
+
   /* A design just landed while the plans sit folded away in Design mode:
    * give the journey its explicit next step (C-03) — the Plan segment's 6px
    * state dot is not an affordance. One quiet-strong chat action, kept to a
@@ -1647,7 +1681,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
-      const chips = Spec.describeDiff(realDiffs);
+      const chips = humanizeDiffs(realDiffs); // user vocabulary, never wire names (C-05)
       // The badge reflects what actually just happened — the strongest
       // evidence there is about the connection state. A keyless proxy (503)
       // reads "AI not configured", never plain offline (audit L-14).
@@ -3739,7 +3773,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
       preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
-      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness,
+      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness, humanizeDiffs,
       setMode, probeAI, setAIState, renderAccount
     };
 
