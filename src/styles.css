@@ -790,7 +790,7 @@ body.welcome-open .viewport-hint { display: none; }
 .advisory .adv-icon { flex: none; display: inline-flex; align-items: center; margin-top: 2px; }
 .advisory.error { background: var(--brick-soft); color: var(--brick-ink); border-color: color-mix(in srgb, var(--brick) 30%, transparent); }
 .advisory .dismiss {
-  border: 0; background: none; cursor: pointer; color: inherit; opacity: .6; padding: 0 2px; font-size: 15px; line-height: 1;
+  border: 0; background: none; cursor: pointer; color: inherit; opacity: .6; padding: 0 2px; font-size: var(--text-s); line-height: 1;
   flex: none; margin-left: auto;
 }
 .advisory .dismiss:hover { opacity: 1; }
@@ -1338,7 +1338,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   /* phones: Design/Plan are never unlabeled dots (X-06) — each segment
      stacks its state dot over a small visible word, holding the 44px floor */
   .mode-btn:not(.build-cta) { flex-direction: column; justify-content: center; gap: 3px; padding: 4px 8px; }
-  .mode-btn:not(.build-cta) .mode-label { display: inline; font-size: 0.625rem; line-height: 1; letter-spacing: .02em; }
+  .mode-btn:not(.build-cta) .mode-label { display: inline; font-size: var(--text-xs); line-height: 1; letter-spacing: .02em; }
   .mode-btn .dot { width: 6px; height: 6px; }
   .mode-btn.build-cta .mode-label { display: inline; }
   .welcome { top: 48px; width: min(440px, calc(100% - var(--s3) * 2)); max-height: calc(100% - 132px); padding: var(--s3); }
@@ -1618,7 +1618,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .prov-pop h5 { flex: 1; margin: 0 0 var(--s1); font: 700 var(--text-xs) var(--body); letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--paper) 65%, transparent); }
 .prov-pop .prov-close {
   flex: none; border: 0; background: none; color: inherit; cursor: pointer;
-  opacity: .75; font-size: 14px; line-height: 1; padding: 0 2px;
+  opacity: .75; font-size: var(--text-s); line-height: 1; padding: 0 2px;
 }
 .prov-pop .prov-close:hover { opacity: 1; }
 .prov-pop .prov-line { margin-bottom: var(--s1); }
@@ -1691,8 +1691,8 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   border-bottom: 2px solid var(--ink); flex: none;
 }
 .bm-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
-.bm-name { font-family: var(--display); font-weight: 700; font-size: clamp(20px, 3.4vw, 30px); }
-.bm-progress { font: 650 clamp(14px, 2vw, 18px) var(--mono); color: var(--green); }
+.bm-name { font-family: var(--display); font-weight: 700; font-size: var(--text-xl); }
+.bm-progress { font: 650 var(--text-m) var(--mono); color: var(--green); }
 .bm-wake { font: 550 var(--text-s) var(--body); color: var(--muted); }
 .bm-exit { padding: 14px 22px; font-size: var(--text-m); font-weight: 650; }
 .bm-columns { flex: 1; display: flex; gap: var(--s3); padding: var(--s3) var(--s4) var(--s5); overflow: auto; overscroll-behavior: contain; }
@@ -1700,7 +1700,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .bm-col h2 { font-family: var(--display); font-size: var(--text-l); margin: var(--s2) 0 var(--s3); }
 .bm-board { margin-bottom: var(--s4); }
 .bm-board-title {
-  font: 700 clamp(14px, 1.9vw, 17px) var(--mono); padding: var(--s2) var(--s3);
+  font: 700 var(--text-m) var(--mono); padding: var(--s2) var(--s3);
   background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--radius) var(--radius) 0 0;
 }
 .bm-diagram {
@@ -1710,22 +1710,22 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .bm-check {
   display: flex; align-items: center; gap: var(--s3); width: 100%; text-align: left;
   padding: 16px var(--s3); min-height: 64px; cursor: pointer;
-  background: var(--panel); border: 1px solid var(--line-2); border-top: 0; font-size: clamp(16px, 2.2vw, 20px);
+  background: var(--panel); border: 1px solid var(--line-2); border-top: 0; font-size: var(--text-m);
 }
 .bm-board .bm-check:last-child { border-radius: 0 0 var(--radius) var(--radius); }
 .bm-check .box {
   flex: none; width: 34px; height: 34px; border: 3px solid var(--ink-2); border-radius: var(--radius-m);
-  display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--accent-ink); background: transparent;
+  display: flex; align-items: center; justify-content: center; font-size: var(--text-l); color: var(--accent-ink); background: transparent;
 }
 .bm-check[aria-pressed="true"] { color: var(--muted); }
 .bm-check[aria-pressed="true"] .box { background: var(--green); border-color: var(--green); }
 .bm-check[aria-pressed="true"] .bm-check-label { text-decoration: line-through; text-decoration-thickness: 2px; }
 .bm-check .bm-check-label { flex: 1; min-width: 0; font-weight: 600; }
 /* dimension numerals are THE machine value at the saw — never below 16px (C-09) */
-.bm-check .bm-check-dims { font: 600 clamp(16px, 1.8vw, 17px) var(--mono); color: var(--accent); white-space: nowrap; }
+.bm-check .bm-check-dims { font: 600 var(--text-m) var(--mono); color: var(--accent); white-space: nowrap; }
 .bm-step-play {
   flex: none; width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--accent);
-  background: var(--accent-soft); color: var(--accent); font-size: 20px; cursor: pointer;
+  background: var(--accent-soft); color: var(--accent); font-size: var(--text-l); cursor: pointer;
 }
 .bm-steps .bm-check { border: 1px solid var(--line-2); border-radius: var(--radius); margin-bottom: var(--s2); }
 
@@ -1792,7 +1792,7 @@ body.bm-playback .playback-bar { display: none !important; }
   box-shadow: var(--shadow-lg); max-width: calc(100vw - 24px);
 }
 .bm-big { padding: 16px 20px; font-size: var(--text-m); font-weight: 650; }
-.bm-pblabel { font: 650 clamp(14px, 2vw, 18px) var(--body); max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bm-pblabel { font: 650 var(--text-m) var(--body); max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 880px) {
   .bm-columns { flex-direction: column; }
