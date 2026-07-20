@@ -425,6 +425,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: absolute; right: 0; top: calc(100% + var(--s2)); min-width: 240px;
   background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg); padding: var(--s1);
+  /* the menu can outgrow a short viewport (phones, 1024x768) — cap it below
+     the fold and scroll inside so the last items stay tappable (A-02) */
+  max-height: calc(100dvh - 76px); overflow-y: auto; overscroll-behavior: contain;
   opacity: 0; transform: translateY(-6px) scale(.98); pointer-events: none;
   transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
   z-index: 60;
@@ -842,7 +845,16 @@ body.drafting .viewport-wrap {
 /* ---------------- tabs + panel ---------------- */
 .tabs {
   display: flex; gap: var(--s1); padding: var(--s1) var(--s3) 0;
-  background: var(--panel); flex: none; overflow-x: auto; scrollbar-width: none;
+  flex: none; overflow-x: auto; scrollbar-width: none;
+  /* scroll affordance (A-03): the bar hides its scrollbar, so a warm walnut
+     shadow marks a clipped edge; panel-colored covers scroll with the content
+     and mask the shadow once the bar is flush with that edge. */
+  background:
+    linear-gradient(to right, var(--panel) 50%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--panel) 50%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--ink-2) 30%, transparent), transparent) left / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--ink-2) 30%, transparent), transparent) right / 14px 100% no-repeat scroll
+    var(--panel);
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
@@ -1035,7 +1047,9 @@ table.data tbody tr:hover { background: var(--panel-2); }
 /* Header units control: the same segmented pattern, compact. Switching only
  * changes text produced by BB.Units, so no layout jump. */
 .units-seg { flex: none; }
-.units-seg button { flex: none; min-width: 34px; padding: var(--s1) 9px; font-family: var(--mono); }
+.units-seg button { flex: none; min-width: var(--tap); min-height: 40px; padding: var(--s1) 9px; font-family: var(--mono); }
+/* under a thumb the pair holds the full --tap floor (A-08) */
+@media (pointer: coarse) { .units-seg button { min-height: var(--tap); } }
 #dualBtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 
@@ -1187,7 +1201,8 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   }
   .chat.expanded { transform: none; }
   .sheet-handle {
-    display: flex; justify-content: center; padding: 8px 0 2px; cursor: grab; border: 0; background: none; width: 100%;
+    /* 12+5+7 = 24px — the drag/tap hit floor for the sheet grab (A-08) */
+    display: flex; justify-content: center; padding: 12px 0 7px; cursor: grab; border: 0; background: none; width: 100%;
   }
   .sheet-handle::after { content: ""; width: 44px; height: 5px; border-radius: 3px; background: var(--line-2); }
   /* collapsed: last message peeks above the input so the thread has a pulse */
@@ -1225,22 +1240,34 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .viewport-toolbar .vt-sep { display: none; }
   .viewport-toolbar .vt-long { display: none; }
   .viewport-toolbar .vt-short { display: inline; }
-  .viewport-toolbar .toggle { font-size: var(--text-s); min-height: 40px; padding: 8px 10px; }
-  .viewport-toolbar #frameBtn, .viewport-toolbar #viewBtn { min-height: 40px; }
-  .view-seg button { min-width: 36px; min-height: 40px; padding: 8px 10px; font-size: var(--text-s); }
-  .view-menu input[type="range"] { width: 120px; min-height: 40px; }
+  /* --tap floor (A-08): every phone control a thumb aims at is >=44px */
+  .viewport-toolbar .toggle { font-size: var(--text-s); min-height: var(--tap); padding: 8px 10px; }
+  .viewport-toolbar #frameBtn, .viewport-toolbar #viewBtn { min-height: var(--tap); min-width: var(--tap); }
+  .view-seg button { min-width: var(--tap); min-height: var(--tap); padding: 8px 10px; font-size: var(--text-s); }
+  .view-menu input[type="range"] { width: 120px; min-height: var(--tap); }
   .btn { padding: 9px 13px; }
+  /* the chat sheet (z 50, above the topbar's z 30 subtree) owns the bottom
+     --sheet-peek strip — menus must stop above it or their tail items sit
+     under the sheet and can't be tapped (A-02) */
+  .menu { max-height: calc(100dvh - 76px - var(--sheet-peek)); }
   .panel { padding: var(--s3); }
   /* one header row, always: the wordmark yields, the design name flexes,
      Build shortens — nothing wraps into a second row. */
   .topbar { flex-wrap: nowrap; gap: var(--s1); padding: 6px var(--s2); min-height: 48px; }
   .brand-name { display: none; }
   .brand-short { display: inline-block; }
-  .design-name { width: auto; flex: 1 1 96px; min-width: 96px; }
+  /* the diagnostics glyph keeps its 26px footprint but earns a 44px hit area
+     through padding pulled back by negative margins (A-08); taps are inert —
+     only a deliberate 650ms hold (or Enter) opens diagnostics */
+  .brand-button { padding: 9px; margin: -9px -9px -9px -8px; }
+  /* grow-8 lets the name outbid the two spacers for tablet free space, so
+     starter-length names ("Shaker Dining Table") render whole at 768 (A-12);
+     at phone widths the row is packed and shrink still governs. */
+  .design-name { width: auto; flex: 8 1 96px; min-width: 96px; }
   .topbar .btn { padding: 8px 9px; font-size: var(--text-s); min-height: 40px; }
-  .topbar .btn.icon { min-width: 40px; }
+  .topbar .btn.icon { min-width: var(--tap); min-height: var(--tap); margin-inline: -2px; }
   .mode-nav { padding: 2px; }
-  .mode-btn { padding: 6px 9px; min-height: 44px; }
+  .mode-btn { padding: 6px 9px; min-height: 44px; min-width: var(--tap); }
   /* phones: Design/Plan are never unlabeled dots (X-06) — each segment
      stacks its state dot over a small visible word, holding the 44px floor */
   .mode-btn:not(.build-cta) { flex-direction: column; justify-content: center; gap: 3px; padding: 4px 8px; }
@@ -1266,6 +1293,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .save-state { display: none; }
   .save-dot:not([hidden]) { display: inline-block; }
   .brand-short { display: none; }
+  /* the glyph is the whole brand here — its breathing room comes from the
+     topbar gap, so the extra padding would only push More off 320 (A-01) */
+  .brand { padding-right: 0; }
   .design-name { min-width: 72px; flex-basis: 72px; }
   /* redo folds out of the row — the labeled mode nav (X-06) takes its width;
      touch users keep a redo affordance via the More menu (P1-1) */
@@ -1699,17 +1729,29 @@ body.bm-playback .playback-bar { display: none !important; }
   .print-elevation svg { width: 100%; height: auto; }
 }
 
+@media (max-width: 480px) {
+  /* One-row viewport toolbar (A-04): in plan mode the viewer strip is only
+     ~180px tall — a wrapped two-row toolbar was covering half the model.
+     The toggles drop to their state tracks (aria-labels carry the words). */
+  .control-card.viewport-toolbar { flex-wrap: nowrap; padding: 3px 8px; gap: 4px; }
+  .viewport-toolbar .toggle .vt-short { display: none; }
+  .viewport-toolbar .toggle { gap: 0; }
+}
 @media (max-width: 400px) {
-  .topbar { gap: 2px; }
-  .topbar .btn { padding-left: 8px; padding-right: 8px; }
-  .design-name { min-width: 64px; flex-basis: 64px; }
+  .topbar { gap: 2px; padding-left: 4px; padding-right: 4px; }
+  .topbar .btn { padding-left: 7px; padding-right: 7px; }
+  .design-name { min-width: 40px; flex-basis: 48px; }
+  .mode-nav { gap: 2px; }
+  /* the save dot leaves the flow and rides the design name's trailing edge —
+     its 11px of row width is what keeps More on the 320 viewport (A-01) */
+  .save-dot { position: absolute; margin-left: -13px; pointer-events: none; }
   /* the caret is decoration; the narrow header needs its 21px more */
   #moreBtn svg { display: none; }
   .mode-btn { padding-inline: 7px; }
   .mode-btn:not(.build-cta) { padding-inline: 6px; }
 }
 @media (max-width: 360px) {
-  .design-name { min-width: 56px; flex-basis: 56px; }
+  .design-name { min-width: 36px; flex-basis: 40px; }
   .mode-btn { padding-inline: 6px; }
   .mode-btn:not(.build-cta) { padding-inline: 5px; }
 }
@@ -2254,8 +2296,8 @@ body.bm-playback .playback-bar { display: none !important; }
     </div>
   </div>
 
-  <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance">
-</div>
+  <div class="prov-pop" id="provPop" hidden role="dialog" aria-label="Number provenance"></div>
+</div><!-- /#app — printRoot must stay OUTSIDE it: print hides #app entirely -->
 
 <div id="printRoot"></div>
 
@@ -11958,7 +12000,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     return (a && a.providers && a.providers.length) ? 'Device and cloud sync' : 'Device sync';
   }
 
+  /* Billing is "configured" only when the origin gave us evidence: a billing
+   * payload or sign-in providers (mirror of ui.js billingConfigured). A static
+   * or providerless host cannot sell Pro — its Upgrade path is an honest
+   * dead-end — so it must never gate either (C-01). The SERVER stays the
+   * entitlement authority whenever billing is real. */
+  function configured() {
+    const a = account();
+    return !!(a.billing || (a.providers && a.providers.length));
+  }
+
   function gate(feature, reason) {
+    if (!configured()) return true;
     if (isPro() || entitled(feature)) return true;
     open(reason || 'This is a Pro feature.');
     return false;
@@ -13288,6 +13341,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       test('joints3d', 'dovetail flank follows the 1:8 rule (≈7.1°, within 7–14°)',
         flank >= 6.9 && flank <= 14, flank.toFixed(2) + '°', '7.13°');
       test('joints3d', 'dovetail assembles along the side face normal (Z)', dt.insertAxis[2] === 1, dt.insertAxis.join(','), '0,0,1');
+    }
+
+    /* ============ shell structure (browser only) ============ */
+    if (typeof document !== 'undefined') {
+      // Print plans depend on #printRoot living OUTSIDE #app: the print
+      // stylesheet hides #app entirely, so a printRoot parsed inside it
+      // prints a blank sheet (B-01).
+      const pr = document.getElementById('printRoot');
+      test('shell', 'printRoot sits outside #app (print hides #app)',
+        !!pr && pr.parentElement === document.body,
+        pr ? (pr.parentElement === document.body ? 'body' : '#' + (pr.parentElement.id || pr.parentElement.tagName)) : 'missing',
+        'body');
     }
 
     return results;
@@ -17936,8 +18001,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!state.integrity) return;
     const states = modeStates();
     // Build is Pro-gated: the lock glyph + aria announce the paywall BEFORE
-    // the tap (X-04) — activation still opens the pricing dialog.
-    const buildLocked = !BB.Billing.entitled('advancedFeatures');
+    // the tap (X-04) — activation still opens the pricing dialog. On a
+    // providerless host there is no paywall to announce: gate() never fires
+    // there (C-01), so the lock stays hidden too.
+    const buildLocked = billingConfigured(Store.auth()) && !BB.Billing.entitled('advancedFeatures');
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
     for (const m of ['design', 'plan', 'build']) {
@@ -18035,6 +18102,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (state.mode !== 'plan') setMode('plan');
     renderTabs();
     renderPanel();
+    // Narrow screens scroll the tab bar: the chosen tab must never sit
+    // offscreen (Safety at 320 was 8px visible) — bring it fully into view.
+    const tab = $('tab-' + t);
+    if (tab) tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reduceMq.matches ? 'auto' : 'smooth' });
   }
   function renderTabs() {
     $('tab-reference').hidden = state.tab !== 'reference';
