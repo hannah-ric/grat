@@ -686,7 +686,9 @@ body.drafting .viewport-wrap {
 }
 .splitter:hover .splitter-grip, .splitter.dragging .splitter-grip { background: var(--accent); }
 .splitter:hover::before, .splitter.dragging::before { background: var(--accent); }
-.splitter:focus-visible { outline: none; }
+/* keyboard focus paints the ring on the splitter itself — the grip-only
+   highlight left this the one indicator-less stop in the focus walk (C-12) */
+.splitter:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .splitter:focus-visible .splitter-grip { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 /* motion micro-polish (roadmap #13): the grip acknowledges the grab */
 .splitter.dragging .splitter-grip, .splitter:active .splitter-grip { transform: scaleX(1.5); }
