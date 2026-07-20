@@ -393,6 +393,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mode-btn.build-cta:hover { background: var(--accent); color: var(--accent-ink); filter: brightness(1.06); }
 .mode-btn.build-cta .dot { display: none; }
 .mode-btn.build-cta[aria-current="page"] { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* One filled primary per screen (C-02): until a chosen design exists (or
+   while Build sits behind a paywall) the segment stands down to the quiet
+   tier, state dot restored — the landing keeps its single rust CTA. */
+.mode-btn.build-cta.build-quiet {
+  background: none; color: var(--muted); font-weight: 600;
+  border-color: transparent; box-shadow: none;
+}
+.mode-btn.build-cta.build-quiet:hover { background: none; color: var(--ink-2); filter: none; }
+.mode-btn.build-cta.build-quiet .dot { display: block; }
 
 /* Share: the quiet-strong companion action */
 .share-cta { border-color: var(--accent); color: var(--accent); font-weight: 600; }
@@ -445,6 +454,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .menu > button:hover, .menu-group > button:hover { background: var(--panel-2); }
 .menu > button .hint, .menu-group > button .hint { color: var(--ink-2); font-size: var(--text-s); margin-left: auto; }
+/* Keyboard-shortcut hints mean nothing to a thumb (C-14) */
+@media (pointer: coarse) { .hint-kbd { display: none; } }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
 .menu-group-label {
   font: 650 var(--text-s) var(--body); letter-spacing: .08em; text-transform: uppercase;
@@ -585,6 +596,29 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .answer-row .btn { min-height: 40px; }
 .answer-row { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .answer-row .btn { border-radius: 999px; }
+/* Inline nudge under the hero prompt (C-17): an empty "Design it" keeps
+   the card and explains itself in the advisory voice. */
+.hero-nudge { margin: var(--s2) 0 0; font-size: var(--text-s); color: var(--amber-ink); line-height: 1.4; }
+
+/* The explicit next step after a design lands (C-03) — quiet-strong like
+   Share, never a second filled primary. Own class, never .answer-row: the
+   clarifying-answer machinery must not mistake it for an answer. */
+.plan-cta-row { display: flex; margin-top: var(--s2); }
+.plan-cta-row .btn.plan-cta {
+  min-height: 40px; border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
+.plan-cta-row .btn.plan-cta:hover:not(:disabled) {
+  background: var(--accent-soft); color: var(--accent); border-color: var(--accent);
+}
+/* Phone variant (C-03): the chat sheet is collapsed, so the same next-step
+   action floats under the viewer until taken; the gesture hint yields. */
+.btn.plan-cta-pill {
+  position: absolute; bottom: var(--s2); left: 50%; transform: translateX(-50%);
+  z-index: 4; min-height: var(--tap);
+  border-color: var(--accent); color: var(--accent); font-weight: 600;
+  background: var(--panel); box-shadow: var(--shadow);
+}
+.viewport-wrap:has(.plan-cta-pill) .viewport-hint { opacity: 0; }
 .typing { display: inline-flex; gap: 4px; padding: 12px 14px; }
 .typing i {
   width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: .4;
@@ -609,6 +643,15 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
   transition: border-color var(--t-fast) var(--ease);
 }
 .chat-input textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* While the welcome card is up, its "Design it" holds the one rust fill
+   (C-02): the chat Send steps back to the quiet capsule tier until the
+   card goes — the control stays, only its weight changes. */
+body.welcome-open .chat-input .btn.primary {
+  background: var(--panel); border-color: var(--line-2); color: var(--ink-2); box-shadow: none;
+}
+body.welcome-open .chat-input .btn.primary:hover:not(:disabled) {
+  background: var(--panel-2); color: var(--ink); filter: none;
+}
 /* a placeholder longer than the column reads as one clean clipped line,
  * never a half-visible wrap (color comes from the global ::placeholder rule) */
 .chat-input textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -715,6 +758,13 @@ body.drafting .viewport-wrap {
   position: absolute; top: var(--s3); right: var(--s3); display: flex; flex-direction: column; gap: var(--s2);
   align-items: flex-end; z-index: 10;
 }
+/* While the welcome card is up the workspace stands down (B-08): the
+   advisories concern the decorative seed design the user never made, and
+   the viewport toolbar + gesture hint compete with the card's one question.
+   All of it returns the moment the card closes (body.welcome-open, C-02). */
+body.welcome-open .advisories,
+body.welcome-open .stage-controls,
+body.welcome-open .viewport-hint { display: none; }
 .control-card {
   display: flex; align-items: center; gap: var(--s2);
   background: color-mix(in srgb, var(--panel) 88%, transparent);
@@ -1865,7 +1915,9 @@ body.bm-playback .playback-bar { display: none !important; }
     <nav class="mode-nav" id="modeNav" aria-label="Workflow">
       <button class="mode-btn" id="mode-design" data-mode="design" aria-current="page"><span class="dot" aria-hidden="true"></span><span class="mode-label">Design</span></button>
       <button class="mode-btn" id="mode-plan" data-mode="plan"><span class="dot" aria-hidden="true"></span><span class="mode-label">Plan</span></button>
-      <button class="mode-btn build-cta" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span><span class="mode-lock" id="buildModeLock" hidden aria-hidden="true"></span></button>
+      <!-- build-quiet is the pre-boot default: Build only takes its rust fill
+           once a chosen design exists (C-02) — renderReadiness owns the class. -->
+      <button class="mode-btn build-cta build-quiet" id="buildModeBtn" data-mode="build" title="Full-screen shop companion"><span class="dot" aria-hidden="true"></span><span class="mode-label">Build</span><span class="mode-lock" id="buildModeLock" hidden aria-hidden="true"></span></button>
     </nav>
     <div class="topbar-spacer"></div>
     <div class="topbar-group" role="group" aria-label="History">
@@ -1889,7 +1941,9 @@ body.bm-playback .playback-bar { display: none !important; }
           <div class="menu-sep"></div>
           <div class="menu-group" id="moreExportGroup">
             <div class="menu-group-label">Export</div>
-            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+            <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
+                 means nothing to a thumb (C-14). -->
+            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
             <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
             <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
             <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
@@ -2015,6 +2069,9 @@ body.bm-playback .playback-bar { display: none !important; }
             <textarea id="heroText" rows="1" placeholder="A walnut nightstand with two drawers" aria-label="Describe your piece" spellcheck="false"></textarea>
             <button class="btn primary" id="heroSend">Design it</button>
           </div>
+          <!-- An empty "Design it" never silently dismisses the card (C-17):
+               this inline nudge shows instead; typing clears it. -->
+          <p class="hero-nudge" id="heroNudge" role="status" hidden>Type what you&rsquo;d like to build, or tap a starter below.</p>
           <div class="welcome-paths">
             <button class="welcome-card" id="welcomePhoto">
               <span class="w-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="1.8" y="4.8" width="18.4" height="13.4" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11.4" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 4.8 8.6 2.4 h4.8 L15 4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
@@ -2164,7 +2221,8 @@ body.bm-playback .playback-bar { display: none !important; }
       <div class="gallery-grid" id="galleryGrid"></div>
       <div class="modal-foot">
         <span class="sub" style="margin:0">…or close this and describe your own piece.</span>
-        <button class="btn" id="galleryClose">Start from scratch</button>
+        <!-- The button only closes the dialog — its label says so (C-15). -->
+        <button class="btn" id="galleryClose">Close</button>
       </div>
     </div>
   </div>
@@ -11822,7 +11880,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     units: { system: 'imperial', precision: 16, dual: false },
     render: { textured: true },
     ui: { chatCollapsed: false, split: 58 },
-    seenHero: false // the one-shot assemble moment on first starter pick
+    seenHero: false, // the one-shot assemble moment on first starter pick
+    level: null      // skill level the USER chose via the dropdown (C-06); null = never chosen
   };
 
   /* Sheet prices migrated in place (2026 expansion): the legacy flat shape
@@ -13433,6 +13492,24 @@ var BB = globalThis.BB = globalThis.BB || {};
         !!pr && pr.parentElement === document.body,
         pr ? (pr.parentElement === document.body ? 'body' : '#' + (pr.parentElement.id || pr.parentElement.tagName)) : 'missing',
         'body');
+    }
+
+    /* ============ chat diff-chip humanizer (C-05, browser only) ============ */
+    if (globalThis.__bb && globalThis.__bb.humanizeDiffs) {
+      // The "Changed" ledger must speak user vocabulary: no wire field
+      // names, no "null", creates phrased as additions.
+      const chips = globalThis.__bb.humanizeDiffs([
+        { path: 'drawers.count', from: null, to: 2 },
+        { path: 'meta.template', from: 'table', to: 'nightstand' },
+        { path: 'structure.backPanel', from: false, to: true },
+        { path: 'made.up.path', from: 'a_b', to: 'c_d' }
+      ]);
+      test('shell', 'diff chips: null drawer count reads as an addition',
+        chips[0] === 'Added 2 drawers', chips[0], 'Added 2 drawers');
+      test('shell', 'diff chips: no chip ever contains "null" or "→ undefined"',
+        chips.every(c => !/null|undefined/.test(c)), chips.join(' | '), 'no null/undefined');
+      test('shell', 'diff chips: booleans and unknown paths still read as words',
+        chips[2] === 'Added back panel' && !/_/.test(chips[3]), `${chips[2]} | ${chips[3]}`, 'Added back panel | no underscores');
     }
 
     /* ============ build-mode position persistence (C-08) ============ */
@@ -15319,6 +15396,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     compare: null,
     busy: false,
     firstRun: true,
+    hasDesign: false,               // a design the user chose/committed exists (not the boot seed) — C-02
+    heroPending: false,             // the in-flight send came from the welcome hero (C-03)
     previewing: false,
     advisoriesExpanded: false,
     // Phase 4
@@ -15388,6 +15467,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     hideWelcome(); // a committed design is a chosen path
     state.previewing = false; // any pending slider preview is superseded by this commit
     state.advisoriesExpanded = false; // a new change re-folds the warning stack
+    state.hasDesign = true; // every accepted change past the boot seed is a chosen design (C-02)
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -16651,6 +16731,68 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title">Changed</span>' : ''}${chipHTML.join('')}</div>`;
     return chatMsg('bot', html);
   }
+  /* ---------------- diff-chip humanizer (C-05) ----------------
+   * The "Changed" ledger speaks user vocabulary. Spec.diffSpecs hands the
+   * display layer structured diffs ({path, from, to, label?, text?}); this
+   * formatter — display-only, spec.js untouched — turns them into phrases
+   * ("Added 2 drawers", "Height 24 in → 22 1/16 in") so wire field names
+   * and "null" never reach a Beginner's chip. Pre-built d.text chips (the
+   * custom-composition summaries) pass through untouched, and values still
+   * route through Spec.fmtValue → BB.Units, so chips follow display units. */
+  const DIFF_NOUNS = { 'drawers.count': ['drawer', 'drawers'], 'structure.shelfCount': ['shelf', 'shelves'] };
+  function humanizeDiffs(diffs) {
+    const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    return diffs.map(d => {
+      if (d.text) return d.text;
+      const label = d.label || Spec.PATH_LABELS[d.path] ||
+        d.path.split('.').pop().replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase();
+      const v = x => Spec.fmtValue(d.path, x);
+      const noun = DIFF_NOUNS[d.path];
+      if (noun) {
+        const was = +d.from || 0, now = +d.to || 0;
+        if (!was && now) return `Added ${now} ${now === 1 ? noun[0] : noun[1]}`;
+        if (was && !now) return `Removed the ${was === 1 ? noun[0] : noun[1]}`;
+        return `${cap(noun[1])} ${was} → ${now}`;
+      }
+      if (typeof d.to === 'boolean' || typeof d.from === 'boolean') {
+        return d.to ? `Added ${label}` : `Removed ${label}`;
+      }
+      if (d.path === 'meta.template') return `Rebuilt as a ${v(d.to)}`;
+      if (d.path === 'meta.name') return `Renamed to “${d.to}”`;
+      if (d.from == null && d.to != null) return `${cap(label)}: ${v(d.to)}`;
+      if (d.from != null && d.to == null) return `Removed ${label}`;
+      return `${cap(label)} ${v(d.from)} → ${v(d.to)}`;
+    });
+  }
+
+  /* A design just landed while the plans sit folded away in Design mode:
+   * give the journey its explicit next step (C-03) — the Plan segment's 6px
+   * state dot is not an affordance. One quiet-strong chat action, kept to a
+   * single instance in the log, that opens Plan mode on the Overview tab. */
+  function offerPlanCta() {
+    if (state.buildMode || state.mode !== 'design') return;
+    const old = $('chatLog').querySelector('.plan-cta-row');
+    if (old) old.closest('.msg').remove();
+    const m = chatMsg('bot', '');
+    const row = el('div', 'plan-cta-row');
+    const b = el('button', 'btn small plan-cta', 'See your plan →');
+    b.onclick = () => selectTab('overview');
+    row.append(b);
+    m.append(row);
+    // The phone chat is a collapsed sheet — a CTA buried in its log is not
+    // an affordance. Float the same action under the viewer until taken.
+    if (matchMedia('(max-width: 880px)').matches && !$('chatPanel').classList.contains('expanded')) {
+      removePlanCtaPill();
+      const pill = el('button', 'btn small plan-cta plan-cta-pill', 'See your plan →');
+      pill.id = 'planCtaPill';
+      pill.onclick = () => selectTab('overview'); // setMode('plan') removes the pill
+      $('viewportWrap').append(pill);
+    }
+  }
+  function removePlanCtaPill() {
+    const pill = $('planCtaPill');
+    if (pill) pill.remove();
+  }
   function askQuestion(q) {
     const m = chatMsg('bot', `<div class="bubble">${esc(q.question)}</div>`);
     if (q.options && q.options.length) {
@@ -16896,12 +17038,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       setBusy(false);
       if (!out) return;
       const okc = commit(out.final, 'ai');
+      const fromHero = state.heroPending;
+      state.heroPending = false;
       if (!okc) {
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
         return;
       }
       const realDiffs = Spec.diffSpecs(before, state.spec);
-      const chips = Spec.describeDiff(realDiffs);
+      const chips = humanizeDiffs(realDiffs); // user vocabulary, never wire names (C-05)
       // The badge reflects what actually just happened — the strongest
       // evidence there is about the connection state. A keyless proxy (503)
       // reads "AI not configured", never plain offline (audit L-14).
@@ -16932,6 +17076,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         // committed spec and append the code-built truth (A2).
         const ack = Spec.reconcileAck(out.explain || 'Updated.', state.spec, chips, out.requested);
         botSay(ack + noteText + integLine, chips, { noChange: !chips.length, caveat });
+        // A hero prompt or a whole new piece deserves its next step (C-03):
+        // refinements stay quiet, creation offers the route to the plans.
+        if (chips.length && (fromHero || realDiffs.some(d => d.path === 'meta.template'))) offerPlanCta();
         // Offline and nothing changed: offer the edits the built-in parser is
         // actually good at, instead of leaving a dead end.
         if (out.local && !chips.length) {
@@ -17341,7 +17488,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.dismissed.clear();
     state.project = null;   // a starter begins a fresh project
     state.turns = [];
-    commit(g.spec, 'gallery', ['loaded “' + r.spec.meta.name + '”']);
+    // Skill level is the user's preference, not starter content (C-06):
+    // only the level dropdown changes it — the loaded spec inherits the
+    // chosen level (or whatever the user was already working at).
+    const level = state.prefs4.level || (state.spec && state.spec.meta.level) || 'beginner';
+    commit(Spec.deepMerge(g.spec, { meta: { level } }), 'gallery', ['loaded “' + r.spec.meta.name + '”']);
     state.engine.frame();
     // First starter ever: the piece assembles itself once — the pipeline
     // dramatized in one shot. Reduced motion snaps it (engine-side).
@@ -17356,6 +17507,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       Store.savePrefs(state.prefs4);
       botSay('First build tips: 1) Check the Buy tab before you shop. 2) Use Build mode in the shop for cut-by-cut checkoffs. 3) If the Safety tab shows red, fix that before you build.', []);
     }
+    offerPlanCta(); // the loaded design's plans are one explicit tap away (C-03)
   }
   function renderGallery() {
     const grid = $('galleryGrid');
@@ -17558,10 +17710,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!hist) hist = History.createHistory(spec, 'project');
     state.history = hist;
     state.project = { id, progress: rec.progress || { cuts: {}, steps: {} } };
+    state.hasDesign = true; // a restored project is a chosen design (C-02)
     state.turns = [];
     state.dismissed.clear();
     state.previewing = false; // the loaded project replaces any pending preview
-    const r = runPipeline(state.history.currentSpec() || spec);
+    // A dropdown-chosen level outranks whatever the project was saved at
+    // (C-06); with no explicit choice the project's own level stands.
+    let cur = state.history.currentSpec() || spec;
+    if (state.prefs4.level && cur.meta && cur.meta.level !== state.prefs4.level) {
+      cur = Spec.deepMerge(cur, { meta: { level: state.prefs4.level } });
+    }
+    const r = runPipeline(cur);
     adopt(r);
     renderAll();
     state.engine.frame();
@@ -17609,6 +17768,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!ok) return { error: 'That design decoded but won’t build.' };
     state.engine.frame();
     botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+    offerPlanCta(); // an imported design gets the same explicit next step (C-03)
     return { ok: true };
   }
   function importShare() {
@@ -18157,6 +18317,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function setMode(m, opts) {
     if (m === 'build') { enterBuildMode(); return; }
+    if (m === 'plan') removePlanCtaPill(); // the floating next-step is taken/answered (C-03)
     state.mode = m === 'plan' ? 'plan' : 'design';
     document.body.dataset.mode = state.mode;
     if (state.mode === 'plan') autoSplitForPlanPhone();
@@ -18197,6 +18358,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     const buildLocked = billingConfigured(Store.auth()) && !BB.Billing.entitled('advancedFeatures');
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
+    // One filled primary per screen (C-02): Build takes the rust fill only
+    // once a design the user chose exists AND no paywall stands in front of
+    // it — on the landing it reads as the quiet third step of the journey.
+    $('buildModeBtn').classList.toggle('build-quiet', !state.hasDesign || buildLocked);
     for (const m of ['design', 'plan', 'build']) {
       const b = $(m === 'build' ? 'buildModeBtn' : 'mode-' + m);
       if (!b) continue;
@@ -18223,6 +18388,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('welcomeOverlay').dataset.mode = hasProjects ? 'projects' : 'import';
     renderHeroStarters();
     $('welcomeOverlay').hidden = false;
+    // The card owns the first impression: body.welcome-open lets CSS quiet
+    // the workspace behind it (C-02 one-primary, B-08 advisory/toolbar hush).
+    document.body.classList.add('welcome-open');
     // The card's one primary action must be reachable immediately by keyboard
     // (C-13): "Skip to describe your piece" leads the skip links while the
     // card is up, so Tab 1 + Enter lands in the hero input.
@@ -18231,6 +18399,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function hideWelcome() {
     $('welcomeOverlay').hidden = true;
     $('skipToHero').hidden = true;
+    document.body.classList.remove('welcome-open');
     // A dismissed card must not strand a keyboard user on its hidden input.
     if (document.activeElement === $('heroText')) focusChat();
   }
@@ -18609,7 +18778,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('vpRenderRich').onclick = () => setRender(true);
     $('vpRenderFlat').onclick = () => setRender(false);
     $('designName').addEventListener('change', e => merge({ meta: { name: e.target.value } }, 'manual'));
-    $('levelSelect').addEventListener('change', e => merge({ meta: { level: e.target.value } }, 'manual'));
+    $('levelSelect').addEventListener('change', e => {
+      // The dropdown is the ONE owner of skill level (C-06): the choice is a
+      // persisted user preference that survives starter and project loads.
+      state.prefs4.level = e.target.value;
+      Store.savePrefs(state.prefs4);
+      merge({ meta: { level: e.target.value } }, 'manual');
+    });
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
@@ -18621,14 +18796,22 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* The hero prompt IS the chat pipeline — one path for every input. */
     const heroSubmit = () => {
       const t = $('heroText').value.trim();
-      if (!t) { hideWelcome(); focusChat(); return; }
+      if (!t) {
+        // An empty "Design it" never silently dismisses the card (C-17):
+        // nudge inline and stay — close, a starter, or a real prompt exits.
+        $('heroNudge').hidden = false;
+        $('heroText').focus();
+        return;
+      }
       hideWelcome();
+      state.heroPending = true; // the reply offers "See your plan" (C-03)
       sendMessage(t);
     };
     $('heroSend').onclick = heroSubmit;
     $('heroText').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); heroSubmit(); }
     });
+    $('heroText').addEventListener('input', () => { $('heroNudge').hidden = true; });
     $('welcomePhoto').onclick = () => $('photoInput').click();
     $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
     $('welcomeResume').onclick = () => {
@@ -18977,7 +19160,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       doExport, recompute, enterBuildMode, exitBuildMode, enterBmPlayback, exitBmPlayback,
       openProjects, loadProjectIntoApp, openShare, importShare, openSpecies, runDiagnostics, doAutosave, progressPct,
       preview, commitPreview, closeInspector, openInspectorById, applyTheme, applyRender,
-      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness,
+      setChatCollapsed, setSplit, selectTab, focusChat, showWelcome, hideWelcome, renderReadiness, humanizeDiffs,
       setMode, probeAI, setAIState, renderAccount
     };
 
