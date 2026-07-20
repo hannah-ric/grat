@@ -436,6 +436,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .menu > button:hover, .menu-group > button:hover { background: var(--panel-2); }
 .menu > button .hint, .menu-group > button .hint { color: var(--ink-2); font-size: var(--text-s); margin-left: auto; }
+/* Keyboard-shortcut hints mean nothing to a thumb (C-14) */
+@media (pointer: coarse) { .hint-kbd { display: none; } }
 .menu .menu-sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
 .menu-group-label {
   font: 650 var(--text-s) var(--body); letter-spacing: .08em; text-transform: uppercase;

@@ -83,7 +83,9 @@
           <div class="menu-sep"></div>
           <div class="menu-group" id="moreExportGroup">
             <div class="menu-group-label">Export</div>
-            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint">⌘P</span></button>
+            <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
+                 means nothing to a thumb (C-14). -->
+            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
             <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
             <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
             <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
