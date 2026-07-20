@@ -22,8 +22,8 @@ proven → built**.
 
 **Brand narrative:** a drafting table with a master craftsman behind it.
 Every visual choice reinforces "numbers you can trust": provenance taps,
-letterpress PASS/ADVISORY/FAIL stamps, drafting-styled diagrams — and now the
-product *looks* like the blueprint it produces.
+precise PASS/ADVISORY/FAIL verdict capsules, drafting-styled diagrams — and
+now the product *looks* like the blueprint it produces.
 
 ## Visual direction — evolve, don't replace
 

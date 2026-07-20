@@ -36,7 +36,7 @@ Two deliberate rules:
 
 - **Rust carries urgency twice** (primary action *and* failure). With five
   fixed hues this is the honest trade; verdicts therefore always ship as
-  stamps with text (`PASS / ADVISORY / FAIL`), never color alone.
+  verdict capsules with text (`PASS / ADVISORY / FAIL`), never color alone.
 - **One ink for light brand fills**: `--on-brand: #241A18` clears 4.5:1 on
   seafoam (7.94), fern (6.39), and mustard (4.65) — chips never need
   per-color ink.
@@ -170,9 +170,12 @@ Space rides the identical window/formula so rhythm scales with hierarchy:
   140/240/420ms; `prefers-reduced-motion` kills all of it.
 - **Ergonomics**: `--tap: 44px` floor on primary controls and inputs; input
   text ≥ `max(1rem, --text-m)` so mobile Safari never zoom-jumps.
-- **Signatures**: 3px `double` rule under section `h2`s (the print sheet's
-  drafting voice — roadmap item 12), `✦` ornament on `hr`, stamp components
-  at `rotate(-1.2deg)`.
+- **Signatures** *(revised 2026-07, premium refit —
+  [`premium-refit.md`](premium-refit.md))*: capsule buttons and quiet
+  **verdict capsules** — an unrotated tinted pill whose text carries the
+  verdict. The double rule, the `✦` ornament, and the rotated letterpress
+  stamp are retired; hierarchy comes from scale, weight, and space, and
+  rules never exceed a hairline on screen.
 
 ## 5 · Wide ledgers
 

@@ -110,7 +110,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     fill.position.set(-1600, 800, -1200);
     scene.add(fill);
 
-    // Ground: contact blob (flat tier) or shadow plane (default), plus grid.
+    // Ground: contact blob (flat tier) or shadow plane (default). The soft
+    // shadow alone grounds the piece — no helper grid on the studio floor;
+    // the drafting grid belongs to Blueprint Mode's paper field (CSS).
     const groundGroup = new THREE.Group();
     const discGeo = new THREE.CircleGeometry(1, 64);
     const blobTex = new THREE.CanvasTexture(BB.Materials.blobCanvas());
@@ -122,12 +124,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const shadowMat = new THREE.ShadowMaterial({ opacity: 0.16 });
     const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
     shadowPlane.rotation.x = -Math.PI / 2;
-    shadowPlane.position.y = 1; // above the grid lines, under everything else
+    shadowPlane.position.y = 1; // just off the floor, under everything else
     shadowPlane.receiveShadow = true;
     groundGroup.add(shadowPlane);
-    const grid = new THREE.GridHelper(1, 10, 0x8a7a66, 0x8a7a66);
-    grid.material.transparent = true; grid.material.opacity = 0.12;
-    groundGroup.add(grid);
     scene.add(groundGroup);
 
     /* Procedural studio environment: tiny equirect canvas → PMREM. Regenerated
@@ -424,7 +423,6 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (E.isolated && !seen.has(E.isolated)) E.isolated = null;
       const maxDim = Math.max(model.bounds.w, model.bounds.d, model.bounds.h);
       disc.scale.setScalar(maxDim * 1.4);
-      grid.scale.setScalar(maxDim * 2.6 / 1);
       // Sun distance and shadow frustum track model size, sized once per
       // model to cover the fully exploded pose (offsets reach ~0.95 × maxDim).
       sun.position.set(1400, 2200, 1600).normalize().multiplyScalar(maxDim * 2.6);

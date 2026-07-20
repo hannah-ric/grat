@@ -31,7 +31,7 @@ A first visit opens on warm paper and a faint drafting grid. A sentence types
 itself — *"A nightstand with two drawers in cherry"* — and the piece
 **materializes as a 3D blueprint**: parts ink themselves in, in build order,
 line work first, paper fills washing in behind, dimensions ticking on in
-mono. A letterpress stamp lands — **PROVEN** — with the live sag margin the
+mono. A verdict lands — **PROVEN** — with the live sag margin the
 engine actually computed. Then the ink washes away and the blueprint becomes
 wood: grain, sunlight sweeping shadows across the floor once, parts settling
 home. The caption resolves to *"Describe it. We'll draft it."* and the
@@ -51,9 +51,10 @@ Two surfaces carry it:
 
 **Part II — the director's cut (§10–§17)** is the premium pass on both
 surfaces: a porch-only stage grammar, the continuous shot and the
-Shapeshift, scene grading, film finish, type as an actor, micro-interaction
-density, and the one timeline that runs all of it inside a hard frame
-budget. Part I makes the landing correct; Part II makes it cinema.
+Shapeshift, scene grading, a finish-restraint pass, type as an actor, and
+the one timeline that runs all of it inside a hard frame budget. Part I
+makes the landing correct; Part II makes it cinema — with Apple-grade
+restraint (`premium-refit.md`).
 
 ## 1 · Why this story (positioning, restated as choreography)
 
@@ -64,7 +65,7 @@ truths *felt* in under ten seconds, then legible in under a minute:
 | Truth | How the Materialization shows it | Where it's real in code |
 | --- | --- | --- |
 | A sentence is enough | the typed prompt is the only "input UI" on stage | `BB.Gallery.FIRST_RUN_PROMPTS`, one chat pipeline (`ui.js` `heroSubmit`) |
-| Code owns every number | dimensions tick on *as drafting output*, never as typed text; the stamp carries the engine's own sag margin | `Structural.computeIntegrity` via `state.report` — the caption reads the live report, **never a hardcoded number** |
+| Code owns every number | dimensions tick on *as drafting output*, never as typed text; the verdict carries the engine's own sag margin | `Structural.computeIntegrity` via `state.report` — the caption reads the live report, **never a hardcoded number** |
 | It ends at the bench | blueprint → wood → cut-list cascade; the AR/GLB and print-sheet beats | `plans.js`, `packing.js`, `exports.js`, Build mode |
 
 The founding rule gives the landing its voice: **"The AI proposes. The
@@ -83,7 +84,7 @@ beat is skippable (law 4); reduced motion never plays it (§7).
 | --- | --- | --- | --- |
 | 1 | **Thin air** (0–1.2 s) | empty `--paper` field, faint blueprint grid, the prompt types on | grid = roadmap #12's CSS gradient on the viewport backdrop; type-on is DOM text (~35 ms/char), caption element, not canvas |
 | 2 | **Drafted** (1.2–3.4 s) | the 3D blueprint materializes: parts appear at home poses scaled from ~0, staggered in build order; ink edges lead, paper fills wash in; dimensions tick on | engine in drafting mode (`setDrafting`, `engine.js:976`); per-part entrance = the damped scale channel + the hero's stagger (`rec.delay`, `engine.js:1077`); fill wash = **NEW** one scalar ramping the bounded `draftMats` pool's opacity toward `DRAFT_OPACITY` (`engine.js:255`) — no per-part materials, no pool growth; dims via `setDims(true)` |
-| 3 | **Proven** (3.4–4.6 s) | joint markers pulse once; a letterpress **PROVEN** stamp settles over the caption with the live margin line — e.g. *"worst span sags `report`-mm against `report`-mm allowed · safety factor 4"* | stamp is the existing DOM stamp component (`rotate(-1.2deg)`, `brand-system.md` §4); numbers read from `state.report` at render time; verdict text always ships with the stamp, never color alone |
+| 3 | **Proven** (3.4–4.6 s) | joint markers pulse once; the **PROVEN** verdict capsule settles over the caption (damped scale, no rotation) with the live margin line — e.g. *"worst span sags `report`-mm against `report`-mm allowed · safety factor 4"* | the verdict-capsule component (`brand-system.md` §4, premium-refit revision); numbers read from `state.report` at render time; verdict text always ships with the capsule, never color alone |
 | 4 | **Built** (4.6–6.4 s) | ink washes away; blueprint becomes wood; parts fly home from a shallow explode; the sun sweeps shadows once; dust motes drift through the beam | `setDrafting(false)` under the shipped ink-wash (9c); **NEW** one-frame canvas snapshot cross-fade (§5) hides the material hard-cut; flight = `heroAssemble`'s path (`engine.js:1070`); sun sweep 6c + hero motes 7b are the already-designed Tier-3 items — the beat works without them, gains theater when they ship |
 | 5 | **The studio** (6.4–8.5 s) | caption resolves to the wordmark + *"Describe it. We'll draft it."*; the welcome card rises with its existing entrance stagger; the prompt has focus | today's `showWelcome` path (`ui.js:3354`) unchanged; the Overture simply delays it by one story |
 
@@ -100,8 +101,8 @@ after the Overture has played suppresses `heroAssemble` for that session —
 two theater beats in a row breaks law 5's "confined showmanship."
 
 Once Part II ships, the Overture performs on the graded stage — the
-dark-room dip under the PROVEN stamp, the swept key light, the film finish
-of §12–§13 — with the choreography above unchanged.
+dark-room dip under the PROVEN verdict, the swept key light, the finish
+restraint of §12–§13 — with the choreography above unchanged.
 
 ## 3 · Surface A — the Overture (first-run, in-app)
 
@@ -161,7 +162,7 @@ proven by real physics, and turned into plans you can build on Saturday."*
 | --- | --- | --- | --- |
 | 01 | DESCRIBE — **"Say it like you'd say it out loud."** | *"'A walnut nightstand, two drawers, about knee height.' That's enough — a photo works too. No CAD to learn, no template maze. The studio speaks carpenter, not computer."* | beat 1→2 start: grid + typed prompt, first parts inking in |
 | 02 | DRAFT — **"Watch it become a blueprint."** | *"Parametric templates draft your piece part by part — legs, aprons, joinery, drawer boxes — every dimension chosen by code that knows furniture. Change your mind in plain words; the drawing keeps up."* | full blueprint, dims on, slow ortho front→iso drift |
-| 03 | PROVE — **"Physics gets a veto."** | *"Every design runs a structural gauntlet: shelf sag from real wood stiffness, racking, tipping, fastener duty — at safety factor 4, with creep counted in years, on material data from the U.S. Forest Service's Wood Handbook. When something won't hold, we say so — and one tap fixes it honestly."* | PROVEN stamp + live margin figures; joint dots pulse |
+| 03 | PROVE — **"Physics gets a veto."** | *"Every design runs a structural gauntlet: shelf sag from real wood stiffness, racking, tipping, fastener duty — at safety factor 4, with creep counted in years, on material data from the U.S. Forest Service's Wood Handbook. When something won't hold, we say so — and one tap fixes it honestly."* | PROVEN capsule + live margin figures; joint dots pulse |
 | 04 | BUILD — **"From thin air to the workbench."** | *"The blueprint becomes wood — then a cut list with joinery allowances, a buying plan packed onto real boards, assembly steps with 3D joint close-ups, and a build mode that rides to the shop on your phone. Or stand the piece in your room in AR."* | ink-wash → wood, fly-home, cut-list cards cascade in beside the stage |
 
 Between chapter 02 and the honesty band sits the **Shapeshift
@@ -283,19 +284,21 @@ studio is where they stay instrument-calm. That split is the taste law.
 wash → gild wash → fern wash → paper), oversized Fraunces 900 chapter
 numerals (`01–04`) in `--text-billboard`, `--on-brand` ink on every light
 wash (pre-cleared ≥ 4.5:1 in `brand-system.md` §1), IBM Plex Mono for every
-figure with `tabular-nums` count-ups, capsule CTAs, the ✦ ornament between
-bands, 3 px double rules under chapter kickers, letterpress stamps. Dark
-scheme is the walnut den with the cyanotype draft field — the blueprint blue
-stays the licensed exception it already is.
+figure with `tabular-nums` count-ups, and capsule CTAs. Ornament is retired
+everywhere (premium refit, [`premium-refit.md`](premium-refit.md)): no ✦,
+no double rules, no letterpress — hierarchy comes from scale, weight, and
+space. Dark scheme is the walnut den with the cyanotype draft field — the
+blueprint blue stays the licensed exception it already is.
 
 **Modern means:** flat color planes and generous `--space-2xl/3xl` rhythm;
 fluid `clamp()` type; critically-damped motion only; crisp `--hairline`
 separations; real whitespace. **Retro-kitsch ban list** (the "not a RETRO
 APP" clause, made enforceable): no wood-grain or paper-texture UI chrome,
 no torn edges, no halftone/CRT/scanline overlays, no starburst clip-art, no
-boomerang patterns, no display type below `--text-l`, no sepia filters.
+boomerang patterns, no display type below `--text-l`, no sepia filters,
+no rotated "rubber-stamp" marks, no ornament glyphs.
 Mid-century must arrive through **color, type contrast, and shape**
-(capsule, stamp, double rule) — never through simulated age.
+(capsule, wash, hairline) — never through simulated age.
 
 **The studio keeps its contract:** laws 1 and 5 hold inside the bench —
 the porch's showmanship budget does not leak into work sessions. The
@@ -316,7 +319,7 @@ motion.
 - Captions and chapter copy are real DOM text in reading order; the stage
   canvas is `aria-hidden` with the H1/lede carrying the page's meaning;
   "Skip" is a real button, first focusable, `:focus-visible` ring per
-  tokens; the stamp ships verdict text, never color alone.
+  tokens; the verdict capsule ships text, never color alone.
 - Chapter wash contrast pairs come from the audited token table
   (`brand-system.md` §2) — no new color pairs are minted; the porch adds
   layout, not palette.
@@ -383,10 +386,10 @@ exemptions, and none of them leak past `#porch`:
 
 | Law | On the bench (unchanged) | On the porch stage |
 | --- | --- | --- |
-| 1 · motion is meaning | no idle loops | "meaning" includes **the visitor's own input**: scroll and pointer may drive continuous response (parallax §13c, ticker §15c, camera travel §11a). Ambient *texture* (film grain, §13a) is licensed; ambient *movement of the model* is not — the piece never stirs on its own, even here. |
+| 1 · motion is meaning | no idle loops | "meaning" includes **the visitor's own input**: scroll and pointer may drive continuous response (parallax §13a, camera travel §11a). Nothing ambient — no idle loops, no ambient texture, and the piece never stirs on its own, even here. |
 | 2 · one physics family | damped only | unchanged — every effect below integrates through the same follower. Critically damped is the brand, lobby included. |
-| 4 · input is sacred | camera never moves uninvited | the stage camera is **scripted** — it may dolly and reframe between chapters, because nothing is being inspected; the stage is `pointer-events: none` until the handover (§15d), so a script and a hand never fight |
-| 5 · instrument calm | showmanship confined | the porch **is** the confined moment — grade, grain, and theater live here and stop at the studio door |
+| 4 · input is sacred | camera never moves uninvited | the stage camera is **scripted** — it may dolly and reframe between chapters, because nothing is being inspected; the stage is `pointer-events: none` until the handover (§15a), so a script and a hand never fight |
+| 5 · instrument calm | showmanship confined | the porch **is** the confined moment — grade and theater live here and stop at the studio door |
 
 Two things stay locked even on stage: **FOV** (the dolly does the drama —
 parallel verticals are part of the drafting voice) and the **easing
@@ -428,7 +431,7 @@ frame — all through existing systems:
   machinery) gains one script per chapter: DESCRIBE, warm daylight; DRAFT,
   cool and flat (the drawing is its own light); **PROVE goes dark-room** —
   hemi and fill breathe down ~60%, the sun warms, the joint dots and the
-  landing stamp carry the frame; BUILT returns to full daylight with the
+  landing verdict carry the frame; BUILT returns to full daylight with the
   sun swept low, so the finished piece throws one long, confident shadow.
   Flat tier: no scripts, standard lighting.
 - **12b · The backdrop is the palette.** The canvas is transparent by
@@ -441,34 +444,22 @@ frame — all through existing systems:
   one room. Under it, roadmap #12's blueprint-grid paper: the piece
   stands *on its own blueprint*, receding to a soft horizon.
 
-## 13 · Film finish
+## 13 · Finish — the restraint pass
 
-The cheap-to-run, expensive-to-feel layer — all DOM/CSS, all absent under
-reduced motion and flat tier, none of it in the studio:
+*(Revised for the premium refit, [`premium-refit.md`](premium-refit.md):
+the frame is graded by light — §12 — never by overlays. Apple-grade means
+what's absent is as designed as what's present.)*
 
-- **13a · Grain + vignette.** One overlay element: procedural film grain
-  (an inline SVG `feTurbulence` data URI — generated text, not an asset)
-  at 4–6% `soft-light`, stepped through four seeds at ~12 fps; beneath
-  it, a radial vignette holding the frame's edges. This is the single
-  biggest "graded, not rendered" signal a browser can buy, for ~0 ms of
-  GPU.
-- **13b · The cursor acknowledges the stage.** Fine pointers get a small
-  damped halo ring that *accompanies* the system cursor (never replaces
-  it — the system cursor is an accessibility contract): it tightens over
-  links, swells toward CTAs, and shows a tiny "drag" glyph when the
-  handover (§15d) makes the stage live. Coarse pointers: none of this
-  exists.
-- **13c · Pointer parallax.** The stage yaws ≤ 2° toward the cursor
+- **13a · Pointer parallax.** The stage yaws ≤ 2° toward the cursor
   through `camGoal` — aliveness that is answer, not idle (law 1 as
   amended). Suppressed while scroll velocity is high; absent under
-  reduced motion.
-- **13d · Finish details.** Branded `::selection` already ships. Add:
-  porch-scoped scrollbar styling; `text-wrap: balance` on headlines;
-  odometer digits on every counted figure (§14d); a right-edge
-  **drafting-scale scroll rail** — tick marks, chapter stations, and a
-  mono readout mapping scroll progress to the piece's real height in
-  millimetres (the scrollbar becomes a ruler; the ruler tells the truth);
-  and a `✦` colophon at the document's foot.
+  reduced motion and on coarse pointers. The one pointer effect the
+  porch keeps, because it happens *in the scene*, not on top of it.
+- **13b · Finish details.** Branded `::selection` already ships. Add
+  `text-wrap: balance` on headlines, odometer digits on every counted
+  figure (§14d), and porch-scoped scrollbar styling. Nothing else — no
+  film grain, no vignette, no cursor accessories, no novelty scroll
+  rails; all formally rejected below.
 
 ## 14 · Type as an actor
 
@@ -491,41 +482,32 @@ reduced motion and flat tier, none of it in the studio:
   final value. Numbers are the brand; they get the best move in the
   house. Reduced motion: final values, rendered.
 
-## 15 · Micro-interactions, Act 0, and the one invited sound
+## 15 · The handover, Act 0, and the one invited sound
 
-- **15a · Magnetic capsules.** Primary CTAs translate ≤ 6 px toward a
-  near pointer and carry a wash-sweep fill on hover; damped, capped,
-  released cleanly on leave. The highest hover-feel-per-line trade in
-  the catalogue.
-- **15b · Sheets under shop lights.** Starter cards and the plan-sheet
-  preview take a ≤ 1.5° perspective tilt toward the pointer with a
-  moving specular sweep (a pointer-driven CSS gradient) — printed sheets
-  catching the light. Same thumbnails, richer frame.
-- **15c · The data ticker.** A thin band of true constants that scrolls
-  **only when the visitor scrolls** (position = `f(p)` — it moves when
-  you move): `WHITE OAK · MOE 12.3 GPa ✦ SAFETY FACTOR 4 ✦ CREEP ×2 ✦
-  F2057 TIP CHECK…` — every entry read from `knowledge.js` tables when
-  the band is built. Data as decoration, and the decoration is true.
-  Reduced motion: a static row.
-- **15d · The handover.** At the closing band the stage goes live for
+Controls keep the app's own quiet hover grammar — a small lift and shadow.
+No magnetism, no tilt, no specular sweeps, no marquee tickers: the stage is
+the spectacle; the controls are controls (premium-refit bar). What remains
+is three moments that carry real meaning:
+
+- **15a · The handover.** At the closing band the stage goes live for
   the first time — *"Go on. Spin it."* — orbit only, on the same damped
   rig, right before the rust CTA. The visitor's first touch of the
   product happens on the marketing page, and it feels identical inside
   the studio, because it is the same engine. This is the conversion
   moment: display becomes instrument in their hands.
-- **15e · Act 0 — the load is the first frame.** The pre-JS boot
+- **15b · Act 0 — the load is the first frame.** The pre-JS boot
   skeleton (A-09) already paints while the megabyte parses; promote it
   from placeholder to overture opening: the brand mark's strokes draw
   themselves (pure-CSS `stroke-dashoffset` on the existing inline SVG),
-  the drafting grid fades up beneath, and boot's handoff into beat 1 is
+  the drafting field fades up beneath, and boot's handoff into beat 1 is
   continuous — load, reveal, and story become one shot. Still zero JS
   before `boot()`; still removed at the same line (`ui.js:3336-3337`).
-- **15f · Foley, strictly invited — spec'd, default OFF.** The product's
+- **15c · Foley, strictly invited — spec'd, default OFF.** The product's
   audio rejection stands ("uninvited sound in a shop"). If ever
   revisited, it is porch-only and opt-in: a "sound" chip, off by
   default, never autoplaying, zero WebAudio init until tapped; three
   synthesized cues (a pencil scratch under DRAFT, a soft wood *thock*
-  per landed part, one stamp thump) — generated, never fetched.
+  per landed part, one verdict thump) — generated, never fetched.
   Recommendation: **ship silent.** This paragraph is the drawer the idea
   lives in, so it never gets re-invented worse.
 
@@ -533,7 +515,7 @@ reduced motion and flat tier, none of it in the studio:
 
 **16a · One timeline, two drivers.** A code-owned track table —
 `{p0, p1, from, to, apply}` per property (camera pose, light script,
-fill-wash, morph waypoint, caption class, ticker offset) — evaluated
+fill-wash, morph waypoint, caption class) — evaluated
 through the single damped follower. The **Overture drives `p` with time;
 the Porch drives it with scroll**; every beat, grade, and morph is data
 in one place. ~60 lines, no GSAP, determinism inherited, and testable as
@@ -552,21 +534,20 @@ monotone, no same-property overlap.
 | new GLSL / deps / fetched bytes | 0 / 0 / 0 | the laws |
 
 **16c · Verification addendum** (extends §9): morph determinism (one
-scroll script → identical sampled part poses + `cameraPose`); grain,
-ticker motion, parallax, and light scripts absent under reduced motion
-and flat tier; the stage inert to pointers until the closing band, live
-after; Act 0 asserted pre-JS (view-source: skeleton animates from CSS
-alone); the grain overlay absent from the studio DOM entirely.
+scroll script → identical sampled part poses + `cameraPose`); parallax
+and light scripts absent under reduced motion and flat tier; the stage
+inert to pointers until the closing band, live after; Act 0 asserted
+pre-JS (view-source: skeleton animates from CSS alone).
 
 ## 17 · Phasing (revised)
 
 | Phase | Ships | Effort | Gate |
 | --- | --- | --- | --- |
 | **A — Overture core** | §2 director · engine adds (§5) · skip/one-shot gating · smoke | M | none |
-| **A′ — the grade** | grain + vignette (13a) · chapter light scripts (12a) · fog + blueprint floor (12c) · Act 0 draw-on (15e) | S–M | A |
-| **B — the Porch** | document, chapters, copy, honesty band, scrub + posters, first-visit gate · type system (§14) · magnetic capsules + lit sheets (15a–b) · render-on-demand prerequisite (4d) | L | A′ |
+| **A′ — the grade** | chapter light scripts (12a) · fog + blueprint floor (12c) · Act 0 draw-on (15b) | S–M | A |
+| **B — the Porch** | document, chapters, copy, honesty band, scrub + posters, first-visit gate · type system (§14) · render-on-demand prerequisite (4d) | L | A′ |
 | **B′ — the Shapeshift** | §11b interstitial · morph waypoints · odometer counters | M | B |
-| **C — theater & receipts** | sun sweep 6c + motes 7b in beat 4 · cut-list cascade · data ticker (15c) · cursor halo (13b) · the handover (15d) · scroll rail (13d) · print-sheet draw-on (drafting flag) · "see the intro again" menu item | S–M each | B |
+| **C — theater & receipts** | sun sweep 6c + motes 7b in beat 4 · cut-list cascade · the handover (15a) · print-sheet draw-on (drafting flag) · "see the intro again" menu item | S–M each | B |
 
 Sequencing note: **A′ lands before B on purpose** — the grade multiplies
 everything built after it and is the cheapest tier on the table. A is
@@ -599,11 +580,15 @@ Materialization's feel before the porch commits copy and layout around it.
 - **Fabricated numbers in marketing copy** — every figure on stage reads
   from the live report or the knowledge tables; a hardcoded "0.4 mm sag"
   is a founding-rule violation in a costume.
-- **Confetti/fireworks on PROVEN** — letterpress stamps with text, always.
+- **Confetti/fireworks on PROVEN** — verdict capsules with text, always.
 - **Retro-kitsch surface treatments** (wood-grain chrome, torn paper,
-  halftone, scanlines, starbursts, aged filters) — §6 ban list; palette,
-  type, and shape carry the era. (Film grain at §13a's 4–6% is a *lens*
-  artifact, not an *age* artifact — the frame is graded, never distressed.)
+  halftone, scanlines, starbursts, aged filters, rotated rubber-stamp
+  marks, ornament glyphs) — §6 ban list; palette, type, and shape carry
+  the era.
+- **Lens cosplay & pointer accessories** (film grain, vignettes, cursor
+  halos, magnetic buttons, tilt/specular cards, marquee tickers, novelty
+  scroll rails) — the premium-refit bar: grade with light, never with
+  overlays; controls are controls.
 - **Autoplaying sound** — §15f is a drawer, not a plan.
 - **Overture on every visit, or porch for returning users** — one-shot
   and gated; regulars land in their studio.
