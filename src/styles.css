@@ -734,6 +734,13 @@ body.drafting .viewport-wrap {
   position: absolute; top: var(--s3); right: var(--s3); display: flex; flex-direction: column; gap: var(--s2);
   align-items: flex-end; z-index: 10;
 }
+/* While the welcome card is up the workspace stands down (B-08): the
+   advisories concern the decorative seed design the user never made, and
+   the viewport toolbar + gesture hint compete with the card's one question.
+   All of it returns the moment the card closes (body.welcome-open, C-02). */
+body.welcome-open .advisories,
+body.welcome-open .stage-controls,
+body.welcome-open .viewport-hint { display: none; }
 .control-card {
   display: flex; align-items: center; gap: var(--s2);
   background: color-mix(in srgb, var(--panel) 88%, transparent);
