@@ -1708,6 +1708,14 @@ body.bm-playback .playback-bar { display: none !important; }
   .print-elevation svg { width: 100%; height: auto; }
 }
 
+@media (max-width: 480px) {
+  /* One-row viewport toolbar (A-04): in plan mode the viewer strip is only
+     ~180px tall — a wrapped two-row toolbar was covering half the model.
+     The toggles drop to their state tracks (aria-labels carry the words). */
+  .control-card.viewport-toolbar { flex-wrap: nowrap; padding: 3px 8px; gap: 4px; }
+  .viewport-toolbar .toggle .vt-short { display: none; }
+  .viewport-toolbar .toggle { gap: 0; }
+}
 @media (max-width: 400px) {
   .topbar { gap: 2px; padding-left: 4px; padding-right: 4px; }
   .topbar .btn { padding-left: 7px; padding-right: 7px; }
