@@ -548,12 +548,17 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- Plan overview ----------------
    * Four honest numbers straight from the computed state, then ONE next
    * action. Everything here is a pure read of what the pipeline already
-   * derived — no new math, no stored copies. */
+   * derived — no new math, no stored copies.
+   * §9.1/§9.4: the drafting cover sheet — the safety line wears the spec-
+   * plate treatment (capsule settles once per design), the stat tiles count
+   * once per design, and a drawing tile draws the real front elevation in
+   * once per design — static after, instantly complete under reduced motion. */
   function renderOverview(root) {
     if (!state.cut.length) {
       emptyState(root, 'No design yet.', 'Describe a piece in the chat or pick a starter — the plan builds itself.');
       return;
     }
+    const once = motionOnce('overview', { perDesign: true });
     const sum = state.integrity.summary;
     const plan = state.stockPlan;
     const boards = plan ? plan.boards.length + plan.sheets.length : 0;
@@ -567,10 +572,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         : verdict === 'advisory'
           ? 'This design passes the required strength checks, with notes worth reading.'
           : 'This design passes the required strength checks.';
+    const money = v => '$' + Math.round(v);
+    const int = v => String(Math.round(v));
     const cards = [
-      { label: 'Parts to cut', value: String(partCount), go: 'cut', aria: 'Open the cut list' },
-      { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : String(boards), go: 'stock', aria: 'Open the buying plan' },
-      { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'stock', aria: 'Open buying and pricing' },
+      { label: 'Parts to cut', value: int(partCount), count: partCount, fmt: int, go: 'cut', aria: 'Open the cut list' },
+      { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : int(boards), count: plan && plan.errors.length ? null : boards, fmt: int, go: 'stock', aria: 'Open the buying plan' },
+      { label: 'Estimated cost', value: plan ? money(plan.totalCost) : '—', count: plan ? plan.totalCost : null, fmt: money, go: 'stock', aria: 'Open buying and pricing' },
       { label: 'Safety', value: verdict === 'anchor' ? 'ANCHOR REQUIRED' : verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
     ];
     const grid = el('div', 'overview-grid');
@@ -578,13 +585,42 @@ var BB = globalThis.BB = globalThis.BB || {};
       const b = el('button', 'overview-card' + (c.stamp ? ' verdict-' + c.stamp : ''));
       b.type = 'button';
       b.setAttribute('aria-label', `${c.label}: ${c.value}. ${c.aria}`);
-      b.innerHTML = `<span class="ov-value${c.stamp ? ' stamp ' + c.stamp : ''}">${esc(c.value)}</span><span class="ov-label">${esc(c.label)}</span>`;
+      const rolling = once && !c.stamp && c.count != null && Motion.on();
+      // A rolling tile paints fmt(0) for its first frame (no final-value
+      // flash); the accessible name always carries the final value.
+      b.innerHTML = `<span class="ov-value${c.stamp ? ' stamp ' + c.stamp : ' counter'}">${esc(rolling ? c.fmt(0) : c.value)}</span><span class="ov-label">${esc(c.label)}</span>`;
+      if (once) {
+        const v = b.querySelector('.ov-value');
+        if (c.stamp) Motion.settle(v);
+        else if (c.count != null) Motion.count(v, c.count, { fmt: c.fmt });
+      }
       b.onclick = () => selectTab(c.go);
       grid.append(b);
     }
     root.append(el('h3', '', 'Overview'));
-    root.append(el('p', 'lede', verdictText + (sum.fails ? '' : ' Every number below comes from the same engineering pass.')));
+    // The safety line as a spec plate (§9.4) — every value a live read.
+    const checks = state.integrity.checks;
+    const plate = el('div', 'spec-plate overview-verdict');
+    plate.innerHTML = `<span class="kicker">Structural verdict</span>
+      <div class="spec-plate-row verdict-row">
+        <span class="stamp ${verdict}">${verdict === 'anchor' ? 'anchor required' : verdict}</span>
+        <span class="verdict-text">${esc(verdictText + (sum.fails ? '' : ' Every number below comes from the same engineering pass.'))}</span>
+      </div>
+      <div class="spec-plate-row">
+        <span class="spec-plate-label">Checks passed</span>
+        <span class="spec-plate-value">${checks.length - sum.fails} of ${checks.length}</span>
+      </div>`;
+    root.append(plate);
+    if (once) Motion.settle(plate.querySelector('.stamp'));
     root.append(grid);
+    // Drawing tile (§9.1): the real front elevation from the same drafting
+    // engine as the print sheet; animatable adds pathLength only, so without
+    // a draw call the linework rests complete.
+    const drawTile = el('div', 'overview-draw');
+    drawTile.innerHTML = `<span class="kicker">Front elevation · drawn from the live model</span>` +
+      BB.Drafting.elevationSVG(state.spec, state.model, 'front', fmt, { animatable: true });
+    root.append(drawTile);
+    if (once) Motion.draw(drawTile.querySelector('svg'));
     // One clear next action, derived from where the project actually stands.
     const pct = progressPct();
     const next = sum.fails
