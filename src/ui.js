@@ -2765,6 +2765,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     map[key] = !map[key];
     btn.setAttribute('aria-pressed', String(!!map[key]));
     btn.querySelector('.box').innerHTML = map[key] ? BB.Icons.svg('check', 20) : '';
+    if (Motion) Motion.pop(btn.querySelector('.box')); // check acknowledgment (2b treatment 6)
     $('bmProgress').textContent = progressPct() + '% built';
     renderReadiness(); // the Build step tracks shop progress live
     scheduleAutosave();
@@ -2912,7 +2913,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (t.kind === 'step') return !!prog.steps[t.stepId];
     return t.checks.length > 0 && t.checks.every(c => prog.cuts[c.key]);
   }
-  function renderBmTask() {
+  function renderBmTask(opts) {
     const pager = $('bmPager');
     if (!pager) return;
     pager.textContent = '';
@@ -2963,6 +2964,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
     pager.append(card);
+    // Task transitions only (2b-6): Next/swipe reveals the incoming card
+    // (≤240 ms, interruptible); toggle/entry re-renders stay instant.
+    if (opts && opts.animate && Motion) Motion.reveal(card);
     $('bmTaskPos').textContent = `${state.bmTask + 1} of ${tasks.length}`;
     $('bmTaskPrev').disabled = state.bmTask === 0;
     $('bmTaskNext').textContent = state.bmTask === tasks.length - 1 ? 'Done' : 'Next';
@@ -2973,7 +2977,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const next = (state.bmTask || 0) + delta;
     if (next >= tasks.length) { exitBuildMode(); return; } // "Done" walks out of the shop
     state.bmTask = Math.max(0, next);
-    renderBmTask();
+    renderBmTask({ animate: true });
     $('bmPager').scrollTop = 0;
     scheduleAutosave(); // the new position persists like any other progress (C-08)
   }
