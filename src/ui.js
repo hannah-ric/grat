@@ -1515,8 +1515,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (opts.caveat) chipHTML.push(`<span class="chip caveat">${esc(opts.caveat)}</span>`);
     const hasDiff = (chips || []).length > 0;
-    if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title">Changed</span>' : ''}${chipHTML.join('')}</div>`;
-    return chatMsg('bot', html);
+    if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title kicker">Changed</span>' : ''}${chipHTML.join('')}</div>`;
+    const m = chatMsg('bot', html);
+    // Diff-card chips cascade in (≤360 ms, 2b treatment 5); styles.css hands
+    // their CSS entrance to the preset so nothing double-animates. Each bot
+    // message is fresh DOM, so this is naturally once per reply.
+    if (hasDiff && Motion) Motion.cascade(m.querySelectorAll('.chips.diff-card .chip'));
+    return m;
   }
   /* ---------------- diff-chip humanizer (C-05) ----------------
    * The "Changed" ledger speaks user vocabulary. Spec.diffSpecs hands the
@@ -1566,6 +1571,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     b.onclick = () => selectTab('overview');
     row.append(b);
     m.append(row);
+    if (Motion) Motion.pop(b); // the next step announces itself (2b treatment 5)
     // The phone chat is a collapsed sheet — a CTA buried in its log is not
     // an affordance. Float the same action under the viewer until taken.
     if (matchMedia('(max-width: 880px)').matches && !$('chatPanel').classList.contains('expanded')) {
@@ -1574,7 +1580,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       pill.id = 'planCtaPill';
       pill.onclick = () => selectTab('overview'); // setMode('plan') removes the pill
       $('viewportWrap').append(pill);
+      if (Motion) Motion.pop(pill);
     }
+  }
+  /* One-shot glint on the Plan segment's state dot when fresh results land
+   * while the user sits in Design mode (2b treatment 5) — the journey's
+   * next station acknowledges the delivery, nothing loops. */
+  function glintPlanSegment() {
+    if (state.buildMode || state.mode !== 'design' || !Motion) return;
+    const seg = $('mode-plan');
+    const dot = seg && seg.querySelector('.dot');
+    if (dot) Motion.pop(dot);
   }
   function removePlanCtaPill() {
     const pill = $('planCtaPill');
@@ -1832,6 +1848,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
         return;
       }
+      glintPlanSegment(); // fresh results landed while the plans sit folded away
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = humanizeDiffs(realDiffs); // user vocabulary, never wire names (C-05)
       // The badge reflects what actually just happened — the strongest
