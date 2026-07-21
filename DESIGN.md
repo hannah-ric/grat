@@ -22,8 +22,8 @@ proven → built**.
 
 **Brand narrative:** a drafting table with a master craftsman behind it.
 Every visual choice reinforces "numbers you can trust": provenance taps,
-letterpress PASS/ADVISORY/FAIL stamps, drafting-styled diagrams — and now the
-product *looks* like the blueprint it produces.
+precise PASS/ADVISORY/FAIL verdict capsules, drafting-styled diagrams — and
+now the product *looks* like the blueprint it produces.
 
 ## Visual direction — evolve, don't replace
 
@@ -114,6 +114,10 @@ The app *is* the site. The first-visit gallery is the marketing: real
 rendered thumbnails, the hero assemble moment, and the pipeline dramatized in
 one shot. Returning users land in the studio with their latest project — the
 front porch never gets in a regular's way.
+
+> **Designed (July 2026):** the full landing concept — the Materialization
+> overture and the scroll-told porch — is specified in
+> [`docs/ui/front-porch.md`](docs/ui/front-porch.md).
 
 ## Optimization doctrine
 

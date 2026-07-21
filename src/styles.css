@@ -322,9 +322,7 @@ input[type="range"]:focus-visible { outline: 2px solid var(--focus); outline-off
      (52px) + border are counted; the Fraunces/Hanken swap had pushed it to 67. */
   padding: 5px var(--s3);
   background: var(--panel);
-  /* drafting title-block: a bold structural rule shadowed by a thin hairline */
-  border-bottom: 1.5px solid var(--line-2);
-  box-shadow: 0 3.5px 0 -2px var(--line);
+  border-bottom: 1px solid var(--line);
   flex: none; z-index: 30; min-height: 54px;
   position: relative;
 }
@@ -368,8 +366,6 @@ input[type="range"]:focus-visible { outline: 2px solid var(--focus); outline-off
   display: flex; align-items: center; gap: 3px; flex: none;
   border: 1px solid var(--line); border-radius: var(--radius-pill);
   padding: 3px; background: var(--panel-2);
-  /* recessed drafting well so the active segment reads as a raised plate */
-  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--ink) 12%, transparent);
 }
 .mode-btn {
   display: inline-flex; align-items: center; gap: 7px;
@@ -399,8 +395,8 @@ input[type="range"]:focus-visible { outline: 2px solid var(--focus); outline-off
 /* Build: the one filled segment — the shop is where this app is headed */
 .mode-btn.build-cta {
   background: var(--accent); color: var(--accent-ink); font-weight: 650;
-  border-color: color-mix(in oklab, var(--accent) 60%, black 12%);
-  box-shadow: var(--shadow), inset 0 1px 0 color-mix(in oklab, white 22%, transparent);
+  border-color: transparent;
+  box-shadow: var(--shadow);
 }
 .mode-btn.build-cta:hover { background: var(--accent); color: var(--accent-ink); filter: brightness(1.06); }
 .mode-btn.build-cta .dot { display: none; }
@@ -435,8 +431,8 @@ input[type="range"]:focus-visible { outline: 2px solid var(--focus); outline-off
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .55; cursor: default; }
 .btn.primary {
-  background: var(--accent); border-color: color-mix(in oklab, var(--accent) 60%, black 12%); color: var(--accent-ink);
-  box-shadow: var(--shadow), inset 0 1px 0 color-mix(in oklab, white 20%, transparent);
+  background: var(--accent); border-color: transparent; color: var(--accent-ink);
+  box-shadow: var(--shadow);
 }
 .btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); filter: brightness(1.06); }
 .btn.icon { padding: var(--s2) 9px; min-width: var(--tap); }
@@ -577,12 +573,11 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
   padding: var(--s2) 14px; border-radius: var(--radius-m); font-size: var(--text-m); line-height: 1.5;
 }
 .msg.user .bubble { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
-/* Bot replies read as workshop notes pinned to the bench, not chat bubbles:
- * paper card, mustard spine, drafting-crisp corners. */
+/* Bot replies are quiet paper cards — the reply's content is the event;
+ * the frame stays plain. (Mustard is reserved for advisories, never décor.) */
 .msg.bot .bubble {
   background: var(--paper); border: 1px solid var(--line);
-  border-left: 3px solid var(--amber);
-  border-radius: var(--radius-s) var(--radius-m) var(--radius-m) var(--radius-s);
+  border-radius: var(--radius-m);
 }
 /* Diff card: what changed, as one note — each chip is a ledger row */
 .msg .chips.diff-card {
@@ -681,21 +676,20 @@ body.welcome-open .chat-input .btn.primary:hover:not(:disabled) {
    The viewport/plans split is a draggable, keyboard-operable separator:
    --vp-split is the viewport's share of the stage height in percent. */
 .stage { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; --vp-split: 58; }
-/* The workbench: a faint drafting grid + a warm radial pool of light so the
- * model sits on an intentional surface instead of floating in empty beige. */
+/* The workbench: one warm pool of light so the model sits on an intentional
+ * surface instead of floating in empty beige. The drafting grid belongs to
+ * Blueprint Mode alone — in wood mode the stage stays clean. */
 .viewport-wrap {
   position: relative; flex: 0 1 calc(var(--vp-split) * 1%); min-height: 180px;
   background:
     radial-gradient(120% 90% at 50% 30%, color-mix(in oklab, var(--panel) 70%, transparent), transparent 72%),
-    linear-gradient(color-mix(in oklab, var(--ink) 5%, transparent) 1px, transparent 1px) 0 0 / 40px 40px,
-    linear-gradient(90deg, color-mix(in oklab, var(--ink) 5%, transparent) 1px, transparent 1px) 0 0 / 40px 40px,
     var(--paper);
   transition: background var(--t-med) var(--ease);
 }
-/* soft vignette to seat the workbench in the frame */
+/* barely-there vignette to seat the stage in the frame */
 .viewport-wrap::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  box-shadow: inset 0 0 120px -40px color-mix(in oklab, var(--structure-2) 55%, transparent);
+  box-shadow: inset 0 0 100px -60px color-mix(in oklab, var(--structure-2) 32%, transparent);
 }
 body.drafting .viewport-wrap::after { display: none; }
 .viewport-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; border-radius: 0; }
@@ -839,7 +833,7 @@ body.welcome-open .viewport-hint { display: none; }
   width: min(780px, calc(100% - var(--s4) * 2));
   max-height: calc(100% - 120px); overflow-y: auto; overscroll-behavior: contain;
   background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(10px);
-  border: 1px solid var(--line-2); border-radius: var(--radius-l); box-shadow: var(--shadow-lg);
+  border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow-lg);
   padding: var(--s4) var(--s4) var(--s3); animation: rise var(--t-slow) var(--ease);
 }
 .welcome-head { display: flex; align-items: flex-start; gap: var(--s2); }
@@ -962,8 +956,6 @@ body.welcome-open .viewport-hint { display: none; }
 .panel h3 {
   font-family: var(--display); font-weight: 700; font-size: var(--text-xl);
   line-height: var(--leading-heading); margin: var(--s4) 0 var(--s2); text-wrap: balance;
-  padding-bottom: var(--s1);
-  border-bottom: 3px double color-mix(in srgb, var(--amber) 62%, transparent);
 }
 .panel h3:first-child { margin-top: 0; }
 .panel .lede { color: var(--muted); font-size: var(--text-s); margin: 0 0 var(--s3); max-width: var(--measure); }
@@ -1449,7 +1441,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   body { overflow: visible; background: #fff; color: var(--ink); }
   #app { display: none !important; }
   #printRoot { display: block; font: 400 var(--print-m)/1.5 var(--body); color: var(--ink); }
-  .print-head { border-bottom: 3px double var(--ink-2); padding-bottom: 12px; margin-bottom: 20px; }
+  .print-head { border-bottom: 2px solid var(--ink-2); padding-bottom: 12px; margin-bottom: 20px; }
   .print-head h1 { font: 700 var(--print-2xl)/1.15 var(--display); letter-spacing: -.01em; margin: 0 0 6px; }
   .print-head p { margin: 2px 0; color: var(--ink-2); }
   /* the stamp voice: small-caps mono marks, walnut-inked */
@@ -1457,7 +1449,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .print-section { margin-bottom: 24px; }
   .print-section h2 {
     font: 600 var(--print-xl)/1.3 var(--display);
-    border-bottom: 3px double color-mix(in srgb, var(--amber) 62%, transparent); padding-bottom: 4px;
+    border-bottom: 1px solid color-mix(in srgb, var(--ink-2) 45%, transparent); padding-bottom: 4px;
   }
   .print-section table { width: 100%; border-collapse: collapse; font-size: var(--print-s); }
   .print-section th, .print-section td { border: 1px solid color-mix(in srgb, var(--ink-2) 38%, transparent); padding: 5px 8px; text-align: left; vertical-align: top; }
@@ -1554,27 +1546,21 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: var(--s2); margin: var(--s3) 0;
 }
-/* Spec plates: each stat reads like a stamped ledger tile — mono value,
-   a fine ochre tick-rule up top, a small-caps label below. */
+/* Spec plates: quiet flat tiles — one large mono value over a small-caps
+   label. The number is the design; the tile stays out of its way. */
 .overview-card {
   position: relative; overflow: hidden;
   border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel);
   padding: var(--s3); cursor: pointer; text-align: left;
   display: flex; flex-direction: column; gap: var(--s1); min-height: 96px; justify-content: flex-end;
-  box-shadow: inset 0 1px 0 color-mix(in oklab, white 20%, transparent), 0 1px 0 var(--line);
   transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
-}
-.overview-card::before {
-  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: repeating-linear-gradient(90deg, var(--amber) 0 2px, transparent 2px 7px);
-  opacity: .6;
 }
 .overview-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent-line); }
 .overview-card .ov-value {
   font: 600 var(--text-2xl) var(--mono); font-variant-numeric: tabular-nums; color: var(--ink);
   line-height: 1.1; letter-spacing: -.01em;
 }
-.overview-card .ov-value.stamp { font: 700 var(--text-m) var(--body); letter-spacing: .12em; align-self: flex-start; }
+.overview-card .ov-value.stamp { font: 650 var(--text-s)/1 var(--body); letter-spacing: .08em; align-self: flex-start; }
 .overview-card .ov-label {
   font: 600 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
 }
@@ -1585,14 +1571,15 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 
 /* ---------------- integrity panel ---------------- */
 .integrity-summary { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
-/* Letterpress verdict stamps: a double-ruled inked mark, cocked a touch off
-   square like a real rubber stamp, tinted by the brand semantic colour. */
+/* Verdict capsules: precise, unrotated status marks — a quiet tinted field
+   with the verdict text carrying the meaning. Same pill geometry as every
+   control; no borders, no rotation, no letterpress cosplay. */
 .stamp {
-  display: inline-block; border: 2px solid currentColor; border-radius: var(--radius-s);
-  font: 700 var(--text-s) var(--mono); letter-spacing: .16em; text-transform: uppercase; padding: 2px 10px;
-  transform: rotate(-1.2deg);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 22%, transparent);
-  background: color-mix(in oklab, currentColor 8%, transparent);
+  display: inline-flex; align-items: center;
+  border: 0; border-radius: var(--radius-pill);
+  font: 650 var(--text-xs)/1 var(--body); letter-spacing: .08em; text-transform: uppercase;
+  padding: 6px 12px;
+  background: color-mix(in oklab, currentColor 10%, transparent);
 }
 .stamp.pass { color: var(--green); }
 .stamp.advisory { color: var(--amber-ink); }
@@ -1952,7 +1939,7 @@ body.bm-playback .playback-bar { display: none !important; }
 
 /* ---------------- forced colors (Windows High Contrast) ----------------
    The UA repaints everything; only opt out where color IS the content
-   (state dots, rating dots, movement grades, verdict stamps). */
+   (state dots, rating dots, movement grades, verdict capsules). */
 @media (forced-colors: active) {
   .mode-btn .dot, .ai-badge .dot, .integrity-dot, .diag-dot, .chat-rail-dot,
   .dots, .movement-low, .movement-medium, .movement-high,
