@@ -1,0 +1,5 @@
+/* Blueprint Buddy — front porch styles (landing narrative, design-language §7).
+   Phase 2a (the landing workstream) owns this file; Phase 1 wires it into the
+   build empty. Inlined by build.js as a second <style> block after the app
+   stylesheet, so porch rules can consume every Showroom token but never need
+   to override app chrome. */
