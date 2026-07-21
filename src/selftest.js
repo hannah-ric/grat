@@ -1086,6 +1086,41 @@ var BB = globalThis.BB = globalThis.BB || {};
         prog.task === 5 && !prog.cuts['b:0:0:stale:100'], `task ${prog.task}, stale pruned`, 'task 5, stale pruned');
     }
 
+    /* ============ motion presets (browser only — motion.js loads there) ============ */
+    if (BB.Motion && typeof document !== 'undefined') {
+      const M = BB.Motion;
+      // The preset library is the ONLY sanctioned animation surface
+      // (design-language §5) — a missing name means a caller will hand-roll.
+      const names = ['on', '_forceOff', 'reveal', 'cascade', 'draw', 'rule', 'count',
+        'countUpOnce', 'lines', 'settle', 'pop', 'timeline', 'scrollSync', 'auto'];
+      const missing = names.filter(n => typeof M[n] !== 'function');
+      test('motion', 'preset library complete — every §5 preset is a function',
+        !missing.length, missing.join(',') || 'all present', 'all present');
+
+      // The single reduced-motion gate: off must mean END STATE, synchronously,
+      // with no animation objects — the one path all choreography shares.
+      M._forceOff(true);
+      try {
+        test('motion', 'gate reports off under _forceOff', M.on() === false, M.on(), 'false');
+        const el = document.createElement('div');
+        el.style.opacity = '0'; el.style.transform = 'translateY(12px)';
+        M.reveal(el);
+        test('motion', 'gate off: reveal applies the end state synchronously',
+          el.style.opacity === '' && el.style.transform === '',
+          `opacity "${el.style.opacity}", transform "${el.style.transform}"`, 'inline opacity/transform cleared');
+        const c = document.createElement('span');
+        M.count(c, 1234);
+        test('motion', 'gate off: counter renders the final formatted value immediately',
+          c.textContent === '1234', c.textContent, '1234');
+        const tl = M.timeline();
+        let tlOK = !!tl && typeof tl.add === 'function';
+        try { tl.add(); tl.init(); tl.play(); tl.pause(); tl.refresh(); tl.revert(); }
+        catch (e) { tlOK = false; }
+        test('motion', 'gate off: timeline() returns an inert object with callable methods',
+          tlOK, tlOK ? 'no-op surface callable' : 'method threw or missing', 'no-op surface callable');
+      } finally { M._forceOff(false); }
+    }
+
     /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
     if (BB.Engine && BB.Engine.minDolly) {
       // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction
