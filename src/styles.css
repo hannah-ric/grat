@@ -92,6 +92,8 @@
   --text-s: clamp(0.875rem, 0.8542rem + 0.0926vw, 0.9375rem);/* buttons, captions, tables 14→15 */
   --text-xs: clamp(0.75rem, 0.7292rem + 0.0926vw, 0.8125rem);/* supplementary kickers only 12→13 */
   --text-hero: clamp(2.5rem, 2rem + 2.2222vw, 4rem);         /* first-run hero 40→64 */
+  --text-billboard: clamp(3.5rem, 2rem + 6.6667vw, 8rem);    /* porch H1 + chapter numerals ONLY (design-language §1) */
+  --track-label: .08em;  /* kicker voice tracking — the one uppercase-label letterspace */
 
   /* Additive leading: the rem term rides zoom, the ratio self-tightens as
      sizes grow (brand-system.md §3). */
@@ -1948,3 +1950,64 @@ body.bm-playback .playback-bar { display: none !important; }
   .stamp, .save-state { forced-color-adjust: none; }
   .btn, .tab, .toggle .track { border: 1px solid ButtonText; }
 }
+
+/* ---------------- overhaul component vocabulary (design-language §4) ----------------
+   Shared by landing chapters and plan panels. Tokens only; hierarchy from
+   scale/weight/space (premium-refit bar — no ornament). Motion belongs to
+   the BB.Motion presets, never to these rules: the resting styles below ARE
+   the reduced-motion end state. */
+
+/* Uppercase tracked micro-label — landing section labels, ledger heads,
+   spec-plate titles. --muted-2 is the audited AA muted in both schemes. */
+.kicker {
+  font: 600 var(--text-xs)/1 var(--body);
+  letter-spacing: var(--track-label); text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+/* Spec plate: a measured-values block presented as a designed object —
+   kicker title, mono value rows, hairline rules. Verdict capsules (.stamp)
+   compose in unchanged. Every value is read live at render time; a
+   hardcoded figure here is a founding-rule violation (§9). */
+.spec-plate {
+  display: block; padding: var(--space-s) 0;
+  border-top: 1px solid var(--line-2);
+}
+.spec-plate > .kicker { display: block; margin-bottom: var(--space-2xs); }
+.spec-plate-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-s); padding: var(--space-2xs) 0;
+  border-bottom: 1px solid var(--line);
+}
+.spec-plate-row:last-child { border-bottom: 0; }
+.spec-plate-label { color: var(--muted-2); font-size: var(--text-s); }
+.spec-plate-value {
+  color: var(--ink); font: 500 var(--text-s)/1.2 var(--mono);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+
+/* Ledger: the instrument-grade table treatment — kicker head band with a
+   mono summary strip, and a drawn top rule. The rule element rests at
+   scaleX(1); Motion.rule() draws it in from the left. .ledger-rule is the
+   generic drawn hairline — spec plates reuse it. */
+.ledger { display: block; }
+.ledger-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-s); padding-bottom: var(--space-2xs);
+}
+.ledger-sum {
+  color: var(--muted-2); font: 500 var(--text-xs)/1.2 var(--mono);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+.ledger-rule {
+  height: 1px; background: var(--line-2);
+  transform-origin: left center;
+}
+
+/* Counted figure — machine voice, no layout shift while rolling. */
+.counter { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Porch scaffold: the landing region ships pre-wired but inert until the
+   landing workstream fills it. [hidden] must win over display:block. */
+.porch { display: block; }
+.porch[hidden] { display: none; }
