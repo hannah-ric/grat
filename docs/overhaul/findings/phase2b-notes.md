@@ -12,6 +12,9 @@ no ms, no curves, no hex; the two px occurrences are the file-wide hairline
 Verified green in this worktree: `npm run build`; `npm test` (unit 1253 /
 audit 480 / golden 6/6 byte-stable / battery 50 / server 150);
 `npm run test:smoke` **282/282** (270 existing + 12 new); handcalc 16/16.
+Re-verified end to end after the final commit series: same counts, all
+green, worktree clean except the locally rebuilt dist (not committed —
+orchestrator-owned).
 
 ## The render-key design (the one-time law, mechanized)
 
@@ -205,11 +208,11 @@ Nothing blocks input; nothing animates on recompute/preview renders.
 
 ## Payload
 
-dist: 2 088 597 B (Phase 1) → 2 102 220 B = **+13 623 B** for the app pass
+dist: 2 088 597 B (Phase 1) → 2 102 460 B = **+13 863 B** for the app pass
 (ui.js +11.2 KB, styles.css +2.4 KB; inlined once, no minifier by design —
 comments ship, and were densified once already). Against §12's whole-
 overhaul ceiling of ≤ +170 KB over 1 950 845 B, the running total is
-+151 375 B, leaving **≈ 18.6 KB for 2a's porch** — tighter than the
++151 615 B, leaving **≈ 18.4 KB for 2a's porch** — tighter than the
 ≈ 34 KB the Phase 1 notes projected for it. FLAG for the orchestrator:
 if 2a's porch lands over ≈ 18 KB, the ceiling needs either a porch diet, a
 comment-strip pass at merge, or an amendment. Not improvised around here.
