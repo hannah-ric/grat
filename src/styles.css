@@ -2011,3 +2011,48 @@ body.bm-playback .playback-bar { display: none !important; }
    landing workstream fills it. [hidden] must win over display:block. */
 .porch { display: block; }
 .porch[hidden] { display: none; }
+
+/* ---------------- overhaul 2b: app composition of the §9 treatments ----------------
+   Ledger heads on plan panels, the Overview cover sheet, ledger voice on
+   step numbers. Tokens only; every rule is a RESTING state — motion comes
+   exclusively from BB.Motion presets; reduced motion sees these as-is. */
+
+/* Panel ledger heads: kicker voice at the s end of its band (§1 allows
+   xs/s; panel headings keep the ≥14px UI-text floor); the h3 keeps the
+   panel's heading/focus contract while wearing the kicker voice. */
+.panel h3.kicker {
+  font: 600 var(--text-s)/1.35 var(--body);
+  letter-spacing: var(--track-label); text-transform: uppercase;
+  color: var(--muted-2); margin: 0; text-wrap: balance;
+}
+.panel .ledger-head, .modal .ledger-head { flex-wrap: wrap; row-gap: var(--s1); }
+.panel .ledger { margin: 0 0 var(--s3); }
+.species-ledger { margin: 0 0 var(--s2); }
+
+/* Overview cover sheet: the safety line as a spec plate — capsule + plain
+   sentence in one row, live mono rows under it. */
+.overview-verdict { margin: 0 0 var(--s2); }
+.overview-verdict .verdict-row { justify-content: flex-start; align-items: center; }
+.overview-verdict .verdict-text {
+  color: var(--ink-2); font-size: var(--text-s); line-height: 1.5; max-width: var(--measure);
+}
+
+/* Overview drawing tile: the real front elevation, same tile field as the
+   stat cards; the SVG scales fluidly and its linework rests fully drawn. */
+.overview-draw {
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel);
+  padding: var(--s3); margin-top: var(--s2);
+}
+.overview-draw > .kicker { display: block; margin-bottom: var(--space-2xs); }
+.overview-draw svg { display: block; width: 100%; height: auto; max-height: min(38vh, 340px); }
+
+/* Ledger voice on assembly step numbers: counted figures speak mono. */
+.step-list .step-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Diff-card chips: their entrance is Motion.cascade (2b treatment 5) — the
+   generic chip rise would double-animate them; chips elsewhere keep it. */
+.chips.diff-card .chip { animation: none; }
+
+/* The floating plan CTA centers without transform so Motion.pop — which
+   owns inline transforms while it runs — can pulse it without unseating it. */
+.btn.plan-cta-pill { left: 0; right: 0; transform: none; margin-inline: auto; width: fit-content; }
