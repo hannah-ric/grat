@@ -59,6 +59,62 @@ var BB = globalThis.BB = globalThis.BB || {};
   const fmt = mm => Units.fmtLength(mm);
   const fmtS = mm => Units.fmtSmall(mm);
 
+  /* ---------------- motion render keys (overhaul design-language §5/§9) ----
+   * All in-app motion rides BB.Motion presets; these keys decide WHEN a
+   * one-time preset (cascade/count/draw/settle) may fire: on a design-
+   * identity render — commit, restore, project load (design epoch) — or
+   * when the user brings a plan view on stage (nav epoch); NEVER on
+   * recomputes of the same view (preview drags, price/climate/load edits,
+   * unit flips, resizes, playback scrubs — none of which bump an epoch).
+   * Per-design surfaces (Overview counters/drawing tile, Safety settle,
+   * summary strips) key on the design epoch alone: they play on the first
+   * VISIBLE render of a design, static after. Tab surfaces (row cascades,
+   * rule draws) add the nav epoch, so re-opening a tab replays its entrance
+   * while same-view re-renders never re-stagger. A hidden panel never burns
+   * a key (design mode hides .panel); modal surfaces (species compare) opt
+   * out via opts.modal and reset on dialog open. Presets self-gate under
+   * reduced motion — keys pick when to invoke, never how it degrades. */
+  const Motion = BB.Motion;
+  const motionKeys = { design: 0, nav: 0, seen: Object.create(null) };
+  function motionOnce(surface, opts) {
+    opts = opts || {};
+    if (!Motion) return false;
+    if (!opts.modal && (state.mode !== 'plan' || state.buildMode)) return false;
+    const key = 'd' + motionKeys.design + (opts.perDesign ? '' : ':n' + motionKeys.nav);
+    if (motionKeys.seen[surface] === key) return false;
+    motionKeys.seen[surface] = key;
+    return true;
+  }
+
+  /* The .ledger head band (§4/§9): kicker title + mono summary strip +
+   * drawn rule. sums: [{to, label, fmt?}] — dimensional fmts MUST be
+   * BB.Units formatters (display boundary); default fmt is plain integer.
+   * fx.count rolls the strip (gated per design), fx.draw runs the rule in
+   * (gated per view entrance); without fx the band rests complete — which
+   * is also the reduced-motion end state. */
+  function ledgerHead(title, sums, fx) {
+    fx = fx || {};
+    const wrap = el('div', 'ledger');
+    const head = el('div', 'ledger-head');
+    head.append(el('h3', 'kicker', esc(title)));
+    if (sums && sums.length) {
+      const strip = el('span', 'ledger-sum counter');
+      sums.forEach((s, i) => {
+        const f = s.fmt || (v => String(Math.round(v)));
+        // Rolling strips paint f(0) first (no final-value flash); the off
+        // path lets count() set the end state synchronously.
+        const n = el('span', '', esc(f(fx.count && Motion.on() ? 0 : s.to)));
+        if (fx.count) Motion.count(n, s.to, { fmt: f });
+        strip.append(n, document.createTextNode((s.label || '') + (i < sums.length - 1 ? ' · ' : '')));
+      });
+      head.append(strip);
+    }
+    const rule = el('div', 'ledger-rule');
+    wrap.append(head, rule);
+    if (fx.draw) Motion.rule(rule);
+    return wrap;
+  }
+
   /* ---------------- pipeline ---------------- */
   function runPipeline(raw) {
     const spec = Spec.correctSpec(raw);
@@ -104,6 +160,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.previewing = false; // any pending slider preview is superseded by this commit
     state.advisoriesExpanded = false; // a new change re-folds the warning stack
     state.hasDesign = true; // every accepted change past the boot seed is a chosen design (C-02)
+    motionKeys.design++; // a design-identity render: one-time presets may replay
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -135,6 +192,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     exitPlayback();
     clearCompare(); // undo/redo/restore must never leave a stale ghost + banner
     state.previewing = false; // a restore discards any uncommitted preview
+    motionKeys.design++; // a restored design is a fresh design identity
     const r = runPipeline(spec);
     adopt(r);
     renderAll();
@@ -2363,6 +2421,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (state.prefs4.level && cur.meta && cur.meta.level !== state.prefs4.level) {
       cur = Spec.deepMerge(cur, { meta: { level: state.prefs4.level } });
     }
+    motionKeys.design++; // an opened project is a fresh design identity
     const r = runPipeline(cur);
     adopt(r);
     renderAll();
@@ -2961,12 +3020,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   function setMode(m, opts) {
     if (m === 'build') { enterBuildMode(); return; }
     if (m === 'plan') removePlanCtaPill(); // the floating next-step is taken/answered (C-03)
+    if (m === 'plan' && state.mode !== 'plan') motionKeys.nav++; // plan views come on stage: entrances may replay
     state.mode = m === 'plan' ? 'plan' : 'design';
     document.body.dataset.mode = state.mode;
     if (state.mode === 'plan') autoSplitForPlanPhone();
     if (!(opts && opts.silent)) syncHash();
     renderReadiness();
-    if (state.mode === 'plan') { renderTabs(); renderPanel(); }
+    // norender: a caller (selectTab) that renders right after skips the
+    // duplicate pass — one render per entry, so a one-time entrance lands
+    // on the DOM the user actually sees.
+    if (state.mode === 'plan' && !(opts && opts.norender)) { renderTabs(); renderPanel(); }
   }
   function modeStates() {
     const sum = state.integrity.summary;
@@ -3107,8 +3170,11 @@ var BB = globalThis.BB = globalThis.BB || {};
    * until a "Learn why" link or the More menu opens it. */
   const TABS = ['overview', 'cut', 'stock', 'assembly', 'integrity', 'reference'];
   function selectTab(t) {
+    // Opening a view (a real tab change, or arriving from Design mode)
+    // replays its one-time entrance; re-selecting the visible tab does not.
+    if (state.tab !== t || state.mode !== 'plan') motionKeys.nav++;
     state.tab = t;
-    if (state.mode !== 'plan') setMode('plan');
+    if (state.mode !== 'plan') setMode('plan', { norender: true });
     renderTabs();
     renderPanel();
     // Narrow screens scroll the tab bar: the chosen tab must never sit
