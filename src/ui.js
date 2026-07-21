@@ -693,13 +693,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
+  /* The cut list is the flagship instrument (§9.2): ledger head band, drawn
+   * rule, summary strip counted once per design, one-time row cascade per
+   * view entrance — all straight reads of plan/packing state already in
+   * `state`; recomputes of the same view re-render statically. */
   function renderCut(root) {
-    root.append(el('h3', '', 'Cut list'));
-    root.append(el('p', 'lede', `Every part, ready for the saw. Tap a dimension to see where it comes from. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
+    const cascade = motionOnce('cut');                          // tab open / design change
+    const counts = motionOnce('cut-sum', { perDesign: true });  // strip rolls once per design
+    const plan = state.stockPlan;
+    root.append(ledgerHead('Cut list · every part, ready for the saw',
+      state.cut.length && plan ? [
+        { to: state.cut.reduce((n, r) => n + r.qty, 0), label: ' parts' },
+        { to: plan.boards.length + plan.sheets.length, label: ' boards' },
+        { to: plan.bdft ? plan.bdft.exact : 0, fmt: v => Units.fmtBoardFeet(v) }
+      ] : null, { count: counts, draw: cascade }));
     if (!state.cut.length) {
       emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
     }
+    root.append(el('p', 'lede', `Tap a dimension to see where it comes from. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
     const dim = (r, v, i, what) => `<button type="button" class="prov-btn num" data-prov="${i}" aria-label="${esc(r.name)} ${what} ${esc(fmt(v))} — show the formula">${fmt(v)}</button>`;
     const wireProv = box => box.querySelectorAll('.prov-btn').forEach(b => {
       b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
@@ -708,7 +720,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Phones read cards, not seven-column tables: name, qty, dimensions,
       // material — and "Why this length?" opens the same provenance dialog.
       const list = el('div', 'cut-cards');
-      list.innerHTML = state.cut.map((r, i) => `<div class="cut-card">
+      list.setAttribute('data-motion-group', '');
+      list.innerHTML = state.cut.map((r, i) => `<div class="cut-card" data-motion="cascade">
         <div class="cut-card-head"><span class="cc-name">${esc(r.name)}</span><span class="cc-qty">× ${r.qty}</span></div>
         <div class="cc-dims">${dim(r, r.L, i, 'length')} × ${dim(r, r.W, i, 'width')} × ${dim(r, r.T, i, 'thickness')}</div>
         <div class="cc-meta">${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}${r.note ? ' · ' + esc(r.note) : ''}</div>
@@ -719,24 +732,38 @@ var BB = globalThis.BB = globalThis.BB || {};
         b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
       });
       root.append(list);
+      if (cascade) { Motion.auto(list); list.dataset.cascaded = '1'; }
       return;
     }
     const scroll = el('div', 'table-scroll');
-    const rows = state.cut.map((r, i) => `<tr>
+    const rows = state.cut.map((r, i) => `<tr data-motion="cascade">
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
       <td class="txt-muted txt-small">${esc(r.note || '')}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody data-motion-group>${rows}</tbody></table>`;
     wireProv(scroll);
     root.append(scroll);
+    if (cascade) { Motion.auto(scroll); scroll.dataset.cascaded = '1'; }
   }
 
-  /* ---------------- Stock tab (Phase 4 item 3) ---------------- */
+  /* ---------------- Stock tab (Phase 4 item 3) ----------------
+   * Ledger voice (overhaul §9.2): kicker head band + drawn rule + counted
+   * mono summary, one-time cascade on the shopping rows. */
   function renderStock(root) {
+    const cascade = motionOnce('buy');
+    const counts = motionOnce('buy-sum', { perDesign: true });
     const plan = state.stockPlan;
     const species = state.spec.wood.species;
-    root.append(el('h3', '', 'Stock — what to buy, and how to break it down'));
+    const money = v => '$' + Math.round(v);
+    root.append(ledgerHead('Buying plan · what to buy, how to break it down',
+      plan && plan.shopping.length ? [
+        plan.mode === 'rough'
+          ? { to: plan.bdft.withWaste, fmt: v => Units.fmtBoardFeet(v) }
+          : { to: plan.boards.length, label: ' boards' },
+        { to: plan.sheets.length, label: ' sheets' },
+        { to: plan.totalCost, fmt: money }
+      ] : null, { count: counts, draw: cascade }));
     root.append(el('p', 'lede', 'Here is what to buy at the lumber yard, and how to break each board down. Kerf and end trim are already included.'));
 
     const controls = el('div', 'stock-controls');
@@ -763,9 +790,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     const scroll = el('div', 'table-scroll');
     // composite stock names ("Cherry 1×6 × 6 ft (3/4 × 5 1/2 in)") are
     // machine values — the whole cell goes mono (B-03)
-    const shopRows = plan.shopping.map(s => `<tr><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" class="txt-muted">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
+    const shopRows = plan.shopping.map(s => `<tr data-motion="cascade"><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody data-motion-group>${shopRows || '<tr><td colspan="4" class="txt-muted">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
     root.append(scroll);
+    if (cascade) { Motion.auto(scroll); scroll.dataset.cascaded = '1'; }
     const waste = [];
     if (plan.wasteSolidPct != null) waste.push(`solid waste <span class="mv">${plan.wasteSolidPct}%</span>`);
     if (plan.wasteSheetPct != null) waste.push(`sheet waste <span class="mv">${plan.wasteSheetPct}%</span>`);
@@ -866,7 +894,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function renderBom(root) {
-    root.append(el('h3', '', 'Materials & cost'));
+    const cascade = motionOnce('bom');
+    const counts = motionOnce('bom-sum', { perDesign: true });
+    root.append(ledgerHead('Materials & cost · down to the screws',
+      state.bomData.items.length ? [
+        { to: state.bomData.items.length, label: ' lines' },
+        { to: state.bomData.total, fmt: v => '$' + Math.round(v) }
+      ] : null, { count: counts, draw: cascade }));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
     if (!state.bomData.items.length) {
       emptyState(root, 'Nothing to buy yet.', 'Describe a piece and the shopping list prices itself.');
@@ -879,13 +913,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const scroll = el('div', 'table-scroll');
     // labels and detail strings carry lengths and per-unit prices — mono
     // machine-value cells (B-03)
-    const rows = state.bomData.items.map(i => `<tr>
+    const rows = state.bomData.items.map(i => `<tr data-motion="cascade">
       <td><span class="kind-tag">${esc(i.kind)}</span></td>
       <td class="mv">${esc(i.label)}</td><td class="num">${i.qty}</td>
       <td class="mv txt-muted">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody data-motion-group>${rows}</tbody></table>`;
     root.append(scroll);
+    if (cascade) Motion.auto(scroll);
     const tot = el('div', 'bom-total');
     tot.innerHTML = `<span>Estimated materials cost</span><strong>$${state.bomData.total.toFixed(2)}</strong>`;
     root.append(tot);
@@ -2501,6 +2536,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const cur = state.spec.wood.species;
       state.speciesPick = [cur, ...['hard_maple', 'walnut', 'pine'].filter(s => s !== cur)].slice(0, 3);
     }
+    // Each dialog open replays the ledger entrance once; pick toggles
+    // re-render the same view statically (modal render key).
+    delete motionKeys.seen.species;
     renderSpeciesPick();
     renderSpeciesTable();
     openScrim('speciesScrim');
@@ -2527,7 +2565,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       prices: state.prices, stockMode: state.prefs4.stockMode,
       loadChoices: state.loadChoices, defaultLoad: 'auto', climate: state.prefs4.climate
     });
-    if (!cols.length) { wrap.innerHTML = '<p class="sub">Pick up to three species above.</p>'; return; }
+    // Ledger voice on the compare table (§9.2): kicker head band + drawn
+    // rule above the table, one-time row cascade per dialog open.
+    let head = $('speciesLedger');
+    if (!head) {
+      head = el('div', 'ledger species-ledger');
+      head.id = 'speciesLedger';
+      wrap.before(head);
+    }
+    if (!cols.length) { head.hidden = true; wrap.innerHTML = '<p class="sub">Pick up to three species above.</p>'; return; }
+    const fire = motionOnce('species', { modal: true });
+    head.hidden = false;
+    head.innerHTML = `<div class="ledger-head"><span class="kicker">Species compare · same design, recomputed live</span><span class="ledger-sum">${cols.length} species</span></div><div class="ledger-rule"></div>`;
+    if (fire) Motion.rule(head.querySelector('.ledger-rule'));
     const best = fn => {
       const vals = cols.map(fn).filter(v => v != null);
       return vals.length ? Math.min(...vals) : null;
@@ -2536,14 +2586,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     const maxSag = Math.max(...cols.map(c => c.sagMargin || 0));
     const cell = (v, isBest, suffix) => `<td class="num${isBest ? ' species-best' : ''}">${v}${suffix || ''}</td>`;
     wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
-      `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody>
-      <tr><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
-      <tr><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
-      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span class="txt-muted">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
-      <tr><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(esc(fmtS(c.movementMM)), c.movementMM === bestMove)).join('')}</tr>
-      <tr><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span class="txt-muted">${esc(c.duty)}</span>`)).join('')}</tr>
-      <tr><td>Failing checks</td>${cols.map(c => cell(c.fails, c.fails === 0)).join('')}</tr>
+      `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody data-motion-group>
+      <tr data-motion="cascade"><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
+      <tr data-motion="cascade"><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
+      <tr data-motion="cascade"><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span class="txt-muted">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
+      <tr data-motion="cascade"><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(esc(fmtS(c.movementMM)), c.movementMM === bestMove)).join('')}</tr>
+      <tr data-motion="cascade"><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span class="txt-muted">${esc(c.duty)}</span>`)).join('')}</tr>
+      <tr data-motion="cascade"><td>Failing checks</td>${cols.map(c => cell(c.fails, c.fails === 0)).join('')}</tr>
     </tbody></table>`;
+    if (fire) Motion.auto(wrap);
     wrap.querySelectorAll('.species-col-btn').forEach(b => {
       b.onclick = () => {
         merge({ wood: { species: b.dataset.sp } }, 'compare', ['species → ' + K.WOOD_SPECIES[b.dataset.sp].label]);
