@@ -1014,7 +1014,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function renderAssembly(root) {
-    root.append(el('h3', '', 'Assembly'));
+    // Ledger voice + one-time step cascade (2b treatment 4); playback
+    // surfaces and every behavior untouched.
+    const cascade = motionOnce('assembly');
+    const counts = motionOnce('assembly-sum', { perDesign: true });
+    root.append(ledgerHead('Assembly · in build order',
+      state.steps.length ? [{ to: state.steps.length, label: ' steps' }] : null,
+      { count: counts, draw: cascade }));
     root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow. Tap any glowing dot for a 3D close-up of exactly what to cut and where.'));
     if (!state.steps.length) {
       emptyState(root, 'No steps to walk yet.', 'Once a design has parts, assembly writes itself in build order.');
@@ -1031,9 +1037,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       <details class="tool-wall"><summary>Tools for this build (${tools.length})</summary><ul>${tools.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
     root.append(facts);
     const list = el('ol', 'step-list');
+    list.setAttribute('data-motion-group', '');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
       item.dataset.step = i;
+      item.dataset.motion = 'cascade';
       const num = el('div', 'step-num');
       const body = el('div', 'step-body');
       const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
@@ -1057,6 +1065,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       list.append(item);
     });
     root.append(list);
+    if (cascade) { Motion.auto(list); list.dataset.cascaded = '1'; }
     root.querySelectorAll('.why-joint > button').forEach(b => {
       b.addEventListener('click', e => {
         e.stopPropagation();
@@ -1075,6 +1084,10 @@ var BB = globalThis.BB = globalThis.BB || {};
    * intermediate/advanced, closed for beginners so jargon is never the
    * first layer while fixes stay one glance away. */
   function renderIntegrity(root) {
+    // Overhaul (§9.3, 2b treatment 3): the verdict capsule settles and the
+    // surfaced fix-cards reveal on the first render of a given design;
+    // layering, copy, and every behavior stay untouched.
+    const once = motionOnce('integrity', { perDesign: true });
     const integ = state.integrity;
     const overall = integ.summary.verdict; // engine rollup (audit M-18): fail > anchor > advisory > pass
     const beginner = state.spec.meta.level === 'beginner';
@@ -1089,10 +1102,13 @@ var BB = globalThis.BB = globalThis.BB || {};
             ? 'This design is safe only when anchored to the wall. The anti-tip anchor is mandatory — it is in the BOM and the assembly steps, not optional.'
             : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
     root.append(summary);
+    if (once) Motion.settle(summary.querySelector('.stamp'));
     // Failing checks never hide — and neither does a check that mandates the
     // wall anchor (audit M-18): plain card, above the fold, at every level.
     for (const c of integ.checks.filter(x => x.status === 'fail' || x.anchor)) {
-      root.append(checkCard(c, { full: !beginner }));
+      const card = checkCard(c, { full: !beginner });
+      root.append(card);
+      if (once) Motion.reveal(card);
     }
     const details = document.createElement('details');
     details.className = 'integrity-details';
