@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Blueprint Buddy">
+  <rect width="32" height="32" rx="7" fill="#17110F"/>
+  <g fill="none" stroke="#F1EBDD" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 6.4 v2.4"/>
+    <circle cx="16" cy="11" r="2.1"/>
+    <path d="M14.5 12.5 L10.6 23.8 l1.9 -1"/>
+    <path d="M17.5 12.5 L21.4 23.8 l-1.9 -1"/>
+    <path d="M12.7 17.8 h6.6"/>
+  </g>
+</svg>

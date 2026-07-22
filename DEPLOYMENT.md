@@ -42,6 +42,7 @@ vercel env add ANTHROPIC_API_KEY development
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | For AI features | Server-side only (`api/chat.js`) | Auth for the Anthropic API. The browser never sees it — the client calls the same-origin `/api/chat` proxy. Without it, the app degrades gracefully to its built-in offline intent parser. |
 | `ANTHROPIC_MODEL` | No | Server-side only | Override the model (default `claude-sonnet-5`). |
+| `AI_MONTHLY_TOKEN_BUDGET` | No | Server-side only (`api/chat.js`) | Per-user monthly **output-token** ceiling, metered durably in KV (`api/_entitlements.js`). `0`/unset = disabled (only the 25/500 message caps and the 60 req/min burst guard apply). When set, an exhausted budget trips a `429` the client surfaces gracefully. Reasonable launch value: `750000` (≈ 500 messages × 1000-token reply ceiling × 1.5 continuation headroom). |
 | `AUTH_SECRET` | Required for accounts & subscriptions | Server-side only (`api/auth.js`, `api/store.js`) | Signs stateless session cookies (`openssl rand -hex 32`). **Stored as a sensitive (encrypted) var on Vercel — not written by `vercel env pull`.** |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | No | Server-side only | Enables "Sign in with Google". |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | No | Server-side only | Enables "Sign in with GitHub". |

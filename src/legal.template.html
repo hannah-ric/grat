@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="{{TITLE}} — Blueprint Buddy.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#F1EBDD" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17110F" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="{{FAVICON_SVG}}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{APPLE_ICON}}">
+<title>{{TITLE}} — Blueprint Buddy</title>
+<style>
+@font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 600; font-display: swap; src: url({{FONT_FRAUNCES_600}}) format('woff2'); }
+@font-face { font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 400; font-display: swap; src: url({{FONT_HANKEN_400}}) format('woff2'); }
+@font-face { font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 600; font-display: swap; src: url({{FONT_HANKEN_600}}) format('woff2'); }
+
+:root {
+  --paper: #F1EBDD; --panel: #FBF8F1; --ink: #241813; --ink-2: #593837;
+  --muted: #6F5B4C; --line: #DED2BC; --accent: #942911;
+  --display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --body: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #17110F; --panel: #211814; --ink: #F2EADF; --ink-2: #CFBBAD;
+    --muted: #A89180; --line: #3A2C24; --accent: #E17B54;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; color: var(--ink); background: var(--paper);
+  font-family: var(--body); font-size: 1.02rem; line-height: 1.65;
+  font-weight: 400; -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 46rem; margin: 0 auto; padding: clamp(1.25rem, 4vw, 3rem) clamp(1.1rem, 5vw, 2rem) 4rem; }
+header.masthead { display: flex; align-items: center; gap: .6rem; padding-bottom: 1.75rem; border-bottom: 1px solid var(--line); margin-bottom: 2.25rem; }
+header.masthead img { width: 34px; height: 34px; border-radius: 8px; display: block; }
+header.masthead a { display: flex; align-items: center; gap: .6rem; color: var(--ink); text-decoration: none; font-family: var(--display); font-weight: 600; font-size: 1.15rem; letter-spacing: -0.01em; }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(1.9rem, 5vw, 2.6rem); line-height: 1.1; letter-spacing: -0.015em; margin: 0 0 .4rem; text-wrap: balance; }
+.updated { color: var(--muted); font-size: .9rem; margin: 0 0 2.5rem; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 1.3rem; line-height: 1.25; margin: 2.75rem 0 .75rem; letter-spacing: -0.01em; }
+h3 { font-size: 1.02rem; font-weight: 600; margin: 1.75rem 0 .5rem; }
+p, li { color: var(--ink-2); }
+p { margin: 0 0 1rem; text-wrap: pretty; }
+ul, ol { margin: 0 0 1rem; padding-left: 1.35rem; }
+li { margin: 0 0 .5rem; }
+strong { color: var(--ink); font-weight: 600; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+.lede { font-size: 1.12rem; color: var(--ink); }
+.callout { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--panel); border-radius: 8px; padding: 1rem 1.15rem; margin: 0 0 1.5rem; }
+.callout p:last-child { margin-bottom: 0; }
+.placeholder { color: var(--accent); font-weight: 600; }
+footer.legal-foot { margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: .4rem 1.25rem; align-items: center; color: var(--muted); font-size: .9rem; }
+footer.legal-foot a { color: var(--muted); }
+footer.legal-foot a:hover { color: var(--accent); }
+footer.legal-foot .sep { color: var(--line); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <a href="/"><img src="{{APPLE_ICON}}" alt="" width="34" height="34"><span>Blueprint Buddy</span></a>
+  </header>
+  <main>
+    <h1>{{HEADING}}</h1>
+    <p class="updated">Last updated: <span class="placeholder">{{UPDATED}}</span></p>
+    {{BODY}}
+  </main>
+  <footer class="legal-foot">
+    <span>&copy; <span class="placeholder">[YEAR]</span> <span class="placeholder">[LEGAL ENTITY NAME]</span></span>
+    <span class="sep">&middot;</span>
+    <a href="/">Blueprint Buddy</a>
+    <span class="sep">&middot;</span>
+    <a href="/privacy.html">Privacy</a>
+    <span class="sep">&middot;</span>
+    <a href="/terms.html">Terms</a>
+  </footer>
+</div>
+</body>
+</html>

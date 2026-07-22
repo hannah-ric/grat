@@ -13,7 +13,13 @@
 <meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#F1EBDD" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#17110F" media="(prefers-color-scheme: dark)">
-<link rel="manifest" href='data:application/manifest+json,%7B%22name%22%3A%22Blueprint%20Buddy%22%2C%22short_name%22%3A%22BB%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F1EBDD%22%2C%22theme_color%22%3A%22%23F1EBDD%22%7D'>
+<!-- Icons (LH-18). Zero external assets: the tab favicon is an inline SVG
+     data-URI (drafting-compass mark, matches the porch masthead), and the
+     iOS home-screen / PWA icons are the same mark rastered and base64-inlined
+     by build.js — nothing is fetched from a host. -->
+<link rel="icon" href="{{FAVICON_SVG}}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{APPLE_ICON}}">
+<link rel="manifest" href="{{MANIFEST}}">
 <title>Blueprint Buddy</title>
 <style>
 {{CSS}}

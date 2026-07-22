@@ -61,7 +61,7 @@ Creative direction and roadmap: **[DESIGN.md](DESIGN.md)**.
 ```
 npm run dev              # build, serve on http://localhost:3000, watch-rebuild, /api/chat proxy
 node build.js            # inline everything into dist/index.html
-npm test                 # unit + audit-regression + golden-corpus suites (node, no browser)
+npm test                 # unit + audit-regression + golden-corpus + battery + server suites (node, no browser)
 npm run test:smoke       # build + drive the real app in headless Chromium
 npm run test:handcalc    # hand-arithmetic vs engine verification worksheet
 npm run test:battery     # live behavior battery (boundary/contradictory/adversarial fixtures)

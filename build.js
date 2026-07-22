@@ -37,7 +37,35 @@ for (const [key, file] of Object.entries(FONT_FILES)) {
 
 const js = name => read('src/' + name).replace(/<\/script>/gi, '<\\/script>');
 
+/* Icons (LH-18): keep the single-file, zero-external-assets rule. The tab
+ * favicon is the authored SVG mark inlined as a (minimally-encoded) data-URI;
+ * the apple-touch-icon and the PWA-manifest icon are the same mark rastered
+ * to a small PNG and base64-inlined. The manifest itself is built here as an
+ * object and URL-encoded, so its icons array can reference the data-URI. */
+const svgDataURI = p => 'data:image/svg+xml,' +
+  read(p).replace(/\s*\n\s*/g, ' ').trim()
+    .replace(/#/g, '%23').replace(/"/g, "'").replace(/</g, '%3C').replace(/>/g, '%3E')
+    .replace(/ /g, '%20');
+const pngDataURI = p => 'data:image/png;base64,' + readB64(p);
+
+const FAVICON_SVG = svgDataURI('assets/favicon.svg');
+const APPLE_ICON  = pngDataURI('assets/appicon-180.png');
+const MANIFEST = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify({
+  name: 'Blueprint Buddy',
+  short_name: 'Blueprint Buddy',
+  display: 'standalone',
+  background_color: '#F1EBDD',
+  theme_color: '#F1EBDD',
+  icons: [
+    { src: FAVICON_SVG, sizes: 'any', type: 'image/svg+xml' },
+    { src: APPLE_ICON, sizes: '180x180', type: 'image/png', purpose: 'any maskable' }
+  ]
+}));
+
 let html = read('src/index.template.html')
+  .replace('{{FAVICON_SVG}}', () => FAVICON_SVG)
+  .replace('{{APPLE_ICON}}', () => APPLE_ICON)
+  .replace('{{MANIFEST}}', () => MANIFEST)
   .replace('{{CSS}}', css)
   .replace('{{CSS_PORCH}}', () => read('src/porch.css'))
   .replace('{{THREE}}', () => read('vendor/three.min.js').replace(/<\/script>/gi, '<\\/script>'))

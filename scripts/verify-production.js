@@ -288,6 +288,28 @@ if (require.main !== module) return;
     }
   }
 
+  // 7. Stripe Customer Portal configuration (LH-02)
+  // The "Manage subscription" action calls billingPortal.sessions.create,
+  // which Stripe rejects with no saved portal configuration — so a paying
+  // customer trying to cancel or update a card would hit a 502. Saving the
+  // portal in the Dashboard creates the default configuration this needs.
+  console.log('');
+  console.log(c.bold('7. Stripe Customer Portal'));
+  try {
+    const cfgs = await stripeGet(stripeKey, '/v1/billing_portal/configurations?limit=100');
+    const list = Array.isArray(cfgs.data) ? cfgs.data : [];
+    const active = list.filter(cfg => cfg.active);
+    const hasDefault = active.some(cfg => cfg.is_default);
+    check('Portal configuration', active.length > 0,
+      active.length > 0
+        ? `${active.length} active configuration(s)${hasDefault ? ' (default present)' : ''}`
+        : 'no saved portal configuration — "Manage subscription" will 502',
+      active.length > 0 ? null : 'Stripe Dashboard → Settings → Billing → Customer portal: enable cancel + update payment method, then Save.');
+  } catch (e) {
+    check('Portal configuration', false, e.message,
+      'Verify STRIPE_SECRET_KEY, then save a Customer portal configuration in Stripe Dashboard → Settings → Billing.');
+  }
+
   // ── Summary ──────────────────────────────────────────────────────────────────
   console.log('\n' + c.dim('─'.repeat(52)));
   const summary = summarize(results, { aiPresent, oauthPresent });
