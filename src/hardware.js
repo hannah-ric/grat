@@ -566,6 +566,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     const need = Math.round(stackT + 6);
     return M4_LENGTHS.find(l => l >= need) || M4_LENGTHS[M4_LENGTHS.length - 1];
   };
+  /* Side-mount slide screws (audit M-19): the cabinet member screws into the
+   * case side (thick — the 16 mm pan-head is right), but the DRAWER member
+   * screws into the drawer SIDE, and a 16 mm screw drives clean through a
+   * 12 mm side and out the show face. Size the drawer-member screw to stay
+   * ~1.5 mm shy of the side, snapped DOWN to a buyable short M4 pan-head. */
+  const SLIDE_SCREW_LENGTHS = [8, 10, 12, 16];
+  const slideScrewLenMM = sideTMM => {
+    const cap = sideTMM - 1.5;
+    let best = SLIDE_SCREW_LENGTHS[0];
+    for (const l of SLIDE_SCREW_LENGTHS) if (l <= cap) best = l;
+    return best;
+  };
 
   /* Slide picker: by computed load, ask, and fit. The 34 kg class stays
    * the default; heavier computed loads climb the family. */
@@ -628,7 +640,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     HINGES, PULLS, PULL_CTC_SERIES, SLIDES, LIFTS, CATCHES, LOCKS,
     SHELF_SUPPORT, TABLE_BED, WALL_HANG, FEET_MISC, TRADITIONAL, GATES,
     panelWeightKg, doorHingeCount, cupBoring, gasStrut, lidStay, powerFactor,
-    pullSpec, pullScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
+    pullSpec, pullScrewLenMM, slideScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
     digestLine
   };
 })();

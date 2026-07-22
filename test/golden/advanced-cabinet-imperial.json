@@ -707,8 +707,14 @@
    },
    {
     "kind": "fastener",
+    "label": "M4 × 3/8 in pan-head screws (pilot 1/8 in)",
+    "qty": 4,
+    "price": 1
+   },
+   {
+    "kind": "fastener",
     "label": "M4 × 5/8 in pan-head screws (pilot 1/8 in)",
-    "qty": 8,
+    "qty": 4,
     "price": 1
    },
    {
@@ -731,8 +737,14 @@
    },
    {
     "kind": "fastener",
+    "label": "M4 × 3/8 in pan-head screws (pilot 1/8 in)",
+    "qty": 4,
+    "price": 1
+   },
+   {
+    "kind": "fastener",
     "label": "M4 × 5/8 in pan-head screws (pilot 1/8 in)",
-    "qty": 8,
+    "qty": 4,
     "price": 1
    },
    {
@@ -760,7 +772,7 @@
     "price": 18
    }
   ],
-  "total": 523.38
+  "total": 525.38
  },
  "steps": [
   "glueup1",

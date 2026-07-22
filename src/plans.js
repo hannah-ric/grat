@@ -223,7 +223,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         } else {
           items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         }
-        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+        // Two screw lengths per slide pair (audit M-19): the drawer member
+        // screws into the (thin) drawer side and must stay inside it; the
+        // cabinet member screws into the thicker case side.
+        const slideSideScrew = BB.HW ? BB.HW.slideScrewLenMM(d.box.t) : 10;
+        items.push({ kind: 'fastener', label: `M4 × ${len(slideSideScrew)} pan-head screws (pilot ${drill(3.0)})`, qty: 4, detail: `drawer-member slide mounting, drawer ${d.index + 1} — short of the ${len(d.box.t)} side so it can't break the show face`, price: hp('screw_pack', 1) });
+        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})`, qty: 4, detail: `cabinet-member slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
       }
       // Pull lines print the EFFECTIVE style — what pullSpec actually fitted
       // — so the label and the boring instructions can never disagree. A
@@ -313,7 +318,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const gearIds = railIds.concat(d.gearIds || []);
       if (d.runner === 'side_mount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the slides`,
-          `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(16)} pan-heads. A spacer block beats a tape measure here.`,
+          `Screw the ${len(d.slideLen)} slides level and flush to the opening sides — cabinet member with M4 × ${len(16)} pan-heads into the case, drawer member with M4 × ${len(BB.HW ? BB.HW.slideScrewLenMM(d.box.t) : 10)} so the screw stays inside the ${len(d.box.t)} drawer side instead of piercing the show face. A spacer block beats a tape measure here.`,
           gearIds, { drawer: d.index }));
       } else if (d.runner === 'undermount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the undermount slides`,
