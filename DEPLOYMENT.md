@@ -171,6 +171,10 @@ To accept real payments:
 - Optionally restrict the API key to the minimum permissions (Customers: write,
   Checkout Sessions: write, Billing Portal: write, Webhook Endpoints: read).
 
+The complete pre-launch checklist of outstanding **human** inputs — decisions,
+console configuration, and verification steps no script can perform — is
+maintained in [`docs/audit/09-launch-human-inputs.md`](docs/audit/09-launch-human-inputs.md).
+
 Zero-dependency, in keeping with the repo rule: `api/_stripe.js` hand-rolls the
 four Stripe REST calls used (customer create, checkout session, billing-portal
 session, webhook signature verification) over `fetch` + `node:crypto` — no
