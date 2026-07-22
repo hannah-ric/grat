@@ -226,6 +226,10 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
 .ph-close { display: flex; flex-direction: column; gap: var(--space-m); align-items: flex-start; }
 .ph-trust { margin: 0; max-width: 44ch; color: var(--muted-2); font-size: var(--text-s); }
 .ph-spin { margin: 0; font: 600 var(--text-xl)/var(--leading-heading) var(--display); }
+.ph-legal { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs, 6px) var(--space-s); margin-top: var(--space-l); color: var(--muted-2); font-size: var(--text-s); }
+.ph-legal a { color: var(--muted-2); text-decoration: none; text-underline-offset: 2px; }
+.ph-legal a:hover { color: var(--ink); text-decoration: underline; }
+.ph-legal-sep { color: var(--line); }
 
 /* ---- overture captions (in-app, created by the director) ---- */
 .ov-caption {

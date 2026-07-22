@@ -75,6 +75,15 @@ module.exports = async function handler(req, res) {
         client_reference_id: session.uid,
         line_items: [{ price, quantity: 1 }],
         allow_promotion_codes: true,
+        // Stripe Tax (LH-13): let Stripe compute and add the correct tax at
+        // checkout instead of billing the bare price. Checkout collects the
+        // buyer's address; customer_update.address=auto saves it back to the
+        // (pre-created) customer so tax is calculated and future invoices stay
+        // correct. Requires tax registrations + a tax_behavior on each price
+        // in the Stripe Dashboard — until then Stripe simply adds $0 tax, so
+        // this is safe to ship ahead of registration.
+        automatic_tax: { enabled: true },
+        customer_update: { address: 'auto' },
         subscription_data: { metadata: { bb_uid: session.uid } },
         metadata: { bb_uid: session.uid, interval },
         success_url: `${origin(req)}/?billing=success&session_id={CHECKOUT_SESSION_ID}`,

@@ -125,8 +125,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   const CATALOG = {
     butt_screw: { spec: '#8 × {50} wood screw', pilotMM: 3.2 },
     case_screw: { spec: '#8 × {32} wood screw', pilotMM: 2.8 },
-    pocket: { spec: '{32} coarse pocket screw', pilotMM: 9.5 }, // the jig's 3/8 in stepped bit
-    pocket_63: { spec: '{63} coarse pocket screw', pilotMM: 9.5 }, // 2× stock — a 32 cannot join 38 (K.FASTENERS)
+    // Pocket screws are built inline in the pocket_screws case: length by
+    // stock thickness (32 mm; 63 mm for 2× stock a 32 cannot join, FE-H7) and
+    // thread by the receiving species (fine for hardwood, coarse for
+    // softwood/ply, audit M-02) — so they are not fixed catalog entries.
     front_screw: { spec: '#8 × {25} wood screw', pilotMM: 2.8 },
     figure8: { spec: 'figure-8 fastener + #8 × {16}', pilotMM: 2.8 },
     /* 2026 expansion */
@@ -190,10 +192,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       case 'pocket_screws': {
         // 2× (38 mm) stock needs the long jig setting and its own screw —
         // the 32 mm pocket screw physically cannot join it (audit FE-H7).
-        const c = memberT >= 36 ? CATALOG.pocket_63 : CATALOG.pocket;
+        // Thread choice (audit M-02): the screw's threads bite into the mate
+        // (b), so its density picks the thread — FINE holds in dense hardwood
+        // without stripping, COARSE grabs the soft fibres of softwood and the
+        // plies of sheet goods. Janka is the discriminator; plywood is always
+        // coarse regardless of face veneer. Fall back to coarse when unknown.
+        const recv = K.WOOD_SPECIES[b.material] || K.WOOD_SPECIES[a.material];
+        const thread = (recv && !recv.sheet && recv.janka >= 900) ? 'fine' : 'coarse';
+        const lenMM = memberT >= 36 ? 63 : 32;
+        const c = { spec: `{${lenMM}} ${thread} pocket screw`, pilotMM: 9.5 };
         const pos = positions(runMM, 2);
         for (const p of pos) out.fasteners.push({ kind: 'pocket', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-        out.text = `${pos.length} pocket holes on the hidden face of ${a.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — jig set for ${len(memberT)} stock, ${fmtSpec(c)}s.`;
+        out.text = `${pos.length} pocket holes on the hidden face of ${a.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — jig set for ${len(memberT)} stock, ${fmtSpec(c)}s (${thread}-thread for ${recv ? recv.label.toLowerCase() : 'this stock'}).`;
         break;
       }
       case 'dowels': {

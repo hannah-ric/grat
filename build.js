@@ -105,4 +105,31 @@ fs.writeFileSync(path.join(root, 'dist/index.html'), html);
 /* robots.txt (A-06): allow everything, reference nothing that doesn't exist —
  * the app is one page, so there is deliberately no sitemap line. */
 fs.writeFileSync(path.join(root, 'dist/robots.txt'), 'User-agent: *\nAllow: /\n');
-console.log(`dist/index.html — ${(html.length / 1024).toFixed(0)} KB (+ robots.txt)`);
+
+/* Legal pages (LH-10): privacy.html + terms.html. Standalone documents that
+ * share one shell (src/legal.template.html), styled to match the app and
+ * inlining the same fonts/icons so they stay single-file and offline-capable.
+ * Google OAuth verification requires a reachable privacy-policy URL, and the
+ * app footer/menu link here. Bracketed [PLACEHOLDERS] are the business/legal
+ * details the operator must fill in before launch (entity, contact, refund
+ * terms, governing law) — they render in the accent color so they can't be
+ * missed. */
+const legalShell = read('src/legal.template.html');
+const renderLegal = (title, heading, updated, bodyFile) => legalShell
+  .replace(/\{\{TITLE\}\}/g, () => title)
+  .replace('{{HEADING}}', () => heading)
+  .replace('{{UPDATED}}', () => updated)
+  .replace('{{FAVICON_SVG}}', () => FAVICON_SVG)
+  .replace(/\{\{APPLE_ICON\}\}/g, () => APPLE_ICON)
+  .replace('{{FONT_FRAUNCES_600}}', () => fontURI(FONT_FILES.FRAUNCES_600))
+  .replace('{{FONT_HANKEN_400}}', () => fontURI(FONT_FILES.HANKEN_400))
+  .replace('{{FONT_HANKEN_600}}', () => fontURI(FONT_FILES.HANKEN_600))
+  .replace('{{BODY}}', () => read(bodyFile));
+
+const LEGAL_UPDATED = '[EFFECTIVE DATE]';
+const privacyHtml = renderLegal('Privacy Policy', 'Privacy Policy', LEGAL_UPDATED, 'src/privacy.html');
+const termsHtml = renderLegal('Terms of Service', 'Terms of Service', LEGAL_UPDATED, 'src/terms.html');
+fs.writeFileSync(path.join(root, 'dist/privacy.html'), privacyHtml);
+fs.writeFileSync(path.join(root, 'dist/terms.html'), termsHtml);
+
+console.log(`dist/index.html — ${(html.length / 1024).toFixed(0)} KB (+ robots.txt, privacy.html ${(privacyHtml.length / 1024).toFixed(0)} KB, terms.html ${(termsHtml.length / 1024).toFixed(0)} KB)`);

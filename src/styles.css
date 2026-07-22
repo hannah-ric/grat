@@ -479,6 +479,9 @@ input[type="range"]:focus-visible { outline: 2px solid var(--focus); outline-off
   padding: 4px 8px; font-size: var(--text-m); color: var(--ink-2); cursor: pointer;
 }
 .menu .menu-row .seg button { padding: var(--s1) var(--s2); font-size: var(--text-s); }
+.menu .menu-row.menu-legal { gap: var(--s3); }
+.menu .menu-row.menu-legal a { font-size: var(--text-s); font-weight: 550; color: var(--muted); text-decoration: none; text-underline-offset: 2px; }
+.menu .menu-row.menu-legal a:hover { color: var(--ink-2); text-decoration: underline; }
 
 /* ---------------- bench layout ---------------- */
 .bench { display: flex; flex: 1; min-height: 0; }

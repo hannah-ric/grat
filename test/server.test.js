@@ -423,10 +423,11 @@ function objectBodyReq(url, bodyObj, headers) {
     process.env.STRIPE_PRO_MONTHLY_PRICE_ID = 'price_month';
     const realFetch = globalThis.fetch;
     const calls = [];
-    globalThis.fetch = async (url) => {
+    let checkoutBody = '';
+    globalThis.fetch = async (url, init) => {
       const u = String(url); calls.push(u);
       if (u.includes('/v1/customers')) return { ok: true, status: 200, json: async () => ({ id: 'cus_new' }) };
-      if (u.includes('/v1/checkout/sessions')) return { ok: true, status: 200, json: async () => ({ id: 'cs_1', url: 'https://checkout.stripe.test/pay' }) };
+      if (u.includes('/v1/checkout/sessions')) { checkoutBody = (init && init.body) || ''; return { ok: true, status: 200, json: async () => ({ id: 'cs_1', url: 'https://checkout.stripe.test/pay' }) }; }
       if (u.includes('/v1/billing_portal/sessions')) return { ok: true, status: 200, json: async () => ({ url: 'https://billing.stripe.test/portal' }) };
       return { ok: false, status: 404, json: async () => ({ error: { message: 'no' } }) };
     };
@@ -441,6 +442,11 @@ function objectBodyReq(url, bodyObj, headers) {
     eq(res.statusCode, 200, 'checkout returns 200');
     eq(json(res).url, 'https://checkout.stripe.test/pay', 'checkout returns the Stripe-hosted URL');
     ok(calls.some(u => u.includes('/v1/customers')), 'a Stripe customer was created');
+    // Stripe Tax (LH-13): checkout must request automatic tax, and — since a
+    // pre-created customer is passed — save the collected address back so tax
+    // can be computed. Both are form-encoded PHP-bracket params on the body.
+    ok(checkoutBody.includes('automatic_tax%5Benabled%5D=true'), 'checkout enables Stripe automatic tax');
+    ok(checkoutBody.includes('customer_update%5Baddress%5D=auto'), 'checkout saves the buyer address for tax calculation');
     const saved = await E.getSubscription('github:70');
     eq(saved && saved.customerId, 'cus_new', 'the customer id is persisted for the webhook to match');
 

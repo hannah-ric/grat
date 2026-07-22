@@ -524,12 +524,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       { key: 'wood_8x25', label: '#8 × {25} wood screw', pilot: 2.8, use: 'Drawer fronts from inside the box' },
       { key: 'wood_8x32', label: '#8 × {32} wood screw', pilot: 2.8, use: 'Aprons, cleats, general carcass' },
       { key: 'wood_8x50', label: '#8 × {50} wood screw', pilot: 3.2, use: 'Legs, rails, structural butt joints' },
-      { key: 'pocket_32', label: '{32} coarse pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} stock' },
+      { key: 'pocket_32', label: '{32} pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} stock — fine thread in hardwood, coarse in softwood/ply' },
       { key: 'slide_m4', label: 'M4 × {16} pan-head', pilot: 3.0, use: 'Drawer slide mounting' },
       { key: 'top_button', label: 'Tabletop button + #8 × {16}', pilot: 2.8, use: 'Solid tops — lets the panel move' },
       /* 2026 expansion: 2× construction. The 32 mm pocket screw physically
        * cannot join 38 mm stock — the long jig setting needs its own screw. */
-      { key: 'pocket_63', label: '{63} coarse pocket screw', pilot: 0, use: 'Pocket joints in {38} (2×) stock' },
+      { key: 'pocket_63', label: '{63} pocket screw', pilot: 0, use: 'Pocket joints in {38} (2×) stock — fine thread in hardwood, coarse in softwood/ply' },
       { key: 'wood_8x64', label: '#8 × {64} wood screw', pilot: 3.2, use: '{19} stock through into {38} framing' },
       { key: 'struct_6x90', label: '{6} × {90} structural screw', pilot: 4.0, use: '2× and 4×4 frame joints, workbench bases' }
     ],

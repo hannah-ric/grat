@@ -503,6 +503,9 @@ input[type="range"]:focus-visible { outline: 2px solid var(--focus); outline-off
   padding: 4px 8px; font-size: var(--text-m); color: var(--ink-2); cursor: pointer;
 }
 .menu .menu-row .seg button { padding: var(--s1) var(--s2); font-size: var(--text-s); }
+.menu .menu-row.menu-legal { gap: var(--s3); }
+.menu .menu-row.menu-legal a { font-size: var(--text-s); font-weight: 550; color: var(--muted); text-decoration: none; text-underline-offset: 2px; }
+.menu .menu-row.menu-legal a:hover { color: var(--ink-2); text-decoration: underline; }
 
 /* ---------------- bench layout ---------------- */
 .bench { display: flex; flex: 1; min-height: 0; }
@@ -2321,6 +2324,10 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
 .ph-close { display: flex; flex-direction: column; gap: var(--space-m); align-items: flex-start; }
 .ph-trust { margin: 0; max-width: 44ch; color: var(--muted-2); font-size: var(--text-s); }
 .ph-spin { margin: 0; font: 600 var(--text-xl)/var(--leading-heading) var(--display); }
+.ph-legal { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs, 6px) var(--space-s); margin-top: var(--space-l); color: var(--muted-2); font-size: var(--text-s); }
+.ph-legal a { color: var(--muted-2); text-decoration: none; text-underline-offset: 2px; }
+.ph-legal a:hover { color: var(--ink); text-decoration: underline; }
+.ph-legal-sep { color: var(--line); }
 
 /* ---- overture captions (in-app, created by the director) ---- */
 .ov-caption {
@@ -2508,6 +2515,13 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
           <p class="ph-spin" id="phSpin" hidden>Go on. Spin it.</p>
           <button type="button" class="btn primary" id="phCtaEnd" data-enter="">Open the studio</button>
         </div>
+        <footer class="ph-legal">
+          <span>&copy; Blueprint Buddy</span>
+          <span class="ph-legal-sep" aria-hidden="true">&middot;</span>
+          <a href="/privacy.html">Privacy</a>
+          <span class="ph-legal-sep" aria-hidden="true">&middot;</span>
+          <a href="/terms.html">Terms</a>
+        </footer>
       </div>
     </section>
 
@@ -2614,6 +2628,11 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
               <button id="renderRich" aria-pressed="true" title="Wood grain and shadows">Wood</button>
               <button id="renderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
             </div>
+          </div>
+          <div class="menu-sep"></div>
+          <div class="menu-row menu-legal">
+            <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a>
+            <a href="/terms.html" target="_blank" rel="noopener">Terms</a>
           </div>
         </div>
       </div>
@@ -3610,7 +3629,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       { key: 'wood_8x25', label: '#8 × {25} wood screw', pilot: 2.8, use: 'Drawer fronts from inside the box' },
       { key: 'wood_8x32', label: '#8 × {32} wood screw', pilot: 2.8, use: 'Aprons, cleats, general carcass' },
       { key: 'wood_8x50', label: '#8 × {50} wood screw', pilot: 3.2, use: 'Legs, rails, structural butt joints' },
-      { key: 'pocket_32', label: '{32} coarse pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} stock' },
+      { key: 'pocket_32', label: '{32} pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} stock — fine thread in hardwood, coarse in softwood/ply' },
       { key: 'slide_m4', label: 'M4 × {16} pan-head', pilot: 3.0, use: 'Drawer slide mounting' },
       { key: 'top_button', label: 'Tabletop button + #8 × {16}', pilot: 2.8, use: 'Solid tops — lets the panel move' },
       /* 2026 expansion: 2× construction. The 32 mm pocket screw physically
@@ -8907,8 +8926,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   const CATALOG = {
     butt_screw: { spec: '#8 × {50} wood screw', pilotMM: 3.2 },
     case_screw: { spec: '#8 × {32} wood screw', pilotMM: 2.8 },
-    pocket: { spec: '{32} coarse pocket screw', pilotMM: 9.5 }, // the jig's 3/8 in stepped bit
-    pocket_63: { spec: '{63} coarse pocket screw', pilotMM: 9.5 }, // 2× stock — a 32 cannot join 38 (K.FASTENERS)
+    // Pocket screws are built inline in the pocket_screws case: length by
+    // stock thickness (32 mm; 63 mm for 2× stock a 32 cannot join, FE-H7) and
+    // thread by the receiving species (fine for hardwood, coarse for
+    // softwood/ply, audit M-02) — so they are not fixed catalog entries.
     front_screw: { spec: '#8 × {25} wood screw', pilotMM: 2.8 },
     figure8: { spec: 'figure-8 fastener + #8 × {16}', pilotMM: 2.8 },
     /* 2026 expansion */
@@ -8972,10 +8993,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       case 'pocket_screws': {
         // 2× (38 mm) stock needs the long jig setting and its own screw —
         // the 32 mm pocket screw physically cannot join it (audit FE-H7).
-        const c = memberT >= 36 ? CATALOG.pocket_63 : CATALOG.pocket;
+        // Thread choice (audit M-02): the screw's threads bite into the mate
+        // (b), so its density picks the thread — FINE holds in dense hardwood
+        // without stripping, COARSE grabs the soft fibres of softwood and the
+        // plies of sheet goods. Janka is the discriminator; plywood is always
+        // coarse regardless of face veneer. Fall back to coarse when unknown.
+        const recv = K.WOOD_SPECIES[b.material] || K.WOOD_SPECIES[a.material];
+        const thread = (recv && !recv.sheet && recv.janka >= 900) ? 'fine' : 'coarse';
+        const lenMM = memberT >= 36 ? 63 : 32;
+        const c = { spec: `{${lenMM}} ${thread} pocket screw`, pilotMM: 9.5 };
         const pos = positions(runMM, 2);
         for (const p of pos) out.fasteners.push({ kind: 'pocket', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-        out.text = `${pos.length} pocket holes on the hidden face of ${a.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — jig set for ${len(memberT)} stock, ${fmtSpec(c)}s.`;
+        out.text = `${pos.length} pocket holes on the hidden face of ${a.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — jig set for ${len(memberT)} stock, ${fmtSpec(c)}s (${thread}-thread for ${recv ? recv.label.toLowerCase() : 'this stock'}).`;
         break;
       }
       case 'dowels': {
