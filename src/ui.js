@@ -672,7 +672,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const describe = el('button', 'btn primary', 'Describe a piece');
     describe.onclick = () => focusChat();
     const starters = el('button', 'btn', 'Browse starters');
-    starters.onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    starters.onclick = openGalleryDialog;
     row.append(describe, starters);
     box.append(row);
     root.append(box);
@@ -2314,6 +2314,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     offerPlanCta(); // the loaded design's plans are one explicit tap away (C-03)
   }
+  /* Every starters-dialog opener lands here: render, open, and the one-time
+   * card cascade (design-language §5 — modal surfaces reset per open). */
+  function openGalleryDialog() {
+    renderGallery();
+    openScrim('galleryScrim');
+    delete motionKeys.seen.gallery;
+    if (motionOnce('gallery', { modal: true })) Motion.cascade($('galleryGrid').children);
+  }
+
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
@@ -2438,6 +2447,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const thumbList = await Promise.all(idx.map(r => Store.loadThumb(r.id).catch(() => null)));
     const thumbById = {};
     idx.forEach((r, i) => { thumbById[r.id] = thumbList[i] || r.thumb || null; });
+    delete motionKeys.seen.projects; // modal surface: the cascade resets per open (§5)
     for (const row of idx) {
       const card = el('div', 'project-card' + (state.project && state.project.id === row.id ? ' current' : ''));
       const thumbSrc = thumbById[row.id];
@@ -2495,6 +2505,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       card.append(actions);
       grid.append(card);
     }
+    if (motionOnce('projects', { modal: true })) Motion.cascade(grid.children);
   }
 
   async function loadProjectIntoApp(id) {
@@ -3646,7 +3657,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
-    $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    $('galleryBtn').onclick = openGalleryDialog;
     /* chat fold + hero paths */
     $('chatCollapse').onclick = () => setChatCollapsed(true);
     $('chatRail').onclick = () => { setChatCollapsed(false); $('chatText').focus(); };
@@ -3671,7 +3682,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     $('heroText').addEventListener('input', () => { $('heroNudge').hidden = true; });
     $('welcomePhoto').onclick = () => $('photoInput').click();
-    $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    $('welcomeStarter').onclick = openGalleryDialog;
     $('welcomeResume').onclick = () => {
       hideWelcome();
       if ($('welcomeOverlay').dataset.mode === 'projects') openProjects();

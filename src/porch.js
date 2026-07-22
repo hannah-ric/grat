@@ -297,8 +297,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         canvas.remove();
       } catch (e) { /* skeleton stays — decoration only */ }
     };
-    if (globalThis.requestIdleCallback) requestIdleCallback(pass, { timeout: 2500 });
-    else setTimeout(pass, 1500);
+    if (globalThis.requestIdleCallback) {
+      const id = requestIdleCallback(pass, { timeout: 2500 });
+      S.cleanups.push(() => { try { cancelIdleCallback(id); } catch (e) { /* already fired */ } });
+    } else {
+      const id = setTimeout(pass, 1500);
+      S.cleanups.push(() => clearTimeout(id));
+    }
   }
 
   /* ---------------- build-vs-buy calculator (design-language §8) ----------
@@ -423,15 +428,23 @@ var BB = globalThis.BB = globalThis.BB || {};
   function seedLevel(path) {
     const lv = path === 'first' ? 'beginner' : path === 'regular' ? 'intermediate' : path === 'pro' ? 'advanced' : null;
     if (!lv) return;
-    try {
+    const apply = () => {
       const sel = $('levelSelect');
       if (sel) sel.value = lv;
       const bb = globalThis.__bb;
-      if (bb && bb.state && bb.state.prefs4) {
-        bb.state.prefs4.level = lv;
-        BB.Store.savePrefs(bb.state.prefs4); // persists; ui.js enforces prefs4.level on every applied spec
-      }
-    } catch (e) { /* seeding is a courtesy, never load-bearing */ }
+      if (!bb || !bb.state || !bb.state.prefs4) return false;
+      bb.state.prefs4.level = lv;
+      BB.Store.savePrefs(bb.state.prefs4); // persists; ui.js enforces prefs4.level on every applied spec
+      return true;
+    };
+    try { if (apply()) return; } catch (e) { return; }
+    // A CTA can land before boot exposes __bb — retry briefly so the seeded
+    // level persists instead of stopping at the select's cosmetic value.
+    let n = 0;
+    const iv = setInterval(() => {
+      n++;
+      try { if (apply() || n > 40) clearInterval(iv); } catch (e) { clearInterval(iv); }
+    }, 250);
   }
 
   function enterStudio(path) {
@@ -443,8 +456,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       scrollTo(0, 0);
       seedLevel(path);
       if (path === 'first') {
+        // The starters dialog owns focus (aria-modal trap) — stealing it back
+        // for the hero prompt would fight the trap.
         const g = $('galleryBtn');
-        if (g) g.click();
+        if (g) { g.click(); return; }
       }
       const hero = $('heroText');
       if (hero && hero.offsetParent) hero.focus();

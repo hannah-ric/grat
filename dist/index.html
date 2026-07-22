@@ -1460,6 +1460,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   }
   body { overflow: visible; background: #fff; color: var(--ink); }
   #app { display: none !important; }
+  /* Siblings outside #app must not print either: the landing narrative on a
+     first visit, and the visually-hidden skip links. */
+  #porch, .skip-link { display: none !important; }
   #printRoot { display: block; font: 400 var(--print-m)/1.5 var(--body); color: var(--ink); }
   .print-head { border-bottom: 2px solid var(--ink-2); padding-bottom: 12px; margin-bottom: 20px; }
   .print-head h1 { font: 700 var(--print-2xl)/1.15 var(--display); letter-spacing: -.01em; margin: 0 0 6px; }
@@ -1669,7 +1672,15 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   opacity: .75; font-size: var(--text-s); line-height: 1; padding: 0 2px;
 }
 .prov-pop .prov-close:hover { opacity: 1; }
-.prov-pop .prov-line { margin-bottom: var(--s1); }
+/* §9.5 provenance receipts wear the spec-plate row grammar — structure and
+   type only; the ink-dark tooltip palette is a premium-refit keep. */
+.prov-pop .prov-line {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s2); align-items: baseline;
+  margin: 0; padding: var(--s1) 0;
+  border-top: 1px solid color-mix(in oklab, var(--paper) 18%, transparent);
+}
+.prov-pop .prov-line b { font: 600 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase; color: color-mix(in oklab, var(--paper) 72%, transparent); }
+.prov-pop .prov-line span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .prov-pop .prov-line b { display: block; font: 600 var(--text-xs) var(--body); color: color-mix(in srgb, var(--paper) 75%, transparent); }
 .prov-pop .prov-line span { font-family: var(--mono); font-size: var(--text-s); }
 .prov-pop .prov-foot {
@@ -2314,7 +2325,9 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
   background: color-mix(in srgb, var(--paper) 72%, transparent);
   border-radius: var(--radius-m);
 }
-.ov-skip { position: absolute; z-index: 12; top: max(12px, 2vh); right: var(--space-s); }
+/* Below the viewport toolbar row, so the pill never overlaps its controls
+   at narrow widths (the toolbar holds the top edge at every width). */
+.ov-skip { position: absolute; z-index: 12; top: calc(max(12px, 2vh) + var(--tap) + var(--space-2xs)); right: var(--space-s); }
 
 /* ---- static parity: coarse pointers, narrow screens, reduced motion.
    No sticky scrub — plain full-bleed chapters with poster stills; the copy
@@ -16712,8 +16725,13 @@ var BB = globalThis.BB = globalThis.BB || {};
         canvas.remove();
       } catch (e) { /* skeleton stays — decoration only */ }
     };
-    if (globalThis.requestIdleCallback) requestIdleCallback(pass, { timeout: 2500 });
-    else setTimeout(pass, 1500);
+    if (globalThis.requestIdleCallback) {
+      const id = requestIdleCallback(pass, { timeout: 2500 });
+      S.cleanups.push(() => { try { cancelIdleCallback(id); } catch (e) { /* already fired */ } });
+    } else {
+      const id = setTimeout(pass, 1500);
+      S.cleanups.push(() => clearTimeout(id));
+    }
   }
 
   /* ---------------- build-vs-buy calculator (design-language §8) ----------
@@ -16838,15 +16856,23 @@ var BB = globalThis.BB = globalThis.BB || {};
   function seedLevel(path) {
     const lv = path === 'first' ? 'beginner' : path === 'regular' ? 'intermediate' : path === 'pro' ? 'advanced' : null;
     if (!lv) return;
-    try {
+    const apply = () => {
       const sel = $('levelSelect');
       if (sel) sel.value = lv;
       const bb = globalThis.__bb;
-      if (bb && bb.state && bb.state.prefs4) {
-        bb.state.prefs4.level = lv;
-        BB.Store.savePrefs(bb.state.prefs4); // persists; ui.js enforces prefs4.level on every applied spec
-      }
-    } catch (e) { /* seeding is a courtesy, never load-bearing */ }
+      if (!bb || !bb.state || !bb.state.prefs4) return false;
+      bb.state.prefs4.level = lv;
+      BB.Store.savePrefs(bb.state.prefs4); // persists; ui.js enforces prefs4.level on every applied spec
+      return true;
+    };
+    try { if (apply()) return; } catch (e) { return; }
+    // A CTA can land before boot exposes __bb — retry briefly so the seeded
+    // level persists instead of stopping at the select's cosmetic value.
+    let n = 0;
+    const iv = setInterval(() => {
+      n++;
+      try { if (apply() || n > 40) clearInterval(iv); } catch (e) { clearInterval(iv); }
+    }, 250);
   }
 
   function enterStudio(path) {
@@ -16858,8 +16884,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       scrollTo(0, 0);
       seedLevel(path);
       if (path === 'first') {
+        // The starters dialog owns focus (aria-modal trap) — stealing it back
+        // for the hero prompt would fight the trap.
         const g = $('galleryBtn');
-        if (g) g.click();
+        if (g) { g.click(); return; }
       }
       const hero = $('heroText');
       if (hero && hero.offsetParent) hero.focus();
@@ -17932,7 +17960,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const describe = el('button', 'btn primary', 'Describe a piece');
     describe.onclick = () => focusChat();
     const starters = el('button', 'btn', 'Browse starters');
-    starters.onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    starters.onclick = openGalleryDialog;
     row.append(describe, starters);
     box.append(row);
     root.append(box);
@@ -19574,6 +19602,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     offerPlanCta(); // the loaded design's plans are one explicit tap away (C-03)
   }
+  /* Every starters-dialog opener lands here: render, open, and the one-time
+   * card cascade (design-language §5 — modal surfaces reset per open). */
+  function openGalleryDialog() {
+    renderGallery();
+    openScrim('galleryScrim');
+    delete motionKeys.seen.gallery;
+    if (motionOnce('gallery', { modal: true })) Motion.cascade($('galleryGrid').children);
+  }
+
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
@@ -19698,6 +19735,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const thumbList = await Promise.all(idx.map(r => Store.loadThumb(r.id).catch(() => null)));
     const thumbById = {};
     idx.forEach((r, i) => { thumbById[r.id] = thumbList[i] || r.thumb || null; });
+    delete motionKeys.seen.projects; // modal surface: the cascade resets per open (§5)
     for (const row of idx) {
       const card = el('div', 'project-card' + (state.project && state.project.id === row.id ? ' current' : ''));
       const thumbSrc = thumbById[row.id];
@@ -19755,6 +19793,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       card.append(actions);
       grid.append(card);
     }
+    if (motionOnce('projects', { modal: true })) Motion.cascade(grid.children);
   }
 
   async function loadProjectIntoApp(id) {
@@ -20906,7 +20945,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
-    $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    $('galleryBtn').onclick = openGalleryDialog;
     /* chat fold + hero paths */
     $('chatCollapse').onclick = () => setChatCollapsed(true);
     $('chatRail').onclick = () => { setChatCollapsed(false); $('chatText').focus(); };
@@ -20931,7 +20970,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     $('heroText').addEventListener('input', () => { $('heroNudge').hidden = true; });
     $('welcomePhoto').onclick = () => $('photoInput').click();
-    $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    $('welcomeStarter').onclick = openGalleryDialog;
     $('welcomeResume').onclick = () => {
       hideWelcome();
       if ($('welcomeOverlay').dataset.mode === 'projects') openProjects();

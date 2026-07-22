@@ -339,12 +339,22 @@ const clickMoreCtl = async sel => {
   ok(stats3.materials < 200, `quality toggle keeps the material pool bounded (${stats3.materials})`);
 
   // Blueprint mode: one toggle → drafting render, orthographic front view, dims on.
+  // The wash class lives only animation-long: arm an observer BEFORE the click
+  // so a saturated box can't miss the beat, then wait out the cleanup.
+  const washSeen = page.evaluate(() => new Promise(res => {
+    const wrap = document.getElementById('viewportWrap');
+    if (wrap.classList.contains('inkwash')) return res(true);
+    const mo = new MutationObserver(() => {
+      if (wrap.classList.contains('inkwash')) { mo.disconnect(); res(true); }
+    });
+    mo.observe(wrap, { attributes: true, attributeFilter: ['class'] });
+    setTimeout(() => { mo.disconnect(); res(false); }, 4000);
+  }));
   await page.click('#draftToggle');
-  ok(await page.evaluate(() => document.getElementById('viewportWrap').classList.contains('inkwash')),
-    'blueprint flip runs the one-beat ink-wash');
-  await page.waitForTimeout(500);
-  ok(await page.evaluate(() => !document.getElementById('viewportWrap').classList.contains('inkwash')),
-    'ink-wash cleans itself up after the beat');
+  ok(await washSeen, 'blueprint flip runs the one-beat ink-wash');
+  ok(await page.waitForFunction(() => !document.getElementById('viewportWrap').classList.contains('inkwash'),
+    null, { timeout: 4000 }).then(() => true, () => false),
+  'ink-wash cleans itself up after the beat');
   ok(await page.evaluate(() =>
     document.body.classList.contains('drafting') &&
     __bb.state.engine.getDrafting() &&

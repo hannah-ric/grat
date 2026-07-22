@@ -258,8 +258,11 @@ objects is the brand's deepest claim. Treatments:
    fixtures byte-identical when off, per porch §5.5); `Motion.draw` animates
    stroke-dashoffset. Ships on: landing chapter 02, plan **Overview's new
    drawing tile** (small front elevation of the current piece, drawn in
-   once per design change), and Blueprint Mode's entry (viewport ink-wash
-   stays; the drawn SVG is DOM-side).
+   once per design change). *Amended at close-out:* the third site named
+   here pre-build — "Blueprint Mode's entry" — is descoped: the mode's
+   ink-wash plus the engine's own drafting render already are that moment,
+   and a DOM overlay drawing on an instrument surface would violate law 5
+   (instrument calm). The two shipped sites are the treatment.
 2. **The cut list is an instrument** (flagship app surface): `.ledger`
    treatment — kicker head band ("CUT LIST · every part, ready for the saw"),
    drawn top rule, mono dimension columns (existing), provenance underlines

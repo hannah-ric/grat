@@ -236,7 +236,9 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
   background: color-mix(in srgb, var(--paper) 72%, transparent);
   border-radius: var(--radius-m);
 }
-.ov-skip { position: absolute; z-index: 12; top: max(12px, 2vh); right: var(--space-s); }
+/* Below the viewport toolbar row, so the pill never overlaps its controls
+   at narrow widths (the toolbar holds the top edge at every width). */
+.ov-skip { position: absolute; z-index: 12; top: calc(max(12px, 2vh) + var(--tap) + var(--space-2xs)); right: var(--space-s); }
 
 /* ---- static parity: coarse pointers, narrow screens, reduced motion.
    No sticky scrub — plain full-bleed chapters with poster stills; the copy

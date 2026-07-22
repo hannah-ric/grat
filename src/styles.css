@@ -1442,6 +1442,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   }
   body { overflow: visible; background: #fff; color: var(--ink); }
   #app { display: none !important; }
+  /* Siblings outside #app must not print either: the landing narrative on a
+     first visit, and the visually-hidden skip links. */
+  #porch, .skip-link { display: none !important; }
   #printRoot { display: block; font: 400 var(--print-m)/1.5 var(--body); color: var(--ink); }
   .print-head { border-bottom: 2px solid var(--ink-2); padding-bottom: 12px; margin-bottom: 20px; }
   .print-head h1 { font: 700 var(--print-2xl)/1.15 var(--display); letter-spacing: -.01em; margin: 0 0 6px; }
@@ -1651,7 +1654,15 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   opacity: .75; font-size: var(--text-s); line-height: 1; padding: 0 2px;
 }
 .prov-pop .prov-close:hover { opacity: 1; }
-.prov-pop .prov-line { margin-bottom: var(--s1); }
+/* §9.5 provenance receipts wear the spec-plate row grammar — structure and
+   type only; the ink-dark tooltip palette is a premium-refit keep. */
+.prov-pop .prov-line {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s2); align-items: baseline;
+  margin: 0; padding: var(--s1) 0;
+  border-top: 1px solid color-mix(in oklab, var(--paper) 18%, transparent);
+}
+.prov-pop .prov-line b { font: 600 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase; color: color-mix(in oklab, var(--paper) 72%, transparent); }
+.prov-pop .prov-line span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .prov-pop .prov-line b { display: block; font: 600 var(--text-xs) var(--body); color: color-mix(in srgb, var(--paper) 75%, transparent); }
 .prov-pop .prov-line span { font-family: var(--mono); font-size: var(--text-s); }
 .prov-pop .prov-foot {

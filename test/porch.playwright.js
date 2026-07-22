@@ -106,7 +106,7 @@ const log = m => console.log('  · ' + m);
   const beats = [];
   for (const f of [0, 0.15, 0.3, 0.6, 0.75, 1]) {
     await scrollFrac(A.page, f);
-    await A.page.waitForFunction(fr => Math.abs(BB.Porch._state.p - fr) < 0.06, f, { timeout: 10000 });
+    await A.page.waitForFunction(fr => Math.abs(BB.Porch._state.p - fr) < 0.06, f, { timeout: 25000 });
     beats.push(await A.page.evaluate(() => ({
       beat: document.getElementById('porch').dataset.beat,
       draft: BB.Porch._state.swCur.draft, dims: BB.Porch._state.swCur.dims,
