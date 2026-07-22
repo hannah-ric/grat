@@ -49,7 +49,7 @@ const chromePath =
     await ctx.addInitScript(() => {
       // App-focused suite: arrive as a returning visitor so the porch gate
       // routes straight to the studio.
-      try { localStorage.setItem('bb.porchSeen', '1'); } catch (e) { /* storage-less */ }
+      try { localStorage.setItem('bb.porchSeen', 'credits-2026-07'); } catch (e) { /* storage-less */ }
       window.storage = {
         async get(key) {
           const v = localStorage.getItem('bbshim:' + key);

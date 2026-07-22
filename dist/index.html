@@ -189,6 +189,40 @@
 .pricing-note { margin: 0; color: var(--muted); font-size: var(--text-xs); text-align: center; }
 @media (min-width: 680px) { .pricing-grid { grid-template-columns: 1fr 1fr; } .pricing-shell { padding: var(--space-l); } }
 
+/* ---- credits pivot: pricing surfaces ---- */
+.pricing-grid-credits { grid-template-columns: 1fr 1fr; }
+@media (min-width: 680px) { .pricing-grid-credits { grid-template-columns: repeat(4, 1fr); } }
+.pricing-facts { margin: 0; padding: 0 var(--space-s); list-style: none; display: flex; flex-direction: column; gap: .5rem; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-caption); }
+.pricing-facts li::before { content: '✓'; margin-right: .55rem; color: var(--green); font-weight: 700; }
+.pricing-balance { font: 600 var(--text-s) var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+.spend-confirm { width: min(560px, calc(100vw - 2rem)); }
+.spend-actions { display: flex; justify-content: flex-end; gap: var(--space-s); padding: var(--space-s) var(--space-m) 0; }
+.credit-chip { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Locked Plan tabs read as a preview, not an error. */
+.plan-preview { display: flex; flex-direction: column; gap: var(--s3); }
+.plan-preview .preview-locked svg { opacity: .55; vertical-align: -2px; }
+.preview-steps { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: .45rem; color: var(--ink-2); }
+.preview-cta { border: 1px solid var(--line-2); border-radius: var(--radius-m); background: var(--paper); padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); align-items: flex-start; }
+.preview-cta p { margin: 0; max-width: 62ch; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-body); }
+.preview-email { display: flex; flex-direction: column; gap: var(--s2); }
+.preview-email-row { display: flex; gap: var(--s2); }
+.preview-email input[type="email"] { flex: 1; min-width: 0; padding: .45rem .6rem; border: 1px solid var(--line-2); border-radius: var(--radius-s); background: var(--panel); color: var(--ink); font: inherit; }
+
+/* The Adjust rail — the inspector's sibling, docked on the LEFT so the two
+   can coexist; same surface treatment, same param controls. */
+.adjust-rail {
+  position: absolute; top: calc(var(--s3) + 60px); left: var(--s3); width: 280px; z-index: 15;
+  background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(10px);
+  border: 1px solid var(--line-2); border-radius: var(--radius-l); box-shadow: var(--shadow-lg);
+  max-height: calc(100% - var(--s5) - 60px); overflow-y: auto; overscroll-behavior: contain;
+}
+.adjust-head { display: flex; align-items: center; padding: var(--s3) var(--s3) var(--s2); gap: var(--s2); }
+.adjust-head h3 { margin: 0; font-family: var(--display); font-size: var(--text-l); flex: 1; }
+.adjust-body { padding: 0 var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
+@media (max-width: 720px) { .adjust-rail { width: min(280px, calc(100vw - 2 * var(--s3))); } }
+@media (forced-colors: active) { .adjust-rail, .preview-cta { border: 1px solid CanvasText; } }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #17110F;
@@ -2494,6 +2528,13 @@ body { --foh-nav-h: 3.75rem; }
   .site-nav, .site-footer { border-color: CanvasText; background: Canvas; }
   .signin-card, .faq-item { border-color: CanvasText; }
 }
+
+/* ---- calculator lead capture (credits pivot, Phase 5) ---- */
+.calc-lead { margin-top: var(--space-s); display: flex; flex-direction: column; gap: var(--space-2xs); max-width: 26rem; }
+.calc-lead-row { display: flex; gap: var(--space-2xs); }
+.calc-lead input[type="email"] { flex: 1; min-width: 0; padding: .5rem .65rem; border: 1px solid var(--line-2, #b9b2a0); border-radius: 6px; background: var(--panel, #fff); color: inherit; font: inherit; }
+.calc-lead-note { margin: 0; font-size: .8rem; color: var(--muted, #777); min-height: 1.1em; }
+@media (forced-colors: active) { .calc-lead input[type="email"] { border-color: CanvasText; } }
 </style>
 </head>
 <body>
@@ -2839,6 +2880,7 @@ body { --foh-nav-h: 3.75rem; }
             <div class="menu-group-label">Export</div>
             <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
                  means nothing to a thumb (C-14). -->
+            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint">issued</span></button>
             <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
             <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
             <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
@@ -2884,6 +2926,7 @@ body { --foh-nav-h: 3.75rem; }
           </div>
         </div>
       </div>
+      <button id="creditChip" class="btn small credit-chip" hidden aria-live="polite"></button>
       <button id="shareBtn" class="btn share-cta" aria-haspopup="dialog">Share</button>
     </div>
   </header>
@@ -3000,10 +3043,24 @@ body { --foh-nav-h: 3.75rem; }
           <div class="inspector-body" id="inspBody"></div>
         </div>
 
+        <!-- The Adjust rail (credits pivot): a first-class editing surface for
+             the whole design — dimensions, species, finish, level, counts —
+             because chat is behind sign-in and anonymous editing must not
+             depend on discovering the part inspector. -->
+        <div class="adjust-rail" id="adjustRail" role="region" aria-label="Adjust this design" hidden>
+          <div class="adjust-head">
+            <h3>Adjust</h3>
+            <button class="btn icon ghost" id="adjustClose" aria-label="Close adjust panel"></button>
+          </div>
+          <div class="adjust-body" id="adjustBody"></div>
+        </div>
+
         <div class="stage-controls">
           <!-- Always visible: Dimensions, Blueprint, Fit, View. Camera
                presets, explode, and help live inside the View popover. -->
           <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
+            <button class="btn small ghost" id="adjustBtn" aria-pressed="false" aria-expanded="false" aria-controls="adjustRail" title="Adjust dimensions, wood, and finish">Adjust</button>
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>
@@ -4183,8 +4240,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     return keys.map(k => { const r = ergoRow(k); return `${r.label.toLowerCase().replace(/ height| seat/g, '')} ${r.min}-${r.max}`; }).join(', ') + ' mm';
   }
   function knowledgeDigest() {
+    // Real $/bd ft, not $-dots (audit M-22): "keep it under $200" and
+    // "cheapest wood that won't sag" are only answerable against numbers.
+    // These are the DEFAULT prices; the current design's estimated total
+    // (user-edited prices included) rides the prompt tail via AI.budgetLine.
     const w = Object.values(WOOD_SPECIES).map(s =>
-      `${s.key}(janka ${s.janka},move ${s.movement},$${'●'.repeat(s.costTier)})`).join(' ');
+      `${s.key}(janka ${s.janka},move ${s.movement},$${s.pricePerBdFt}/bdft)`).join(' ');
     // min===max rows (single standard sizes, e.g. queen_bed_width) print one
     // number — "1524–1524mm" spent tokens saying nothing.
     const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min === r.max ? r.min : `${r.min}–${r.max}`}mm`).join('; ');
@@ -9154,6 +9215,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       len, counterboreMM, thru, into,
       biteMM: Math.round((len - (thruT - counterboreMM)) * 10) / 10,
       pilotMM: len >= 50 ? 3.2 : 2.8,
+      // The NEAR member gets a shank clearance hole (audit M-04): a #8 shank
+      // is ~4.2 mm — the screw must spin free on its side of the joint line
+      // or the two parts jack apart instead of drawing tight.
+      clearanceMM: 4.5,
       spec: `#8 × {${len}} wood screw`,
       housed
     };
@@ -9213,15 +9278,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         const sp = screwPlan(a, b, baseLen);
         const specTxt = U().fmtTemplate(sp.spec);
         const pos = positions(runMM, 2);
-        for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
+        for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, clearanceMM: sp.clearanceMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         const spacing = pos.length === 1 ? 'centered on the run'
           : `first ${len(RULES.edgeMM)} from each end${pos.length > 2 ? `, then every ${len(Math.round((runMM - 2 * RULES.edgeMM) / (pos.length - 1)))}` : ''}`;
         const where = sp.housed ? `centered ${fine(mateT / 2)} from the joint line`
           : sp.thru === a ? `on the ${a.name.toLowerCase()}'s centerline`
             : `centered ${fine(minDim(a) / 2)} from the joint line`;
-        const cbore = sp.counterboreMM
-          ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, so the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.` : '';
-        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${drill(sp.pilotMM)}.${cbore}`;
+        // The full drilling schedule (audit M-04): clearance through the near
+        // member (the screw must spin free there to DRAW the joint tight),
+        // pilot in the mate, and a countersink so the flat head seats —
+        // or the counterbore when the entry member is thick.
+        const draw = sp.counterboreMM
+          ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, ${drill(sp.clearanceMM)} clearance through the rest of the ${sp.thru.name.toLowerCase()} — the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.`
+          : ` Drill ${drill(sp.clearanceMM)} clearance through the ${sp.thru.name.toLowerCase()} and countersink so the head seats flush — the screw must spin free in the near member to draw the joint tight.`;
+        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${drill(sp.pilotMM)} into the ${sp.into.name.toLowerCase()}.${draw}`;
         break;
       }
       case 'pocket_screws': {
@@ -10170,20 +10240,25 @@ var BB = globalThis.BB = globalThis.BB || {};
      * telling the builder to slide it in later is physically impossible
      * (audit F-S1-2). */
     const slideIn = spec.joinery.box === 'butt_screws' || spec.joinery.box === 'pocket_screws';
+    // Pre-finish reminder (audit M-09), once, on the FIRST drawer step: an
+    // assembled drawer bank's boxes and opening interiors are unreachable
+    // for a clean finish. Text amendment only — never a new step id (the
+    // golden corpus freezes the id list).
+    const preFinish = ' Pre-finish the drawer boxes (inside and out) and the openings’ interior faces now — an assembled drawer bank can’t be finished cleanly.';
     for (const d of model.drawers) {
       const n = d.index + 1;
       const ids = id => d.partIds.filter(p => p.includes(id));
       const boxIds = [...ids('side'), ...ids('boxfront'), ...ids('boxback')];
       if (slideIn) {
         out.push(step(`dr${n}_box`, `Drawer ${n}: build the box`,
-          `Join the sides, box front, and box back with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside). Check the diagonals — square now or fight it forever.`,
+          `Join the sides, box front, and box back with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside). Check the diagonals — square now or fight it forever.${n === 1 ? preFinish : ''}`,
           boxIds, { drawer: d.index }));
         out.push(step(`dr${n}_bottom`, `Drawer ${n}: fit the bottom`,
           `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of the sides and front (the back is relieved). Slide in the ${len(6)} bottom from the rear — no glue, it floats.`,
           ids('bottom'), { drawer: d.index }));
       } else {
         out.push(step(`dr${n}_box`, `Drawer ${n}: groove, then build the box around its bottom`,
-          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.`,
+          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.${n === 1 ? preFinish : ''}`,
           boxIds.concat(ids('bottom')), { drawer: d.index }));
       }
       const railIds = model.parts.filter(p => p.role === 'rail').slice(d.index, d.index + 2).map(p => p.id);
@@ -10205,10 +10280,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       out.push(step(`dr${n}_hang`, `Drawer ${n}: hang the box`,
         `Set the box on its runners and check it runs true with an even gap.`, boxIds.concat(ids('bottom')), { drawer: d.index }));
+      // Screws from inside the box need the full drilling schedule (M-04):
+      // clearance through the box front, pilot into the false front — or the
+      // front stands off on the threads instead of drawing tight.
+      const frontScrews = `screw it from inside the box with #8 × ${len(25)} screws — ${drill(4.5)} clearance holes through the box front, pilot ${drill(2.8)} into the false front, so it draws up tight`;
       out.push(step(`dr${n}_front`, `Drawer ${n}: attach the front`,
         d.frontStyle === 'inset'
-          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then screw it from inside the box with #8 × ${len(25)} screws.`
-          : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and screw it from inside the box with #8 × ${len(25)} screws.`,
+          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then ${frontScrews}.`
+          : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and ${frontScrews}.`,
         ids('front'), { drawer: d.index }));
       // Steps speak the EFFECTIVE style — the one pullSpec actually fitted.
       const pull = d.pull || { styleKey: 'bar_pull', style: 'bar_pull', count: 1, ctcMM: 0 };
@@ -10393,10 +10472,10 @@ var BB = globalThis.BB = globalThis.BB || {};
           [c.a, c.b]));
       });
     } else if (t === 'bookshelf') {
-      out.push(step('s1', 'Join the case', `Fasten the top and bottom between the sides with ${caP}. Clamp square before anything sets.`, ids('side_1', 'side_2', 'top_1', 'bottom_1')));
+      out.push(step('s1', 'Join the case', `Dry-fit the whole case and check square before any glue. Then fasten the top and bottom between the sides with ${caP}. Clamp square before anything sets.`, ids('side_1', 'side_2', 'top_1', 'bottom_1')));
       const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
       if (shelves.length) out.push(step('s2', 'Add the shelves', `Fit each shelf with ${caP}, working bottom to top.`, shelves));
-      if (has('back_1')) out.push(step('s3', 'Fit the back', 'Square the case to the back panel and fasten it — the back is what keeps everything square.', ['back_1']));
+      if (has('back_1')) out.push(step('s3', 'Fit the back', 'Pre-finish the interior faces and shelves first — once the back is on, the inside is unreachable for a clean finish. Then square the case to the back panel and fasten it — the back is what keeps everything square.', ['back_1']));
     } else if (t === 'cabinet') {
       /* One carcass glue-up: with mortise-&-tenon (or doweled) rails the
        * sides cannot spread to seat the rails once the bottom is glued —
@@ -10409,20 +10488,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       const housedShelf = ['dado', 'sliding_dovetail', 'rabbet'].includes(spec.joinery.case);
       if (shelves.length) out.push(step('s2', 'Fit the shelves',
         `Fit each shelf with ${caP} now, while the back is open${housedShelf ? ' — a housed shelf slides in from the back and CANNOT go in after the back panel is on' : ''}.`, shelves));
-      if (has('back_1')) out.push(step('s3', 'Fit the back', 'Fasten the back panel — square the carcass to it first.', ['back_1']));
+      if (has('back_1')) out.push(step('s3', 'Fit the back', 'Pre-finish the carcass interior and shelves first — unreachable once the back is on. Then fasten the back panel — square the carcass to it first.', ['back_1']));
       if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else if (t === 'nightstand') {
-      out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
+      out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies. Dry-fit and check square before any glue.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
       out.push(step('s2', 'Connect with back apron and rails', `Join the back apron and the front drawer rails between the side frames with ${frP}.`, ['apron_back_1', ...rails]));
       if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf', 'Notch the shelf around the legs and fasten it.', ['shelf_1']));
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
-      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
-      out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. Work on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
+      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
+      out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. ${isKnockdown(spec.joinery.frame) ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
       out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
     }
     // Mandatory anti-tip anchoring: an instruction step, not an aside. A
@@ -11312,6 +11391,40 @@ BlueprintBuddyImport.build
   };
   const printSVG = svg => String(svg).replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PRINT_COLORS[v] || '#333');
 
+  /* Drawer-hardware setout rows (slides, runners, pull bores) — one source
+   * shared by the in-app print sheet and the server-issued blueprint sheet
+   * set (api/_sheets.js), so the two documents can never disagree. */
+  function hardwareRows(spec, model) {
+    const U = BB.Units;
+    const dim = v => U.fmtLength(v);
+    const hw = [];
+    if (BB.HW && model.drawers) {
+      for (const d of model.drawers) {
+        const n = d.index + 1;
+        if (d.runner === 'side_mount_slides' && d.slideLen) {
+          hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtDrill(3)}.` });
+        } else if (d.runner === 'undermount_slides' && d.slideLen) {
+          hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
+        } else if (d.runner === 'wood_runners') {
+          hw.push({ label: 'Wooden runners', qty: 2, where: `Drawer ${n} opening`, text: `Hardwood rails from the cut list, glued + screwed level; ${U.fmtSmall(1)} side clearance, computed vertical clearance in the steps.` });
+        }
+        const pu = d.pull || {};
+        const eff = BB.HW.PULLS[pu.style || pu.styleKey];
+        if (eff && (pu.style || pu.styleKey) !== 'none_touch') {
+          const text = pu.holes === 0
+            ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
+            : pu.ctcMM
+              ? `${pu.holes} × ${U.fmtDrill(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
+              : `One ${U.fmtDrill(eff.boreDia || 5)} bore, centered on the shared centerline.`;
+          hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
+        } else if (eff) {
+          hw.push({ label: 'Magnetic touch latch', qty: 1, where: `Drawer ${n} front`, text: `Latch behind the front, striker on the box; needs ${U.fmtSmall(2)}–${U.fmtSmall(3)} of travel in the reveal.` });
+        }
+      }
+    }
+    return hw;
+  }
+
   function printHTML(spec, model, cut, bomData, steps, stock, opts) {
     // The print sheet is a display surface: it follows the current display
     // preference via BB.Units (unlike the geometry exports above).
@@ -11351,31 +11464,7 @@ BlueprintBuddyImport.build
     let joineryHTML = '';
     if (BB.Fasteners) {
       const rows = BB.Fasteners.detailRows(spec, model);
-      const hw = [];
-      if (BB.HW && model.drawers) {
-        for (const d of model.drawers) {
-          const n = d.index + 1;
-          if (d.runner === 'side_mount_slides' && d.slideLen) {
-            hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtDrill(3)}.` });
-          } else if (d.runner === 'undermount_slides' && d.slideLen) {
-            hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
-          } else if (d.runner === 'wood_runners') {
-            hw.push({ label: 'Wooden runners', qty: 2, where: `Drawer ${n} opening`, text: `Hardwood rails from the cut list, glued + screwed level; ${U.fmtSmall(1)} side clearance, computed vertical clearance in the steps.` });
-          }
-          const pu = d.pull || {};
-          const eff = BB.HW.PULLS[pu.style || pu.styleKey];
-          if (eff && (pu.style || pu.styleKey) !== 'none_touch') {
-            const text = pu.holes === 0
-              ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
-              : pu.ctcMM
-                ? `${pu.holes} × ${U.fmtDrill(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
-                : `One ${U.fmtDrill(eff.boreDia || 5)} bore, centered on the shared centerline.`;
-            hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
-          } else if (eff) {
-            hw.push({ label: 'Magnetic touch latch', qty: 1, where: `Drawer ${n} front`, text: `Latch behind the front, striker on the box; needs ${U.fmtSmall(2)}–${U.fmtSmall(3)} of travel in the reveal.` });
-          }
-        }
-      }
+      const hw = hardwareRows(spec, model);
       if (rows.length || hw.length) {
         const jr = rows.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('') +
           hw.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('');
@@ -11436,7 +11525,7 @@ BlueprintBuddyImport.build
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
   }
 
-  BB.Exports = { toDAE, toRuby, toCSV, printHTML, printSVG, download, slug, ROLE_COLORS };
+  BB.Exports = { toDAE, toRuby, toCSV, printHTML, printSVG, hardwareRows, download, slug, ROLE_COLORS };
 })();
 </script>
 <script>/* Blueprint Buddy — revision history.
@@ -11878,9 +11967,27 @@ var BB = globalThis.BB = globalThis.BB || {};
   const VERBATIM_TURNS = 6;
   const CONTINUE_PROMPT = 'Continue exactly where you stopped. No repetition, no preamble.';
 
+  /* The one-line budget digest (audit M-22): the current design's estimated
+   * materials total, computed by CODE from the same BOM the Buy tab shows —
+   * user-edited prices included when the UI passes them. The model never
+   * computes a price; it only reasons against this number and the $/bd ft
+   * column in the knowledge digest. Best-effort: any failure returns ''. */
+  function budgetLine(spec, prices) {
+    try {
+      if (!BB.Parametric || !BB.Plans || !BB.Packing || !BB.Structural) return '';
+      const model = BB.Parametric.build(spec);
+      if (!model || !model.parts || !model.parts.length) return '';
+      const integ = BB.Structural.computeIntegrity(spec, model, {});
+      const cut = BB.Plans.cutList(spec, model);
+      const stock = BB.Packing.planStock(spec, model, cut, { prices });
+      const bom = BB.Plans.bom(spec, model, { integrity: integ, stock, prices });
+      return `BUDGET: current estimated materials total $${bom.total} (code-computed, live price table). Answer budget asks against this and the $/bdft column; never invent prices.`;
+    } catch (e) { return ''; }
+  }
+
   /* ---------------- system prompt: static schema doc + level joint list +
    * knowledge digests + current spec in wire format. Nothing else. -------- */
-  function systemPrompt(spec) {
+  function systemPrompt(spec, prices) {
     return [
       'You are the design intent engine inside Blueprint Buddy, a parametric furniture design tool.',
       'You NEVER compute geometry. You propose intent; the app owns all math, snaps stock sizes, and re-validates everything.',
@@ -11907,9 +12014,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Hardware style intent only — every count, rating, and bore is code
       // (BB.HW), so capacities and formulas never spend prompt tokens.
       BB.HW ? BB.HW.digestLine() : '',
+      // Everything after the marker is the PER-CALL tail (uncached — see
+      // api/chat.js C14): the wire spec and the code-computed budget line.
       '--- current spec (wire format) ---',
-      JSON.stringify(Codec().encode(spec))
-    ].join('\n');
+      JSON.stringify(Codec().encode(spec)),
+      budgetLine(spec, prices)
+    ].filter(Boolean).join('\n');
   }
 
   /* ---------------- JSON extraction ---------------- */
@@ -12310,6 +12420,25 @@ var BB = globalThis.BB = globalThis.BB || {};
   // (audit L-14).
   let proxyUnconfigured = false;
 
+  /* Credits pivot: where may the offline intent parser still answer?
+   *   - non-browser hosts (the headless test suites drive it directly);
+   *   - dev hosts (localhost & friends — the documented dev/test path);
+   *   - hosts with NO proxy route at all (a static file or claude.ai
+   *     artifact — the standalone-app capability stays intact).
+   * The one place it is now FORBIDDEN is a production deploy whose proxy
+   * answered 503 (route exists, ANTHROPIC_API_KEY missing): there the UI
+   * says "AI is not configured on this site" instead of quietly serving a
+   * toy parser that looks like the product. */
+  function isDevHost() {
+    if (typeof location === 'undefined') return false;
+    return /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(location.hostname || '');
+  }
+  function localParserAllowed() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return true;
+    if (!proxyUnconfigured) return true;
+    return isDevHost();
+  }
+
   async function proxyTransport(system, messages) {
     let response;
     try {
@@ -12328,14 +12457,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (response.status === 503) proxyUnconfigured = true; // route exists, key missing (L-14)
       throw new Error('proxy unavailable (' + response.status + ')');
     }
-    // Usage limit (402) and rate limit (429) are AUTHORITATIVE, not transport
-    // failures — surface them distinctly so the UI can prompt an upgrade instead
-    // of silently dropping to the offline parser. The proxy stays alive.
-    if (response.status === 402 || response.status === 429) {
+    // Sign-in required (401), usage limit (402), and rate limit (429) are
+    // AUTHORITATIVE answers, not transport failures — surface them distinctly
+    // so the UI can prompt sign-in / name the ceiling instead of silently
+    // dropping to the offline parser. The proxy stays alive.
+    if (response.status === 401 || response.status === 402 || response.status === 429) {
       let payload = null;
       try { payload = await response.json(); } catch (e) { /* no body */ }
-      const err = new Error(response.status === 402 ? 'usage_limit' : 'rate_limited');
-      if (response.status === 402) { err.usageLimit = true; err.billing = payload && payload.billing; }
+      const err = new Error(response.status === 401 ? 'auth_required' : response.status === 402 ? 'usage_limit' : 'rate_limited');
+      if (response.status === 401) err.authRequired = true;
+      else if (response.status === 402) { err.usageLimit = true; err.billing = payload && payload.billing; }
       else err.rateLimited = true;
       throw err;
     }
@@ -12533,9 +12664,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     const phrasing = String(userText || '');
     userText = BB.Units.normalizeLengthText(userText);
     const onStatus = opts.onStatus || (() => {});
-    if (!hasRemote()) return { reply: localModel(userText, spec, { phrasing }), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
+    if (!hasRemote()) {
+      if (!localParserAllowed()) {
+        // A keyless DEPLOY (proxy route exists, no ANTHROPIC_API_KEY): the
+        // offline parser must never impersonate the product in production.
+        // Dev hosts and no-proxy hosts (static / claude.ai) keep it.
+        return { reply: null, turns: opts.turns || [], unconfigured: true, error: 'AI is not configured on this site. The design tools all work — but chat needs the site owner to set the AI key.' };
+      }
+      return { reply: localModel(userText, spec, { phrasing }), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
+    }
 
-    const system = systemPrompt(spec);
+    const system = systemPrompt(spec, opts.prices);
     const turns = opts.turns || [];
     const digest = opts.digest || '';
     const userContent = opts.image
@@ -12595,10 +12734,14 @@ var BB = globalThis.BB = globalThis.BB || {};
           : 'The model never produced a valid design reply.'
       };
     } catch (err) {
-      // Usage/rate limits are authoritative server answers, not outages — never
-      // mask them behind the offline parser.
+      // Sign-in and usage/rate limits are authoritative server answers, not
+      // outages — never mask them behind the offline parser.
+      if (err && err.authRequired) return { reply: null, turns, authRequired: true };
       if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
       if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
+      if (!localParserAllowed()) {
+        return { reply: null, turns, unconfigured: proxyUnconfigured, error: proxyUnconfigured ? 'AI is not configured on this site. The design tools all work — but chat needs the site owner to set the AI key.' : 'The design service is unreachable. Your design is untouched — try again in a moment.' };
+      }
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
       // G13: the transport EXISTED and died mid-flight (hasRemote() was true
       // above — a session that starts offline returns early and never lands
@@ -12619,6 +12762,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * buildable design". */
   function roundDecision(res) {
     if (!res) return 'bail';
+    if (res.authRequired) return 'auth';
     if (res.usageLimit) return 'billing';
     if (res.rateLimited) return 'rate';
     if (!res.reply) return 'bail';
@@ -12756,7 +12900,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.AI = {
-    systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
+    systemPrompt, budgetLine, extractJSON, looksTruncated, classify, localModel, respond, apply,
     setTransport, callModel, buildMessages, buildCritique, rejectionMarker, roundDecision, downscaleImage, stepContext,
     supportsImages, hasRemote, VISION_PROMPT,
     unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)
@@ -13032,7 +13176,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       id: data.id, name: data.name, updated: Date.now(),
       wire: data.wire,
       revisions: (data.revisions || []).slice(-MAX_REVISIONS),
-      progress: data.progress || { cuts: {}, steps: {} }
+      progress: data.progress || { cuts: {}, steps: {} },
+      // Display-only record of the design's issued blueprint (credits pivot);
+      // the server ledger stays the authority on every charge.
+      blueprint: data.blueprint || null
     };
     await set(PROJECT_PREFIX + data.id, record);
     if (data.thumb) await set(THUMB_PREFIX + data.id, data.thumb); // its own doc, not the index
@@ -13218,23 +13365,42 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
-  // Mirror of api/_entitlements.js. The SERVER is the authority — the client
-  // always prefers a fetched billing payload; these values only drive display
-  // before/without a fetch (offline, anonymous, first paint). There is no shared
-  // module across the client/server runtime split, so keep the two in sync.
-  const PLANS = {
-    free: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false },
-    pro: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500, premiumExports: true, advancedFeatures: true }
+  // Mirror of api/_entitlements.js + api/_credits.js. The SERVER is the
+  // authority — the client always prefers a fetched billing payload; these
+  // values only drive display before/without a fetch (offline, anonymous,
+  // first paint). There is no shared module across the client/server runtime
+  // split, so keep the two in sync.
+  //
+  // Credits pivot (2026-07): the offer is CREDITS — one credit buys one
+  // blueprint (a design committed at first plan issuance, refinable free for
+  // 30 days, re-downloadable free forever; credits expire 12 months after
+  // purchase, never monthly). premiumExports/advancedFeatures are gone as
+  // purchase gates: access is decided by whether the DESIGN is credited.
+  const TIERS = {
+    free: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 200 },
+    pro: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500 } // legacy, honored not sold
   };
-  const FREE = PLANS.free;
+  const FREE = TIERS.free;
+  // Launch pricing (display only — the Stripe Prices are authoritative).
+  const CREDIT_PACKS = [
+    { n: 1, price: 9, note: '$9 per blueprint' },
+    { n: 3, price: 24, note: '$8 each' },
+    { n: 10, price: 69, note: '$6.90 each' },
+    { n: 25, price: 149, note: '$5.96 each' }
+  ];
+  const WINDOW_DAYS = 30;
+
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   let dialog = null;
-  let interval = 'year';
 
   function account() { return BB.Store && BB.Store.auth ? BB.Store.auth() : { user: null, billing: null }; }
-  function status() { return account().billing || { plan: 'free', entitlements: FREE, usage: { aiMessages: 0 } }; }
-  function isPro() { return status().plan === 'pro'; }
-  function entitled(feature) { return !!status().entitlements[feature]; }
+  function status() { return account().billing || { plan: 'free', entitlements: FREE, usage: { aiMessages: 0 }, credits: null }; }
+  function isPro() { return status().plan === 'pro'; } // legacy badge only
+  /* The credit balance, or null when the server has not told us yet. */
+  function credits() {
+    const c = status().credits;
+    return c && typeof c.balance === 'number' ? c.balance : null;
+  }
 
   async function api(action, body) {
     const response = await fetch('/api/billing?action=' + encodeURIComponent(action), {
@@ -13254,13 +13420,28 @@ var BB = globalThis.BB = globalThis.BB || {};
     return status();
   }
 
-  async function redirect(action, body) {
+  /* POST the design to /api/blueprint. The server validates FIRST, charges
+   * second, renders third, refunds on failure — this client never decides
+   * whether a charge lands; it only reports what the server said. */
+  async function issue(payload) {
+    const response = await fetch('/api/blueprint', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {})
+    });
+    const data = await response.json().catch(() => ({}));
+    data.httpStatus = response.status;
+    return data;
+  }
+
+  async function buyPack(n) {
     try {
-      const data = await api(action, body);
+      const data = await api('credits', { pack: n });
       if (data.url) window.location.href = data.url;
     } catch (error) {
-      const note = dialog && dialog.querySelector('[data-billing-note]');
-      if (note) note.textContent = error.message === 'price_unconfigured' ? 'Billing prices are not configured yet.' : 'Billing is temporarily unavailable. Please try again.';
+      setNote(error.message === 'price_unconfigured'
+        ? 'Credit packs are not configured on this site yet.'
+        : 'Purchase is temporarily unavailable. Please try again.');
     }
   }
 
@@ -13269,38 +13450,35 @@ var BB = globalThis.BB = globalThis.BB || {};
     dialog = document.createElement('dialog');
     dialog.className = 'pricing-dialog';
     dialog.setAttribute('aria-labelledby', 'pricingTitle');
+    const packCards = CREDIT_PACKS.map(p => `
+        <section class="price-card${p.n === 3 ? ' featured' : ''}" aria-label="${p.n} credit${p.n > 1 ? 's' : ''}">
+          <div><span class="plan-label">${p.n} credit${p.n > 1 ? 's' : ''}</span><strong>$${p.price}</strong><small>${escapeHTML(p.note)}</small></div>
+          <button class="btn${p.n === 3 ? ' primary' : ''}" data-pack="${p.n}">Buy ${p.n === 1 ? 'one credit' : p.n + ' credits'}</button>
+        </section>`).join('');
     dialog.innerHTML = `<div class="pricing-shell">
       <button class="pricing-close" data-pricing-close aria-label="Close pricing">&times;</button>
       <header class="pricing-head">
-        <span class="pricing-kicker">Blueprint Buddy Pro</span>
-        <h2 id="pricingTitle">From idea to build day, without limits.</h2>
-        <p>Keep every design, use the full AI workshop, and export production-ready plans.</p>
-        <div class="billing-cycle" role="group" aria-label="Billing cycle">
-          <button data-cycle="month" aria-pressed="false">Monthly</button>
-          <button data-cycle="year" aria-pressed="true">Yearly <span>best value</span></button>
-        </div>
+        <span class="pricing-kicker">Blueprint credits</span>
+        <h2 id="pricingTitle">One credit. One complete blueprint.</h2>
+        <p>A credit buys this design's full blueprint: the sheet set, exact cut list, stock plan with cutting
+        diagrams, joinery setout, assembly steps, every export format, and the full-screen shop companion.</p>
+        <p data-credit-balance class="pricing-balance"></p>
       </header>
-      <div class="pricing-grid">
-        <section class="price-card" aria-label="Free plan">
-          <div><span class="plan-label">Free</span><strong>$0</strong><small>forever</small></div>
-          <ul><li>${FREE.projectLimit} saved projects</li><li>${FREE.aiMonthlyLimit} AI messages per month</li><li>Core drawing and cut-list exports</li><li data-free-sync>Device sync</li></ul>
-          <button class="btn" data-pricing-close>Keep Free</button>
-        </section>
-        <section class="price-card featured" aria-label="Pro plan">
-          <div><span class="plan-label">Pro</span><strong data-price>$12</strong><small data-period>/ month, billed yearly</small></div>
-          <ul><li>Unlimited saved projects</li><li>${PLANS.pro.aiMonthlyLimit} AI messages per month</li><li>Print plans, 3D and SketchUp exports</li><li>Full-screen Build mode</li></ul>
-          <button class="btn primary pricing-upgrade" data-upgrade>Upgrade to Pro</button>
-        </section>
-      </div>
-      <p class="pricing-note">A single design refinement can use several AI messages as the model iterates.</p>
-      <p class="pricing-note" data-billing-note>Secure checkout by Stripe. Cancel or change plans anytime.</p>
+      <div class="pricing-grid pricing-grid-credits">${packCards}</div>
+      <ul class="pricing-facts">
+        <li>Refine a credited design free for ${WINDOW_DAYS} days — a single refinement can use several AI messages as the model iterates, and that iteration is included, never billed.</li>
+        <li>Re-download your issued blueprints free, forever.</li>
+        <li>The same design never charges twice. A failed design is never charged at all.</li>
+        <li>Credits last 12 months. They never reset monthly.</li>
+        <li data-free-sync>Signing up is free and includes your first credit.</li>
+      </ul>
+      <p class="pricing-note" data-billing-note>Secure checkout by Stripe.</p>
     </div>`;
     document.body.append(dialog);
     dialog.addEventListener('click', event => {
       if (event.target === dialog || event.target.closest('[data-pricing-close]')) dialog.close();
-      const cycle = event.target.closest('[data-cycle]');
-      if (cycle) { interval = cycle.dataset.cycle; paintCycle(); }
-      if (event.target.closest('[data-upgrade]')) {
+      const pack = event.target.closest('[data-pack]');
+      if (pack) {
         if (!account().user) {
           // Never close silently: surface a visible cue in the note area, and
           // only redirect when a sign-in provider actually exists (A-02/X-03).
@@ -13309,29 +13487,67 @@ var BB = globalThis.BB = globalThis.BB || {};
           if (plan.redirect) openSignIn();
           return;
         }
-        redirect('checkout', { interval });
+        buyPack(Number(pack.dataset.pack));
       }
     });
     return dialog;
   }
 
-  function paintCycle() {
-    if (!dialog) return;
-    for (const button of dialog.querySelectorAll('[data-cycle]')) button.setAttribute('aria-pressed', String(button.dataset.cycle === interval));
-    dialog.querySelector('[data-price]').textContent = interval === 'year' ? '$12' : '$15';
-    dialog.querySelector('[data-period]').textContent = interval === 'year' ? '/ month, billed yearly' : '/ month';
-  }
-
   function open(reason) {
     ensureDialog();
     const note = dialog.querySelector('[data-billing-note]');
-    note.textContent = reason ? escapeHTML(reason) : 'Secure checkout by Stripe. Cancel or change plans anytime.';
-    // Reflect the current sign-in reality every time the dialog opens (the auth
-    // probe may have resolved after the dialog was first built).
+    note.textContent = reason ? escapeHTML(reason) : 'Secure checkout by Stripe.';
     const sync = dialog.querySelector('[data-free-sync]');
-    if (sync) sync.textContent = freeSyncLabel(account());
-    paintCycle();
+    if (sync) sync.textContent = freeSyncLabel(account()) === 'Device and cloud sync'
+      ? 'Signing up is free and includes your first credit — projects follow you to any device.'
+      : 'Signing up is free and includes your first credit.';
+    const bal = dialog.querySelector('[data-credit-balance]');
+    if (bal) {
+      const b = credits();
+      bal.textContent = account().user
+        ? (b === null ? '' : `You have ${b} credit${b === 1 ? '' : 's'}.`)
+        : 'Sign in free to claim your first credit.';
+    }
     dialog.showModal();
+  }
+
+  /* Confirm-before-spend (never spend silently): names the piece, shows the
+   * balance after, and states the idempotency guarantee. Resolves true only
+   * on the explicit confirm. */
+  function confirmIssue(opts) {
+    opts = opts || {};
+    return new Promise(resolve => {
+      const d = document.createElement('dialog');
+      d.className = 'pricing-dialog spend-confirm';
+      d.setAttribute('aria-labelledby', 'spendTitle');
+      const balance = typeof opts.balance === 'number' ? opts.balance : credits();
+      const after = balance === null ? null : balance - 1;
+      d.innerHTML = `<div class="pricing-shell">
+        <header class="pricing-head">
+          <span class="pricing-kicker">Issue blueprint</span>
+          <h2 id="spendTitle">Issue “${escapeHTML(opts.name || 'this design')}” for 1 credit?</h2>
+          <p>You get the complete sheet set, exact cut list, stock plan, joinery setout, assembly steps,
+          all exports, and the shop companion — plus free refinement of this design for ${WINDOW_DAYS} days
+          and free re-downloads forever.</p>
+          <p class="pricing-balance">${balance === null ? '' : `Balance after: ${after} credit${after === 1 ? '' : 's'}.`}
+          If this exact design was already issued, no credit is used.</p>
+        </header>
+        <div class="spend-actions">
+          <button class="btn" data-spend-cancel>Not now</button>
+          <button class="btn primary" data-spend-confirm>Issue blueprint — 1 credit</button>
+        </div>
+      </div>`;
+      document.body.append(d);
+      const done = value => { try { d.close(); } catch (e) { /* already closed */ } d.remove(); resolve(value); };
+      d.addEventListener('click', event => {
+        if (event.target === d || event.target.closest('[data-spend-cancel]')) done(false);
+        if (event.target.closest('[data-spend-confirm]')) done(true);
+      });
+      d.addEventListener('cancel', () => done(false));
+      d.showModal();
+      const confirm = d.querySelector('[data-spend-confirm]');
+      if (confirm) confirm.focus();
+    });
   }
 
   function openSignIn() {
@@ -13345,19 +13561,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (note) note.textContent = message;
   }
 
-  /* Signed-out Upgrade: decide what the dialog should say/do. Pure so the
+  /* Signed-out purchase: decide what the dialog should say/do. Pure so the
    * honest-copy contract is unit-testable without a DOM. When a provider exists
    * we hand off to sign-in (leaving a cue so a failed redirect never vanishes);
-   * with no provider configured (the current production state) we say so plainly
-   * instead of closing the dialog with nothing happening. */
+   * with no provider configured we say so plainly instead of closing the
+   * dialog with nothing happening. */
   function signedOutUpgradeNote(a) {
     const provider = a && a.providers && a.providers[0];
     return provider
-      ? { redirect: true, note: 'Taking you to sign in — you can upgrade once you are signed in.' }
-      : { redirect: false, note: "Sign-in isn't available on this site yet, so upgrading isn't possible here." };
+      ? { redirect: true, note: 'Taking you to sign in — your first credit is free, and you can buy more once you are signed in.' }
+      : { redirect: false, note: "Sign-in isn't available on this site yet, so credits can't be purchased here." };
   }
 
-  /* Free-plan sync bullet: cloud sync needs a sign-in provider, so on a
+  /* Free-tier sync bullet: cloud sync needs a sign-in provider, so on a
    * providerless deployment the honest promise is device-only sync (A-08). */
   function freeSyncLabel(a) {
     return (a && a.providers && a.providers.length) ? 'Device and cloud sync' : 'Device sync';
@@ -13365,19 +13581,12 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* Billing is "configured" only when the origin gave us evidence: a billing
    * payload or sign-in providers (mirror of ui.js billingConfigured). A static
-   * or providerless host cannot sell Pro — its Upgrade path is an honest
-   * dead-end — so it must never gate either (C-01). The SERVER stays the
+   * or providerless host cannot sell credits — its purchase path is an honest
+   * dead-end — so it must never gate anything (C-01). The SERVER stays the
    * entitlement authority whenever billing is real. */
   function configured() {
     const a = account();
     return !!(a.billing || (a.providers && a.providers.length));
-  }
-
-  function gate(feature, reason) {
-    if (!configured()) return true;
-    if (isPro() || entitled(feature)) return true;
-    open(reason || 'This is a Pro feature.');
-    return false;
   }
 
   async function gateNewProject() {
@@ -13385,7 +13594,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (limit === null || limit === undefined) return true;
     const projects = await BB.Store.loadIndex();
     if (projects.length < limit) return true;
-    open(`Free includes ${limit} saved projects. Upgrade for unlimited projects.`);
+    open(`Free includes ${limit} saved projects. Export a share code to keep this one, or any credit purchase lifts the limit.`);
     return false;
   }
 
@@ -13396,7 +13605,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     history.replaceState(null, '', window.location.pathname + window.location.hash);
   }
 
-  BB.Billing = { status, isPro, entitled, refresh, open, gate, gateNewProject, manage: () => redirect('portal'), handleReturn, signedOutUpgradeNote, freeSyncLabel };
+  BB.Billing = {
+    status, isPro, credits, refresh, open, confirmIssue, issue, buyPack, configured,
+    gateNewProject, manage: () => api('portal', {}).then(d => { if (d.url) window.location.href = d.url; }).catch(() => setNote('Billing is temporarily unavailable.')),
+    handleReturn, signedOutUpgradeNote, freeSyncLabel,
+    CREDIT_PACKS, WINDOW_DAYS
+  };
 })();
 </script>
   <script>/* Blueprint Buddy — number provenance + species comparison (Phase 4 stretch).
@@ -14099,7 +14313,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2290-token ceiling', tk <= 2290 && tk > 800, tk + ' tokens', '≤ 2290'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, then the G6 ask-policy + G10 floor-boundary lines
+      test('hardening', 'system prompt under the 2400-token ceiling', tk <= 2400 && tk > 800, tk + ' tokens', '≤ 2400'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, then the M-22 budget digest
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
 
@@ -16733,13 +16947,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { show, static: show && !!reduced };
   }
 
+  /* The porch now carries pricing and lead capture, so "seen" is versioned:
+   * bump PRICING_REV whenever the offer changes and every returning visitor
+   * sees the porch once more (credits pivot §4 decision). A legacy '1' from
+   * the overture era counts as unseen — those visitors predate the offer.
+   * Share-link (#d=) and ?app arrivals still bypass, as before. */
+  const PRICING_REV = 'credits-2026-07';
   function peekSeen() {
-    try { if (localStorage.getItem('bb.porchSeen') === '1') return true; } catch (e) { /* storage-less */ }
-    try { return sessionStorage.getItem('bb.porchSeen') === '1'; } catch (e) { return false; }
+    try { if (localStorage.getItem('bb.porchSeen') === PRICING_REV) return true; } catch (e) { /* storage-less */ }
+    try { return sessionStorage.getItem('bb.porchSeen') === PRICING_REV; } catch (e) { return false; }
   }
   function markSeen() {
-    try { localStorage.setItem('bb.porchSeen', '1'); return; } catch (e) { /* fall through */ }
-    try { sessionStorage.setItem('bb.porchSeen', '1'); } catch (e) { /* session-only env */ }
+    try { localStorage.setItem('bb.porchSeen', PRICING_REV); return; } catch (e) { /* fall through */ }
+    try { sessionStorage.setItem('bb.porchSeen', PRICING_REV); } catch (e) { /* session-only env */ }
   }
 
   const reduceMq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -17182,6 +17402,39 @@ var BB = globalThis.BB = globalThis.BB || {};
     mkRow('Size', [['S', 'Small'], ['M', 'Medium'], ['L', 'Large']], () => calc.size, v => { calc.size = v; });
     mkRow('Species', CALC_SPECIES.map(k => [k, K.WOOD_SPECIES[k].label]), () => calc.species, v => { calc.species = v; });
     calcRender(true);
+    buildCalcCapture();
+  }
+
+  /* The calculator is a qualified-intent signal — capture it instead of
+   * discarding it (credits pivot, Phase 5). Optional, quiet, and honest:
+   * storage-less or API-less hosts show a plain failure note. */
+  function buildCalcCapture() {
+    const host = $('phCalc');
+    if (!host || $('phCalcLead')) return;
+    const wrap = el('form', 'calc-lead');
+    wrap.id = 'phCalcLead';
+    wrap.innerHTML = `<label class="kicker" for="phCalcEmail">Email me this estimate</label>
+      <div class="calc-lead-row">
+        <input type="email" id="phCalcEmail" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email address">
+        <button type="submit" class="btn small">Send it</button>
+      </div>
+      <p class="calc-lead-note" id="phCalcLeadNote" role="status"></p>`;
+    wrap.addEventListener('submit', async e => {
+      e.preventDefault();
+      const note = $('phCalcLeadNote');
+      const email = $('phCalcEmail').value.trim();
+      const r = calc.out || {};
+      try {
+        const res = await fetch('/api/lead', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, kind: 'calculator', context: JSON.stringify({ template: calc.template, size: calc.size, species: calc.species, cost: r.cost, boards: r.boards, parts: r.parts, hours: [r.hoursLow, r.hoursHigh] }) })
+        });
+        note.textContent = res.ok ? 'Saved — the estimate is on its way.' : 'Couldn’t save that right now — the studio itself is one click away.';
+      } catch (err) {
+        note.textContent = 'Couldn’t save that right now — the studio itself is one click away.';
+      }
+    });
+    host.append(wrap);
   }
 
   /* ---------------- entering the studio (design-language §7 handoff) ------- */
@@ -17957,7 +18210,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     paintSaveBlocked(limit);
     if (!capModalShown) {
       capModalShown = true;
-      BB.Billing.open(`Free includes ${limit} saved projects, so this design isn't being saved. Export a share code to keep it, or upgrade for unlimited projects.`);
+      BB.Billing.open(`Free includes ${limit} saved projects, so this design isn't being saved. Export a share code to keep it — any credit purchase lifts the limit.`);
     }
   }
   function paintSaveBlocked(limit) {
@@ -17981,6 +18234,18 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   async function doAutosave() {
     try {
+      // Anonymous on a configured origin: no save (credits pivot tier model).
+      // The state is named honestly instead of silently pretending to save.
+      if (anonGated()) {
+        clearTimeout(saveFlashTimer);
+        const elS = $('saveState');
+        elS.textContent = 'not saved — sign in free';
+        elS.title = 'Sign in (free, includes your first blueprint credit) to save designs, projects, and history.';
+        elS.classList.remove('pending');
+        elS.classList.add('on', 'err');
+        paintSavePulse('err');
+        return;
+      }
       if (!state.project && !(await autosaveCapAllows())) return;
       if (!state.project) state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } };
       const revisions = state.history.snapshots.slice(-Store.MAX_REVISIONS).map(s => ({
@@ -17991,6 +18256,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         id: state.project.id, name: state.spec.meta.name,
         wire: Codec.encode(state.spec), revisions,
         progress: state.project.progress, thumb,
+        blueprint: state.blueprint || null, // the credited-design record rides the project
         dims: `${fmt(state.spec.overall.width)} × ${fmt(state.spec.overall.depth)} × ${fmt(state.spec.overall.height)}`,
         progressPct: progressPct()
       });
@@ -18042,6 +18308,160 @@ var BB = globalThis.BB = globalThis.BB || {};
   function billingConfigured(a) {
     return !!(a.billing || (a.providers && a.providers.length));
   }
+
+  /* ---------------- the credited-design model (credits pivot 2026-07) ----
+   * A credit buys a DESIGN: committed at first blueprint issuance, refinable
+   * free for 30 days, re-downloadable free forever. The SERVER decides every
+   * charge (api/blueprint.js: validate → charge → render → refund-on-fail);
+   * everything here is display-state so the UI can gate honestly without a
+   * round trip. On unconfigured origins (static hosts, claude.ai) nothing is
+   * gated at all — same C-01 contract as billing before the pivot. */
+  function signedIn() { return !!Store.auth().user; }
+  function anonGated() { return billingConfigured(Store.auth()) && !signedIn(); }
+  /* Client-side mirror of api/_pipeline.js chargeHash semantics: the material
+   * identity of the design — meta.name and meta.units are display-only. Used
+   * ONLY for display gating; the server recomputes the real hash. */
+  function canonicalJSON(value) {
+    if (Array.isArray(value)) return '[' + value.map(canonicalJSON).join(',') + ']';
+    if (value && typeof value === 'object') {
+      return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonicalJSON(value[k])).join(',') + '}';
+    }
+    return JSON.stringify(value);
+  }
+  function materialKey(spec) {
+    const clone = JSON.parse(JSON.stringify(spec));
+    if (clone.meta) { delete clone.meta.name; delete clone.meta.units; }
+    return canonicalJSON(clone);
+  }
+  /* Is the CURRENT design credited? True when a blueprint was issued for this
+   * exact material spec, or when the design's 30-day refinement window is
+   * still open (refinement is included — the next issuance is free). */
+  function designCredited() {
+    const bp = state.blueprint;
+    if (!bp) return false;
+    if (bp.issuedKeys && bp.issuedKeys.includes(materialKey(state.spec))) return true;
+    return !!(bp.windowEndsAt && Date.now() < bp.windowEndsAt);
+  }
+  /* Cut / Buy / Assemble read as previews until the design is credited. */
+  function planLocked() {
+    if (!billingConfigured(Store.auth())) return false;
+    if (!state.cut.length) return false;
+    return !designCredited();
+  }
+
+  /* Chat-surface sign-in prompt (AI is behind sign-in; the first credit is
+   * free). Buttons, not links, so it works with keyboard focus in the log. */
+  function promptSignIn(message) {
+    const m = chatMsg('bot', `<div class="bubble">${esc(message || 'Sign in free to design with AI — your first blueprint credit is included.')}</div>`);
+    const row = el('div', 'answer-row');
+    const a = Store.auth();
+    for (const p of a.providers) {
+      const b = el('button', 'btn small', `Sign in with ${esc(PROVIDER_LABELS[p] || p)}`);
+      b.onclick = () => { window.location.href = Store.loginUrl(p); };
+      row.append(b);
+    }
+    if (!a.providers.length) {
+      const b = el('button', 'btn small', 'About sign-in');
+      b.onclick = () => { location.hash = '#signin'; };
+      row.append(b);
+    }
+    m.append(row);
+  }
+  const AI_CEILING_MSG = 'This month’s AI usage ceiling is reached — it resets with the calendar month. Your designs, plans, and credits are unaffected.';
+
+  /* High-res capture for the issued sheet set: the live canvas, optionally
+   * with the model exploded for the axonometric sheet. Best-effort — a
+   * capture failure never blocks issuance. */
+  function captureRender(explodeT) {
+    try {
+      const range = $('explodeRange');
+      const prev = range ? Number(range.value) / 100 : 0;
+      if (explodeT !== undefined) state.engine.setExplode(explodeT);
+      const canvas = state.engine.renderNow();
+      const url = canvas.toDataURL('image/jpeg', 0.82);
+      if (explodeT !== undefined) state.engine.setExplode(prev);
+      return url.length <= 600 * 1024 ? url : null;
+    } catch (e) { return null; }
+  }
+
+  /* The issuance flow: confirm (never spend silently) → POST → adopt the
+   * server's answer. `opts.then`: continue into { export: kind } or 'build'
+   * once the blueprint exists. */
+  let issuing = false;
+  async function issueBlueprint(opts) {
+    opts = opts || {};
+    if (issuing) return;
+    if (anonGated()) { promptSignIn('Sign in free to issue this blueprint — your first credit is included.'); return; }
+    if (state.report && state.report.errors.length) {
+      botSay('This design fails validation, so it can’t be issued (and is never charged). Clear the errors first.', []);
+      return;
+    }
+    const willCharge = !designCredited();
+    if (willCharge) {
+      const balance = BB.Billing.credits();
+      if (balance !== null && balance < 1) {
+        BB.Billing.open('Issuing this blueprint needs a credit.');
+        return;
+      }
+      const okToSpend = await BB.Billing.confirmIssue({ name: state.spec.meta.name, balance });
+      if (!okToSpend) return;
+    }
+    issuing = true;
+    try {
+      const payload = {
+        wire: Codec.encode(state.spec),
+        designId: state.blueprint ? state.blueprint.id : undefined,
+        hero: captureRender(),
+        exploded: captureRender(0.65)
+      };
+      const data = await BB.Billing.issue(payload);
+      if (data.httpStatus === 401) { promptSignIn(); return; }
+      if (data.httpStatus === 402) { BB.Billing.open('Issuing this blueprint needs a credit.'); return; }
+      if (data.httpStatus === 422) {
+        botSay('The server re-checked this design and it fails validation, so nothing was charged: ' +
+          ((data.errors || []).slice(0, 2).map(e => e.text).join(' ') || ''), []);
+        return;
+      }
+      if (!data.ok) {
+        botSay(data.refunded
+          ? 'Issuing failed on the server — your credit was automatically returned to your balance. Try again in a moment.'
+          : 'Issuing failed on the server — nothing was charged. Try again in a moment.', []);
+        return;
+      }
+      const key = materialKey(state.spec);
+      const keys = (state.blueprint && state.blueprint.id === data.id ? state.blueprint.issuedKeys : []) || [];
+      if (!keys.includes(key)) keys.push(key);
+      state.blueprint = { id: data.id, windowEndsAt: data.windowEndsAt, revision: data.revision, issuedKeys: keys };
+      await BB.Billing.refresh();
+      renderAccount();
+      renderAll();
+      scheduleAutosave();
+      const spent = data.charged ? ' One credit was used.' : data.cached ? ' This exact design was already issued — no credit was used.' : ' Refinement included — no credit was used.';
+      botSay(`Blueprint ${data.id} issued (rev ${data.revision}).${spent} The sheet set, all exports, and Build mode are unlocked for this design; re-download free anytime from Export.`, []);
+      if (opts.then === 'build') enterBuildMode();
+      else if (opts.then && opts.then.export) doExport(opts.then.export);
+      else window.open('/api/blueprint?id=' + encodeURIComponent(data.id) + '&format=sheets', '_blank', 'noopener');
+    } catch (e) {
+      botSay('Couldn’t reach the blueprint service — nothing was charged. Check the connection and try again.', []);
+    } finally {
+      issuing = false;
+    }
+  }
+
+  /* Credit balance in the top bar — never spend silently starts with never
+   * hiding the balance. Hidden on unconfigured origins and when unknown. */
+  function renderCreditChip() {
+    const chip = $('creditChip');
+    if (!chip) return;
+    const a = Store.auth();
+    const balance = BB.Billing.credits();
+    const show = billingConfigured(a) && a.user && balance !== null;
+    chip.hidden = !show;
+    if (!show) return;
+    chip.textContent = `${balance} credit${balance === 1 ? '' : 's'}`;
+    chip.title = 'Blueprint credits — one credit issues one design as a complete blueprint. Click for packs and details.';
+    chip.onclick = () => BB.Billing.open();
+  }
   /* Compact AI-allowance meter (A-05): rendered only when billing is real AND
    * usage is known (> 0) — Free users see the wall coming instead of slamming
    * into it. Lives under the chat input, the quietest surface next to where
@@ -18056,16 +18476,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     box.hidden = !show;
     if (!show) { box.textContent = ''; return; }
     const left = Math.max(0, limit - used);
-    box.innerHTML = `<span class="ai-usage-count">${left} of ${limit}</span> AI messages left this month` +
-      (b.plan === 'free' ? ` · <button type="button" class="learn-link" id="aiUsageUpgrade">Upgrade</button>` : '');
-    box.title = 'AI messages are metered per calendar month. A single design refinement can use several messages as the model iterates.';
-    const up = $('aiUsageUpgrade');
-    if (up) up.onclick = () => BB.Billing.open();
+    // Abuse ceiling, not the offer (credits pivot): show it only once the
+    // meter is meaningfully spent, and never sell anything against it.
+    box.hidden = !show || left > limit / 2;
+    if (box.hidden) { box.textContent = ''; return; }
+    box.innerHTML = `<span class="ai-usage-count">${left} of ${limit}</span> AI messages left this month`;
+    box.title = 'A monthly usage ceiling protects the AI service — it is not a purchase meter. Refinement of a credited design is always included.';
   }
   function renderAccount() {
     const area = $('accountArea'), sep = $('accountSep');
     if (!area) return;
     renderUsageMeter();
+    renderCreditChip();
     renderReadiness(); // the Build lock (X-04) follows the same billing evidence
     const a = Store.auth();
     const configured = billingConfigured(a);
@@ -18077,31 +18499,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (a.user) {
       const row = el('div', 'menu-account');
       const plan = a.billing && a.billing.plan === 'pro' ? 'Pro' : 'Free';
+      const balance = BB.Billing.credits();
       row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="account-avatar fallback" aria-hidden="true">${BB.Icons.svg('user', 14)}</span>`}
         <span class="account-name">${esc(a.user.name)}</span>
-        <span class="plan-badge">${plan}</span>`;
+        <span class="plan-badge">${balance !== null ? `${balance} credit${balance === 1 ? '' : 's'}` : plan}</span>`;
       area.append(row);
-      const billingBtn = el('button', '', plan === 'Pro'
-        ? '<span>Manage subscription</span><span class="hint">billing & plan</span>'
-        : '<span>Upgrade to Pro</span><span class="hint">unlock everything</span>');
+      const billingBtn = el('button', '', '<span>Buy credits</span><span class="hint">one credit = one blueprint</span>');
       billingBtn.setAttribute('role', 'menuitem');
-      billingBtn.onclick = () => plan === 'Pro' ? BB.Billing.manage() : BB.Billing.open();
+      billingBtn.onclick = () => BB.Billing.open();
       area.append(billingBtn);
+      if (plan === 'Pro') {
+        // Grandfathered subscribers keep their portal (legacy, honored).
+        const manageBtn = el('button', '', '<span>Manage subscription</span><span class="hint">legacy Pro plan</span>');
+        manageBtn.setAttribute('role', 'menuitem');
+        manageBtn.onclick = () => BB.Billing.manage();
+        area.append(manageBtn);
+      }
       const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
       out.setAttribute('role', 'menuitem');
       out.onclick = () => { window.location.href = Store.logoutUrl; };
       area.append(out);
     } else {
       for (const p of a.providers) {
-        const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">sync projects</span>`);
+        const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">free credit + sync</span>`);
         b.setAttribute('role', 'menuitem');
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
       }
-      // Persistent plans surface (A-05): upgrading must be findable before
-      // the paywall, not only at it.
+      // Persistent plans surface (A-05): the offer must be findable before
+      // the wall, not only at it.
       if (configured) {
-        const plans = el('button', '', '<span>Plans &amp; pricing</span><span class="hint">upgrade</span>');
+        const plans = el('button', '', '<span>Credits &amp; pricing</span><span class="hint">one credit = one blueprint</span>');
         plans.setAttribute('role', 'menuitem');
         plans.onclick = () => BB.Billing.open();
         area.append(plans);
@@ -18246,6 +18674,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
+    // The wall (credits pivot): Overview and Safety stay open — the shape,
+    // the physics verdict, the estimated cost. What makes the design
+    // BUILDABLE (exact cut dimensions, the stock plan, step text) is the
+    // blueprint, and the blueprint is what a credit buys.
+    const locked = ['cut', 'stock', 'assembly'].includes(state.tab) && planLocked();
+    if (locked) { renderLockedPreview(inner, state.tab); wireScrollableTables(inner); return; }
     if (state.tab === 'overview') renderOverview(inner);
     else if (state.tab === 'cut') renderCut(inner);
     else if (state.tab === 'stock') { renderStock(inner); renderBom(inner); }
@@ -18253,6 +18687,80 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (state.tab === 'integrity') renderIntegrity(inner);
     else renderReference(inner);
     wireScrollableTables(inner);
+  }
+
+  /* A locked Plan tab reads as a PREVIEW, not an error: the user sees what
+   * the blueprint contains — real part names, real counts, real totals —
+   * with only the buildable numbers withheld. One CTA, honest copy. */
+  function renderLockedPreview(root, tab) {
+    const wrap = el('div', 'plan-preview');
+    const lockGlyph = BB.Icons ? BB.Icons.svg('lock', 13) : '';
+    if (tab === 'cut') {
+      wrap.append(el('h2', '', 'Cut list — in your blueprint'));
+      const partCount = state.cut.reduce((s, r) => s + r.qty, 0);
+      wrap.append(el('p', 'txt-muted', `${state.cut.length} distinct parts, ${partCount} pieces total, joinery allowances included. Exact dimensions are issued with the blueprint.`));
+      const box = el('div', 'table-scroll');
+      const rows = state.cut.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.qty}</td><td class="num preview-locked" aria-label="dimension included in the blueprint">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td></tr>`).join('');
+      box.innerHTML = `<table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th></tr></thead><tbody>${rows}</tbody></table>`;
+      wrap.append(box);
+    } else if (tab === 'stock') {
+      wrap.append(el('h2', '', 'Buy list & stock plan — in your blueprint'));
+      const plan = state.stockPlan;
+      const boards = plan ? plan.boards.length + plan.sheets.length : 0;
+      wrap.append(el('p', 'txt-muted',
+        `Estimated materials: $${state.bomData ? state.bomData.total : (plan ? plan.totalCost.toFixed(2) : '—')} across ${boards} board${boards === 1 ? '' : 's'}/sheet${boards === 1 ? '' : 's'}. ` +
+        'The blueprint issues the exact shopping list and per-board cutting diagrams, optimized for waste.'));
+    } else {
+      wrap.append(el('h2', '', 'Assembly — in your blueprint'));
+      wrap.append(el('p', 'txt-muted', `${state.steps.length} steps, in dependency order, at your skill level. Step-by-step text, joinery setout, and the shop checklist are issued with the blueprint.`));
+      const ol = el('ol', 'preview-steps');
+      state.steps.forEach(s => ol.append(el('li', '', `<strong>${esc(s.title)}</strong> <span class="preview-locked" aria-label="step text included in the blueprint">${lockGlyph}</span>`)));
+      wrap.append(ol);
+    }
+    const cta = el('div', 'preview-cta');
+    if (anonGated()) {
+      cta.innerHTML = `<p>Sign in free to continue — your first blueprint credit is included.</p>`;
+      const b = el('button', 'btn primary', 'Sign in free');
+      b.onclick = () => {
+        const a = Store.auth();
+        if (a.providers.length) window.location.href = Store.loginUrl(a.providers[0]);
+        else location.hash = '#signin';
+      };
+      cta.append(b);
+      // Preview capture (Phase 5): the follow-up email carries the sign-in
+      // link with the free credit; storing the lead is all the client does.
+      const form = el('form', 'preview-email');
+      form.innerHTML = `<label class="txt-small" for="previewEmail">Or email me this preview</label>
+        <div class="preview-email-row">
+          <input type="email" id="previewEmail" required placeholder="you@example.com" autocomplete="email" aria-label="Email address">
+          <button type="submit" class="btn small">Send</button>
+        </div>
+        <p class="txt-small txt-muted" id="previewEmailNote" role="status"></p>`;
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const note = form.querySelector('#previewEmailNote');
+        try {
+          const code = Codec.toShareCode(state.spec);
+          const r = await fetch('/api/lead', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: form.querySelector('#previewEmail').value.trim(), kind: 'preview', context: code })
+          });
+          note.textContent = r.ok ? 'Saved — check your inbox for the preview and your free credit.' : 'Couldn’t save that right now.';
+        } catch (err) { note.textContent = 'Couldn’t save that right now.'; }
+      });
+      cta.append(form);
+    } else {
+      const balance = BB.Billing.credits();
+      cta.innerHTML = `<p>One credit issues this design as a complete blueprint — sheet set, exact cut list, stock plan, joinery setout, assembly, every export, and the shop companion. Refine it free for ${BB.Billing.WINDOW_DAYS} days; re-download forever.${balance !== null ? ` You have ${balance} credit${balance === 1 ? '' : 's'}.` : ''}</p>`;
+      const b = el('button', 'btn primary', 'Issue blueprint — 1 credit');
+      b.onclick = () => issueBlueprint({});
+      cta.append(b);
+      const more = el('button', 'btn ghost small', 'About credits');
+      more.onclick = () => BB.Billing.open();
+      cta.append(more);
+    }
+    wrap.append(cta);
+    root.append(wrap);
   }
 
   /* ---------------- Plan overview ----------------
@@ -19337,14 +19845,18 @@ var BB = globalThis.BB = globalThis.BB || {};
    * retry, and the propose–validate–revise loop for novel pieces. */
   async function aiPipeline(text, image, setStatus) {
     const digest = Codec.buildDigest(state.history.snapshots);
-    let res = await AI.respond(text, state.spec, { turns: state.turns, digest, onStatus: setStatus, image });
+    let res = await AI.respond(text, state.spec, { turns: state.turns, digest, onStatus: setStatus, image, prices: state.prices });
     // Server said the AI budget is spent (402) or requests are coming too fast
     // (429) — act on it instead of pretending we went offline.
+    if (res.authRequired) {
+      promptSignIn();
+      return null;
+    }
     if (res.usageLimit) {
       if (res.billing) Store.setBilling(res.billing);
-      renderAccount(); // meter + plans surface reflect the fresh numbers (A-05)
-      const limit = (res.billing && res.billing.entitlements && res.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
-      BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+      renderAccount(); // meter reflects the fresh numbers (A-05)
+      // Abuse ceiling, not the offer (credits pivot): say so quietly, sell nothing.
+      botSay(AI_CEILING_MSG, []);
       return null;
     }
     if (res.rateLimited) { botSay('Too many messages in a row — give it a few seconds, then try again.', []); return null; }
@@ -19413,15 +19925,19 @@ var BB = globalThis.BB = globalThis.BB || {};
         'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
       // C11: rounds pin the original in-flight request so deep pipelines
       // never refine without the words stating style/purpose/constraints.
-      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text });
+      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text, prices: state.prices });
       // Mid-round authoritative answers and model asides get the same UX as
       // first-round ones instead of vanishing or burning the round (C8).
       const act = AI.roundDecision(res2);
       if (act === 'billing') {
         if (res2.billing) Store.setBilling(res2.billing);
         renderAccount();
-        const limit = (res2.billing && res2.billing.entitlements && res2.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
-        BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+        botSay(AI_CEILING_MSG, []);
+        state.turns = turns.slice(-24);
+        return null;
+      }
+      if (act === 'auth') {
+        promptSignIn();
         state.turns = turns.slice(-24);
         return null;
       }
@@ -19485,17 +20001,17 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns, explain };
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
-        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text }); // C11: pin the original request
+        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text, prices: state.prices }); // C11: pin the original request
         // Mid-critique triage (C8): the best attempt so far still commits —
         // only the polish loop stops.
         const act3 = AI.roundDecision(res3);
         if (act3 === 'billing') {
           if (res3.billing) Store.setBilling(res3.billing);
           renderAccount();
-          const limit3 = (res3.billing && res3.billing.entitlements && res3.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
-          BB.Billing.open(`You’ve used this month’s ${limit3} AI messages. Upgrade to keep designing with AI.`);
+          botSay(AI_CEILING_MSG, []);
           break;
         }
+        if (act3 === 'auth') { promptSignIn(); break; }
         if (act3 === 'rate') { botSay('Too many messages in a row — give it a few seconds, then try again.', []); break; }
         if (act3 === 'question') { askQuestion(res3.reply); break; }
         if (act3 === 'info') { botSay(res3.reply.text, [], { noChange: true }); break; }
@@ -19525,9 +20041,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   async function sendMessage(text, image) {
     text = (text || '').trim();
     if ((!text && !image) || state.busy) return;
+    // AI is behind sign-in (credits pivot). Unconfigured origins (static
+    // hosts, claude.ai) are never gated — same C-01 contract as billing.
+    if (anonGated()) {
+      chatMsg('user', `<div class="bubble">${esc(text || 'Design this piece from my photo.')}</div>`);
+      promptSignIn();
+      return;
+    }
     const billing = BB.Billing.status();
     if (Store.auth().user && billing.usage.aiMessages >= billing.entitlements.aiMonthlyLimit) {
-      BB.Billing.open(`You’ve used this month’s ${billing.entitlements.aiMonthlyLimit} AI messages. Upgrade to keep designing with AI.`);
+      botSay(AI_CEILING_MSG, []);
       return;
     }
     hideHints();
@@ -19786,6 +20309,66 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('inspector').inert = true;
   }
 
+  /* ---------------- the Adjust rail (credits pivot) ----------------
+   * A first-class, always-discoverable editing surface for the WHOLE design:
+   * dimensions, species, sheet stock, finish, skill level, shelf and drawer
+   * counts. It reuses the inspector's slider/select primitives and commits
+   * through the same preview/commit gate — one spec, one history stack.
+   * Anonymous visitors get it opened automatically (chat is behind sign-in,
+   * and "small edits work" is the anonymous tier's promise). */
+  function adjustRailOpen() { return !$('adjustRail').hidden; }
+  function renderAdjustBody() {
+    const body = $('adjustBody');
+    if (!body) return;
+    body.textContent = '';
+    const s = state.spec;
+    const live = patch => preview(Spec.deepMerge(state.spec, patch));
+    const done = () => commitPreview('manual');
+    const dim = (label, path, min, max) => {
+      const get = o => path.split('.').reduce((x, k) => x[k], o);
+      return paramSlider(label, get(s), min, max, 5, true,
+        v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
+        () => done());
+    };
+    if (s.meta.template !== 'custom') {
+      body.append(dim('Width', 'overall.width', 250, 2400));
+      body.append(dim('Depth', 'overall.depth', 200, 1200));
+      body.append(dim('Height', 'overall.height', 120, 2400));
+    } else {
+      body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: dimensions are refined through the chat — code re-validates the whole structure on every change.</span>'));
+    }
+    if (s.structure && s.structure.shelfCount !== undefined && (s.meta.template === 'bookshelf' || s.meta.template === 'cabinet' || s.structure.shelfCount > 0)) {
+      body.append(paramSlider('Shelf count', s.structure.shelfCount, 0, 8, 1, false,
+        v => live({ structure: { shelfCount: v } }), () => done()));
+    }
+    if (s.drawers && (s.meta.template === 'nightstand' || s.meta.template === 'cabinet')) {
+      body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
+        v => live({ drawers: { count: v } }), () => done()));
+    }
+    body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
+      s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));
+    body.append(paramSelect('Finish', K.FINISHES.map(f => [f.key, f.label]), s.finish,
+      v => { merge({ finish: v }, 'manual'); renderAdjustBody(); }));
+    body.append(paramSeg('Skill level', [['beginner', 'Beginner'], ['intermediate', 'Intermediate'], ['advanced', 'Advanced']], s.meta.level,
+      v => { merge({ meta: { level: v } }, 'manual'); renderAdjustBody(); }));
+  }
+  function setAdjustRail(open) {
+    const rail = $('adjustRail');
+    const btn = $('adjustBtn');
+    if (!rail || !btn) return;
+    rail.hidden = !open;
+    btn.setAttribute('aria-pressed', String(!!open));
+    btn.setAttribute('aria-expanded', String(!!open));
+    if (open) { closeInspector(); renderAdjustBody(); }
+  }
+  function bindAdjustRail() {
+    const btn = $('adjustBtn');
+    if (!btn) return;
+    btn.onclick = () => setAdjustRail($('adjustRail').hidden);
+    const close = $('adjustClose');
+    if (close) { close.innerHTML = BB.Icons.svg('close'); close.onclick = () => setAdjustRail(false); }
+  }
+
   /* ---------------- playback ---------------- */
   function enterPlayback(i) {
     clearCompare();
@@ -20002,6 +20585,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     hideHints(); // a loaded design replaces the first-run prompts
     state.dismissed.clear();
     state.project = null;   // a starter begins a fresh project
+    state.blueprint = null; // …with no credited-design record
     state.turns = [];
     // Skill level is the user's preference, not starter content (C-06):
     // only the level dropdown changes it — the loaded spec inherits the
@@ -20236,6 +20820,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!hist) hist = History.createHistory(spec, 'project');
     state.history = hist;
     state.project = { id, progress: rec.progress || { cuts: {}, steps: {} } };
+    state.blueprint = rec.blueprint || null; // credited-design record follows the project
     state.hasDesign = true; // a restored project is a chosen design (C-02)
     state.turns = [];
     state.dismissed.clear();
@@ -20289,6 +20874,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const res = Codec.fromShareCode(text);
     if (res.error) return { error: res.error };
     state.project = null; // imported design becomes a fresh project
+    state.blueprint = null; // viewing a shared design is free; issuing its plan costs a credit
     state.turns = [];
     state.dismissed.clear();
     const ok = commit(res.spec, 'import', ['imported from ' + (sourceLabel || 'share code')]);
@@ -20456,7 +21042,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
 
   function enterBuildMode() {
-    if (!BB.Billing.gate('advancedFeatures', 'The full-screen workshop companion and advanced build tools are included with Pro.')) return;
+    // Build mode ships WITH the blueprint (credits pivot): a credited design
+    // opens it outright; an uncredited one is offered the issue flow. On
+    // unconfigured origins nothing is gated (C-01).
+    if (planLocked()) { issueBlueprint({ then: 'build' }); return; }
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
     // Mid-build position survives interruptions (C-08): the pager resumes the
@@ -20902,11 +21491,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderReadiness() {
     if (!state.integrity) return;
     const states = modeStates();
-    // Build is Pro-gated: the lock glyph + aria announce the paywall BEFORE
-    // the tap (X-04) — activation still opens the pricing dialog. On a
-    // providerless host there is no paywall to announce: gate() never fires
-    // there (C-01), so the lock stays hidden too.
-    const buildLocked = billingConfigured(Store.auth()) && !BB.Billing.entitled('advancedFeatures');
+    // Build ships with the blueprint (credits pivot): the lock glyph + aria
+    // announce the wall BEFORE the tap (X-04) — activation opens the issue
+    // flow. On a providerless host there is no wall to announce (C-01).
+    const buildLocked = planLocked();
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
     // One filled primary per screen (C-02): Build takes the rust fill only
@@ -20921,7 +21509,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
       if (current) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
-      const aria = m === 'build' && buildLocked ? s.aria + ' — included with Pro' : s.aria;
+      const aria = m === 'build' && buildLocked ? s.aria + ' — included with this design’s blueprint' : s.aria;
       b.setAttribute('aria-label', aria);
       b.title = aria;
     }
@@ -21076,10 +21664,31 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- exports ---------------- */
+  /* ---------------- exports ----------------
+   * Credits pivot: the blueprint includes its formats — every derived export
+   * (print, drawings, cut list, 3D, SketchUp, the issued sheet set) belongs
+   * to a credited design. Free signed-in keeps the spec itself (.json) and
+   * share codes; anonymous users export nothing (sign-in is one click and
+   * includes a credit). Unconfigured origins are never gated (C-01). */
   function doExport(kind) {
-    const premium = ['print', 'glb', 'rb', 'dae'];
-    if (premium.includes(kind) && !BB.Billing.gate('premiumExports', 'Production print plans, 3D models, and SketchUp exports are included with Pro.')) return;
+    const openKinds = ['share', 'help', 'json'];
+    if (!openKinds.includes(kind) && anonGated()) {
+      promptSignIn('Sign in free to export — your first blueprint credit is included.');
+      return;
+    }
+    const creditedKinds = ['print', 'glb', 'rb', 'dae', 'csv', 'svg', 'sheets'];
+    if (creditedKinds.includes(kind) && planLocked()) {
+      issueBlueprint({ then: { export: kind } });
+      return;
+    }
+    if (kind === 'sheets') {
+      if (state.blueprint && state.blueprint.id) {
+        window.open('/api/blueprint?id=' + encodeURIComponent(state.blueprint.id) + '&format=sheets', '_blank', 'noopener');
+      } else {
+        issueBlueprint({});
+      }
+      return;
+    }
     const name = Exports.slug(state.spec.meta.name);
     if (kind === 'dae') {
       Exports.download(name + '.dae', Exports.toDAE(state.spec, state.model), 'model/vnd.collada+xml');
@@ -21121,6 +21730,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderPanel();
     renderHistory();
     if (state.selected) openInspectorById(state.selected);
+    if (adjustRailOpen()) renderAdjustBody();
     if (state.buildMode) { $('bmName').textContent = state.spec.meta.name; renderBuildChecklists(); }
   }
 
@@ -21211,7 +21821,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     // account section — boot itself stays untouched.
     try {
       await Promise.race([
-        Store.init({ timeoutMs: 4000 }).then(() => { renderAccount(); }),
+        Store.init({ timeoutMs: 4000 }).then(() => {
+          renderAccount();
+          // Anonymous on a configured origin (credits pivot): chat is behind
+          // sign-in, so the Adjust rail opens as the visible editing surface.
+          if (anonGated() && !state.buildMode) setAdjustRail(true);
+        }),
         new Promise(r => setTimeout(r, 1200))
       ]);
     } catch (e) { /* device storage is the product */ }
@@ -21375,6 +21990,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
+    bindAdjustRail();
     renderAccount();
     $('galleryBtn').onclick = openGalleryDialog;
     /* chat fold + hero paths */

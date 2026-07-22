@@ -405,3 +405,10 @@ body { --foh-nav-h: 3.75rem; }
   .site-nav, .site-footer { border-color: CanvasText; background: Canvas; }
   .signin-card, .faq-item { border-color: CanvasText; }
 }
+
+/* ---- calculator lead capture (credits pivot, Phase 5) ---- */
+.calc-lead { margin-top: var(--space-s); display: flex; flex-direction: column; gap: var(--space-2xs); max-width: 26rem; }
+.calc-lead-row { display: flex; gap: var(--space-2xs); }
+.calc-lead input[type="email"] { flex: 1; min-width: 0; padding: .5rem .65rem; border: 1px solid var(--line-2, #b9b2a0); border-radius: 6px; background: var(--panel, #fff); color: inherit; font: inherit; }
+.calc-lead-note { margin: 0; font-size: .8rem; color: var(--muted, #777); min-height: 1.1em; }
+@media (forced-colors: active) { .calc-lead input[type="email"] { border-color: CanvasText; } }

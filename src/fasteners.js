@@ -117,6 +117,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       len, counterboreMM, thru, into,
       biteMM: Math.round((len - (thruT - counterboreMM)) * 10) / 10,
       pilotMM: len >= 50 ? 3.2 : 2.8,
+      // The NEAR member gets a shank clearance hole (audit M-04): a #8 shank
+      // is ~4.2 mm — the screw must spin free on its side of the joint line
+      // or the two parts jack apart instead of drawing tight.
+      clearanceMM: 4.5,
       spec: `#8 × {${len}} wood screw`,
       housed
     };
@@ -176,15 +180,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         const sp = screwPlan(a, b, baseLen);
         const specTxt = U().fmtTemplate(sp.spec);
         const pos = positions(runMM, 2);
-        for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
+        for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, clearanceMM: sp.clearanceMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         const spacing = pos.length === 1 ? 'centered on the run'
           : `first ${len(RULES.edgeMM)} from each end${pos.length > 2 ? `, then every ${len(Math.round((runMM - 2 * RULES.edgeMM) / (pos.length - 1)))}` : ''}`;
         const where = sp.housed ? `centered ${fine(mateT / 2)} from the joint line`
           : sp.thru === a ? `on the ${a.name.toLowerCase()}'s centerline`
             : `centered ${fine(minDim(a) / 2)} from the joint line`;
-        const cbore = sp.counterboreMM
-          ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, so the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.` : '';
-        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${drill(sp.pilotMM)}.${cbore}`;
+        // The full drilling schedule (audit M-04): clearance through the near
+        // member (the screw must spin free there to DRAW the joint tight),
+        // pilot in the mate, and a countersink so the flat head seats —
+        // or the counterbore when the entry member is thick.
+        const draw = sp.counterboreMM
+          ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, ${drill(sp.clearanceMM)} clearance through the rest of the ${sp.thru.name.toLowerCase()} — the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.`
+          : ` Drill ${drill(sp.clearanceMM)} clearance through the ${sp.thru.name.toLowerCase()} and countersink so the head seats flush — the screw must spin free in the near member to draw the joint tight.`;
+        out.text = `${pos.length} × ${specTxt} through ${sp.thru.name.toLowerCase()} into ${sp.into.name.toLowerCase()}: ${spacing}, ${where}. Pilot ${drill(sp.pilotMM)} into the ${sp.into.name.toLowerCase()}.${draw}`;
         break;
       }
       case 'pocket_screws': {

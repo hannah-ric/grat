@@ -2,6 +2,7 @@
 
 const Stripe = require('./_stripe.js');
 const E = require('./_entitlements.js');
+const Credits = require('./_credits.js');
 const Env = require('./_env-check.js');
 const Log = require('./_log.js');
 
@@ -83,6 +84,19 @@ module.exports = async function handler(req, res) {
     return sendJSON(res, 400, { error: 'invalid_signature' });
   }
   try {
+    // Credit packs (the current offer): a completed one-time payment credits
+    // the ledger. Idempotent by checkout-session id — Stripe redelivers, the
+    // ledger never double-grants (api/_credits.js dedupes on sourceId).
+    if (event.type === 'checkout.session.completed') {
+      const co = event.data.object;
+      const packCredits = Math.floor(Number(co.metadata && co.metadata.bb_credits));
+      const uid = co.metadata && co.metadata.bb_uid;
+      if (uid && packCredits > 0 && co.mode === 'payment' && co.payment_status === 'paid') {
+        await Credits.grant(uid, packCredits, { reason: 'purchase', sourceId: co.id });
+      }
+      return sendJSON(res, 200, { received: true });
+    }
+    // Legacy subscription lifecycle — kept intact and dormant.
     if (event.type === 'customer.subscription.created' || event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object;
       let uid = subscription.metadata && subscription.metadata.bb_uid;

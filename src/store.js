@@ -266,7 +266,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       id: data.id, name: data.name, updated: Date.now(),
       wire: data.wire,
       revisions: (data.revisions || []).slice(-MAX_REVISIONS),
-      progress: data.progress || { cuts: {}, steps: {} }
+      progress: data.progress || { cuts: {}, steps: {} },
+      // Display-only record of the design's issued blueprint (credits pivot);
+      // the server ledger stays the authority on every charge.
+      blueprint: data.blueprint || null
     };
     await set(PROJECT_PREFIX + data.id, record);
     if (data.thumb) await set(THUMB_PREFIX + data.id, data.thumb); // its own doc, not the index

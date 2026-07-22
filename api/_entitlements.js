@@ -1,16 +1,24 @@
 'use strict';
 
 const KV = require('./_kv.js');
+const Credits = require('./_credits.js');
 
 // This is the AUTHORITY for entitlements. src/billing.js keeps a display-only
-// mirror (PLANS) for pre-fetch/offline rendering — keep the two in sync.
+// mirror (TIERS) for pre-fetch/offline rendering — keep the two in sync.
+//
+// Credits pivot (2026-07): the OFFER is credits (api/_credits.js — one credit
+// buys one blueprint via api/blueprint.js). aiMonthlyLimit is now an ABUSE
+// CEILING only — it protects the proxy key from runaway use; it does not
+// define the product and the client never sells an upgrade against it.
+// premiumExports/advancedFeatures are gone as purchase gates: access to
+// Build mode and exports is decided by whether the DESIGN is credited.
 const FREE = Object.freeze({
-  plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25,
-  premiumExports: false, advancedFeatures: false
+  plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 200
 });
+// Legacy tier for grandfathered active subscriptions — the Stripe
+// subscription paths stay in place and dormant (prices kept, not deleted).
 const PRO = Object.freeze({
-  plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500,
-  premiumExports: true, advancedFeatures: true
+  plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500
 });
 const ACTIVE_STATUSES = new Set(['active', 'trialing']);
 
@@ -75,13 +83,21 @@ async function addTokens(uid, n) {
 }
 
 async function statusFor(uid) {
-  const [subscription, usage] = await Promise.all([getSubscription(uid), getUsage(uid)]);
+  const [subscription, usage, credits] = await Promise.all([
+    getSubscription(uid), getUsage(uid),
+    Credits.state(uid).catch(() => ({ configured: false, balance: 0, purchased: 0 }))
+  ]);
   const isPro = !!(subscription && ACTIVE_STATUSES.has(subscription.status));
-  const entitlements = isPro ? PRO : FREE;
+  let entitlements = isPro ? PRO : FREE;
+  // A paying credits customer is not project-capped: anyone who has ever
+  // purchased a pack keeps unlimited saved projects (the old Pro perk moves
+  // to the new paying cohort so no capability becomes unreachable).
+  if (!isPro && credits.purchased > 0) entitlements = Object.freeze(Object.assign({}, FREE, { projectLimit: null }));
   return {
     plan: entitlements.plan,
     entitlements,
     usage,
+    credits: { balance: credits.balance, purchased: credits.purchased },
     subscription: subscription ? {
       status: subscription.status,
       interval: subscription.interval || null,

@@ -247,7 +247,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     paintSaveBlocked(limit);
     if (!capModalShown) {
       capModalShown = true;
-      BB.Billing.open(`Free includes ${limit} saved projects, so this design isn't being saved. Export a share code to keep it, or upgrade for unlimited projects.`);
+      BB.Billing.open(`Free includes ${limit} saved projects, so this design isn't being saved. Export a share code to keep it — any credit purchase lifts the limit.`);
     }
   }
   function paintSaveBlocked(limit) {
@@ -271,6 +271,18 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   async function doAutosave() {
     try {
+      // Anonymous on a configured origin: no save (credits pivot tier model).
+      // The state is named honestly instead of silently pretending to save.
+      if (anonGated()) {
+        clearTimeout(saveFlashTimer);
+        const elS = $('saveState');
+        elS.textContent = 'not saved — sign in free';
+        elS.title = 'Sign in (free, includes your first blueprint credit) to save designs, projects, and history.';
+        elS.classList.remove('pending');
+        elS.classList.add('on', 'err');
+        paintSavePulse('err');
+        return;
+      }
       if (!state.project && !(await autosaveCapAllows())) return;
       if (!state.project) state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } };
       const revisions = state.history.snapshots.slice(-Store.MAX_REVISIONS).map(s => ({
@@ -281,6 +293,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         id: state.project.id, name: state.spec.meta.name,
         wire: Codec.encode(state.spec), revisions,
         progress: state.project.progress, thumb,
+        blueprint: state.blueprint || null, // the credited-design record rides the project
         dims: `${fmt(state.spec.overall.width)} × ${fmt(state.spec.overall.depth)} × ${fmt(state.spec.overall.height)}`,
         progressPct: progressPct()
       });
@@ -332,6 +345,160 @@ var BB = globalThis.BB = globalThis.BB || {};
   function billingConfigured(a) {
     return !!(a.billing || (a.providers && a.providers.length));
   }
+
+  /* ---------------- the credited-design model (credits pivot 2026-07) ----
+   * A credit buys a DESIGN: committed at first blueprint issuance, refinable
+   * free for 30 days, re-downloadable free forever. The SERVER decides every
+   * charge (api/blueprint.js: validate → charge → render → refund-on-fail);
+   * everything here is display-state so the UI can gate honestly without a
+   * round trip. On unconfigured origins (static hosts, claude.ai) nothing is
+   * gated at all — same C-01 contract as billing before the pivot. */
+  function signedIn() { return !!Store.auth().user; }
+  function anonGated() { return billingConfigured(Store.auth()) && !signedIn(); }
+  /* Client-side mirror of api/_pipeline.js chargeHash semantics: the material
+   * identity of the design — meta.name and meta.units are display-only. Used
+   * ONLY for display gating; the server recomputes the real hash. */
+  function canonicalJSON(value) {
+    if (Array.isArray(value)) return '[' + value.map(canonicalJSON).join(',') + ']';
+    if (value && typeof value === 'object') {
+      return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonicalJSON(value[k])).join(',') + '}';
+    }
+    return JSON.stringify(value);
+  }
+  function materialKey(spec) {
+    const clone = JSON.parse(JSON.stringify(spec));
+    if (clone.meta) { delete clone.meta.name; delete clone.meta.units; }
+    return canonicalJSON(clone);
+  }
+  /* Is the CURRENT design credited? True when a blueprint was issued for this
+   * exact material spec, or when the design's 30-day refinement window is
+   * still open (refinement is included — the next issuance is free). */
+  function designCredited() {
+    const bp = state.blueprint;
+    if (!bp) return false;
+    if (bp.issuedKeys && bp.issuedKeys.includes(materialKey(state.spec))) return true;
+    return !!(bp.windowEndsAt && Date.now() < bp.windowEndsAt);
+  }
+  /* Cut / Buy / Assemble read as previews until the design is credited. */
+  function planLocked() {
+    if (!billingConfigured(Store.auth())) return false;
+    if (!state.cut.length) return false;
+    return !designCredited();
+  }
+
+  /* Chat-surface sign-in prompt (AI is behind sign-in; the first credit is
+   * free). Buttons, not links, so it works with keyboard focus in the log. */
+  function promptSignIn(message) {
+    const m = chatMsg('bot', `<div class="bubble">${esc(message || 'Sign in free to design with AI — your first blueprint credit is included.')}</div>`);
+    const row = el('div', 'answer-row');
+    const a = Store.auth();
+    for (const p of a.providers) {
+      const b = el('button', 'btn small', `Sign in with ${esc(PROVIDER_LABELS[p] || p)}`);
+      b.onclick = () => { window.location.href = Store.loginUrl(p); };
+      row.append(b);
+    }
+    if (!a.providers.length) {
+      const b = el('button', 'btn small', 'About sign-in');
+      b.onclick = () => { location.hash = '#signin'; };
+      row.append(b);
+    }
+    m.append(row);
+  }
+  const AI_CEILING_MSG = 'This month’s AI usage ceiling is reached — it resets with the calendar month. Your designs, plans, and credits are unaffected.';
+
+  /* High-res capture for the issued sheet set: the live canvas, optionally
+   * with the model exploded for the axonometric sheet. Best-effort — a
+   * capture failure never blocks issuance. */
+  function captureRender(explodeT) {
+    try {
+      const range = $('explodeRange');
+      const prev = range ? Number(range.value) / 100 : 0;
+      if (explodeT !== undefined) state.engine.setExplode(explodeT);
+      const canvas = state.engine.renderNow();
+      const url = canvas.toDataURL('image/jpeg', 0.82);
+      if (explodeT !== undefined) state.engine.setExplode(prev);
+      return url.length <= 600 * 1024 ? url : null;
+    } catch (e) { return null; }
+  }
+
+  /* The issuance flow: confirm (never spend silently) → POST → adopt the
+   * server's answer. `opts.then`: continue into { export: kind } or 'build'
+   * once the blueprint exists. */
+  let issuing = false;
+  async function issueBlueprint(opts) {
+    opts = opts || {};
+    if (issuing) return;
+    if (anonGated()) { promptSignIn('Sign in free to issue this blueprint — your first credit is included.'); return; }
+    if (state.report && state.report.errors.length) {
+      botSay('This design fails validation, so it can’t be issued (and is never charged). Clear the errors first.', []);
+      return;
+    }
+    const willCharge = !designCredited();
+    if (willCharge) {
+      const balance = BB.Billing.credits();
+      if (balance !== null && balance < 1) {
+        BB.Billing.open('Issuing this blueprint needs a credit.');
+        return;
+      }
+      const okToSpend = await BB.Billing.confirmIssue({ name: state.spec.meta.name, balance });
+      if (!okToSpend) return;
+    }
+    issuing = true;
+    try {
+      const payload = {
+        wire: Codec.encode(state.spec),
+        designId: state.blueprint ? state.blueprint.id : undefined,
+        hero: captureRender(),
+        exploded: captureRender(0.65)
+      };
+      const data = await BB.Billing.issue(payload);
+      if (data.httpStatus === 401) { promptSignIn(); return; }
+      if (data.httpStatus === 402) { BB.Billing.open('Issuing this blueprint needs a credit.'); return; }
+      if (data.httpStatus === 422) {
+        botSay('The server re-checked this design and it fails validation, so nothing was charged: ' +
+          ((data.errors || []).slice(0, 2).map(e => e.text).join(' ') || ''), []);
+        return;
+      }
+      if (!data.ok) {
+        botSay(data.refunded
+          ? 'Issuing failed on the server — your credit was automatically returned to your balance. Try again in a moment.'
+          : 'Issuing failed on the server — nothing was charged. Try again in a moment.', []);
+        return;
+      }
+      const key = materialKey(state.spec);
+      const keys = (state.blueprint && state.blueprint.id === data.id ? state.blueprint.issuedKeys : []) || [];
+      if (!keys.includes(key)) keys.push(key);
+      state.blueprint = { id: data.id, windowEndsAt: data.windowEndsAt, revision: data.revision, issuedKeys: keys };
+      await BB.Billing.refresh();
+      renderAccount();
+      renderAll();
+      scheduleAutosave();
+      const spent = data.charged ? ' One credit was used.' : data.cached ? ' This exact design was already issued — no credit was used.' : ' Refinement included — no credit was used.';
+      botSay(`Blueprint ${data.id} issued (rev ${data.revision}).${spent} The sheet set, all exports, and Build mode are unlocked for this design; re-download free anytime from Export.`, []);
+      if (opts.then === 'build') enterBuildMode();
+      else if (opts.then && opts.then.export) doExport(opts.then.export);
+      else window.open('/api/blueprint?id=' + encodeURIComponent(data.id) + '&format=sheets', '_blank', 'noopener');
+    } catch (e) {
+      botSay('Couldn’t reach the blueprint service — nothing was charged. Check the connection and try again.', []);
+    } finally {
+      issuing = false;
+    }
+  }
+
+  /* Credit balance in the top bar — never spend silently starts with never
+   * hiding the balance. Hidden on unconfigured origins and when unknown. */
+  function renderCreditChip() {
+    const chip = $('creditChip');
+    if (!chip) return;
+    const a = Store.auth();
+    const balance = BB.Billing.credits();
+    const show = billingConfigured(a) && a.user && balance !== null;
+    chip.hidden = !show;
+    if (!show) return;
+    chip.textContent = `${balance} credit${balance === 1 ? '' : 's'}`;
+    chip.title = 'Blueprint credits — one credit issues one design as a complete blueprint. Click for packs and details.';
+    chip.onclick = () => BB.Billing.open();
+  }
   /* Compact AI-allowance meter (A-05): rendered only when billing is real AND
    * usage is known (> 0) — Free users see the wall coming instead of slamming
    * into it. Lives under the chat input, the quietest surface next to where
@@ -346,16 +513,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     box.hidden = !show;
     if (!show) { box.textContent = ''; return; }
     const left = Math.max(0, limit - used);
-    box.innerHTML = `<span class="ai-usage-count">${left} of ${limit}</span> AI messages left this month` +
-      (b.plan === 'free' ? ` · <button type="button" class="learn-link" id="aiUsageUpgrade">Upgrade</button>` : '');
-    box.title = 'AI messages are metered per calendar month. A single design refinement can use several messages as the model iterates.';
-    const up = $('aiUsageUpgrade');
-    if (up) up.onclick = () => BB.Billing.open();
+    // Abuse ceiling, not the offer (credits pivot): show it only once the
+    // meter is meaningfully spent, and never sell anything against it.
+    box.hidden = !show || left > limit / 2;
+    if (box.hidden) { box.textContent = ''; return; }
+    box.innerHTML = `<span class="ai-usage-count">${left} of ${limit}</span> AI messages left this month`;
+    box.title = 'A monthly usage ceiling protects the AI service — it is not a purchase meter. Refinement of a credited design is always included.';
   }
   function renderAccount() {
     const area = $('accountArea'), sep = $('accountSep');
     if (!area) return;
     renderUsageMeter();
+    renderCreditChip();
     renderReadiness(); // the Build lock (X-04) follows the same billing evidence
     const a = Store.auth();
     const configured = billingConfigured(a);
@@ -367,31 +536,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (a.user) {
       const row = el('div', 'menu-account');
       const plan = a.billing && a.billing.plan === 'pro' ? 'Pro' : 'Free';
+      const balance = BB.Billing.credits();
       row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="account-avatar fallback" aria-hidden="true">${BB.Icons.svg('user', 14)}</span>`}
         <span class="account-name">${esc(a.user.name)}</span>
-        <span class="plan-badge">${plan}</span>`;
+        <span class="plan-badge">${balance !== null ? `${balance} credit${balance === 1 ? '' : 's'}` : plan}</span>`;
       area.append(row);
-      const billingBtn = el('button', '', plan === 'Pro'
-        ? '<span>Manage subscription</span><span class="hint">billing & plan</span>'
-        : '<span>Upgrade to Pro</span><span class="hint">unlock everything</span>');
+      const billingBtn = el('button', '', '<span>Buy credits</span><span class="hint">one credit = one blueprint</span>');
       billingBtn.setAttribute('role', 'menuitem');
-      billingBtn.onclick = () => plan === 'Pro' ? BB.Billing.manage() : BB.Billing.open();
+      billingBtn.onclick = () => BB.Billing.open();
       area.append(billingBtn);
+      if (plan === 'Pro') {
+        // Grandfathered subscribers keep their portal (legacy, honored).
+        const manageBtn = el('button', '', '<span>Manage subscription</span><span class="hint">legacy Pro plan</span>');
+        manageBtn.setAttribute('role', 'menuitem');
+        manageBtn.onclick = () => BB.Billing.manage();
+        area.append(manageBtn);
+      }
       const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
       out.setAttribute('role', 'menuitem');
       out.onclick = () => { window.location.href = Store.logoutUrl; };
       area.append(out);
     } else {
       for (const p of a.providers) {
-        const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">sync projects</span>`);
+        const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">free credit + sync</span>`);
         b.setAttribute('role', 'menuitem');
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
       }
-      // Persistent plans surface (A-05): upgrading must be findable before
-      // the paywall, not only at it.
+      // Persistent plans surface (A-05): the offer must be findable before
+      // the wall, not only at it.
       if (configured) {
-        const plans = el('button', '', '<span>Plans &amp; pricing</span><span class="hint">upgrade</span>');
+        const plans = el('button', '', '<span>Credits &amp; pricing</span><span class="hint">one credit = one blueprint</span>');
         plans.setAttribute('role', 'menuitem');
         plans.onclick = () => BB.Billing.open();
         area.append(plans);
@@ -536,6 +711,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     p.textContent = '';
     const inner = el('div', 'panel-inner');
     p.append(inner);
+    // The wall (credits pivot): Overview and Safety stay open — the shape,
+    // the physics verdict, the estimated cost. What makes the design
+    // BUILDABLE (exact cut dimensions, the stock plan, step text) is the
+    // blueprint, and the blueprint is what a credit buys.
+    const locked = ['cut', 'stock', 'assembly'].includes(state.tab) && planLocked();
+    if (locked) { renderLockedPreview(inner, state.tab); wireScrollableTables(inner); return; }
     if (state.tab === 'overview') renderOverview(inner);
     else if (state.tab === 'cut') renderCut(inner);
     else if (state.tab === 'stock') { renderStock(inner); renderBom(inner); }
@@ -543,6 +724,80 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (state.tab === 'integrity') renderIntegrity(inner);
     else renderReference(inner);
     wireScrollableTables(inner);
+  }
+
+  /* A locked Plan tab reads as a PREVIEW, not an error: the user sees what
+   * the blueprint contains — real part names, real counts, real totals —
+   * with only the buildable numbers withheld. One CTA, honest copy. */
+  function renderLockedPreview(root, tab) {
+    const wrap = el('div', 'plan-preview');
+    const lockGlyph = BB.Icons ? BB.Icons.svg('lock', 13) : '';
+    if (tab === 'cut') {
+      wrap.append(el('h2', '', 'Cut list — in your blueprint'));
+      const partCount = state.cut.reduce((s, r) => s + r.qty, 0);
+      wrap.append(el('p', 'txt-muted', `${state.cut.length} distinct parts, ${partCount} pieces total, joinery allowances included. Exact dimensions are issued with the blueprint.`));
+      const box = el('div', 'table-scroll');
+      const rows = state.cut.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.qty}</td><td class="num preview-locked" aria-label="dimension included in the blueprint">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td></tr>`).join('');
+      box.innerHTML = `<table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th></tr></thead><tbody>${rows}</tbody></table>`;
+      wrap.append(box);
+    } else if (tab === 'stock') {
+      wrap.append(el('h2', '', 'Buy list & stock plan — in your blueprint'));
+      const plan = state.stockPlan;
+      const boards = plan ? plan.boards.length + plan.sheets.length : 0;
+      wrap.append(el('p', 'txt-muted',
+        `Estimated materials: $${state.bomData ? state.bomData.total : (plan ? plan.totalCost.toFixed(2) : '—')} across ${boards} board${boards === 1 ? '' : 's'}/sheet${boards === 1 ? '' : 's'}. ` +
+        'The blueprint issues the exact shopping list and per-board cutting diagrams, optimized for waste.'));
+    } else {
+      wrap.append(el('h2', '', 'Assembly — in your blueprint'));
+      wrap.append(el('p', 'txt-muted', `${state.steps.length} steps, in dependency order, at your skill level. Step-by-step text, joinery setout, and the shop checklist are issued with the blueprint.`));
+      const ol = el('ol', 'preview-steps');
+      state.steps.forEach(s => ol.append(el('li', '', `<strong>${esc(s.title)}</strong> <span class="preview-locked" aria-label="step text included in the blueprint">${lockGlyph}</span>`)));
+      wrap.append(ol);
+    }
+    const cta = el('div', 'preview-cta');
+    if (anonGated()) {
+      cta.innerHTML = `<p>Sign in free to continue — your first blueprint credit is included.</p>`;
+      const b = el('button', 'btn primary', 'Sign in free');
+      b.onclick = () => {
+        const a = Store.auth();
+        if (a.providers.length) window.location.href = Store.loginUrl(a.providers[0]);
+        else location.hash = '#signin';
+      };
+      cta.append(b);
+      // Preview capture (Phase 5): the follow-up email carries the sign-in
+      // link with the free credit; storing the lead is all the client does.
+      const form = el('form', 'preview-email');
+      form.innerHTML = `<label class="txt-small" for="previewEmail">Or email me this preview</label>
+        <div class="preview-email-row">
+          <input type="email" id="previewEmail" required placeholder="you@example.com" autocomplete="email" aria-label="Email address">
+          <button type="submit" class="btn small">Send</button>
+        </div>
+        <p class="txt-small txt-muted" id="previewEmailNote" role="status"></p>`;
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const note = form.querySelector('#previewEmailNote');
+        try {
+          const code = Codec.toShareCode(state.spec);
+          const r = await fetch('/api/lead', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: form.querySelector('#previewEmail').value.trim(), kind: 'preview', context: code })
+          });
+          note.textContent = r.ok ? 'Saved — check your inbox for the preview and your free credit.' : 'Couldn’t save that right now.';
+        } catch (err) { note.textContent = 'Couldn’t save that right now.'; }
+      });
+      cta.append(form);
+    } else {
+      const balance = BB.Billing.credits();
+      cta.innerHTML = `<p>One credit issues this design as a complete blueprint — sheet set, exact cut list, stock plan, joinery setout, assembly, every export, and the shop companion. Refine it free for ${BB.Billing.WINDOW_DAYS} days; re-download forever.${balance !== null ? ` You have ${balance} credit${balance === 1 ? '' : 's'}.` : ''}</p>`;
+      const b = el('button', 'btn primary', 'Issue blueprint — 1 credit');
+      b.onclick = () => issueBlueprint({});
+      cta.append(b);
+      const more = el('button', 'btn ghost small', 'About credits');
+      more.onclick = () => BB.Billing.open();
+      cta.append(more);
+    }
+    wrap.append(cta);
+    root.append(wrap);
   }
 
   /* ---------------- Plan overview ----------------
@@ -1627,14 +1882,18 @@ var BB = globalThis.BB = globalThis.BB || {};
    * retry, and the propose–validate–revise loop for novel pieces. */
   async function aiPipeline(text, image, setStatus) {
     const digest = Codec.buildDigest(state.history.snapshots);
-    let res = await AI.respond(text, state.spec, { turns: state.turns, digest, onStatus: setStatus, image });
+    let res = await AI.respond(text, state.spec, { turns: state.turns, digest, onStatus: setStatus, image, prices: state.prices });
     // Server said the AI budget is spent (402) or requests are coming too fast
     // (429) — act on it instead of pretending we went offline.
+    if (res.authRequired) {
+      promptSignIn();
+      return null;
+    }
     if (res.usageLimit) {
       if (res.billing) Store.setBilling(res.billing);
-      renderAccount(); // meter + plans surface reflect the fresh numbers (A-05)
-      const limit = (res.billing && res.billing.entitlements && res.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
-      BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+      renderAccount(); // meter reflects the fresh numbers (A-05)
+      // Abuse ceiling, not the offer (credits pivot): say so quietly, sell nothing.
+      botSay(AI_CEILING_MSG, []);
       return null;
     }
     if (res.rateLimited) { botSay('Too many messages in a row — give it a few seconds, then try again.', []); return null; }
@@ -1703,15 +1962,19 @@ var BB = globalThis.BB = globalThis.BB || {};
         'Your proposal failed validation: ' + r.report.errors.slice(0, 8).map(e => e.text).join(' ') + ' Return a corrected reply, minified wire JSON only.';
       // C11: rounds pin the original in-flight request so deep pipelines
       // never refine without the words stating style/purpose/constraints.
-      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text });
+      const res2 = await AI.respond(errText, applied.spec, { turns, digest, onStatus: setStatus, origin: text, prices: state.prices });
       // Mid-round authoritative answers and model asides get the same UX as
       // first-round ones instead of vanishing or burning the round (C8).
       const act = AI.roundDecision(res2);
       if (act === 'billing') {
         if (res2.billing) Store.setBilling(res2.billing);
         renderAccount();
-        const limit = (res2.billing && res2.billing.entitlements && res2.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
-        BB.Billing.open(`You’ve used this month’s ${limit} AI messages. Upgrade to keep designing with AI.`);
+        botSay(AI_CEILING_MSG, []);
+        state.turns = turns.slice(-24);
+        return null;
+      }
+      if (act === 'auth') {
+        promptSignIn();
         state.turns = turns.slice(-24);
         return null;
       }
@@ -1775,17 +2038,17 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!best || fails.length < best.fails.length) best = { spec: final, fails, turns: curTurns, explain };
         if (!fails.length || round === 3) break;
         setStatus(`Novel piece — refining structure, round ${round + 1} of 3`);
-        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text }); // C11: pin the original request
+        const res3 = await AI.respond(AI.buildCritique(fails), final, { turns: curTurns, digest, onStatus: setStatus, origin: text, prices: state.prices }); // C11: pin the original request
         // Mid-critique triage (C8): the best attempt so far still commits —
         // only the polish loop stops.
         const act3 = AI.roundDecision(res3);
         if (act3 === 'billing') {
           if (res3.billing) Store.setBilling(res3.billing);
           renderAccount();
-          const limit3 = (res3.billing && res3.billing.entitlements && res3.billing.entitlements.aiMonthlyLimit) || BB.Billing.status().entitlements.aiMonthlyLimit;
-          BB.Billing.open(`You’ve used this month’s ${limit3} AI messages. Upgrade to keep designing with AI.`);
+          botSay(AI_CEILING_MSG, []);
           break;
         }
+        if (act3 === 'auth') { promptSignIn(); break; }
         if (act3 === 'rate') { botSay('Too many messages in a row — give it a few seconds, then try again.', []); break; }
         if (act3 === 'question') { askQuestion(res3.reply); break; }
         if (act3 === 'info') { botSay(res3.reply.text, [], { noChange: true }); break; }
@@ -1815,9 +2078,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   async function sendMessage(text, image) {
     text = (text || '').trim();
     if ((!text && !image) || state.busy) return;
+    // AI is behind sign-in (credits pivot). Unconfigured origins (static
+    // hosts, claude.ai) are never gated — same C-01 contract as billing.
+    if (anonGated()) {
+      chatMsg('user', `<div class="bubble">${esc(text || 'Design this piece from my photo.')}</div>`);
+      promptSignIn();
+      return;
+    }
     const billing = BB.Billing.status();
     if (Store.auth().user && billing.usage.aiMessages >= billing.entitlements.aiMonthlyLimit) {
-      BB.Billing.open(`You’ve used this month’s ${billing.entitlements.aiMonthlyLimit} AI messages. Upgrade to keep designing with AI.`);
+      botSay(AI_CEILING_MSG, []);
       return;
     }
     hideHints();
@@ -2076,6 +2346,66 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('inspector').inert = true;
   }
 
+  /* ---------------- the Adjust rail (credits pivot) ----------------
+   * A first-class, always-discoverable editing surface for the WHOLE design:
+   * dimensions, species, sheet stock, finish, skill level, shelf and drawer
+   * counts. It reuses the inspector's slider/select primitives and commits
+   * through the same preview/commit gate — one spec, one history stack.
+   * Anonymous visitors get it opened automatically (chat is behind sign-in,
+   * and "small edits work" is the anonymous tier's promise). */
+  function adjustRailOpen() { return !$('adjustRail').hidden; }
+  function renderAdjustBody() {
+    const body = $('adjustBody');
+    if (!body) return;
+    body.textContent = '';
+    const s = state.spec;
+    const live = patch => preview(Spec.deepMerge(state.spec, patch));
+    const done = () => commitPreview('manual');
+    const dim = (label, path, min, max) => {
+      const get = o => path.split('.').reduce((x, k) => x[k], o);
+      return paramSlider(label, get(s), min, max, 5, true,
+        v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
+        () => done());
+    };
+    if (s.meta.template !== 'custom') {
+      body.append(dim('Width', 'overall.width', 250, 2400));
+      body.append(dim('Depth', 'overall.depth', 200, 1200));
+      body.append(dim('Height', 'overall.height', 120, 2400));
+    } else {
+      body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: dimensions are refined through the chat — code re-validates the whole structure on every change.</span>'));
+    }
+    if (s.structure && s.structure.shelfCount !== undefined && (s.meta.template === 'bookshelf' || s.meta.template === 'cabinet' || s.structure.shelfCount > 0)) {
+      body.append(paramSlider('Shelf count', s.structure.shelfCount, 0, 8, 1, false,
+        v => live({ structure: { shelfCount: v } }), () => done()));
+    }
+    if (s.drawers && (s.meta.template === 'nightstand' || s.meta.template === 'cabinet')) {
+      body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
+        v => live({ drawers: { count: v } }), () => done()));
+    }
+    body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
+      s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));
+    body.append(paramSelect('Finish', K.FINISHES.map(f => [f.key, f.label]), s.finish,
+      v => { merge({ finish: v }, 'manual'); renderAdjustBody(); }));
+    body.append(paramSeg('Skill level', [['beginner', 'Beginner'], ['intermediate', 'Intermediate'], ['advanced', 'Advanced']], s.meta.level,
+      v => { merge({ meta: { level: v } }, 'manual'); renderAdjustBody(); }));
+  }
+  function setAdjustRail(open) {
+    const rail = $('adjustRail');
+    const btn = $('adjustBtn');
+    if (!rail || !btn) return;
+    rail.hidden = !open;
+    btn.setAttribute('aria-pressed', String(!!open));
+    btn.setAttribute('aria-expanded', String(!!open));
+    if (open) { closeInspector(); renderAdjustBody(); }
+  }
+  function bindAdjustRail() {
+    const btn = $('adjustBtn');
+    if (!btn) return;
+    btn.onclick = () => setAdjustRail($('adjustRail').hidden);
+    const close = $('adjustClose');
+    if (close) { close.innerHTML = BB.Icons.svg('close'); close.onclick = () => setAdjustRail(false); }
+  }
+
   /* ---------------- playback ---------------- */
   function enterPlayback(i) {
     clearCompare();
@@ -2292,6 +2622,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     hideHints(); // a loaded design replaces the first-run prompts
     state.dismissed.clear();
     state.project = null;   // a starter begins a fresh project
+    state.blueprint = null; // …with no credited-design record
     state.turns = [];
     // Skill level is the user's preference, not starter content (C-06):
     // only the level dropdown changes it — the loaded spec inherits the
@@ -2526,6 +2857,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!hist) hist = History.createHistory(spec, 'project');
     state.history = hist;
     state.project = { id, progress: rec.progress || { cuts: {}, steps: {} } };
+    state.blueprint = rec.blueprint || null; // credited-design record follows the project
     state.hasDesign = true; // a restored project is a chosen design (C-02)
     state.turns = [];
     state.dismissed.clear();
@@ -2579,6 +2911,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const res = Codec.fromShareCode(text);
     if (res.error) return { error: res.error };
     state.project = null; // imported design becomes a fresh project
+    state.blueprint = null; // viewing a shared design is free; issuing its plan costs a credit
     state.turns = [];
     state.dismissed.clear();
     const ok = commit(res.spec, 'import', ['imported from ' + (sourceLabel || 'share code')]);
@@ -2746,7 +3079,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
 
   function enterBuildMode() {
-    if (!BB.Billing.gate('advancedFeatures', 'The full-screen workshop companion and advanced build tools are included with Pro.')) return;
+    // Build mode ships WITH the blueprint (credits pivot): a credited design
+    // opens it outright; an uncredited one is offered the issue flow. On
+    // unconfigured origins nothing is gated (C-01).
+    if (planLocked()) { issueBlueprint({ then: 'build' }); return; }
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
     // Mid-build position survives interruptions (C-08): the pager resumes the
@@ -3192,11 +3528,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   function renderReadiness() {
     if (!state.integrity) return;
     const states = modeStates();
-    // Build is Pro-gated: the lock glyph + aria announce the paywall BEFORE
-    // the tap (X-04) — activation still opens the pricing dialog. On a
-    // providerless host there is no paywall to announce: gate() never fires
-    // there (C-01), so the lock stays hidden too.
-    const buildLocked = billingConfigured(Store.auth()) && !BB.Billing.entitled('advancedFeatures');
+    // Build ships with the blueprint (credits pivot): the lock glyph + aria
+    // announce the wall BEFORE the tap (X-04) — activation opens the issue
+    // flow. On a providerless host there is no wall to announce (C-01).
+    const buildLocked = planLocked();
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
     // One filled primary per screen (C-02): Build takes the rust fill only
@@ -3211,7 +3546,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
       if (current) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
-      const aria = m === 'build' && buildLocked ? s.aria + ' — included with Pro' : s.aria;
+      const aria = m === 'build' && buildLocked ? s.aria + ' — included with this design’s blueprint' : s.aria;
       b.setAttribute('aria-label', aria);
       b.title = aria;
     }
@@ -3366,10 +3701,31 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
-  /* ---------------- exports ---------------- */
+  /* ---------------- exports ----------------
+   * Credits pivot: the blueprint includes its formats — every derived export
+   * (print, drawings, cut list, 3D, SketchUp, the issued sheet set) belongs
+   * to a credited design. Free signed-in keeps the spec itself (.json) and
+   * share codes; anonymous users export nothing (sign-in is one click and
+   * includes a credit). Unconfigured origins are never gated (C-01). */
   function doExport(kind) {
-    const premium = ['print', 'glb', 'rb', 'dae'];
-    if (premium.includes(kind) && !BB.Billing.gate('premiumExports', 'Production print plans, 3D models, and SketchUp exports are included with Pro.')) return;
+    const openKinds = ['share', 'help', 'json'];
+    if (!openKinds.includes(kind) && anonGated()) {
+      promptSignIn('Sign in free to export — your first blueprint credit is included.');
+      return;
+    }
+    const creditedKinds = ['print', 'glb', 'rb', 'dae', 'csv', 'svg', 'sheets'];
+    if (creditedKinds.includes(kind) && planLocked()) {
+      issueBlueprint({ then: { export: kind } });
+      return;
+    }
+    if (kind === 'sheets') {
+      if (state.blueprint && state.blueprint.id) {
+        window.open('/api/blueprint?id=' + encodeURIComponent(state.blueprint.id) + '&format=sheets', '_blank', 'noopener');
+      } else {
+        issueBlueprint({});
+      }
+      return;
+    }
     const name = Exports.slug(state.spec.meta.name);
     if (kind === 'dae') {
       Exports.download(name + '.dae', Exports.toDAE(state.spec, state.model), 'model/vnd.collada+xml');
@@ -3411,6 +3767,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderPanel();
     renderHistory();
     if (state.selected) openInspectorById(state.selected);
+    if (adjustRailOpen()) renderAdjustBody();
     if (state.buildMode) { $('bmName').textContent = state.spec.meta.name; renderBuildChecklists(); }
   }
 
@@ -3501,7 +3858,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     // account section — boot itself stays untouched.
     try {
       await Promise.race([
-        Store.init({ timeoutMs: 4000 }).then(() => { renderAccount(); }),
+        Store.init({ timeoutMs: 4000 }).then(() => {
+          renderAccount();
+          // Anonymous on a configured origin (credits pivot): chat is behind
+          // sign-in, so the Adjust rail opens as the visible editing surface.
+          if (anonGated() && !state.buildMode) setAdjustRail(true);
+        }),
         new Promise(r => setTimeout(r, 1200))
       ]);
     } catch (e) { /* device storage is the product */ }
@@ -3665,6 +4027,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
+    bindAdjustRail();
     renderAccount();
     $('galleryBtn').onclick = openGalleryDialog;
     /* chat fold + hero paths */
