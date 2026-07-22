@@ -1121,6 +1121,51 @@ var BB = globalThis.BB = globalThis.BB || {};
       } finally { M._forceOff(false); }
     }
 
+    /* ============ porch (browser only — landing workstream, guarded on BB.Porch) ============ */
+    if (BB.Porch && BB.Porch._gateDecision && BB.Porch._buildTracks) {
+      const P = BB.Porch;
+      // Gate matrix (front-porch §4d): returning users, #d= share links, and
+      // ?app arrivals bypass pre-paint; reduced motion = static parity.
+      let bad = null, combos = 0;
+      for (const seen of [false, true]) for (const reduced of [false, true])
+        for (const hash of ['', '#d=BB4abc', '#cut;split=58']) for (const search of ['', '?app', '?utm=x']) {
+          combos++;
+          const d = P._gateDecision(seen, reduced, hash, search);
+          const expShow = !seen && !hash.startsWith('#d=') && search !== '?app';
+          if (d.show !== expShow || d.static !== (expShow && reduced)) {
+            bad = `seen=${seen} reduced=${reduced} hash="${hash}" search="${search}" → ${JSON.stringify(d)}`;
+          }
+        }
+      test('porch', `gate matrix: ${combos} combos — returning/share-link/?app bypass, reduced = static parity`,
+        !bad, bad || 'all correct', 'all correct');
+
+      // The track table (§16a): continuous props tile p∈[0,1] with no gap or
+      // overlap; switch thresholds strictly monotone per prop.
+      const audit = table => {
+        const cont = new Map(), sws = new Map();
+        for (const r of table) {
+          if (r.p0 > r.p1) return `${r.prop} runs backward at ${r.p0}`;
+          const m = r.p1 > r.p0 ? cont : sws;
+          m.set(r.prop, (m.get(r.prop) || []).concat(r));
+        }
+        for (const [prop, rows] of cont) {
+          const s = [...rows].sort((x, y) => x.p0 - y.p0);
+          if (Math.abs(s[0].p0) > 1e-9 || Math.abs(s[s.length - 1].p1 - 1) > 1e-9) return `${prop} does not span [0,1]`;
+          for (let i = 1; i < s.length; i++) if (Math.abs(s[i].p0 - s[i - 1].p1) > 1e-9) return `${prop} gap/overlap at p=${s[i].p0}`;
+        }
+        for (const rows of sws.values()) {
+          for (let i = 1; i < rows.length; i++) if (!(rows[i].p0 > rows[i - 1].p0)) return `switch ${rows[i].prop} not monotone at p=${rows[i].p0}`;
+        }
+        return null;
+      };
+      const dflt = audit(P._buildTracks());
+      test('porch', 'default track table covers p∈[0,1] monotone, no same-property overlap',
+        !dflt, dflt || 'tiled + monotone', 'tiled + monotone');
+      const live = audit(P._tracks);
+      test('porch', 'live track table (measured anchors) holds the same contract',
+        !live, live || 'tiled + monotone', 'tiled + monotone');
+    }
+
     /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
     if (BB.Engine && BB.Engine.minDolly) {
       // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction
