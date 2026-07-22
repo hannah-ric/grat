@@ -43,7 +43,10 @@ hand-edit a digest string.
   `joinery3d.js` + `jointview.js` the joint inspector, `gltf.js` GLB export,
   `icons.js` SVG icon set, `motion.js` the `BB.Motion` animation-preset
   library over vendored anime.js — presets by name only, one reduced-motion
-  gate, `porch.js` + `porch.css` the first-visit landing narrative — see
+  gate, `porch.js` + `porch.css` the front of house: the first-visit landing
+  narrative plus the hash-routed public pages (`#faq`, `#signin`) and the
+  shared site header/footer — one view on screen at a time, the studio
+  (`#app`) stays booted but off the page while any public view is up — see
   `docs/overhaul/design-language.md`). Modules attach to the `BB` global;
   load order is set in `build.js`. Physical constants live in `knowledge.js`
   (one source each — see `docs/audit/02-constants-reference.md`).

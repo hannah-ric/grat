@@ -3251,6 +3251,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const REF_ENTRIES = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
   const REF_TABS = REF_ENTRIES.map(x => x[0]);
   function syncHash() {
+    // A public front-of-house view (landing/FAQ/sign-in) owns the hash while
+    // it's up — the studio must not stomp a #faq route with a tab path.
+    if (document.body.classList.contains('ph-open')) return;
     const path = state.mode === 'design'
       ? 'design'
       : state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
@@ -3553,33 +3556,39 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
-      const welcome = () => {
-        showWelcome(projectCount > 0);
-        botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
-      };
-      // Porch integration point 1 (front-porch §3): first run only, motion
-      // allowed, WebGL alive, skeleton removed — the Materialization plays
-      // once on the main engine, then lands the exact standard welcome.
-      // Any throw or a missed first frame falls back to today's boot.
-      let played = false;
-      try {
-        if (BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
-          seenOverture: !!state.prefs4.seenOverture,
-          reduced: reduceMq.matches,
-          webgl: !!state.engine,
-          skeletonGone: !$('bootSkeleton')
-        })) {
-          played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
-          if (played) {
-            state.prefs4.seenOverture = true;
-            Store.savePrefs(state.prefs4);
-            // Session-scoped after the save: two theater beats never chain in
-            // one session (porch §2) — the starter hero stays one-shot-ever.
-            state.prefs4.seenHero = true;
+      const firstRun = fo => {
+        const welcome = () => {
+          showWelcome(projectCount > 0);
+          botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
+        };
+        // Porch integration point 1 (front-porch §3): first run only, motion
+        // allowed, WebGL alive, skeleton removed — the Materialization plays
+        // once on the main engine, then lands the exact standard welcome.
+        // Any throw or a missed first frame falls back to today's boot.
+        let played = false;
+        try {
+          if (!(fo && fo.suppressOverture) && BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
+            seenOverture: !!state.prefs4.seenOverture,
+            reduced: reduceMq.matches,
+            webgl: !!state.engine,
+            skeletonGone: !$('bootSkeleton')
+          })) {
+            played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
+            if (played) {
+              state.prefs4.seenOverture = true;
+              Store.savePrefs(state.prefs4);
+              // Session-scoped after the save: two theater beats never chain in
+              // one session (porch §2) — the starter hero stays one-shot-ever.
+              state.prefs4.seenHero = true;
+            }
           }
-        }
-      } catch (e) { played = false; /* the overture is never load-bearing */ }
-      if (!played) welcome();
+        } catch (e) { played = false; /* the overture is never load-bearing */ }
+        if (!played) welcome();
+      };
+      // Segmentation: while a public view (landing/FAQ/sign-in) is up, the
+      // studio is off the page — first-run theater would play invisibly
+      // behind it. Park it with the porch; it fires on studio entry.
+      if (!(BB.Porch && BB.Porch.deferFirstRun && BB.Porch.deferFirstRun(firstRun))) firstRun();
     }
 
     // Gallery thumbnails render off the critical path once boot settles.
@@ -3802,6 +3811,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     });
     $('referenceBtn').onclick = () => selectTab('reference');
+    // FAQ is a routed front-of-house page — the hash hands off to the porch
+    // router, and the browser's back button returns to the studio.
+    const faqBtn = $('faqBtn');
+    if (faqBtn) {
+      if (BB.Porch && typeof BB.Porch.showView === 'function') faqBtn.onclick = () => { location.hash = 'faq'; };
+      else faqBtn.hidden = true;
+    }
     // The landing tour is replayable (design-language §6.5); the item hides
     // where the porch can never return (e.g. storage-less frames).
     const porchReplay = $('porchReplayBtn');
