@@ -1320,6 +1320,21 @@ const clickMoreCtl = async sel => {
   await page.keyboard.press('Escape');
   ok(await page.evaluate(() => document.getElementById('vpHelp').hidden && document.activeElement.id === 'vpHelpBtn'),
     'Escape closes viewport help and restores focus');
+  // The keyboard map answers to its own key (capability row 29): '?' toggles
+  // the same card outside inputs; typing a '?' in chat must never open it.
+  await page.evaluate(() => { document.activeElement && document.activeElement.blur(); document.getElementById('view3d').focus(); });
+  await page.keyboard.press('?');
+  const mapByKey = await page.evaluate(() => !document.getElementById('vpHelp').hidden);
+  await page.keyboard.press('Escape');
+  const mapTypeGuard = await page.evaluate(() => {
+    const t = document.getElementById('chatText');
+    t.focus();
+    t.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+    const stillHidden = document.getElementById('vpHelp').hidden;
+    t.blur();
+    return stillHidden;
+  });
+  ok(mapByKey && mapTypeGuard, "'?' opens the keyboard map outside inputs and never while typing");
 
   // Autosave feedback: pending → saved, with an explanatory title.
   const saveFlow = await page.evaluate(async () => {

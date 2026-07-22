@@ -3985,6 +3985,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else if (!typing && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         focusChat();
+      } else if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // The keyboard map answers to its own key (capability row 29):
+        // `?` toggles the same Viewport + Everywhere card as the View-menu
+        // "Keyboard & pointer help" button; Esc (below) closes it.
+        e.preventDefault();
+        setVpHelp($('vpHelp').hidden);
       } else if (!typing && state.buildMode && !state.bmPlayback && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         bmTaskGo(e.key === 'ArrowRight' ? 1 : -1);
