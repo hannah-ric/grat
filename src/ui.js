@@ -3352,8 +3352,33 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
-      showWelcome(projectCount > 0);
-      botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
+      const welcome = () => {
+        showWelcome(projectCount > 0);
+        botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
+      };
+      // Porch integration point 1 (front-porch §3): first run only, motion
+      // allowed, WebGL alive, skeleton removed — the Materialization plays
+      // once on the main engine, then lands the exact standard welcome.
+      // Any throw or a missed first frame falls back to today's boot.
+      let played = false;
+      try {
+        if (BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
+          seenOverture: !!state.prefs4.seenOverture,
+          reduced: reduceMq.matches,
+          webgl: !!state.engine,
+          skeletonGone: !$('bootSkeleton')
+        })) {
+          played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
+          if (played) {
+            state.prefs4.seenOverture = true;
+            Store.savePrefs(state.prefs4);
+            // Session-scoped after the save: two theater beats never chain in
+            // one session (porch §2) — the starter hero stays one-shot-ever.
+            state.prefs4.seenHero = true;
+          }
+        }
+      } catch (e) { played = false; /* the overture is never load-bearing */ }
+      if (!played) welcome();
     }
 
     // Gallery thumbnails render off the critical path once boot settles.
