@@ -303,7 +303,7 @@ both schemes, `scrollWidth == innerWidth` everywhere.
 
 | Budget | Ceiling |
 | --- | --- |
-| Payload delta (whole overhaul) | ≤ +170 KB on 1 951 KB dist (anime 116 + porch/motion/copy ≤ 54) |
+| Payload delta (whole overhaul) | ≤ +190 KB on 1 951 KB dist — **amended 2026-07-21** from the pre-measurement ≤ +170 KB estimate (anime alone measured 118 KB; Phase 2b landed +13.9 KB; the porch's honest size is ~68 KB). Rationale: sacrificing source readability (comment/whitespace stripping) to chase a pre-measurement estimate inverts the budget's purpose; the landing's real load story is the pre-JS static document + deferred choreography, not 1% of file size. Recorded by the orchestrator as the one sanctioned blueprint amendment of Phase 2. |
 | Boot | untouched path to first model (skeleton → adopt → snapNow); porch/overture start only after skeleton removal; 400 ms first-frame watchdog then snap-to-studio |
 | Porch JS per frame | ≤ 4 ms mid-tier; zero allocation in scroll `apply`; `content-visibility:auto` on off-screen chapters |
 | Landing long tasks | none > 50 ms during scrub (automated scrub records rAF deltas) |
