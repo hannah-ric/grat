@@ -13,8 +13,15 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
 
 /* The beat wash lives on the porch ROOT — beneath every layer — so the
    transparent canvas above it keeps compositing: wash, then H1, then the
-   piece, then copy. The wash IS the cyclorama (front-porch 12b). */
+   piece, then copy. The wash IS the cyclorama (front-porch 12b).
+   Porch-scoped duration tokens: the landing's two slower-than---t-slow
+   moments (stage drift between beat blocks; the pre-JS Act 0 brand-mark
+   draw). Values live only here (DoD 3: raw ms stay in token definitions);
+   the global reduced-motion rules clamp both to a snap. */
 .porch {
+  --ph-t-drift: 700ms;      /* stage translate between beat compositions */
+  --ph-t-mark: 900ms;       /* Act 0 stroke draw (also the circle's delay) */
+  --ph-t-mark-delay: 120ms; /* strokes begin just after first paint */
   position: relative; background: var(--paper); color: var(--ink);
   overflow-x: clip;
   transition: background var(--t-slow) var(--ease);
@@ -36,7 +43,7 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
      masthead, left of the copy column through the chapters, centered for
      the handover — compositor-only, rides the house curve */
   transform: translateX(14vw);
-  transition: transform 700ms var(--ease);
+  transition: transform var(--ph-t-drift) var(--ease);
 }
 .porch[data-beat="describe"] .ph-stage canvas,
 .porch[data-beat="draft"] .ph-stage canvas,
@@ -69,9 +76,9 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
    global reduced-motion rules collapse it to a snap. */
 .ph-mark [pathLength] {
   stroke-dasharray: 1; stroke-dashoffset: 1;
-  animation: ph-draw 900ms var(--ease) 120ms forwards;
+  animation: ph-draw var(--ph-t-mark) var(--ease) var(--ph-t-mark-delay) forwards;
 }
-.ph-mark circle[fill] { opacity: 0; animation: ph-in var(--t-slow) var(--ease) 900ms forwards; }
+.ph-mark circle[fill] { opacity: 0; animation: ph-in var(--t-slow) var(--ease) var(--ph-t-mark) forwards; }
 @keyframes ph-draw { to { stroke-dashoffset: 0; } }
 @keyframes ph-in { to { opacity: 1; } }
 .ph-h1 {
