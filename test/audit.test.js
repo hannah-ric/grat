@@ -875,6 +875,45 @@ section('FE-H7 pocket screws match the stock they join');
   ok(/32 mm coarse pocket screw/.test(lay19.text), '19 mm stock keeps the 32 mm pocket screw');
 }
 
+/* ================= M-02 (2026 audit): pocket-screw thread tracks the species it bites ================= */
+section('M-02 pocket screws are fine-thread in hardwood, coarse in softwood/ply');
+{
+  const mk = (t, material) => ({ id: 'x', name: 'Rail', role: 'rail', group: 'frame', size: { w: 600, h: 76, d: t }, pos: { x: 0, y: 0, z: 0 }, material });
+  const pair = (t, mat) => ({ parts: [Object.assign(mk(t, mat), { id: 'a' }), Object.assign(mk(t, mat), { id: 'b', pos: { x: 0, y: 0, z: t } })], joints: [] });
+  const lay = (t, mat) => Fasteners.layoutForJoint({}, pair(t, mat), { type: 'pocket_screws', a: 'a', b: 'b' }).text;
+  ok(/fine pocket screw/.test(lay(19, 'red_oak')), 'hardwood (red oak, Janka 1290) gets a FINE-thread pocket screw');
+  ok(/fine pocket screw/.test(lay(19, 'hard_maple')), 'hard maple gets a FINE-thread pocket screw');
+  ok(/coarse pocket screw/.test(lay(19, 'pine')), 'softwood (pine) keeps a COARSE-thread pocket screw');
+  ok(/coarse pocket screw/.test(lay(19, 'baltic_birch')), 'plywood is COARSE regardless of its hardwood face veneer');
+  ok(/coarse pocket screw/.test(lay(19, undefined)), 'unknown species falls back to COARSE (the safe default)');
+  const lay38 = lay(38, 'red_oak');
+  // Unit-agnostic: the audit harness shares one global unit system, so this
+  // section may render metric or imperial depending on run order. Assert the
+  // escalated length in either form (63 mm ≡ 2 1/2 in) plus the fine thread.
+  ok(/(63 mm|2 1\/2 in) fine pocket screw/.test(lay38) && /(38 mm|1 1\/2 in) stock/.test(lay38),
+    '2× (38 mm) stock still escalates to the longer (63 mm / 2 1/2 in) screw, thread-aware');
+}
+
+/* ================= M-09 (2026 audit): pre-finish advice appears only where it pays ================= */
+section('M-09 drawer pieces get pre-finish guidance; drawerless pieces do not');
+{
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }, finish: 'hardwax_oil'
+  });
+  const nsSteps = Plans.assembly(ns.spec, ns.model, null, {});
+  const nsFinish = nsSteps.find(s => s.id === 'finish'), nsSand = nsSteps.find(s => s.id === 'sand');
+  ok(/finish the drawer boxes and the interior separately before final assembly/.test(nsFinish.text), 'nightstand finish step recommends pre-finishing drawers/interior');
+  ok(/MASK every glue surface/.test(nsFinish.text), 'pre-finish advice warns to mask glue faces so the joint still bonds');
+  ok(/Sand the drawer boxes and any interior surfaces/.test(nsSand.text), 'nightstand sand step says to pre-sand the hidden interior');
+
+  const tbl = pipeline({ meta: { name: 'TB', template: 'table', level: 'beginner', units: 'mm' } });
+  const tbSteps = Plans.assembly(tbl.spec, tbl.model, null, {});
+  const tbFinish = tbSteps.find(s => s.id === 'finish'), tbSand = tbSteps.find(s => s.id === 'sand');
+  ok(!/finish the drawer boxes/.test(tbFinish.text), 'drawerless table finish step omits the pre-finish note');
+  ok(!/Sand the drawer boxes/.test(tbSand.text), 'drawerless table sand step omits the pre-sand note');
+}
+
 /* ================= FE-C1/H2/H3/H4 (2026-07 front-end audit): one shelf system, one carcass glue-up ================= */
 section('FE-C1 shelves have one story: model, steps, and BOM agree');
 {

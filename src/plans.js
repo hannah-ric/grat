@@ -363,23 +363,34 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* Sanding + finishing schedule from the finish catalog (audit F-S3-3). */
-  function sandingStep(spec, out) {
+  function sandingStep(spec, out, prefinish) {
     const fin = K.FINISHES.find(f => f.key === spec.finish);
     const prep = fin.prep || { grits: [120, 180] };
     const ladder = prep.grits.join(' → ');
     const raise = prep.raiseGrain
       ? ` Then raise the grain: wipe with a damp rag, let it dry, and knock the fuzz back with the final grit — ${fin.label.toLowerCase()} will raise it otherwise.` : '';
+    // Pre-finish note (audit M-09): drawer boxes and any interior a back panel
+    // will hide are far easier to reach flat, before assembly — say so here so
+    // the builder sands them while they can still lay them on the bench.
+    const pre = prefinish
+      ? ' Sand the drawer boxes and any interior surfaces the back will hide NOW, while the parts lie flat — you will not get a sander square into those corners once the piece is together.' : '';
     out.push(step('sand', 'Sand through the grits',
-      `Work every show surface through ${ladder} grit — don't skip a grit, each one erases the last one's scratches. Break every edge with a light pass; ease corners a hand will touch.${raise} Vacuum, then tack off the dust.`, []));
+      `Work every show surface through ${ladder} grit — don't skip a grit, each one erases the last one's scratches.${pre} Break every edge with a light pass; ease corners a hand will touch.${raise} Vacuum, then tack off the dust.`, []));
   }
-  function finishingStep(spec, out) {
+  function finishingStep(spec, out, prefinish) {
     const fin = K.FINISHES.find(f => f.key === spec.finish);
     const prep = fin.prep || {};
     const between = prep.betweenGrit ? ` Scuff between coats at ${prep.betweenGrit} once each coat is dry to the touch.` : ' De-nib between coats with a worn abrasive pad.';
     const rag = fin.flammableRags
       ? ' SAFETY: oil-soaked rags self-heat and can ignite — lay them FLAT outdoors to dry crisp (or drown them in water) before binning. Never ball them up.' : '';
+    // Pre-finish strategy (audit M-09): finishing drawer boxes and interiors
+    // before final assembly is easier AND avoids the classic failure — dried
+    // glue squeeze-out in a corner that then rejects stain. Mask the actual
+    // glue surfaces so the joint still bonds to bare wood.
+    const pre = prefinish
+      ? ' Easier order for a piece with drawers: finish the drawer boxes and the interior separately before final assembly — but MASK every glue surface first, because finish on a joint face stops the glue from bonding. Then a light final coat ties the outside together.' : '';
     out.push(step('finish', `Finish: ${fin.label.toLowerCase()}`,
-      `Test on an offcut first. Apply ${fin.coats} coats — recoat after ${fin.recoatHrs} h.${between} Full cure takes ${fin.cureDays} days; keep loads and water off it until then. ${fin.blurb}${rag}`, []));
+      `Test on an offcut first. Apply ${fin.coats} coats — recoat after ${fin.recoatHrs} h.${between}${pre} Full cure takes ${fin.cureDays} days; keep loads and water off it until then. ${fin.blurb}${rag}`, []));
   }
   /* Proportionate safety notes derived from what THIS plan actually involves
    * (audit F-S3-4). */
@@ -564,8 +575,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         + (t === 'custom' ? '; if it can’t back onto a wall, rethink placement — the tip risk is real.' : '.'), []));
     }
     safetyStep(spec, model, integrity, opts.stockPlan, out);
-    sandingStep(spec, out);
-    finishingStep(spec, out);
+    // Pre-finish advice applies when there are drawer boxes / hidden interiors
+    // to reach — the case where finishing before assembly actually pays off.
+    const prefinish = !!(model.drawers && model.drawers.length);
+    sandingStep(spec, out, prefinish);
+    finishingStep(spec, out, prefinish);
     /* Attach joint metadata: a joint belongs to the step that MAKES it — the
      * first step whose part list contains the joint's attached member — so
      * fastening notes and playback glow never teach another step's joinery

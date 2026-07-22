@@ -195,7 +195,35 @@ All line numbers are from the audited commit (`9a23bb4`). "Live" = reproduced in
 
 ## 7. Remediation plan — MEDIUM and LOW findings
 
-All CRITICAL/HIGH items are fixed (see the status note in §1); the original fix-order proposal that stood here has been executed for steps 1–7. The remaining 22 MEDIUM + 14 LOW group into six PR-sized batches, ordered by bench impact. Protocol per batch: failing-test-first for behavior-bearing changes (new `FE-*` sections in `test/audit.test.js`), `npm run build && npm test` after every change, golden refreeze only when the diff is the intended one, smoke test for anything UI-visible.
+> **Status ledger (updated 2026-07-22 — read this before the batch plan below).**
+> The batch plan (A–F) that follows was the original *proposal*. Most of it has since been implemented; this ledger is the source of truth for what is actually DONE vs. OPEN. Where the ledger and the batch prose disagree, the ledger wins.
+>
+> | Item | State | Where / note |
+> |---|---|---|
+> | M-01 pilots/bores as real drill sizes | **DONE** | `fmtDrill`; audit test "M-01" |
+> | M-02 fine-thread pocket screws in hardwood | **DONE** | thread chosen by receiving species' Janka in `fasteners.js`; coarse for softwood/ply; audit test "M-02" |
+> | M-03 + L-12 janka-scaled pilot Ø | **DONE** | `fasteners.js` |
+> | M-04 clearance-hole + countersink phrasing | **DONE** | `fasteners.js` |
+> | M-05 figure-8 recess + per-step fastener totals | **DONE** | `plans.js` |
+> | M-06 drawer-bottom measured-ply caveat | **DONE** | `plans.js` |
+> | M-07 dado names the real housed part | **DONE** | `fasteners.js` |
+> | M-08 slotted-hole demand flows to the driving step | **DONE** | `plans.js` (integrity → `assembly()`) |
+> | M-09 pre-finish interior/drawer boxes before closing | **DONE** | `plans.js` sanding + finishing steps, gated to pieces with drawers; audit test "M-09" |
+> | M-10 dry-fit-before-glue on template glue-ups | **DONE** | `plans.js` |
+> | M-11 abrasives from `fin.prep` + tool dedupe | **DONE** | `plans.js` |
+> | M-12 / M-13 sheet-good badges; steel slides not weighed as wood | **DONE** | `ui.js`, `structural.js` |
+> | M-14 / M-15 / M-16 / M-18 UI, a11y, anchor-tier | **DONE** | `ui.js`, template, styles |
+> | M-17 / M-20 / M-22 AI scope-ack, corrections notes, budget digest | **DONE** | `ai.js`, `spec.js` |
+> | M-19 drawer-member slide screw sized to the side | **DONE** | `slideScrewLenMM` in `hardware.js`; two screw lengths per slide pair in `plans.js`/`exports.js`; golden `seed-table`/drawer designs refrozen |
+> | M-21 min-spacing n=2 → one centered fastener | **DONE** | `fasteners.js` |
+> | L-01…L-14 LOW sweep | **DONE** | Batches C/D/F as described below |
+> | Stripe automatic tax (LH-13) | **DONE** | `automatic_tax` + `customer_update.address` in `api/billing.js`; server test asserts both. Still requires Dashboard tax registration + per-price `tax_behavior` before tax actually accrues |
+> | Legal pages (LH-10) | **DONE (content needs owner review)** | `dist/privacy.html`, `dist/terms.html`; `[BRACKETED]` fields (entity, contact, refund terms, governing law, effective date) must be filled before launch |
+> | App icons / favicon (LH-18) | **DONE** | inline SVG + base64 PNG in `build.js`; no external assets |
+>
+> **Genuinely still open (human-gated, tracked in `docs/audit/09-launch-human-inputs.md`):** the launch sign-offs (model, pricing, quotas), Google/GitHub OAuth production credentials + consent-screen verification (which consumes the new privacy URL), Stripe live-mode keys + tax registration, and the UNVERIFIED carry-overs below (real-device gestures, print fidelity, exact undermount SKU). No open *code* item remains in this section.
+
+All CRITICAL/HIGH items are fixed (see the status note in §1); the original fix-order proposal that stood here has been executed. Per the ledger above, the MEDIUM + LOW findings are now implemented; the six PR-sized batches below are retained as the historical record of how they were grouped and the protocol used. Protocol per batch: failing-test-first for behavior-bearing changes (new `FE-*`/audit sections in `test/audit.test.js`), `npm run build && npm test` after every change, golden refreeze only when the diff is the intended one, smoke test for anything UI-visible.
 
 ### Batch A — Fastener bench-usability (`fasteners.js`, `knowledge.js`) · ~half day
 | Items | Change |
@@ -267,4 +295,4 @@ Real-model AI chat (needs `ANTHROPIC_API_KEY`), print fidelity, external CAD/AR 
 
 ---
 
-*The original audit was read-only. The remediation pass changed `src/` under the repo's engineering-truth guardrails: failing-test-first, all suites green after every fix (unit 946 · audit 319 · golden 6/6 · battery · server 69 · handcalc 14/14 · smoke 212), goldens refrozen only where the diff was the intended behavior change.*
+*The original audit was read-only. The remediation pass changed `src/` under the repo's engineering-truth guardrails: failing-test-first, all suites green after every fix, goldens refrozen only where the diff was the intended behavior change. Current green baseline after the launch-readiness pass (2026-07-22): unit 1253 · audit 491 · golden 6/6 · battery 18 cases/50 assertions · server 152.*
