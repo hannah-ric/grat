@@ -1,0 +1,267 @@
+/* Blueprint Buddy — front porch styles (design-language §7). Tokens only —
+   both schemes come free; resting styles ARE the reduced-motion end state
+   (presets clear their inline styles); no ornament (premium-refit bar). */
+
+/* The app body is a fixed-viewport instrument (overflow hidden); the porch
+   is a document. While it exists the page scrolls, and paint containment
+   re-roots the studio's fixed overlays (phone chat sheet, pills) inside
+   #app's own 100dvh box so they never float over the narrative — visually
+   identical once the studio fills the viewport. Both rules dissolve with
+   the porch; .ph-open mirrors :has() for engines without it. */
+body:has(#porch:not([hidden])), body.ph-open { overflow: auto; overflow-x: clip; }
+body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
+
+/* The beat wash lives on the porch ROOT — beneath every layer — so the
+   transparent canvas above it keeps compositing: wash, then H1, then the
+   piece, then copy. The wash IS the cyclorama (front-porch 12b).
+   Porch-scoped duration tokens: the landing's two slower-than---t-slow
+   moments (stage drift between beat blocks; the pre-JS Act 0 brand-mark
+   draw). Values live only here (DoD 3: raw ms stay in token definitions);
+   the global reduced-motion rules clamp both to a snap. */
+.porch {
+  --ph-t-drift: 700ms;      /* stage translate between beat compositions */
+  --ph-t-mark: 900ms;       /* Act 0 stroke draw (also the circle's delay) */
+  --ph-t-mark-delay: 120ms; /* strokes begin just after first paint */
+  position: relative; background: var(--paper); color: var(--ink);
+  overflow-x: clip;
+  transition: background var(--t-slow) var(--ease);
+}
+.porch[data-beat="describe"] { background: var(--seafoam-wash); }
+.porch[data-beat="draft"] { background: var(--amber-soft); }
+.porch[data-beat="prove"] { background: var(--fern-wash); }
+/* mast + build rest on --paper */
+
+/* ---- the stage: one sticky viewport-high transparent layer the chapters
+   scroll past. Pointer-inert until the handover. ---- */
+.ph-stage {
+  position: sticky; top: 0; z-index: 2; height: 100vh; height: 100dvh;
+  pointer-events: none;
+}
+.ph-stage canvas {
+  width: 100%; height: 100%; display: block;
+  /* stage blocking, one continuous shot: right of the headline at the
+     masthead, left of the copy column through the chapters, centered for
+     the handover — compositor-only, rides the house curve */
+  transform: translateX(14vw);
+  transition: transform var(--ph-t-drift) var(--ease);
+}
+.porch[data-beat="describe"] .ph-stage canvas,
+.porch[data-beat="draft"] .ph-stage canvas,
+.porch[data-beat="prove"] .ph-stage canvas { transform: translateX(-11vw); }
+.porch[data-beat="build"] .ph-stage canvas { transform: translateX(-11vw); }
+.porch[data-live="1"] .ph-stage { pointer-events: auto; } /* the handover */
+.porch[data-live="1"] .ph-stage canvas { transform: translateX(10vw); }
+/* diegetic ink-wash when the stage flips draft <-> wood (keyframes shared
+   with the studio viewport; the global reduced-motion rules snap it) */
+.porch.ph-inkwash .ph-stage canvas { animation: inkwash var(--t-med) var(--ease); }
+
+/* Content flows OVER the sticky stage (negative pull). Copy and bands lift
+   to z 3 individually; the H1 stays at z 1 BEHIND the transparent canvas
+   (z 2) so the drafted piece physically occludes its own headline — the
+   occlusion sandwich (front-porch 14a). Ghost numerals sit at z 0. */
+.ph-flow { position: relative; margin-top: calc(-100vh); margin-top: calc(-100dvh); }
+.ph-mast-top, .ph-lead, .ph-copy, .ph-band { position: relative; z-index: 3; }
+.ph-h1 { position: relative; }
+.ph-slot { position: relative; z-index: 1; }
+
+/* ---- masthead (Act 0) ---- */
+.ph-mast {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: var(--space-xl) var(--space-l) var(--space-2xl);
+  max-width: 90rem; margin-inline: auto;
+}
+.ph-mast-top { display: flex; align-items: center; gap: var(--space-s); }
+/* Act 0: the brand strokes draw themselves — pure CSS, paints pre-JS; the
+   global reduced-motion rules collapse it to a snap. */
+.ph-mark [pathLength] {
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: ph-draw var(--ph-t-mark) var(--ease) var(--ph-t-mark-delay) forwards;
+}
+.ph-mark circle[fill] { opacity: 0; animation: ph-in var(--t-slow) var(--ease) var(--ph-t-mark) forwards; }
+@keyframes ph-draw { to { stroke-dashoffset: 0; } }
+@keyframes ph-in { to { opacity: 1; } }
+.ph-h1 {
+  z-index: 1; /* behind the transparent stage canvas — the piece breaks the type */
+  margin: 0; max-width: 12ch;
+  font: 900 var(--text-billboard)/var(--leading-display) var(--display);
+  letter-spacing: -0.015em; text-wrap: balance;
+}
+.ph-lead { display: flex; flex-direction: column; gap: var(--space-m); max-width: 44ch; }
+.ph-lede { margin: 0; font-size: var(--text-l); line-height: var(--leading-body); color: var(--ink-2); }
+.ph-cta-row { display: flex; flex-wrap: wrap; gap: var(--space-s); align-items: center; }
+.ph-cta-ghost {
+  display: inline-flex; align-items: center; min-height: var(--tap);
+  padding: 0 var(--space-s); border-radius: var(--radius-pill);
+  color: var(--link); text-decoration: none; font-weight: 600;
+}
+.ph-cta-ghost:hover { background: var(--panel-2); }
+
+/* ---- chapters ---- */
+/* NOTE: content-visibility is static-mode-only. Its forced paint containment
+   makes each chapter a stacking context, which would flatten the copy/canvas
+   z-interleave the occlusion sandwich depends on in scrub mode (measured,
+   not theorized — see phase2a findings). */
+.chapter {
+  position: relative; min-height: 132vh;
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: center; gap: var(--space-l);
+  padding: var(--space-2xl) var(--space-l);
+  max-width: 90rem; margin-inline: auto;
+}
+.ph-copy { grid-column: 2; display: flex; flex-direction: column; gap: var(--space-s); max-width: 46ch; }
+.ph-head { margin: 0; font: 700 var(--text-3xl)/var(--leading-display) var(--display); text-wrap: balance; }
+.ph-body { margin: 0; color: var(--ink-2); line-height: var(--leading-body); }
+.ph-num {
+  position: absolute; z-index: 0; top: 8vh; left: -0.06em;
+  font: 900 30vw/1 var(--display);
+  color: transparent; -webkit-text-stroke: 2px color-mix(in srgb, var(--ink) 9%, transparent);
+  pointer-events: none; user-select: none;
+}
+/* the typed prompt — a carpenter's sentence in the machine voice */
+.ph-prompt {
+  margin: var(--space-2xs) 0 0; padding: var(--space-xs) var(--space-s);
+  border: 1px solid var(--line-2); border-radius: var(--radius-m);
+  background: var(--panel); font-family: var(--mono); font-size: var(--text-s);
+  min-height: calc(var(--tap) * 0.8);
+}
+.ph-prompt .ph-caret {
+  display: inline-block; width: 1px; height: 1em; margin-right: 1px;
+  background: var(--accent); vertical-align: text-bottom;
+}
+.porch[data-anim="1"] .ph-prompt .ph-caret { animation: ph-blink var(--t-pulse) step-end infinite; }
+@keyframes ph-blink { 50% { opacity: 0; } }
+/* chapter 02: the elevation draws itself — the flagship linework moment */
+.ph-elev { margin-top: var(--space-s); }
+.ph-elev svg { width: 100%; height: auto; max-height: 46vh; }
+/* chapter 03: spec plate + verdict capsule; counters roll real figures */
+.ph-plate { background: color-mix(in srgb, var(--panel) 94%, transparent); border-radius: var(--radius-m); padding: var(--space-xs) var(--space-s); }
+.ph-verdict-line {
+  margin: var(--space-2xs) 0 0; padding-top: var(--space-2xs);
+  border-top: 1px solid var(--line);
+  font: 500 var(--text-xs)/1.5 var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--muted-2);
+}
+.ph-counters { display: flex; flex-wrap: wrap; gap: var(--space-l); margin-top: var(--space-xs); }
+.ph-counter .counter { display: block; font-size: var(--text-2xl); font-weight: 600; color: var(--ink); }
+.ph-counter .kicker { display: block; margin-top: var(--space-3xs); }
+/* chapter 04: real cut-list rows cascade in beside the stage */
+.ph-cuts { display: flex; flex-direction: column; gap: var(--space-2xs); margin-top: var(--space-s); }
+.ph-cut {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-xs);
+  padding: var(--space-2xs) var(--space-s);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  font-size: var(--text-s);
+}
+.ph-cut .ph-cut-dim { font: 500 var(--text-xs)/1.4 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+.ph-cut .ph-cut-name { font-weight: 600; white-space: nowrap; }
+.ph-cut .ph-cut-qty { color: var(--muted-2); }
+
+/* poster stills (phone / coarse / reduced-motion path): same chapters, the
+   stage state as an image per pose — one codepath with reduced motion */
+.ph-slot { grid-column: 1; grid-row: 1; align-self: center; min-height: 20vh; }
+.ph-slot img { width: 100%; max-width: 560px; height: auto; display: block; margin-inline: auto; }
+
+/* ---- full-bleed bands (they pass over the stage — opaque wash fields) ---- */
+.ph-band { position: relative; padding: var(--space-2xl) var(--space-l); background: var(--paper); }
+.ph-band-inner { max-width: 90rem; margin-inline: auto; display: flex; flex-direction: column; gap: var(--space-m); }
+.ph-honesty { background: var(--seafoam-wash); }
+.ph-claims { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--space-m); margin: 0; padding: 0; list-style: none; }
+.ph-claims li { display: flex; flex-direction: column; gap: var(--space-2xs); line-height: var(--leading-body); color: var(--ink-2); }
+.ph-claims b { color: var(--ink); font-size: var(--text-l); font-family: var(--display); font-weight: 600; }
+
+/* shapeshift fallback band: three live starter thumbnails */
+.ph-shift-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--space-m); }
+.ph-thumb { display: flex; flex-direction: column; gap: var(--space-2xs); align-items: center; text-align: center; }
+.ph-thumb img, .ph-thumb .ph-thumb-empty {
+  width: 100%; max-width: 15rem; aspect-ratio: 4 / 3; object-fit: cover;
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel);
+}
+.ph-thumb .ph-thumb-empty { display: grid; place-items: center; color: var(--muted-2); }
+.ph-thumb figcaption { font-size: var(--text-s); color: var(--ink-2); }
+.ph-thumb .ph-thumb-parts { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted-2); }
+
+/* ---- build-vs-buy calculator (design-language §8) ---- */
+.calc { display: flex; flex-direction: column; gap: var(--space-m); }
+.calc-rows { display: flex; flex-direction: column; gap: var(--space-s); }
+.calc-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-xs); }
+.calc-row .kicker { flex: 0 0 7.5rem; }
+.calc-chip {
+  min-height: 36px; padding: 0.3rem 0.85rem;
+  border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  background: var(--panel); color: var(--ink-2); font-size: var(--text-s); font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.calc-chip:hover { border-color: var(--line-2); background: var(--panel-2); }
+.calc-chip[aria-pressed="true"] { background: var(--seafoam-wash); border-color: var(--seafoam-line); color: var(--seafoam-ink); }
+.calc-out { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-l); align-items: start; }
+.calc-stats { display: flex; flex-wrap: wrap; gap: var(--space-l); }
+.calc-stat > .counter { display: block; font-size: var(--text-2xl); font-weight: 600; }
+.calc-stat .counter .counter { display: inline; font-size: inherit; }
+.calc-stat > .kicker { display: block; margin-top: var(--space-3xs); }
+.calc-dims { color: var(--muted-2); font-size: var(--text-s); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.calc-verdict { margin: 0; font: 600 var(--text-l)/var(--leading-heading) var(--display); }
+.calc-verdict .counter { color: var(--accent); }
+.calc-retail { border-top: 1px solid var(--line-2); padding-top: var(--space-s); }
+.calc-retail .spec-plate-value { font-size: var(--text-m); }
+
+/* ---- entry paths + closing band ----
+   The closing band is transparent and viewport-high: the stage stands in the
+   open field beneath the cards for the handover ("Go on. Spin it."). */
+.ph-band[data-ch="entry"] { background: transparent; min-height: 100vh; min-height: 100dvh; }
+.entry-paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--space-m); }
+.entry-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2xs);
+  padding: var(--space-m); text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--radius-l); background: var(--panel);
+  color: var(--ink); font: inherit; line-height: var(--leading-body);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.entry-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--line-2); }
+.entry-card h3 { margin: 0; font: 700 var(--text-xl)/var(--leading-heading) var(--display); }
+.entry-card p { margin: 0; color: var(--ink-2); font-size: var(--text-s); }
+.entry-card .entry-go { margin-top: auto; padding-top: var(--space-xs); color: var(--link); font-weight: 700; font-size: var(--text-s); }
+.ph-close { display: flex; flex-direction: column; gap: var(--space-m); align-items: flex-start; }
+.ph-trust { margin: 0; max-width: 44ch; color: var(--muted-2); font-size: var(--text-s); }
+.ph-spin { margin: 0; font: 600 var(--text-xl)/var(--leading-heading) var(--display); }
+
+/* ---- overture captions (in-app, created by the director) ---- */
+.ov-caption {
+  position: absolute; z-index: 11; left: 50%; bottom: max(12vh, 84px);
+  transform: translateX(-50%); margin: 0; padding: var(--space-2xs) var(--space-s);
+  max-width: min(92%, 34ch); text-align: center;
+  font: 600 var(--text-l)/var(--leading-heading) var(--display); color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  border-radius: var(--radius-m);
+}
+/* Below the viewport toolbar row, so the pill never overlaps its controls
+   at narrow widths (the toolbar holds the top edge at every width). */
+.ov-skip { position: absolute; z-index: 12; top: calc(max(12px, 2vh) + var(--tap) + var(--space-2xs)); right: var(--space-s); }
+
+/* ---- static parity: coarse pointers, narrow screens, reduced motion.
+   No sticky scrub — plain full-bleed chapters with poster stills; the copy
+   is simply there; counters render final values (Motion gate). ---- */
+.porch[data-mode="static"] .ph-stage { display: none; }
+.porch[data-mode="static"] .ph-flow { margin-top: 0; }
+.porch[data-mode="static"] .chapter { min-height: 0; content-visibility: auto; contain-intrinsic-size: auto 60vh; }
+.porch[data-mode="static"] .chapter[data-ch="describe"] { background: var(--seafoam-wash); }
+.porch[data-mode="static"] .chapter[data-ch="draft"] { background: var(--amber-soft); }
+.porch[data-mode="static"] .chapter[data-ch="prove"] { background: var(--fern-wash); }
+
+@media (max-width: 879px) {
+  .ph-mast { padding-inline: var(--space-s); }
+  .chapter { grid-template-columns: 1fr; padding-inline: var(--space-s); gap: var(--space-m); }
+  .ph-copy { grid-column: 1; }
+  .ph-slot { grid-column: 1; grid-row: auto; }
+  .ph-num { font-size: 38vw; top: 2vh; }
+  .ph-band { padding-inline: var(--space-s); }
+  .calc-out { grid-template-columns: 1fr; }
+  .calc-row .kicker { flex-basis: 100%; }
+}
+
+@media (forced-colors: active) {
+  .ph-stage { background: Canvas; }
+  .ph-slot img, .ph-thumb img { border: 1px solid CanvasText; }
+}

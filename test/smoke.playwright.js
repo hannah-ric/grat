@@ -339,12 +339,22 @@ const clickMoreCtl = async sel => {
   ok(stats3.materials < 200, `quality toggle keeps the material pool bounded (${stats3.materials})`);
 
   // Blueprint mode: one toggle → drafting render, orthographic front view, dims on.
+  // The wash class lives only animation-long: arm an observer BEFORE the click
+  // so a saturated box can't miss the beat, then wait out the cleanup.
+  const washSeen = page.evaluate(() => new Promise(res => {
+    const wrap = document.getElementById('viewportWrap');
+    if (wrap.classList.contains('inkwash')) return res(true);
+    const mo = new MutationObserver(() => {
+      if (wrap.classList.contains('inkwash')) { mo.disconnect(); res(true); }
+    });
+    mo.observe(wrap, { attributes: true, attributeFilter: ['class'] });
+    setTimeout(() => { mo.disconnect(); res(false); }, 4000);
+  }));
   await page.click('#draftToggle');
-  ok(await page.evaluate(() => document.getElementById('viewportWrap').classList.contains('inkwash')),
-    'blueprint flip runs the one-beat ink-wash');
-  await page.waitForTimeout(500);
-  ok(await page.evaluate(() => !document.getElementById('viewportWrap').classList.contains('inkwash')),
-    'ink-wash cleans itself up after the beat');
+  ok(await washSeen, 'blueprint flip runs the one-beat ink-wash');
+  ok(await page.waitForFunction(() => !document.getElementById('viewportWrap').classList.contains('inkwash'),
+    null, { timeout: 4000 }).then(() => true, () => false),
+  'ink-wash cleans itself up after the beat');
   ok(await page.evaluate(() =>
     document.body.classList.contains('drafting') &&
     __bb.state.engine.getDrafting() &&
@@ -454,6 +464,73 @@ const clickMoreCtl = async sel => {
   ok(true, 'out-of-range height → advisory chip, generation not blocked');
   await page.click('.advisory .dismiss');
   ok(await page.$$eval('.advisory', a => a.length) === 0 || true, 'advisory dismissible');
+
+  /* ================= Phase 2b: engineering-as-aesthetic (overhaul §9) ================= */
+
+  // The Cut tab is the flagship .ledger instrument: kicker head band, drawn
+  // top rule, and a mono summary strip computed from the live plan state.
+  await page.click('#tab-cut');
+  const ledger = await page.evaluate(() => {
+    const h = document.querySelector('#panel-main .ledger-head h3.kicker');
+    const sum = document.querySelector('#panel-main .ledger-sum');
+    return {
+      head: !!h && /cut list/i.test(h.textContent),
+      rule: !!document.querySelector('#panel-main .ledger-rule'),
+      sum: sum ? sum.textContent : '',
+      sumTrue: !!sum && new RegExp('^' + __bb.state.cut.reduce((n, r) => n + r.qty, 0) + ' parts').test(sum.textContent)
+    };
+  });
+  ok(ledger.head, 'Cut leads with the ledger kicker head band');
+  ok(ledger.rule, 'Cut ledger carries its drawn top rule');
+  ok(/parts · .*boards · .*bd ft/.test(ledger.sum) && ledger.sumTrue,
+    `Cut summary strip reads live plan numbers ("${ledger.sum}")`);
+
+  // Cascade render-key law: a view entrance staggers once; the same view
+  // re-rendered (tab re-click, recompute) never re-staggers; a design-
+  // identity change replays it. The data-cascaded marker exists only on
+  // renders where the cascade actually fired.
+  await page.click('#tab-stock');
+  await page.click('#tab-cut');
+  ok(await page.evaluate(() => !!document.querySelector('#panel-main [data-cascaded]')),
+    'opening Cut cascades its rows once (render-key marker present)');
+  await page.click('#tab-cut');
+  ok(await page.evaluate(() => !document.querySelector('#panel-main [data-cascaded]')),
+    'opening Cut twice: the second render does not re-stagger');
+  await page.evaluate(() => __bb.recompute());
+  ok(await page.evaluate(() => !document.querySelector('#panel-main [data-cascaded]')),
+    'a recompute of the same view does not re-stagger');
+  await page.evaluate(() => __bb.merge({ overall: { height: __bb.state.spec.overall.height + 15 } }, 'manual'));
+  ok(await page.evaluate(() => !!document.querySelector('#panel-main [data-cascaded]')),
+    'a design-identity change replays the one-time cascade');
+
+  // Chat diff cards wear the kicker head (treatment 5).
+  ok(await page.evaluate(() => {
+    const t = document.querySelector('#chatLog .diff-title');
+    return !!t && t.classList.contains('kicker');
+  }), 'diff cards wear the kicker head');
+
+  // The Overview cover sheet under reduced motion: the animatable elevation,
+  // counters, and verdict plate render complete end states instantly.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => __bb.merge({ overall: { height: __bb.state.spec.overall.height - 15 } }, 'manual')); // fresh design epoch
+  await page.evaluate(() => __bb.selectTab('overview'));
+  const cover = await page.evaluate(() => {
+    const svg = document.querySelector('.overview-draw svg');
+    const shapes = svg ? [...svg.querySelectorAll('[pathLength]')] : [];
+    const counter = document.querySelector('.overview-card .ov-value.counter');
+    return {
+      tile: !!svg,
+      animatable: shapes.length,
+      complete: shapes.length > 0 && shapes.every(s => !s.hasAttribute('stroke-dasharray')),
+      plate: !!document.querySelector('.overview-verdict .stamp'),
+      counterFinal: !!counter && counter.textContent === String(__bb.state.cut.reduce((n, r) => n + r.qty, 0))
+    };
+  });
+  ok(cover.tile && cover.animatable > 0, `Overview drawing tile renders the animatable front elevation (${cover.animatable} shapes)`);
+  ok(cover.complete, 'reduced motion: elevation linework is instantly complete (no dash attributes)');
+  ok(cover.plate, 'the safety line wears its spec plate with the verdict capsule');
+  ok(cover.counterFinal, 'reduced motion: stat counters paint final values instantly');
+  await page.emulateMedia({ reducedMotion: null });
 
   // Reduced motion.
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1253,6 +1330,21 @@ const clickMoreCtl = async sel => {
   await page.keyboard.press('Escape');
   ok(await page.evaluate(() => document.getElementById('vpHelp').hidden && document.activeElement.id === 'vpHelpBtn'),
     'Escape closes viewport help and restores focus');
+  // The keyboard map answers to its own key (capability row 29): '?' toggles
+  // the same card outside inputs; typing a '?' in chat must never open it.
+  await page.evaluate(() => { document.activeElement && document.activeElement.blur(); document.getElementById('view3d').focus(); });
+  await page.keyboard.press('?');
+  const mapByKey = await page.evaluate(() => !document.getElementById('vpHelp').hidden);
+  await page.keyboard.press('Escape');
+  const mapTypeGuard = await page.evaluate(() => {
+    const t = document.getElementById('chatText');
+    t.focus();
+    t.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+    const stillHidden = document.getElementById('vpHelp').hidden;
+    t.blur();
+    return stillHidden;
+  });
+  ok(mapByKey && mapTypeGuard, "'?' opens the keyboard map outside inputs and never while typing");
 
   // Autosave feedback: pending → saved, with an explanatory title.
   const saveFlow = await page.evaluate(async () => {

@@ -92,6 +92,8 @@
   --text-s: clamp(0.875rem, 0.8542rem + 0.0926vw, 0.9375rem);/* buttons, captions, tables 14→15 */
   --text-xs: clamp(0.75rem, 0.7292rem + 0.0926vw, 0.8125rem);/* supplementary kickers only 12→13 */
   --text-hero: clamp(2.5rem, 2rem + 2.2222vw, 4rem);         /* first-run hero 40→64 */
+  --text-billboard: clamp(3.5rem, 2rem + 6.6667vw, 8rem);    /* porch H1 + chapter numerals ONLY (design-language §1) */
+  --track-label: .08em;  /* kicker voice tracking — the one uppercase-label letterspace */
 
   /* Additive leading: the rem term rides zoom, the ratio self-tightens as
      sizes grow (brand-system.md §3). */
@@ -1440,6 +1442,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   }
   body { overflow: visible; background: #fff; color: var(--ink); }
   #app { display: none !important; }
+  /* Siblings outside #app must not print either: the landing narrative on a
+     first visit, and the visually-hidden skip links. */
+  #porch, .skip-link { display: none !important; }
   #printRoot { display: block; font: 400 var(--print-m)/1.5 var(--body); color: var(--ink); }
   .print-head { border-bottom: 2px solid var(--ink-2); padding-bottom: 12px; margin-bottom: 20px; }
   .print-head h1 { font: 700 var(--print-2xl)/1.15 var(--display); letter-spacing: -.01em; margin: 0 0 6px; }
@@ -1649,7 +1654,15 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   opacity: .75; font-size: var(--text-s); line-height: 1; padding: 0 2px;
 }
 .prov-pop .prov-close:hover { opacity: 1; }
-.prov-pop .prov-line { margin-bottom: var(--s1); }
+/* §9.5 provenance receipts wear the spec-plate row grammar — structure and
+   type only; the ink-dark tooltip palette is a premium-refit keep. */
+.prov-pop .prov-line {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s2); align-items: baseline;
+  margin: 0; padding: var(--s1) 0;
+  border-top: 1px solid color-mix(in oklab, var(--paper) 18%, transparent);
+}
+.prov-pop .prov-line b { font: 600 var(--text-xs) var(--body); letter-spacing: .08em; text-transform: uppercase; color: color-mix(in oklab, var(--paper) 72%, transparent); }
+.prov-pop .prov-line span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .prov-pop .prov-line b { display: block; font: 600 var(--text-xs) var(--body); color: color-mix(in srgb, var(--paper) 75%, transparent); }
 .prov-pop .prov-line span { font-family: var(--mono); font-size: var(--text-s); }
 .prov-pop .prov-foot {
@@ -1948,3 +1961,109 @@ body.bm-playback .playback-bar { display: none !important; }
   .stamp, .save-state { forced-color-adjust: none; }
   .btn, .tab, .toggle .track { border: 1px solid ButtonText; }
 }
+
+/* ---------------- overhaul component vocabulary (design-language §4) ----------------
+   Shared by landing chapters and plan panels. Tokens only; hierarchy from
+   scale/weight/space (premium-refit bar — no ornament). Motion belongs to
+   the BB.Motion presets, never to these rules: the resting styles below ARE
+   the reduced-motion end state. */
+
+/* Uppercase tracked micro-label — landing section labels, ledger heads,
+   spec-plate titles. --muted-2 is the audited AA muted in both schemes. */
+.kicker {
+  font: 600 var(--text-xs)/1 var(--body);
+  letter-spacing: var(--track-label); text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+/* Spec plate: a measured-values block presented as a designed object —
+   kicker title, mono value rows, hairline rules. Verdict capsules (.stamp)
+   compose in unchanged. Every value is read live at render time; a
+   hardcoded figure here is a founding-rule violation (§9). */
+.spec-plate {
+  display: block; padding: var(--space-s) 0;
+  border-top: 1px solid var(--line-2);
+}
+.spec-plate > .kicker { display: block; margin-bottom: var(--space-2xs); }
+.spec-plate-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-s); padding: var(--space-2xs) 0;
+  border-bottom: 1px solid var(--line);
+}
+.spec-plate-row:last-child { border-bottom: 0; }
+.spec-plate-label { color: var(--muted-2); font-size: var(--text-s); }
+.spec-plate-value {
+  color: var(--ink); font: 500 var(--text-s)/1.2 var(--mono);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+
+/* Ledger: the instrument-grade table treatment — kicker head band with a
+   mono summary strip, and a drawn top rule. The rule element rests at
+   scaleX(1); Motion.rule() draws it in from the left. .ledger-rule is the
+   generic drawn hairline — spec plates reuse it. */
+.ledger { display: block; }
+.ledger-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-s); padding-bottom: var(--space-2xs);
+}
+.ledger-sum {
+  color: var(--muted-2); font: 500 var(--text-xs)/1.2 var(--mono);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+.ledger-rule {
+  height: 1px; background: var(--line-2);
+  transform-origin: left center;
+}
+
+/* Counted figure — machine voice, no layout shift while rolling. */
+.counter { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Porch scaffold: the landing region ships pre-wired but inert until the
+   landing workstream fills it. [hidden] must win over display:block. */
+.porch { display: block; }
+.porch[hidden] { display: none; }
+
+/* ---------------- overhaul 2b: app composition of the §9 treatments ----------------
+   Ledger heads on plan panels, the Overview cover sheet, ledger voice on
+   step numbers. Tokens only; every rule is a RESTING state — motion comes
+   exclusively from BB.Motion presets; reduced motion sees these as-is. */
+
+/* Panel ledger heads: kicker voice at the s end of its band (§1 allows
+   xs/s; panel headings keep the ≥14px UI-text floor); the h3 keeps the
+   panel's heading/focus contract while wearing the kicker voice. */
+.panel h3.kicker {
+  font: 600 var(--text-s)/1.35 var(--body);
+  letter-spacing: var(--track-label); text-transform: uppercase;
+  color: var(--muted-2); margin: 0; text-wrap: balance;
+}
+.panel .ledger-head, .modal .ledger-head { flex-wrap: wrap; row-gap: var(--s1); }
+.panel .ledger { margin: 0 0 var(--s3); }
+.species-ledger { margin: 0 0 var(--s2); }
+
+/* Overview cover sheet: the safety line as a spec plate — capsule + plain
+   sentence in one row, live mono rows under it. */
+.overview-verdict { margin: 0 0 var(--s2); }
+.overview-verdict .verdict-row { justify-content: flex-start; align-items: center; }
+.overview-verdict .verdict-text {
+  color: var(--ink-2); font-size: var(--text-s); line-height: 1.5; max-width: var(--measure);
+}
+
+/* Overview drawing tile: the real front elevation, same tile field as the
+   stat cards; the SVG scales fluidly and its linework rests fully drawn. */
+.overview-draw {
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel);
+  padding: var(--s3); margin-top: var(--s2);
+}
+.overview-draw > .kicker { display: block; margin-bottom: var(--space-2xs); }
+.overview-draw svg { display: block; width: 100%; height: auto; max-height: min(38vh, 340px); }
+
+/* Ledger voice on assembly step numbers: counted figures speak mono. */
+.step-list .step-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Diff-card chips: their entrance is Motion.cascade (2b treatment 5) — the
+   generic chip rise would double-animate them; chips elsewhere keep it. */
+.chips.diff-card .chip { animation: none; }
+
+/* The floating plan CTA centers without transform so Motion.pop — which
+   owns inline transforms while it runs — can pulse it without unseating it. */
+.btn.plan-cta-pill { left: 0; right: 0; transform: none; margin-inline: auto; width: fit-content; }

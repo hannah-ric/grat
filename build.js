@@ -39,10 +39,13 @@ const js = name => read('src/' + name).replace(/<\/script>/gi, '<\\/script>');
 
 let html = read('src/index.template.html')
   .replace('{{CSS}}', css)
+  .replace('{{CSS_PORCH}}', () => read('src/porch.css'))
   .replace('{{THREE}}', () => read('vendor/three.min.js').replace(/<\/script>/gi, '<\\/script>'))
+  .replace('{{ANIME}}', () => read('vendor/anime.umd.min.js').replace(/<\/script>/gi, '<\\/script>'))
   .replace('{{JS_KNOWLEDGE}}', () => js('knowledge.js'))
   .replace('{{JS_HARDWARE}}', () => js('hardware.js'))
   .replace('{{JS_ICONS}}', () => js('icons.js'))
+  .replace('{{JS_MOTION}}', () => js('motion.js'))
   .replace('{{JS_MATERIALS}}', () => js('materials.js'))
   .replace('{{JS_GEOMETRY}}', () => js('geometry.js'))
   .replace('{{JS_UNITS}}', () => js('units.js'))
@@ -66,6 +69,7 @@ let html = read('src/index.template.html')
   .replace('{{JS_JOINERY3D}}', () => js('joinery3d.js'))
   .replace('{{JS_JOINTVIEW}}', () => js('jointview.js'))
   .replace('{{JS_ENGINE}}', () => js('engine.js'))
+  .replace('{{JS_PORCH}}', () => js('porch.js'))
   .replace('{{JS_UI}}', () => js('ui.js'));
 
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });

@@ -1086,6 +1086,86 @@ var BB = globalThis.BB = globalThis.BB || {};
         prog.task === 5 && !prog.cuts['b:0:0:stale:100'], `task ${prog.task}, stale pruned`, 'task 5, stale pruned');
     }
 
+    /* ============ motion presets (browser only — motion.js loads there) ============ */
+    if (BB.Motion && typeof document !== 'undefined') {
+      const M = BB.Motion;
+      // The preset library is the ONLY sanctioned animation surface
+      // (design-language §5) — a missing name means a caller will hand-roll.
+      const names = ['on', '_forceOff', 'reveal', 'cascade', 'draw', 'rule', 'count',
+        'countUpOnce', 'lines', 'settle', 'pop', 'timeline', 'scrollSync', 'auto'];
+      const missing = names.filter(n => typeof M[n] !== 'function');
+      test('motion', 'preset library complete — every §5 preset is a function',
+        !missing.length, missing.join(',') || 'all present', 'all present');
+
+      // The single reduced-motion gate: off must mean END STATE, synchronously,
+      // with no animation objects — the one path all choreography shares.
+      M._forceOff(true);
+      try {
+        test('motion', 'gate reports off under _forceOff', M.on() === false, M.on(), 'false');
+        const el = document.createElement('div');
+        el.style.opacity = '0'; el.style.transform = 'translateY(12px)';
+        M.reveal(el);
+        test('motion', 'gate off: reveal applies the end state synchronously',
+          el.style.opacity === '' && el.style.transform === '',
+          `opacity "${el.style.opacity}", transform "${el.style.transform}"`, 'inline opacity/transform cleared');
+        const c = document.createElement('span');
+        M.count(c, 1234);
+        test('motion', 'gate off: counter renders the final formatted value immediately',
+          c.textContent === '1234', c.textContent, '1234');
+        const tl = M.timeline();
+        let tlOK = !!tl && typeof tl.add === 'function';
+        try { tl.add(); tl.init(); tl.play(); tl.pause(); tl.refresh(); tl.revert(); }
+        catch (e) { tlOK = false; }
+        test('motion', 'gate off: timeline() returns an inert object with callable methods',
+          tlOK, tlOK ? 'no-op surface callable' : 'method threw or missing', 'no-op surface callable');
+      } finally { M._forceOff(false); }
+    }
+
+    /* ============ porch (browser only — landing workstream, guarded on BB.Porch) ============ */
+    if (BB.Porch && BB.Porch._gateDecision && BB.Porch._buildTracks) {
+      const P = BB.Porch;
+      // Gate matrix (front-porch §4d): returning users, #d= share links, and
+      // ?app arrivals bypass pre-paint; reduced motion = static parity.
+      let bad = null, combos = 0;
+      for (const seen of [false, true]) for (const reduced of [false, true])
+        for (const hash of ['', '#d=BB4abc', '#cut;split=58']) for (const search of ['', '?app', '?utm=x']) {
+          combos++;
+          const d = P._gateDecision(seen, reduced, hash, search);
+          const expShow = !seen && !hash.startsWith('#d=') && search !== '?app';
+          if (d.show !== expShow || d.static !== (expShow && reduced)) {
+            bad = `seen=${seen} reduced=${reduced} hash="${hash}" search="${search}" → ${JSON.stringify(d)}`;
+          }
+        }
+      test('porch', `gate matrix: ${combos} combos — returning/share-link/?app bypass, reduced = static parity`,
+        !bad, bad || 'all correct', 'all correct');
+
+      // The track table (§16a): continuous props tile p∈[0,1] with no gap or
+      // overlap; switch thresholds strictly monotone per prop.
+      const audit = table => {
+        const cont = new Map(), sws = new Map();
+        for (const r of table) {
+          if (r.p0 > r.p1) return `${r.prop} runs backward at ${r.p0}`;
+          const m = r.p1 > r.p0 ? cont : sws;
+          m.set(r.prop, (m.get(r.prop) || []).concat(r));
+        }
+        for (const [prop, rows] of cont) {
+          const s = [...rows].sort((x, y) => x.p0 - y.p0);
+          if (Math.abs(s[0].p0) > 1e-9 || Math.abs(s[s.length - 1].p1 - 1) > 1e-9) return `${prop} does not span [0,1]`;
+          for (let i = 1; i < s.length; i++) if (Math.abs(s[i].p0 - s[i - 1].p1) > 1e-9) return `${prop} gap/overlap at p=${s[i].p0}`;
+        }
+        for (const rows of sws.values()) {
+          for (let i = 1; i < rows.length; i++) if (!(rows[i].p0 > rows[i - 1].p0)) return `switch ${rows[i].prop} not monotone at p=${rows[i].p0}`;
+        }
+        return null;
+      };
+      const dflt = audit(P._buildTracks());
+      test('porch', 'default track table covers p∈[0,1] monotone, no same-property overlap',
+        !dflt, dflt || 'tiled + monotone', 'tiled + monotone');
+      const live = audit(P._tracks);
+      test('porch', 'live track table (measured anchors) holds the same contract',
+        !live, live || 'tiled + monotone', 'tiled + monotone');
+    }
+
     /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
     if (BB.Engine && BB.Engine.minDolly) {
       // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction

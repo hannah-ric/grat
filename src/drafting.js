@@ -37,8 +37,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
-  /* One projected part → { shape (svg element string body), depth, uv bounds } */
-  function project(part, V) {
+  /* One projected part → { shape (svg element string body), depth, uv bounds }
+   * pl carries the optional animatable attribute — '' emits byte-identical
+   * legacy markup. */
+  function project(part, V, pl = '') {
     const cs = corners(part);
     const pts = cs.map(c => [V.u(c), V.v(c)]);
     const depth = cs.reduce((n, c) => n + V.depth(c), 0) / cs.length;
@@ -46,47 +48,51 @@ var BB = globalThis.BB = globalThis.BB || {};
     let shape;
     if (rotated) {
       const hull = BB.Geo.convexHull2D(pts);
-      shape = `<polygon points="${hull.map(p => nf(p[0]) + ',' + nf(p[1])).join(' ')}"/>`;
+      shape = `<polygon points="${hull.map(p => nf(p[0]) + ',' + nf(p[1])).join(' ')}"${pl}/>`;
     } else {
       const us = pts.map(p => p[0]), vs = pts.map(p => p[1]);
       const u0 = Math.min(...us), v0 = Math.min(...vs);
-      shape = `<rect x="${nf(u0)}" y="${nf(v0)}" width="${nf(Math.max(...us) - u0)}" height="${nf(Math.max(...vs) - v0)}"/>`;
+      shape = `<rect x="${nf(u0)}" y="${nf(v0)}" width="${nf(Math.max(...us) - u0)}" height="${nf(Math.max(...vs) - v0)}"${pl}/>`;
     }
     return { shape, depth, us: pts.map(p => p[0]), vs: pts.map(p => p[1]) };
   }
 
   /* Architectural dimension: extension lines + slash ticks + centered label.
    * Horizontal along the bottom (dir 'h') or vertical along the left ('v'). */
-  function dimension(a, b, off, dir, text) {
+  function dimension(a, b, off, dir, text, pl = '') {
     const T = 7; // tick half-length
     if (dir === 'h') {
       const y = off;
       return `<g class="dim">
-        <line x1="${nf(a.u)}" y1="${nf(a.v)}" x2="${nf(a.u)}" y2="${nf(y + 6)}"/>
-        <line x1="${nf(b.u)}" y1="${nf(b.v)}" x2="${nf(b.u)}" y2="${nf(y + 6)}"/>
-        <line x1="${nf(a.u)}" y1="${nf(y)}" x2="${nf(b.u)}" y2="${nf(y)}"/>
-        <line x1="${nf(a.u - T)}" y1="${nf(y + T)}" x2="${nf(a.u + T)}" y2="${nf(y - T)}"/>
-        <line x1="${nf(b.u - T)}" y1="${nf(y + T)}" x2="${nf(b.u + T)}" y2="${nf(y - T)}"/>
+        <line x1="${nf(a.u)}" y1="${nf(a.v)}" x2="${nf(a.u)}" y2="${nf(y + 6)}"${pl}/>
+        <line x1="${nf(b.u)}" y1="${nf(b.v)}" x2="${nf(b.u)}" y2="${nf(y + 6)}"${pl}/>
+        <line x1="${nf(a.u)}" y1="${nf(y)}" x2="${nf(b.u)}" y2="${nf(y)}"${pl}/>
+        <line x1="${nf(a.u - T)}" y1="${nf(y + T)}" x2="${nf(a.u + T)}" y2="${nf(y - T)}"${pl}/>
+        <line x1="${nf(b.u - T)}" y1="${nf(y + T)}" x2="${nf(b.u + T)}" y2="${nf(y - T)}"${pl}/>
         <text x="${nf((a.u + b.u) / 2)}" y="${nf(y - 8)}" text-anchor="middle">${text}</text>
       </g>`;
     }
     const x = off;
     return `<g class="dim">
-      <line x1="${nf(a.u)}" y1="${nf(a.v)}" x2="${nf(x - 6)}" y2="${nf(a.v)}"/>
-      <line x1="${nf(b.u)}" y1="${nf(b.v)}" x2="${nf(x - 6)}" y2="${nf(b.v)}"/>
-      <line x1="${nf(x)}" y1="${nf(a.v)}" x2="${nf(x)}" y2="${nf(b.v)}"/>
-      <line x1="${nf(x - T)}" y1="${nf(a.v + T)}" x2="${nf(x + T)}" y2="${nf(a.v - T)}"/>
-      <line x1="${nf(x - T)}" y1="${nf(b.v + T)}" x2="${nf(x + T)}" y2="${nf(b.v - T)}"/>
+      <line x1="${nf(a.u)}" y1="${nf(a.v)}" x2="${nf(x - 6)}" y2="${nf(a.v)}"${pl}/>
+      <line x1="${nf(b.u)}" y1="${nf(b.v)}" x2="${nf(x - 6)}" y2="${nf(b.v)}"${pl}/>
+      <line x1="${nf(x)}" y1="${nf(a.v)}" x2="${nf(x)}" y2="${nf(b.v)}"${pl}/>
+      <line x1="${nf(x - T)}" y1="${nf(a.v + T)}" x2="${nf(x + T)}" y2="${nf(a.v - T)}"${pl}/>
+      <line x1="${nf(x - T)}" y1="${nf(b.v + T)}" x2="${nf(x + T)}" y2="${nf(b.v - T)}"${pl}/>
       <text x="${nf(x - 8)}" y="${nf((a.v + b.v) / 2)}" text-anchor="middle" transform="rotate(-90 ${nf(x - 8)} ${nf((a.v + b.v) / 2)})">${text}</text>
     </g>`;
   }
 
-  /* Full dimensioned elevation. Returns a standalone themable <svg>. */
-  function elevationSVG(spec, model, view, fmt) {
+  /* Full dimensioned elevation. Returns a standalone themable <svg>.
+   * opts.animatable adds pathLength="1" to every stroke shape so
+   * BB.Motion.draw can run the linework in; default OFF keeps the output
+   * byte-identical (golden-proved) for exports, print, and saved sheets. */
+  function elevationSVG(spec, model, view, fmt, opts) {
+    const pl = opts && opts.animatable ? ' pathLength="1"' : '';
     const V = VIEWS[view] || VIEWS.front;
     const projected = model.parts
       .filter(p => p.role !== 'pull')
-      .map(p => project(p, V))
+      .map(p => project(p, V, pl))
       .sort((a, b) => a.depth - b.depth);
     if (!projected.length) return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
 
@@ -103,9 +109,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     const off = span * 0.1 + 40;
     const dims = [
       dimension({ u: uMin, v: vMax }, { u: uMax, v: vMax }, vMax + off, 'h',
-        fmt(model.bounds[V.hAxis])),
+        fmt(model.bounds[V.hAxis]), pl),
       dimension({ u: uMin, v: vMin }, { u: uMin, v: vMax }, uMin - off, 'v',
-        fmt(model.bounds[V.vAxis]))
+        fmt(model.bounds[V.vAxis]), pl)
     ];
 
     // Front view: drawer openings as dashed callouts with height labels.
@@ -113,7 +119,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (view === 'front' && model.openings && model.openings.length) {
       openings = model.openings.map(op => {
         const u0 = (op.x || 0) - op.w / 2, v0 = -op.yTop;
-        return `<g class="opening"><rect x="${nf(u0)}" y="${nf(v0)}" width="${nf(op.w)}" height="${nf(op.h)}"/>` +
+        return `<g class="opening"><rect x="${nf(u0)}" y="${nf(v0)}" width="${nf(op.w)}" height="${nf(op.h)}"${pl}/>` +
           `<text x="${nf(u0 + op.w / 2)}" y="${nf(v0 + op.h / 2 + 5)}" text-anchor="middle">${fmt(op.h)}</text></g>`;
       }).join('\n    ');
     }

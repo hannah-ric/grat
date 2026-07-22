@@ -59,6 +59,62 @@ var BB = globalThis.BB = globalThis.BB || {};
   const fmt = mm => Units.fmtLength(mm);
   const fmtS = mm => Units.fmtSmall(mm);
 
+  /* ---------------- motion render keys (overhaul design-language §5/§9) ----
+   * All in-app motion rides BB.Motion presets; these keys decide WHEN a
+   * one-time preset (cascade/count/draw/settle) may fire: on a design-
+   * identity render — commit, restore, project load (design epoch) — or
+   * when the user brings a plan view on stage (nav epoch); NEVER on
+   * recomputes of the same view (preview drags, price/climate/load edits,
+   * unit flips, resizes, playback scrubs — none of which bump an epoch).
+   * Per-design surfaces (Overview counters/drawing tile, Safety settle,
+   * summary strips) key on the design epoch alone: they play on the first
+   * VISIBLE render of a design, static after. Tab surfaces (row cascades,
+   * rule draws) add the nav epoch, so re-opening a tab replays its entrance
+   * while same-view re-renders never re-stagger. A hidden panel never burns
+   * a key (design mode hides .panel); modal surfaces (species compare) opt
+   * out via opts.modal and reset on dialog open. Presets self-gate under
+   * reduced motion — keys pick when to invoke, never how it degrades. */
+  const Motion = BB.Motion;
+  const motionKeys = { design: 0, nav: 0, seen: Object.create(null) };
+  function motionOnce(surface, opts) {
+    opts = opts || {};
+    if (!Motion) return false;
+    if (!opts.modal && (state.mode !== 'plan' || state.buildMode)) return false;
+    const key = 'd' + motionKeys.design + (opts.perDesign ? '' : ':n' + motionKeys.nav);
+    if (motionKeys.seen[surface] === key) return false;
+    motionKeys.seen[surface] = key;
+    return true;
+  }
+
+  /* The .ledger head band (§4/§9): kicker title + mono summary strip +
+   * drawn rule. sums: [{to, label, fmt?}] — dimensional fmts MUST be
+   * BB.Units formatters (display boundary); default fmt is plain integer.
+   * fx.count rolls the strip (gated per design), fx.draw runs the rule in
+   * (gated per view entrance); without fx the band rests complete — which
+   * is also the reduced-motion end state. */
+  function ledgerHead(title, sums, fx) {
+    fx = fx || {};
+    const wrap = el('div', 'ledger');
+    const head = el('div', 'ledger-head');
+    head.append(el('h3', 'kicker', esc(title)));
+    if (sums && sums.length) {
+      const strip = el('span', 'ledger-sum counter');
+      sums.forEach((s, i) => {
+        const f = s.fmt || (v => String(Math.round(v)));
+        // Rolling strips paint f(0) first (no final-value flash); the off
+        // path lets count() set the end state synchronously.
+        const n = el('span', '', esc(f(fx.count && Motion.on() ? 0 : s.to)));
+        if (fx.count) Motion.count(n, s.to, { fmt: f });
+        strip.append(n, document.createTextNode((s.label || '') + (i < sums.length - 1 ? ' · ' : '')));
+      });
+      head.append(strip);
+    }
+    const rule = el('div', 'ledger-rule');
+    wrap.append(head, rule);
+    if (fx.draw) Motion.rule(rule);
+    return wrap;
+  }
+
   /* ---------------- pipeline ---------------- */
   function runPipeline(raw) {
     const spec = Spec.correctSpec(raw);
@@ -104,6 +160,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.previewing = false; // any pending slider preview is superseded by this commit
     state.advisoriesExpanded = false; // a new change re-folds the warning stack
     state.hasDesign = true; // every accepted change past the boot seed is a chosen design (C-02)
+    motionKeys.design++; // a design-identity render: one-time presets may replay
     adopt(r);
     state.history.push(r.spec, source, summary);
     renderAll();
@@ -135,6 +192,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     exitPlayback();
     clearCompare(); // undo/redo/restore must never leave a stale ghost + banner
     state.previewing = false; // a restore discards any uncommitted preview
+    motionKeys.design++; // a restored design is a fresh design identity
     const r = runPipeline(spec);
     adopt(r);
     renderAll();
@@ -490,12 +548,17 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- Plan overview ----------------
    * Four honest numbers straight from the computed state, then ONE next
    * action. Everything here is a pure read of what the pipeline already
-   * derived — no new math, no stored copies. */
+   * derived — no new math, no stored copies.
+   * §9.1/§9.4: the drafting cover sheet — the safety line wears the spec-
+   * plate treatment (capsule settles once per design), the stat tiles count
+   * once per design, and a drawing tile draws the real front elevation in
+   * once per design — static after, instantly complete under reduced motion. */
   function renderOverview(root) {
     if (!state.cut.length) {
       emptyState(root, 'No design yet.', 'Describe a piece in the chat or pick a starter — the plan builds itself.');
       return;
     }
+    const once = motionOnce('overview', { perDesign: true });
     const sum = state.integrity.summary;
     const plan = state.stockPlan;
     const boards = plan ? plan.boards.length + plan.sheets.length : 0;
@@ -509,10 +572,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         : verdict === 'advisory'
           ? 'This design passes the required strength checks, with notes worth reading.'
           : 'This design passes the required strength checks.';
+    const money = v => '$' + Math.round(v);
+    const int = v => String(Math.round(v));
     const cards = [
-      { label: 'Parts to cut', value: String(partCount), go: 'cut', aria: 'Open the cut list' },
-      { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : String(boards), go: 'stock', aria: 'Open the buying plan' },
-      { label: 'Estimated cost', value: plan ? '$' + plan.totalCost.toFixed(0) : '—', go: 'stock', aria: 'Open buying and pricing' },
+      { label: 'Parts to cut', value: int(partCount), count: partCount, fmt: int, go: 'cut', aria: 'Open the cut list' },
+      { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : int(boards), count: plan && plan.errors.length ? null : boards, fmt: int, go: 'stock', aria: 'Open the buying plan' },
+      { label: 'Estimated cost', value: plan ? money(plan.totalCost) : '—', count: plan ? plan.totalCost : null, fmt: money, go: 'stock', aria: 'Open buying and pricing' },
       { label: 'Safety', value: verdict === 'anchor' ? 'ANCHOR REQUIRED' : verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
     ];
     const grid = el('div', 'overview-grid');
@@ -520,13 +585,42 @@ var BB = globalThis.BB = globalThis.BB || {};
       const b = el('button', 'overview-card' + (c.stamp ? ' verdict-' + c.stamp : ''));
       b.type = 'button';
       b.setAttribute('aria-label', `${c.label}: ${c.value}. ${c.aria}`);
-      b.innerHTML = `<span class="ov-value${c.stamp ? ' stamp ' + c.stamp : ''}">${esc(c.value)}</span><span class="ov-label">${esc(c.label)}</span>`;
+      const rolling = once && !c.stamp && c.count != null && Motion.on();
+      // A rolling tile paints fmt(0) for its first frame (no final-value
+      // flash); the accessible name always carries the final value.
+      b.innerHTML = `<span class="ov-value${c.stamp ? ' stamp ' + c.stamp : ' counter'}">${esc(rolling ? c.fmt(0) : c.value)}</span><span class="ov-label">${esc(c.label)}</span>`;
+      if (once) {
+        const v = b.querySelector('.ov-value');
+        if (c.stamp) Motion.settle(v);
+        else if (c.count != null) Motion.count(v, c.count, { fmt: c.fmt });
+      }
       b.onclick = () => selectTab(c.go);
       grid.append(b);
     }
     root.append(el('h3', '', 'Overview'));
-    root.append(el('p', 'lede', verdictText + (sum.fails ? '' : ' Every number below comes from the same engineering pass.')));
+    // The safety line as a spec plate (§9.4) — every value a live read.
+    const checks = state.integrity.checks;
+    const plate = el('div', 'spec-plate overview-verdict');
+    plate.innerHTML = `<span class="kicker">Structural verdict</span>
+      <div class="spec-plate-row verdict-row">
+        <span class="stamp ${verdict}">${verdict === 'anchor' ? 'anchor required' : verdict}</span>
+        <span class="verdict-text">${esc(verdictText + (sum.fails ? '' : ' Every number below comes from the same engineering pass.'))}</span>
+      </div>
+      <div class="spec-plate-row">
+        <span class="spec-plate-label">Checks passed</span>
+        <span class="spec-plate-value">${checks.length - sum.fails} of ${checks.length}</span>
+      </div>`;
+    root.append(plate);
+    if (once) Motion.settle(plate.querySelector('.stamp'));
     root.append(grid);
+    // Drawing tile (§9.1): the real front elevation from the same drafting
+    // engine as the print sheet; animatable adds pathLength only, so without
+    // a draw call the linework rests complete.
+    const drawTile = el('div', 'overview-draw');
+    drawTile.innerHTML = `<span class="kicker">Front elevation · drawn from the live model</span>` +
+      BB.Drafting.elevationSVG(state.spec, state.model, 'front', fmt, { animatable: true });
+    root.append(drawTile);
+    if (once) Motion.draw(drawTile.querySelector('svg'));
     // One clear next action, derived from where the project actually stands.
     const pct = progressPct();
     const next = sum.fails
@@ -578,7 +672,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const describe = el('button', 'btn primary', 'Describe a piece');
     describe.onclick = () => focusChat();
     const starters = el('button', 'btn', 'Browse starters');
-    starters.onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    starters.onclick = openGalleryDialog;
     row.append(describe, starters);
     box.append(row);
     root.append(box);
@@ -635,13 +729,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
   }
 
+  /* The cut list is the flagship instrument (§9.2): ledger head band, drawn
+   * rule, summary strip counted once per design, one-time row cascade per
+   * view entrance — all straight reads of plan/packing state already in
+   * `state`; recomputes of the same view re-render statically. */
   function renderCut(root) {
-    root.append(el('h3', '', 'Cut list'));
-    root.append(el('p', 'lede', `Every part, ready for the saw. Tap a dimension to see where it comes from. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
+    const cascade = motionOnce('cut');                          // tab open / design change
+    const counts = motionOnce('cut-sum', { perDesign: true });  // strip rolls once per design
+    const plan = state.stockPlan;
+    root.append(ledgerHead('Cut list · every part, ready for the saw',
+      state.cut.length && plan ? [
+        { to: state.cut.reduce((n, r) => n + r.qty, 0), label: ' parts' },
+        { to: plan.boards.length + plan.sheets.length, label: ' boards' },
+        { to: plan.bdft ? plan.bdft.exact : 0, fmt: v => Units.fmtBoardFeet(v) }
+      ] : null, { count: counts, draw: cascade }));
     if (!state.cut.length) {
       emptyState(root, 'Nothing on the saw bench yet.', 'Describe a piece and the cut list writes itself.');
       return;
     }
+    root.append(el('p', 'lede', `Tap a dimension to see where it comes from. Stock: ${esc(K.WOOD_SPECIES[state.spec.wood.species].label)} + ${esc((K.WOOD_SPECIES[state.spec.wood.sheetSpecies] || K.WOOD_SPECIES.baltic_birch).label)}.`));
     const dim = (r, v, i, what) => `<button type="button" class="prov-btn num" data-prov="${i}" aria-label="${esc(r.name)} ${what} ${esc(fmt(v))} — show the formula">${fmt(v)}</button>`;
     const wireProv = box => box.querySelectorAll('.prov-btn').forEach(b => {
       b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
@@ -650,7 +756,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Phones read cards, not seven-column tables: name, qty, dimensions,
       // material — and "Why this length?" opens the same provenance dialog.
       const list = el('div', 'cut-cards');
-      list.innerHTML = state.cut.map((r, i) => `<div class="cut-card">
+      list.setAttribute('data-motion-group', '');
+      list.innerHTML = state.cut.map((r, i) => `<div class="cut-card" data-motion="cascade">
         <div class="cut-card-head"><span class="cc-name">${esc(r.name)}</span><span class="cc-qty">× ${r.qty}</span></div>
         <div class="cc-dims">${dim(r, r.L, i, 'length')} × ${dim(r, r.W, i, 'width')} × ${dim(r, r.T, i, 'thickness')}</div>
         <div class="cc-meta">${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}${r.note ? ' · ' + esc(r.note) : ''}</div>
@@ -661,24 +768,38 @@ var BB = globalThis.BB = globalThis.BB || {};
         b.addEventListener('click', e => { e.stopPropagation(); showProv(state.cut[+b.dataset.prov], b); });
       });
       root.append(list);
+      if (cascade) { Motion.auto(list); list.dataset.cascaded = '1'; }
       return;
     }
     const scroll = el('div', 'table-scroll');
-    const rows = state.cut.map((r, i) => `<tr>
+    const rows = state.cut.map((r, i) => `<tr data-motion="cascade">
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
       <td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td>
       <td class="txt-muted txt-small">${esc(r.note || '')}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Part</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Length</th><th scope="col" class="num">Width</th><th scope="col" class="num">Thick</th><th scope="col">Material</th><th scope="col">Notes</th></tr></thead><tbody data-motion-group>${rows}</tbody></table>`;
     wireProv(scroll);
     root.append(scroll);
+    if (cascade) { Motion.auto(scroll); scroll.dataset.cascaded = '1'; }
   }
 
-  /* ---------------- Stock tab (Phase 4 item 3) ---------------- */
+  /* ---------------- Stock tab (Phase 4 item 3) ----------------
+   * Ledger voice (overhaul §9.2): kicker head band + drawn rule + counted
+   * mono summary, one-time cascade on the shopping rows. */
   function renderStock(root) {
+    const cascade = motionOnce('buy');
+    const counts = motionOnce('buy-sum', { perDesign: true });
     const plan = state.stockPlan;
     const species = state.spec.wood.species;
-    root.append(el('h3', '', 'Stock — what to buy, and how to break it down'));
+    const money = v => '$' + Math.round(v);
+    root.append(ledgerHead('Buying plan · what to buy, how to break it down',
+      plan && plan.shopping.length ? [
+        plan.mode === 'rough'
+          ? { to: plan.bdft.withWaste, fmt: v => Units.fmtBoardFeet(v) }
+          : { to: plan.boards.length, label: ' boards' },
+        { to: plan.sheets.length, label: ' sheets' },
+        { to: plan.totalCost, fmt: money }
+      ] : null, { count: counts, draw: cascade }));
     root.append(el('p', 'lede', 'Here is what to buy at the lumber yard, and how to break each board down. Kerf and end trim are already included.'));
 
     const controls = el('div', 'stock-controls');
@@ -705,9 +826,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     const scroll = el('div', 'table-scroll');
     // composite stock names ("Cherry 1×6 × 6 ft (3/4 × 5 1/2 in)") are
     // machine values — the whole cell goes mono (B-03)
-    const shopRows = plan.shopping.map(s => `<tr><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${shopRows || '<tr><td colspan="4" class="txt-muted">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
+    const shopRows = plan.shopping.map(s => `<tr data-motion="cascade"><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody data-motion-group>${shopRows || '<tr><td colspan="4" class="txt-muted">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
     root.append(scroll);
+    if (cascade) { Motion.auto(scroll); scroll.dataset.cascaded = '1'; }
     const waste = [];
     if (plan.wasteSolidPct != null) waste.push(`solid waste <span class="mv">${plan.wasteSolidPct}%</span>`);
     if (plan.wasteSheetPct != null) waste.push(`sheet waste <span class="mv">${plan.wasteSheetPct}%</span>`);
@@ -808,7 +930,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function renderBom(root) {
-    root.append(el('h3', '', 'Materials & cost'));
+    const cascade = motionOnce('bom');
+    const counts = motionOnce('bom-sum', { perDesign: true });
+    root.append(ledgerHead('Materials & cost · down to the screws',
+      state.bomData.items.length ? [
+        { to: state.bomData.items.length, label: ' lines' },
+        { to: state.bomData.total, fmt: v => '$' + Math.round(v) }
+      ] : null, { count: counts, draw: cascade }));
     root.append(el('p', 'lede', 'Priced as actual purchasable units from the stock optimizer; board-foot math retained as a reference line.'));
     if (!state.bomData.items.length) {
       emptyState(root, 'Nothing to buy yet.', 'Describe a piece and the shopping list prices itself.');
@@ -821,13 +949,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const scroll = el('div', 'table-scroll');
     // labels and detail strings carry lengths and per-unit prices — mono
     // machine-value cells (B-03)
-    const rows = state.bomData.items.map(i => `<tr>
+    const rows = state.bomData.items.map(i => `<tr data-motion="cascade">
       <td><span class="kind-tag">${esc(i.kind)}</span></td>
       <td class="mv">${esc(i.label)}</td><td class="num">${i.qty}</td>
       <td class="mv txt-muted">${esc(i.detail || '')}</td>
       <td class="num">${i.price ? '$' + (Math.round(i.price * 100) / 100).toFixed(2) : '—'}</td></tr>`).join('');
-    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody>${rows}</tbody></table>`;
+    scroll.innerHTML = `<table class="data"><thead><tr><th scope="col"><span class="sr-only">Kind</span></th><th scope="col">Item</th><th scope="col" class="num">Qty</th><th scope="col">Detail</th><th scope="col" class="num">Cost</th></tr></thead><tbody data-motion-group>${rows}</tbody></table>`;
     root.append(scroll);
+    if (cascade) Motion.auto(scroll);
     const tot = el('div', 'bom-total');
     tot.innerHTML = `<span>Estimated materials cost</span><strong>$${state.bomData.total.toFixed(2)}</strong>`;
     root.append(tot);
@@ -885,7 +1014,13 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   function renderAssembly(root) {
-    root.append(el('h3', '', 'Assembly'));
+    // Ledger voice + one-time step cascade (2b treatment 4); playback
+    // surfaces and every behavior untouched.
+    const cascade = motionOnce('assembly');
+    const counts = motionOnce('assembly-sum', { perDesign: true });
+    root.append(ledgerHead('Assembly · in build order',
+      state.steps.length ? [{ to: state.steps.length, label: ' steps' }] : null,
+      { count: counts, draw: cascade }));
     root.append(el('p', 'lede', 'Press play on a step to watch its parts fly into place — the joint locations glow. Tap any glowing dot for a 3D close-up of exactly what to cut and where.'));
     if (!state.steps.length) {
       emptyState(root, 'No steps to walk yet.', 'Once a design has parts, assembly writes itself in build order.');
@@ -902,9 +1037,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       <details class="tool-wall"><summary>Tools for this build (${tools.length})</summary><ul>${tools.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
     root.append(facts);
     const list = el('ol', 'step-list');
+    list.setAttribute('data-motion-group', '');
     state.steps.forEach((s, i) => {
       const item = el('li', 'step-item' + (i === state.playbackIndex ? ' active' : ''));
       item.dataset.step = i;
+      item.dataset.motion = 'cascade';
       const num = el('div', 'step-num');
       const body = el('div', 'step-body');
       const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
@@ -928,6 +1065,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       list.append(item);
     });
     root.append(list);
+    if (cascade) { Motion.auto(list); list.dataset.cascaded = '1'; }
     root.querySelectorAll('.why-joint > button').forEach(b => {
       b.addEventListener('click', e => {
         e.stopPropagation();
@@ -946,6 +1084,10 @@ var BB = globalThis.BB = globalThis.BB || {};
    * intermediate/advanced, closed for beginners so jargon is never the
    * first layer while fixes stay one glance away. */
   function renderIntegrity(root) {
+    // Overhaul (§9.3, 2b treatment 3): the verdict capsule settles and the
+    // surfaced fix-cards reveal on the first render of a given design;
+    // layering, copy, and every behavior stay untouched.
+    const once = motionOnce('integrity', { perDesign: true });
     const integ = state.integrity;
     const overall = integ.summary.verdict; // engine rollup (audit M-18): fail > anchor > advisory > pass
     const beginner = state.spec.meta.level === 'beginner';
@@ -960,10 +1102,13 @@ var BB = globalThis.BB = globalThis.BB || {};
             ? 'This design is safe only when anchored to the wall. The anti-tip anchor is mandatory — it is in the BOM and the assembly steps, not optional.'
             : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
     root.append(summary);
+    if (once) Motion.settle(summary.querySelector('.stamp'));
     // Failing checks never hide — and neither does a check that mandates the
     // wall anchor (audit M-18): plain card, above the fold, at every level.
     for (const c of integ.checks.filter(x => x.status === 'fail' || x.anchor)) {
-      root.append(checkCard(c, { full: !beginner }));
+      const card = checkCard(c, { full: !beginner });
+      root.append(card);
+      if (once) Motion.reveal(card);
     }
     const details = document.createElement('details');
     details.className = 'integrity-details';
@@ -1370,8 +1515,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (opts.caveat) chipHTML.push(`<span class="chip caveat">${esc(opts.caveat)}</span>`);
     const hasDiff = (chips || []).length > 0;
-    if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title">Changed</span>' : ''}${chipHTML.join('')}</div>`;
-    return chatMsg('bot', html);
+    if (chipHTML.length) html += `<div class="chips${hasDiff ? ' diff-card' : ''}">${hasDiff ? '<span class="diff-title kicker">Changed</span>' : ''}${chipHTML.join('')}</div>`;
+    const m = chatMsg('bot', html);
+    // Diff-card chips cascade in (≤360 ms, 2b treatment 5); styles.css hands
+    // their CSS entrance to the preset so nothing double-animates. Each bot
+    // message is fresh DOM, so this is naturally once per reply.
+    if (hasDiff && Motion) Motion.cascade(m.querySelectorAll('.chips.diff-card .chip'));
+    return m;
   }
   /* ---------------- diff-chip humanizer (C-05) ----------------
    * The "Changed" ledger speaks user vocabulary. Spec.diffSpecs hands the
@@ -1421,6 +1571,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     b.onclick = () => selectTab('overview');
     row.append(b);
     m.append(row);
+    if (Motion) Motion.pop(b); // the next step announces itself (2b treatment 5)
     // The phone chat is a collapsed sheet — a CTA buried in its log is not
     // an affordance. Float the same action under the viewer until taken.
     if (matchMedia('(max-width: 880px)').matches && !$('chatPanel').classList.contains('expanded')) {
@@ -1429,7 +1580,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       pill.id = 'planCtaPill';
       pill.onclick = () => selectTab('overview'); // setMode('plan') removes the pill
       $('viewportWrap').append(pill);
+      if (Motion) Motion.pop(pill);
     }
+  }
+  /* One-shot glint on the Plan segment's state dot when fresh results land
+   * while the user sits in Design mode (2b treatment 5) — the journey's
+   * next station acknowledges the delivery, nothing loops. */
+  function glintPlanSegment() {
+    if (state.buildMode || state.mode !== 'design' || !Motion) return;
+    const seg = $('mode-plan');
+    const dot = seg && seg.querySelector('.dot');
+    if (dot) Motion.pop(dot);
   }
   function removePlanCtaPill() {
     const pill = $('planCtaPill');
@@ -1687,6 +1848,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         botSay('That change would leave the design unbuildable — I’ve left it as it was. Try a gentler dimension.', []);
         return;
       }
+      glintPlanSegment(); // fresh results landed while the plans sit folded away
       const realDiffs = Spec.diffSpecs(before, state.spec);
       const chips = humanizeDiffs(realDiffs); // user vocabulary, never wire names (C-05)
       // The badge reflects what actually just happened — the strongest
@@ -2152,6 +2314,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     offerPlanCta(); // the loaded design's plans are one explicit tap away (C-03)
   }
+  /* Every starters-dialog opener lands here: render, open, and the one-time
+   * card cascade (design-language §5 — modal surfaces reset per open). */
+  function openGalleryDialog() {
+    renderGallery();
+    openScrim('galleryScrim');
+    delete motionKeys.seen.gallery;
+    if (motionOnce('gallery', { modal: true })) Motion.cascade($('galleryGrid').children);
+  }
+
   function renderGallery() {
     const grid = $('galleryGrid');
     grid.textContent = '';
@@ -2276,6 +2447,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const thumbList = await Promise.all(idx.map(r => Store.loadThumb(r.id).catch(() => null)));
     const thumbById = {};
     idx.forEach((r, i) => { thumbById[r.id] = thumbList[i] || r.thumb || null; });
+    delete motionKeys.seen.projects; // modal surface: the cascade resets per open (§5)
     for (const row of idx) {
       const card = el('div', 'project-card' + (state.project && state.project.id === row.id ? ' current' : ''));
       const thumbSrc = thumbById[row.id];
@@ -2333,6 +2505,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       card.append(actions);
       grid.append(card);
     }
+    if (motionOnce('projects', { modal: true })) Motion.cascade(grid.children);
   }
 
   async function loadProjectIntoApp(id) {
@@ -2363,6 +2536,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (state.prefs4.level && cur.meta && cur.meta.level !== state.prefs4.level) {
       cur = Spec.deepMerge(cur, { meta: { level: state.prefs4.level } });
     }
+    motionKeys.design++; // an opened project is a fresh design identity
     const r = runPipeline(cur);
     adopt(r);
     renderAll();
@@ -2442,6 +2616,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const cur = state.spec.wood.species;
       state.speciesPick = [cur, ...['hard_maple', 'walnut', 'pine'].filter(s => s !== cur)].slice(0, 3);
     }
+    // Each dialog open replays the ledger entrance once; pick toggles
+    // re-render the same view statically (modal render key).
+    delete motionKeys.seen.species;
     renderSpeciesPick();
     renderSpeciesTable();
     openScrim('speciesScrim');
@@ -2468,7 +2645,19 @@ var BB = globalThis.BB = globalThis.BB || {};
       prices: state.prices, stockMode: state.prefs4.stockMode,
       loadChoices: state.loadChoices, defaultLoad: 'auto', climate: state.prefs4.climate
     });
-    if (!cols.length) { wrap.innerHTML = '<p class="sub">Pick up to three species above.</p>'; return; }
+    // Ledger voice on the compare table (§9.2): kicker head band + drawn
+    // rule above the table, one-time row cascade per dialog open.
+    let head = $('speciesLedger');
+    if (!head) {
+      head = el('div', 'ledger species-ledger');
+      head.id = 'speciesLedger';
+      wrap.before(head);
+    }
+    if (!cols.length) { head.hidden = true; wrap.innerHTML = '<p class="sub">Pick up to three species above.</p>'; return; }
+    const fire = motionOnce('species', { modal: true });
+    head.hidden = false;
+    head.innerHTML = `<div class="ledger-head"><span class="kicker">Species compare · same design, recomputed live</span><span class="ledger-sum">${cols.length} species</span></div><div class="ledger-rule"></div>`;
+    if (fire) Motion.rule(head.querySelector('.ledger-rule'));
     const best = fn => {
       const vals = cols.map(fn).filter(v => v != null);
       return vals.length ? Math.min(...vals) : null;
@@ -2477,14 +2666,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     const maxSag = Math.max(...cols.map(c => c.sagMargin || 0));
     const cell = (v, isBest, suffix) => `<td class="num${isBest ? ' species-best' : ''}">${v}${suffix || ''}</td>`;
     wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
-      `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody>
-      <tr><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
-      <tr><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
-      <tr><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span class="txt-muted">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
-      <tr><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(esc(fmtS(c.movementMM)), c.movementMM === bestMove)).join('')}</tr>
-      <tr><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span class="txt-muted">${esc(c.duty)}</span>`)).join('')}</tr>
-      <tr><td>Failing checks</td>${cols.map(c => cell(c.fails, c.fails === 0)).join('')}</tr>
+      `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody data-motion-group>
+      <tr data-motion="cascade"><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
+      <tr data-motion="cascade"><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
+      <tr data-motion="cascade"><td>Sag margin (critical span)</td>${cols.map(c => cell(c.sagMargin == null ? '—' : c.sagMargin + '×', c.sagMargin === maxSag && maxSag > 0, c.worstSagMM != null ? ` <span class="txt-muted">(${esc(fmtS(c.worstSagMM))} over ${esc(fmt(c.span))})</span>` : '')).join('')}</tr>
+      <tr data-motion="cascade"><td>Seasonal movement (worst panel)</td>${cols.map(c => cell(esc(fmtS(c.movementMM)), c.movementMM === bestMove)).join('')}</tr>
+      <tr data-motion="cascade"><td>Janka surface duty</td>${cols.map(c => cell(c.janka + ' lbf', false, ` <span class="txt-muted">${esc(c.duty)}</span>`)).join('')}</tr>
+      <tr data-motion="cascade"><td>Failing checks</td>${cols.map(c => cell(c.fails, c.fails === 0)).join('')}</tr>
     </tbody></table>`;
+    if (fire) Motion.auto(wrap);
     wrap.querySelectorAll('.species-col-btn').forEach(b => {
       b.onclick = () => {
         merge({ wood: { species: b.dataset.sp } }, 'compare', ['species → ' + K.WOOD_SPECIES[b.dataset.sp].label]);
@@ -2586,6 +2776,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     map[key] = !map[key];
     btn.setAttribute('aria-pressed', String(!!map[key]));
     btn.querySelector('.box').innerHTML = map[key] ? BB.Icons.svg('check', 20) : '';
+    if (Motion) Motion.pop(btn.querySelector('.box')); // check acknowledgment (2b treatment 6)
     $('bmProgress').textContent = progressPct() + '% built';
     renderReadiness(); // the Build step tracks shop progress live
     scheduleAutosave();
@@ -2733,7 +2924,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (t.kind === 'step') return !!prog.steps[t.stepId];
     return t.checks.length > 0 && t.checks.every(c => prog.cuts[c.key]);
   }
-  function renderBmTask() {
+  function renderBmTask(opts) {
     const pager = $('bmPager');
     if (!pager) return;
     pager.textContent = '';
@@ -2784,6 +2975,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
     pager.append(card);
+    // Task transitions only (2b-6): Next/swipe reveals the incoming card
+    // (≤240 ms, interruptible); toggle/entry re-renders stay instant.
+    if (opts && opts.animate && Motion) Motion.reveal(card);
     $('bmTaskPos').textContent = `${state.bmTask + 1} of ${tasks.length}`;
     $('bmTaskPrev').disabled = state.bmTask === 0;
     $('bmTaskNext').textContent = state.bmTask === tasks.length - 1 ? 'Done' : 'Next';
@@ -2794,7 +2988,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const next = (state.bmTask || 0) + delta;
     if (next >= tasks.length) { exitBuildMode(); return; } // "Done" walks out of the shop
     state.bmTask = Math.max(0, next);
-    renderBmTask();
+    renderBmTask({ animate: true });
     $('bmPager').scrollTop = 0;
     scheduleAutosave(); // the new position persists like any other progress (C-08)
   }
@@ -2961,12 +3155,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   function setMode(m, opts) {
     if (m === 'build') { enterBuildMode(); return; }
     if (m === 'plan') removePlanCtaPill(); // the floating next-step is taken/answered (C-03)
+    if (m === 'plan' && state.mode !== 'plan') motionKeys.nav++; // plan views come on stage: entrances may replay
     state.mode = m === 'plan' ? 'plan' : 'design';
     document.body.dataset.mode = state.mode;
     if (state.mode === 'plan') autoSplitForPlanPhone();
     if (!(opts && opts.silent)) syncHash();
     renderReadiness();
-    if (state.mode === 'plan') { renderTabs(); renderPanel(); }
+    // norender: a caller (selectTab) that renders right after skips the
+    // duplicate pass — one render per entry, so a one-time entrance lands
+    // on the DOM the user actually sees.
+    if (state.mode === 'plan' && !(opts && opts.norender)) { renderTabs(); renderPanel(); }
   }
   function modeStates() {
     const sum = state.integrity.summary;
@@ -3107,8 +3305,11 @@ var BB = globalThis.BB = globalThis.BB || {};
    * until a "Learn why" link or the More menu opens it. */
   const TABS = ['overview', 'cut', 'stock', 'assembly', 'integrity', 'reference'];
   function selectTab(t) {
+    // Opening a view (a real tab change, or arriving from Design mode)
+    // replays its one-time entrance; re-selecting the visible tab does not.
+    if (state.tab !== t || state.mode !== 'plan') motionKeys.nav++;
     state.tab = t;
-    if (state.mode !== 'plan') setMode('plan');
+    if (state.mode !== 'plan') setMode('plan', { norender: true });
     renderTabs();
     renderPanel();
     // Narrow screens scroll the tab bar: the chosen tab must never sit
@@ -3352,8 +3553,33 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
-      showWelcome(projectCount > 0);
-      botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
+      const welcome = () => {
+        showWelcome(projectCount > 0);
+        botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
+      };
+      // Porch integration point 1 (front-porch §3): first run only, motion
+      // allowed, WebGL alive, skeleton removed — the Materialization plays
+      // once on the main engine, then lands the exact standard welcome.
+      // Any throw or a missed first frame falls back to today's boot.
+      let played = false;
+      try {
+        if (BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
+          seenOverture: !!state.prefs4.seenOverture,
+          reduced: reduceMq.matches,
+          webgl: !!state.engine,
+          skeletonGone: !$('bootSkeleton')
+        })) {
+          played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
+          if (played) {
+            state.prefs4.seenOverture = true;
+            Store.savePrefs(state.prefs4);
+            // Session-scoped after the save: two theater beats never chain in
+            // one session (porch §2) — the starter hero stays one-shot-ever.
+            state.prefs4.seenHero = true;
+          }
+        }
+      } catch (e) { played = false; /* the overture is never load-bearing */ }
+      if (!played) welcome();
     }
 
     // Gallery thumbnails render off the critical path once boot settles.
@@ -3431,7 +3657,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('projectsBtn').onclick = openProjects;
     $('projectsClose').onclick = () => closeScrim('projectsScrim');
     renderAccount();
-    $('galleryBtn').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    $('galleryBtn').onclick = openGalleryDialog;
     /* chat fold + hero paths */
     $('chatCollapse').onclick = () => setChatCollapsed(true);
     $('chatRail').onclick = () => { setChatCollapsed(false); $('chatText').focus(); };
@@ -3456,7 +3682,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     });
     $('heroText').addEventListener('input', () => { $('heroNudge').hidden = true; });
     $('welcomePhoto').onclick = () => $('photoInput').click();
-    $('welcomeStarter').onclick = () => { renderGallery(); openScrim('galleryScrim'); };
+    $('welcomeStarter').onclick = openGalleryDialog;
     $('welcomeResume').onclick = () => {
       hideWelcome();
       if ($('welcomeOverlay').dataset.mode === 'projects') openProjects();
@@ -3576,6 +3802,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     });
     $('referenceBtn').onclick = () => selectTab('reference');
+    // The landing tour is replayable (design-language §6.5); the item hides
+    // where the porch can never return (e.g. storage-less frames).
+    const porchReplay = $('porchReplayBtn');
+    if (porchReplay) {
+      if (BB.Porch && typeof BB.Porch.replay === 'function') porchReplay.onclick = () => BB.Porch.replay();
+      else porchReplay.hidden = true;
+    }
     /* mode navigation */
     $('mode-design').onclick = () => setMode('design');
     $('mode-plan').onclick = () => setMode('plan');
@@ -3763,6 +3996,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else if (!typing && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         focusChat();
+      } else if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // The keyboard map answers to its own key (capability row 29):
+        // `?` toggles the same Viewport + Everywhere card as the View-menu
+        // "Keyboard & pointer help" button; Esc (below) closes it.
+        e.preventDefault();
+        setVpHelp($('vpHelp').hidden);
       } else if (!typing && state.buildMode && !state.bmPlayback && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         bmTaskGo(e.key === 'ArrowRight' ? 1 : -1);

@@ -1,5 +1,16 @@
 # The Front Porch — landing experience & the Materialization
 
+> **Amendment (2026-07 overhaul, built):** this document remains the porch's
+> *creative* spec — beats, copy, captions, laws, budgets, rejected list. Its
+> *implementation* choices are amended by
+> [`../overhaul/design-language.md`](../overhaul/design-language.md) §6:
+> anime.js v4.5.0 (vendored/inlined) replaces the hand-rolled track table and
+> IntersectionObserver reveals as the timeline engine ("no animation
+> libraries" is superseded for anime.js only); the build-vs-buy calculator
+> and tiered entry paths join the porch; `prefs4.seenOverture` +
+> `bb.porchSeen` gate per §3/§4d with "See the intro again" in More. Shipped
+> scope and honest deltas: `../overhaul/findings/phase2a-notes.md`.
+
 The design for Blueprint Buddy's marketing surface: a first-visit landing
 experience whose centerpiece is **the Materialization** — a furniture design
 appearing out of thin air as a living 3D blueprint, then becoming wood — told

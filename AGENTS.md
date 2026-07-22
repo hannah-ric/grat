@@ -19,6 +19,7 @@ npm run build                  # node build.js → dist/index.html (single file)
 npm run dev                    # build + serve on $PORT (3000) + watch + /api/chat proxy
 npm test                       # unit + audit-regression + golden-corpus (node, no browser)
 npm run test:smoke             # build + drive the real app in headless Chromium
+npm run test:porch             # build + drive the landing (porch) in headless Chromium
 npm run test:handcalc          # hand-arithmetic vs engine worksheet (audit asset)
 npm run test:battery           # live behavior battery (representative/boundary/adversarial)
 ```
@@ -40,9 +41,12 @@ hand-edit a digest string.
   `ui.js` DOM, `materials.js` procedural textures/env, `engine.js` 3D
   viewport, `drafting.js` elevation SVGs + blueprint mode,
   `joinery3d.js` + `jointview.js` the joint inspector, `gltf.js` GLB export,
-  `icons.js` SVG icon set). Modules attach to the `BB` global; load order is
-  set in `build.js`. Physical constants live in `knowledge.js` (one source
-  each — see `docs/audit/02-constants-reference.md`).
+  `icons.js` SVG icon set, `motion.js` the `BB.Motion` animation-preset
+  library over vendored anime.js — presets by name only, one reduced-motion
+  gate, `porch.js` + `porch.css` the first-visit landing narrative — see
+  `docs/overhaul/design-language.md`). Modules attach to the `BB` global;
+  load order is set in `build.js`. Physical constants live in `knowledge.js`
+  (one source each — see `docs/audit/02-constants-reference.md`).
 - `src/index.template.html` + `build.js` — `{{PLACEHOLDER}}` inlining; adding
   a new src module means adding a placeholder in both.
 - `api/` — all server code, CommonJS, zero deps (Stripe's few REST calls
@@ -58,8 +62,8 @@ hand-edit a digest string.
   All auth/storage/billing degrades: no env vars → the client persists to
   `localStorage` and shows no login or upgrade UI (see `DEPLOYMENT.md`).
 - `serve.js` — zero-dep dev server; mounts every `api/` handler locally.
-- `vendor/` — Three.js + the Fraunces / Hanken Grotesk / IBM Plex Mono fonts,
-  committed, inlined at build time.
+- `vendor/` — Three.js, anime.js v4.5.0 (`anime.umd.min.js`), + the Fraunces /
+  Hanken Grotesk / IBM Plex Mono fonts, committed, inlined at build time.
 - `blueprint-buddy.jsx` — the earlier React-artifact incarnation (Phase 3);
   reference only, not part of the build.
 
