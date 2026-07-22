@@ -2091,14 +2091,27 @@ body.bm-playback .playback-bar { display: none !important; }
    both schemes come free; resting styles ARE the reduced-motion end state
    (presets clear their inline styles); no ornament (premium-refit bar). */
 
-/* The app body is a fixed-viewport instrument (overflow hidden); the porch
-   is a document. While it exists the page scrolls, and paint containment
-   re-roots the studio's fixed overlays (phone chat sheet, pills) inside
-   #app's own 100dvh box so they never float over the narrative — visually
-   identical once the studio fills the viewport. Both rules dissolve with
-   the porch; .ph-open mirrors :has() for engines without it. */
+/* The app body is a fixed-viewport instrument (overflow hidden); the public
+   views (landing / FAQ / sign-in) are documents. Segmentation: while any
+   public view is up the page scrolls THAT document only — the studio (#app)
+   stays booted (engine, autosave probes) but leaves the scroll page
+   entirely: a visibility-hidden fixed layer that can't be reached, tabbed
+   into, or scrolled to. Both selectors dissolve when the studio takes over;
+   .ph-open mirrors :has() for engines without it (and is the JS-routed
+   truth once porch.js runs). */
 body:has(#porch:not([hidden])), body.ph-open { overflow: auto; overflow-x: clip; }
-body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
+body:has(#porch:not([hidden])) #app, body.ph-open #app {
+  contain: paint;
+  position: fixed; inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Skip links target the studio — meaningless while it's off the page. */
+body.ph-open .skip-link { display: none; }
+/* The studio's arrival: one quiet settle, collapsed by the global
+   reduced-motion rules like every other animation. */
+#app.studio-enter { animation: studio-enter var(--t-slow) var(--ease); }
+@keyframes studio-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* The beat wash lives on the porch ROOT — beneath every layer — so the
    transparent canvas above it keeps compositing: wash, then H1, then the
@@ -2161,6 +2174,11 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
   max-width: 90rem; margin-inline: auto;
 }
 .ph-mast-top { display: flex; align-items: center; gap: var(--space-s); }
+/* Once the fixed site header is up (JS-routed views) the masthead's own
+   brand row would double it — the header carries the mark from then on.
+   Pre-JS (no .ph-open class yet) the in-flow row still paints Act 0. */
+body.ph-open .ph-mast-top { display: none; }
+body.ph-open .ph-mast { padding-top: calc(var(--foh-nav-h) + var(--space-xl)); }
 /* Act 0: the brand strokes draw themselves — pure CSS, paints pre-JS; the
    global reduced-motion rules collapse it to a snap. */
 .ph-mark [pathLength] {
@@ -2354,6 +2372,128 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
   .ph-stage { background: Canvas; }
   .ph-slot img, .ph-thumb img { border: 1px solid CanvasText; }
 }
+
+/* ================= front of house: header, pages, footer =================
+   One fixed header and one footer shared by every public view (landing,
+   FAQ, sign-in). Tokens only — both themes come free; no ornament. */
+.porch { --foh-nav-h: 3.75rem; }
+body { --foh-nav-h: 3.75rem; }
+
+.site-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+  height: var(--foh-nav-h);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-s); padding: 0 var(--space-l);
+  background: color-mix(in srgb, var(--paper) 84%, transparent);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.site-nav.scrolled { border-bottom-color: var(--line); background: color-mix(in srgb, var(--paper) 92%, transparent); }
+.site-brand {
+  display: inline-flex; align-items: center; gap: var(--space-2xs);
+  min-height: var(--tap); color: var(--ink); text-decoration: none;
+}
+.site-brand-name { font: 700 var(--text-m)/1 var(--display); letter-spacing: -0.01em; }
+.site-brand-name b { font-weight: 500; color: var(--ink-2); }
+.site-links { display: flex; align-items: center; gap: var(--space-2xs); }
+.site-links a {
+  display: inline-flex; align-items: center; min-height: var(--tap);
+  padding: 0 var(--space-xs); border-radius: var(--radius-pill);
+  color: var(--ink-2); text-decoration: none; font-weight: 600; font-size: var(--text-s);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.site-links a:hover { background: var(--panel-2); color: var(--ink); }
+.site-links .site-cta { margin-left: var(--space-2xs); }
+
+/* ---- page frame (FAQ, sign-in): a quiet editorial document ---- */
+.page {
+  min-height: 100vh; min-height: 100dvh;
+  padding: calc(var(--foh-nav-h) + var(--space-2xl)) var(--space-l) var(--space-2xl);
+  background: var(--paper); color: var(--ink);
+}
+.page-inner { max-width: 46rem; margin-inline: auto; display: flex; flex-direction: column; gap: var(--space-m); }
+.page-inner-narrow { max-width: 30rem; }
+.page-title {
+  margin: 0; font: 700 var(--text-3xl)/var(--leading-display) var(--display);
+  letter-spacing: -0.01em; text-wrap: balance;
+}
+.page-lede { margin: 0; max-width: 52ch; font-size: var(--text-l); line-height: var(--leading-body); color: var(--ink-2); }
+.page-close {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-s);
+  margin-top: var(--space-l); padding-top: var(--space-m); border-top: 1px solid var(--line);
+}
+.page-close p { margin: 0; color: var(--ink-2); max-width: 44ch; }
+
+/* ---- FAQ: grouped ledger of plain answers ---- */
+.faq-group {
+  margin: var(--space-l) 0 0;
+  font: 600 var(--text-xs)/1.4 var(--body); letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--muted-2);
+}
+.faq-item { border-top: 1px solid var(--line); }
+.faq-item:last-of-type { border-bottom: 1px solid var(--line); }
+.faq-item summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-s);
+  padding: var(--space-s) 0; cursor: pointer; list-style: none;
+  font: 600 var(--text-l)/var(--leading-heading) var(--display); color: var(--ink);
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after {
+  content: "+"; flex: none; align-self: center;
+  font: 500 var(--text-xl)/1 var(--mono); color: var(--muted-2);
+  transition: transform var(--t-fast) var(--ease);
+}
+.faq-item[open] summary::after { content: "−"; color: var(--accent); }
+.faq-item summary:hover { color: var(--accent); }
+.faq-a { padding: 0 0 var(--space-m); max-width: 60ch; }
+.faq-a p { margin: 0 0 var(--space-2xs); color: var(--ink-2); line-height: var(--leading-body); }
+.faq-a p:last-child { margin-bottom: 0; }
+.faq-a b { color: var(--ink); }
+
+/* ---- sign-in card ---- */
+.signin-card {
+  display: flex; flex-direction: column; gap: var(--space-s); align-items: stretch;
+  padding: var(--space-m); border: 1px solid var(--line); border-radius: var(--radius-l);
+  background: var(--panel); box-shadow: var(--shadow);
+}
+.signin-card .btn { justify-content: center; }
+.signin-btn { width: 100%; }
+.signin-note { margin: 0; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-body); }
+.signin-user { display: flex; align-items: center; gap: var(--space-2xs); font-weight: 600; }
+.signin-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
+.signin-fine { margin: 0; color: var(--muted-2); font-size: var(--text-xs); line-height: 1.6; max-width: 52ch; }
+
+/* ---- footer: the quiet close of every public page ---- */
+.site-footer { border-top: 1px solid var(--line); background: var(--paper); padding: var(--space-xl) var(--space-l); }
+.site-footer-inner {
+  max-width: 90rem; margin-inline: auto;
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-l);
+}
+.site-footer-brand { display: flex; align-items: flex-start; gap: var(--space-2xs); }
+.site-footer-tag { margin: var(--space-3xs) 0 0; color: var(--muted-2); font-size: var(--text-s); }
+.site-footer-links { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
+.site-footer-links a {
+  display: inline-flex; align-items: center; min-height: var(--tap);
+  padding: 0 var(--space-xs); border-radius: var(--radius-pill);
+  color: var(--ink-2); text-decoration: none; font-weight: 600; font-size: var(--text-s);
+}
+.site-footer-links a:hover { background: var(--panel-2); color: var(--ink); }
+.site-footer-note { flex-basis: 100%; margin: 0; color: var(--muted-2); font-size: var(--text-xs); line-height: 1.6; }
+
+@media (max-width: 639px) {
+  .site-nav { padding: 0 var(--space-s); }
+  .site-nav #navHow { display: none; }
+  .site-brand-name { display: none; }
+  .page { padding-inline: var(--space-s); }
+  .site-footer { padding-inline: var(--space-s); }
+}
+
+@media (forced-colors: active) {
+  .site-nav, .site-footer { border-color: CanvasText; background: Canvas; }
+  .signin-card, .faq-item { border-color: CanvasText; }
+}
 </style>
 </head>
 <body>
@@ -2365,6 +2505,30 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
 <a class="skip-link" href="#chatText">Skip to chat</a>
 <a class="skip-link" href="#view3d">Skip to the 3D model</a>
 <a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
+
+<!-- FRONT OF HOUSE (segmentation): one fixed header shared by the public
+     views — landing, FAQ, sign-in. porch.js owns the routing (#faq /
+     #signin / landing / studio) and unhides it; the studio never shows it.
+     Ships hidden so the JS-off document reads as the porch alone. -->
+<header id="siteHeader" class="site-nav" hidden>
+  <a class="site-brand" href="#" id="siteBrand" aria-label="Blueprint Buddy — home">
+    <!-- Static mark (no pathLength): the Act 0 stroke draw belongs to the
+         porch's pre-JS masthead; a header that appears mid-eval must simply
+         be there. -->
+    <svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true">
+      <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+      <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+    </svg>
+    <span class="site-brand-name">Blueprint<b>Buddy</b></span>
+  </a>
+  <nav class="site-links" aria-label="Site">
+    <a href="#ph-ch1" id="navHow">How it works</a>
+    <a href="#faq" id="navFaq">FAQ</a>
+    <a href="#signin" id="navSignin">Sign in</a>
+    <button type="button" class="btn primary site-cta" data-enter="">Open the studio</button>
+  </nav>
+</header>
 
 <!-- PORCH:BEGIN — landing narrative (2a). Ships visible and complete
      (crawlable, JS-off readable); porch.js removes it pre-boot for
@@ -2509,6 +2673,114 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
 </section>
 <!-- PORCH:END -->
 
+<!-- FAQ — its own page, routed at #faq. Static content: every claim here is
+     a product truth the porch, the help modal, or the docs already stand
+     behind; figures stay out of it (the founding rule owns numbers). -->
+<main id="pageFaq" class="page" hidden aria-label="Frequently asked questions">
+  <div class="page-inner">
+    <span class="kicker">Questions &amp; answers</span>
+    <h1 class="page-title">Fair questions, straight answers.</h1>
+    <p class="page-lede">What Blueprint Buddy is, how it thinks, and what happens to your designs.</p>
+
+    <h2 class="faq-group">The studio</h2>
+    <details class="faq-item">
+      <summary>What is Blueprint Buddy?</summary>
+      <div class="faq-a"><p>A furniture design studio that starts from a sentence. Describe the piece you want — or upload a photo of one — and the studio drafts it into an interactive 3D model, checks it against real structural physics, and turns it into a cut list, a buying plan with cutting diagrams, and step-by-step assembly instructions you can take to the workbench.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Do I need to know CAD, or be an experienced woodworker?</summary>
+      <div class="faq-a"><p>No. You describe the piece the way you&rsquo;d say it out loud &mdash; &ldquo;a walnut nightstand, two drawers, about knee height&rdquo; &mdash; and refine it in plain words. Pick your skill level (beginner, intermediate, advanced) and the studio explains as much or as little as you want. Never built furniture before? Start from a proven starter and every step is spelled out.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Isn&rsquo;t this just AI making things up?</summary>
+      <div class="faq-a"><p><b>No — and this is the founding rule.</b> The AI only translates your intent: &ldquo;lower, wider, walnut.&rdquo; Every dimension, joint, and price is then computed by a deterministic drafting engine — code that knows furniture, not a language model guessing. The same design in always produces the same numbers out, and you can tap any number in the app to see the formula behind it.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Can I trust that what I build will hold up?</summary>
+      <div class="faq-a"><p>Every design runs a structural gauntlet before you see it: shelf sag from real wood stiffness, racking, tipping, fastener duty — on material data from the U.S. Forest Service&rsquo;s Wood Handbook, with a generous safety factor and long-term creep counted in. When something won&rsquo;t hold, the studio says so honestly and offers the fix. It can — and does — say no.</p></div>
+    </details>
+
+    <h2 class="faq-group">Designing &amp; building</h2>
+    <details class="faq-item">
+      <summary>What kinds of furniture can it design?</summary>
+      <div class="faq-a"><p>Tables, desks, benches, bookshelves, nightstands, and cabinets are drafted from deep parametric templates — and beyond those, a construction grammar of posts, rails, panels, and slabs lets the studio draft novel pieces from a description or a photo. Everything is sized to you: your dimensions, your wood species, your skill level.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>What do I actually get at the end?</summary>
+      <div class="faq-a"><p>Working plans: a cut list with joinery allowances already applied, a buying plan that packs your parts onto real boards you can price and purchase, dimensioned drawings, assembly steps with 3D joint close-ups, and a full-screen Build mode that rides to the shop on your phone with checkable steps. Exports include a printable drawing sheet, SVG, CSV, a 3D model for AR, and SketchUp.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Can I see the piece in my room before I build it?</summary>
+      <div class="faq-a"><p>Yes. Export the 3D model (.glb) and on most Android phones you can stand the piece in your room at true size through AR; on iOS it takes one pass through Apple&rsquo;s free Reality Converter. On any device, the in-studio 3D view orbits, explodes, and measures the piece from every side.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Inches or millimetres?</summary>
+      <div class="faq-a"><p>Both. The studio computes in exact millimetres internally and displays in fractional inches or millimetres — your choice, switchable any time, with a dual-display option that shows both everywhere.</p></div>
+    </details>
+
+    <h2 class="faq-group">Accounts, saving &amp; cost</h2>
+    <details class="faq-item">
+      <summary>Do I need an account?</summary>
+      <div class="faq-a"><p>No. The studio runs entirely in your browser and autosaves designs to your device. Where sign-in is offered, an account adds cloud sync — your projects follow you to any device — but it&rsquo;s never required to design or build.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>How do I share a design or move it between devices?</summary>
+      <div class="faq-a"><p>Every design compresses into a share code — one line of text that carries the whole piece. Paste it anywhere: a message, a note, another device. Share links do the same through a URL. No account needed on either end.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>What does it cost?</summary>
+      <div class="faq-a"><p>Designing is free. On installations with accounts enabled, an optional Pro plan raises the monthly AI-message allowance, removes the saved-project cap, and unlocks premium exports — you&rsquo;ll see plans and pricing in the studio wherever that applies. Nothing you&rsquo;ve designed is ever held hostage: share codes and core exports stay open.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>What happens to my data?</summary>
+      <div class="faq-a"><p>Your designs live in your browser unless you sign in, in which case projects sync to your account&rsquo;s private store. Design chat goes through the studio&rsquo;s own server to the AI service to interpret your intent — the geometry itself is computed locally in your browser. There&rsquo;s no ad tracking and nothing is sold.</p></div>
+    </details>
+
+    <div class="page-close">
+      <p>Still curious? The studio answers best in person — a live workbench with a drafted piece is one click away.</p>
+      <button type="button" class="btn primary" data-enter="">Open the studio</button>
+    </div>
+  </div>
+</main>
+
+<!-- Sign-in — its own page, routed at #signin. porch.js renders the card
+     from the real auth probe: providers where accounts are configured, an
+     honest local-first note where they aren't. -->
+<main id="pageSignin" class="page" hidden aria-label="Sign in">
+  <div class="page-inner page-inner-narrow">
+    <span class="kicker">Account</span>
+    <h1 class="page-title">Sign in.</h1>
+    <p class="page-lede">Projects sync to your account and follow you to any bench. The studio itself works signed out — designs save to this device.</p>
+    <div class="signin-card" id="signinBody">
+      <p class="signin-note">Checking this workshop&rsquo;s sign-in options&hellip;</p>
+    </div>
+    <p class="signin-fine">Signing in sets one session cookie on this device and stores your projects in your account&rsquo;s private space. Signed out, everything stays in this browser.</p>
+  </div>
+</main>
+
+<!-- Footer — the quiet close of every public page. -->
+<footer id="siteFooter" class="site-footer" hidden>
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+        <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+      </svg>
+      <div>
+        <span class="site-brand-name">Blueprint<b>Buddy</b></span>
+        <p class="site-footer-tag">Describe it. We&rsquo;ll draft it.</p>
+      </div>
+    </div>
+    <nav class="site-footer-links" aria-label="Footer">
+      <a href="#ph-ch1" id="footHow">How it works</a>
+      <a href="#faq">FAQ</a>
+      <a href="#signin" id="footSignin">Sign in</a>
+    </nav>
+    <p class="site-footer-note">Runs entirely in your browser &middot; designs autosave on your device &middot; every number is computed, never generated.</p>
+  </div>
+</footer>
+
 <div id="app">
   <header class="topbar">
     <div class="brand">
@@ -2557,6 +2829,7 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <button role="menuitem" id="faqBtn"><span>FAQ</span><span class="hint">about the studio</span></button>
           <button role="menuitem" id="porchReplayBtn"><span>See the intro again</span><span class="hint">landing tour</span></button>
           <!-- ≤560px folds the topbar Share CTA away; this entry keeps share
                codes AND import reachable on phones (X-05). -->
@@ -16479,8 +16752,67 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   const porchEl = $ && $('porch');
   if (porchEl && !decision.show) porchEl.remove();
-  else if (porchEl && doc.body) doc.body.classList.add('ph-open');
   const active = !!(porchEl && decision.show);
+
+  /* ---------------- front-of-house views (segmentation) ----------------
+   * The landing, FAQ, and sign-in pages are separate views from the studio:
+   * exactly one is on screen at a time. While any public view is up, the
+   * studio (#app) stays booted but leaves the page entirely (see porch.css
+   * .ph-open rules) — the narrative is never one scroll away from the
+   * workbench. Routing is the location hash (#faq, #signin); everything
+   * else resolves to the landing (first visit) or the studio. */
+  function _routeFromHash(hash, alive) {
+    const h = String(hash || '').replace(/^#/, '').split(';')[0];
+    if (h === 'faq') return 'faq';
+    if (h === 'signin') return 'signin';
+    return alive ? 'landing' : 'app';
+  }
+  const PAGE_IDS = { faq: 'pageFaq', signin: 'pageSignin' };
+  let view = null;
+  let firstRunCb = null; // ui.js parks the first-run welcome/overture here
+
+  function landingAlive() { return !!(porchEl && porchEl.isConnected); }
+
+  function showView(v) {
+    if (!doc || !doc.body) return;
+    if (v === 'landing' && !landingAlive()) v = 'app';
+    const pub = v !== 'app';
+    if (landingAlive()) porchEl.hidden = v !== 'landing';
+    for (const k in PAGE_IDS) { const p = $(PAGE_IDS[k]); if (p) p.hidden = v !== k; }
+    const header = $('siteHeader'), footer = $('siteFooter');
+    if (header) header.hidden = !pub;
+    if (footer) footer.hidden = !pub;
+    doc.body.classList.toggle('ph-open', pub);
+    const changed = view !== null && view !== v;
+    view = v;
+    BB.Porch.view = v;
+    if (changed) {
+      // a chapter anchor rides the hash back onto the landing; else the top
+      const target = v === 'landing' && /^#ph-/.test(location.hash) ? doc.querySelector(location.hash) : null;
+      if (target) target.scrollIntoView();
+      else scrollTo(0, 0);
+    }
+    if (pub) updateNav();
+    if (v === 'signin') renderSignin();
+    if (v === 'landing' && active && !S.inited) schedule();
+  }
+
+  function updateNav() {
+    const alive = landingAlive();
+    for (const id of ['navHow', 'footHow']) { const n = $(id); if (n) n.hidden = !alive; }
+    let user = null;
+    try { user = BB.Store && BB.Store.auth ? BB.Store.auth().user : null; } catch (e) { /* pre-boot */ }
+    for (const id of ['navSignin', 'footSignin']) { const n = $(id); if (n) n.textContent = user ? 'Account' : 'Sign in'; }
+  }
+
+  /* ui.js defers the first-run theater (welcome card / phone overture) here
+   * while a public view is up — it plays on studio entry, where it's
+   * actually visible, instead of invisibly behind the landing. */
+  function deferFirstRun(fn) {
+    if (typeof fn !== 'function' || !landingAlive()) return false;
+    firstRunCb = fn;
+    return true;
+  }
 
   /* Code-owned track table (§16a). Anchors = scroll fractions of chapter
    * centers (measured at init; defaults keep it pure for selftest + the
@@ -16877,32 +17209,41 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function enterStudio(path) {
     markSeen();
-    const finish = () => {
-      teardown();
-      if (porchEl && porchEl.parentNode) porchEl.remove();
-      if (doc.body) doc.body.classList.remove('ph-open');
-      scrollTo(0, 0);
-      seedLevel(path);
-      if (path === 'first') {
-        // The starters dialog owns focus (aria-modal trap) — stealing it back
-        // for the hero prompt would fight the trap.
-        const g = $('galleryBtn');
-        if (g) { g.click(); return; }
-      }
-      const hero = $('heroText');
-      if (hero && hero.offsetParent) hero.focus();
-      else { const chat = $('chatText'); if (chat) chat.focus(); }
-    };
-    const m = M();
-    if (!m || !m.on()) { finish(); return; }
-    const bench = doc.querySelector('main.bench') || $('app');
-    let done = false;
-    const go = () => { if (!done) { done = true; finish(); } };
-    if (bench) {
-      addEventListener('scrollend', go, { once: true });
-      setTimeout(go, 900); // scrollend fallback
-      bench.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else go();
+    teardown();
+    if (porchEl && porchEl.parentNode) porchEl.remove();
+    // a page hash (#faq/#signin) must not survive into the studio — a reload
+    // there should land back in the studio, not on the page
+    if (/^#(faq|signin)$/.test(location.hash || '')) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* sandboxed frame */ }
+    }
+    showView('app');
+    scrollTo(0, 0);
+    seedLevel(path);
+    const app = $('app');
+    if (app && M() && M().on()) { // one quiet settle on arrival
+      app.classList.remove('studio-enter');
+      void app.offsetWidth;
+      app.classList.add('studio-enter');
+    }
+    // Deferred first-run theater plays on arrival — the welcome card, or the
+    // phone overture (suppressed when the starters dialog is the ask).
+    if (firstRunCb) {
+      const fn = firstRunCb;
+      firstRunCb = null;
+      try { fn({ suppressOverture: path === 'first' }); } catch (e) { /* never load-bearing */ }
+    }
+    if (path === 'first') {
+      // The starters dialog owns focus (aria-modal trap) — stealing it back
+      // for the hero prompt would fight the trap.
+      const g = $('galleryBtn');
+      if (g) { g.click(); return; }
+    }
+    const hero = $('heroText');
+    if (hero && hero.offsetParent) hero.focus();
+    else if (!doc.querySelector('.ov-caption')) { // the overture owns focus while it plays
+      const chat = $('chatText');
+      if (chat) chat.focus();
+    }
   }
 
   function teardown() {
@@ -16921,6 +17262,63 @@ var BB = globalThis.BB = globalThis.BB || {};
     try { localStorage.removeItem('bb.porchSeen'); } catch (e) { /* ignore */ }
     try { sessionStorage.removeItem('bb.porchSeen'); } catch (e) { /* ignore */ }
     location.reload();
+  }
+
+  /* ---------------- sign-in page (#signin) ----------------
+   * Rendered from the REAL auth probe: provider buttons where the origin
+   * offers accounts, the signed-in identity when there is one, and an honest
+   * local-first note where accounts aren't configured. */
+  const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
+  let signinProbe = 'idle'; // idle | busy | done
+  function renderSignin() {
+    const box = $('signinBody');
+    if (!box) return;
+    const St = BB.Store;
+    const a = St && St.auth ? St.auth() : { user: null, providers: [] };
+    if (signinProbe === 'idle' && St && St.init) {
+      signinProbe = 'busy';
+      Promise.resolve()
+        .then(() => St.init({ timeoutMs: 4000 }))
+        .catch(() => null)
+        .then(() => {
+          signinProbe = 'done';
+          if (view === 'signin') renderSignin();
+          updateNav();
+        });
+    }
+    box.textContent = '';
+    const note = t => el('p', 'signin-note', t);
+    const btn = (cls, label) => {
+      const b = el('button', 'btn signin-btn' + (cls ? ' ' + cls : ''), label);
+      b.type = 'button';
+      return b;
+    };
+    if (a.user) {
+      const row = el('div', 'signin-user',
+        (a.user.avatar ? `<img class="signin-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : '') +
+        `<span>${esc(a.user.name)}</span>`);
+      box.append(row, note('You’re signed in — projects sync to your account and follow you to any device.'));
+      const open = btn('primary', 'Open the studio');
+      open.dataset.enter = '';
+      const out = btn('', 'Sign out');
+      out.onclick = () => { location.href = St.logoutUrl; };
+      box.append(open, out);
+    } else if (a.providers && a.providers.length) {
+      for (const p of a.providers) {
+        const b = btn('primary', 'Continue with ' + esc(PROVIDER_LABELS[p] || p));
+        // signing in is intent to work — land in the studio after the round trip
+        b.onclick = () => { markSeen(); location.href = St.loginUrl(p); };
+        box.append(b);
+      }
+      box.append(note('No passwords held here — sign-in runs through your existing account. Your projects then follow you to any device.'));
+    } else if (signinProbe !== 'done') {
+      box.append(note('Checking this workshop’s sign-in options…'));
+    } else {
+      box.append(note('This workshop runs without accounts: designs autosave to this device, and a share code carries a whole design anywhere in a line of text.'));
+      const open = btn('primary', 'Open the studio');
+      open.dataset.enter = '';
+      box.append(open);
+    }
   }
 
   /* ---------------- init ---------------- */
@@ -17119,21 +17517,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       S.mode = (fine && wide && M() && M().on()) ? 'scrub' : 'static';
       BB.Porch.mode = S.mode;
       porchEl.dataset.mode = S.mode;
-      // shared enrichment (both modes)
+      // shared enrichment (both modes); CTAs land through the one document-
+      // level [data-enter] delegate (bootstrap below) — header, footer, and
+      // page CTAs share the exact same door.
       fillElevation();
       fillShift();
       buildCalc();
-      // CTAs — every path lands through one enterStudio
-      for (const b of porchEl.querySelectorAll('[data-enter]')) {
-        b.addEventListener('click', () => enterStudio(b.dataset.enter || null));
-      }
-      // working in the studio below IS entry — mark seen so regulars skip
-      const app = $('app');
-      if (app) {
-        const mark = () => markSeen();
-        app.addEventListener('pointerdown', mark, { once: true, capture: true, passive: true });
-        app.addEventListener('focusin', mark, { once: true, capture: true });
-      }
       if (S.mode === 'scrub') initScrub();
       else initStatic().catch(() => { /* the document stands without stills */ });
     } catch (e) {
@@ -17143,11 +17532,18 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* Porch/overture start only after the boot skeleton is gone (§12 budget:
-   * boot stays untouched); poll is cheap and self-cancels. */
+   * boot stays untouched) AND the landing is the on-screen view — a #faq or
+   * #signin arrival initializes the scrub only once the visitor actually
+   * lands on it (hidden porch = unmeasurable anchors). Poll is cheap and
+   * self-cancels. */
+  let scheduled = false;
   function schedule() {
-    if (!active) return;
+    if (!active || scheduled) return;
+    scheduled = true;
     const t0 = Date.now();
     const iv = setInterval(() => {
+      if (S.inited || S.disposed || !landingAlive()) { clearInterval(iv); return; }
+      if (view !== 'landing') return;
       if (!doc.getElementById('bootSkeleton') || Date.now() - t0 > 6000) {
         clearInterval(iv);
         requestAnimationFrame(() => requestAnimationFrame(init));
@@ -17276,14 +17672,40 @@ var BB = globalThis.BB = globalThis.BB || {};
     return true;
   }
 
-  schedule();
-
   BB.Porch = {
-    active, mode: S.mode,
-    enterStudio, replay, overture, shouldOverture,
-    _gateDecision, _buildTracks, _tracks: tracks, _anchors: DEFAULT_ANCHORS,
+    active, mode: S.mode, view: null,
+    enterStudio, replay, overture, shouldOverture, deferFirstRun, showView,
+    _gateDecision, _routeFromHash, _buildTracks, _tracks: tracks, _anchors: DEFAULT_ANCHORS,
     _state: S, _calc: calc, _applyP: applyP
   };
+
+  /* ---------------- bootstrap: resolve the arrival view ---------------- */
+  if (doc && doc.body) {
+    // every "Open the studio" CTA — porch, header, footer, FAQ, sign-in —
+    // goes through the one door
+    doc.addEventListener('click', e => {
+      const b = e.target && e.target.closest ? e.target.closest('[data-enter]') : null;
+      if (!b) return;
+      e.preventDefault();
+      enterStudio(b.dataset.enter || null);
+    });
+    addEventListener('hashchange', () => {
+      const v = _routeFromHash(location.hash, landingAlive());
+      if (v !== view) showView(v);
+    });
+    // fixed header takes its hairline once the page is off the top
+    let navTick = false;
+    addEventListener('scroll', () => {
+      if (navTick) return;
+      navTick = true;
+      requestAnimationFrame(() => {
+        navTick = false;
+        const h = $('siteHeader');
+        if (h && !h.hidden) h.classList.toggle('scrolled', scrollY > 8);
+      });
+    }, { passive: true });
+    showView(_routeFromHash(typeof location !== 'undefined' ? location.hash : '', landingAlive()));
+  }
 })();
 </script>
 <script>/* Blueprint Buddy — UI shell. All DOM wiring lives here; every design change
@@ -20539,6 +20961,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const REF_ENTRIES = [['wood', 'Wood species'], ['ergo', 'Ergonomics'], ['joinery', 'Joinery'], ['fast', 'Fasteners & finishes'], ['hardware', 'Hardware'], ['lumber', 'Buyable lumber']];
   const REF_TABS = REF_ENTRIES.map(x => x[0]);
   function syncHash() {
+    // A public front-of-house view (landing/FAQ/sign-in) owns the hash while
+    // it's up — the studio must not stomp a #faq route with a tab path.
+    if (document.body.classList.contains('ph-open')) return;
     const path = state.mode === 'design'
       ? 'design'
       : state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
@@ -20841,33 +21266,39 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
-      const welcome = () => {
-        showWelcome(projectCount > 0);
-        botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
-      };
-      // Porch integration point 1 (front-porch §3): first run only, motion
-      // allowed, WebGL alive, skeleton removed — the Materialization plays
-      // once on the main engine, then lands the exact standard welcome.
-      // Any throw or a missed first frame falls back to today's boot.
-      let played = false;
-      try {
-        if (BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
-          seenOverture: !!state.prefs4.seenOverture,
-          reduced: reduceMq.matches,
-          webgl: !!state.engine,
-          skeletonGone: !$('bootSkeleton')
-        })) {
-          played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
-          if (played) {
-            state.prefs4.seenOverture = true;
-            Store.savePrefs(state.prefs4);
-            // Session-scoped after the save: two theater beats never chain in
-            // one session (porch §2) — the starter hero stays one-shot-ever.
-            state.prefs4.seenHero = true;
+      const firstRun = fo => {
+        const welcome = () => {
+          showWelcome(projectCount > 0);
+          botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
+        };
+        // Porch integration point 1 (front-porch §3): first run only, motion
+        // allowed, WebGL alive, skeleton removed — the Materialization plays
+        // once on the main engine, then lands the exact standard welcome.
+        // Any throw or a missed first frame falls back to today's boot.
+        let played = false;
+        try {
+          if (!(fo && fo.suppressOverture) && BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
+            seenOverture: !!state.prefs4.seenOverture,
+            reduced: reduceMq.matches,
+            webgl: !!state.engine,
+            skeletonGone: !$('bootSkeleton')
+          })) {
+            played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
+            if (played) {
+              state.prefs4.seenOverture = true;
+              Store.savePrefs(state.prefs4);
+              // Session-scoped after the save: two theater beats never chain in
+              // one session (porch §2) — the starter hero stays one-shot-ever.
+              state.prefs4.seenHero = true;
+            }
           }
-        }
-      } catch (e) { played = false; /* the overture is never load-bearing */ }
-      if (!played) welcome();
+        } catch (e) { played = false; /* the overture is never load-bearing */ }
+        if (!played) welcome();
+      };
+      // Segmentation: while a public view (landing/FAQ/sign-in) is up, the
+      // studio is off the page — first-run theater would play invisibly
+      // behind it. Park it with the porch; it fires on studio entry.
+      if (!(BB.Porch && BB.Porch.deferFirstRun && BB.Porch.deferFirstRun(firstRun))) firstRun();
     }
 
     // Gallery thumbnails render off the critical path once boot settles.
@@ -21090,6 +21521,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     });
     $('referenceBtn').onclick = () => selectTab('reference');
+    // FAQ is a routed front-of-house page — the hash hands off to the porch
+    // router, and the browser's back button returns to the studio.
+    const faqBtn = $('faqBtn');
+    if (faqBtn) {
+      if (BB.Porch && typeof BB.Porch.showView === 'function') faqBtn.onclick = () => { location.hash = 'faq'; };
+      else faqBtn.hidden = true;
+    }
     // The landing tour is replayable (design-language §6.5); the item hides
     // where the porch can never return (e.g. storage-less frames).
     const porchReplay = $('porchReplayBtn');

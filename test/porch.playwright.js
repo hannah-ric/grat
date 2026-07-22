@@ -79,8 +79,14 @@ const log = m => console.log('  · ' + m);
   const A = await newPage();
   await boot(A.page);
   ok(await A.page.evaluate(() => !!document.getElementById('porch')), 'fresh profile shows the porch');
-  ok(await A.page.evaluate(() => !document.getElementById('welcomeOverlay').hidden),
-    'desktop first run: welcome card up immediately (no overture at scrub widths)');
+  // Segmentation: the studio is booted but OFF the page while the landing is
+  // up — never one scroll away; the welcome card waits for studio entry.
+  ok(await A.page.evaluate(() => getComputedStyle(document.getElementById('app')).visibility === 'hidden'),
+    'the studio is off the page while the landing is up');
+  ok(await A.page.evaluate(() => document.getElementById('app').getBoundingClientRect().top === 0),
+    'the hidden studio is a fixed layer, not the tail of the scroll document');
+  ok(await A.page.evaluate(() => !document.getElementById('siteHeader').hidden),
+    'the landing carries the fixed site header');
   await A.page.waitForFunction(() => BB.Porch && BB.Porch.mode === 'scrub', null, { timeout: 15000 });
   ok(true, 'desktop fine-pointer ≥880 initializes in scrub mode');
   ok(await A.page.evaluate(() => !!BB.Porch._state.engine), 'porch owns a live stage engine');
@@ -186,6 +192,10 @@ const log = m => console.log('  · ' + m);
   await A.page.waitForFunction(() => !document.getElementById('porch'), null, { timeout: 8000 });
   await A.page.waitForTimeout(500);
   ok(true, 'CTA removes the porch');
+  ok(await A.page.evaluate(() => getComputedStyle(document.getElementById('app')).visibility !== 'hidden'),
+    'studio entry brings the app back on screen');
+  ok(await A.page.evaluate(() => document.getElementById('siteHeader').hidden && document.getElementById('siteFooter').hidden),
+    'the public header and footer leave with the landing');
   ok(await A.page.evaluate(() => localStorage.getItem('bb.porchSeen') === '1'), 'studio entry sets bb.porchSeen');
   ok(await A.page.evaluate(() => document.activeElement && document.activeElement.id === 'heroText'),
     'arrival focuses the hero prompt');
@@ -245,8 +255,8 @@ const log = m => console.log('  · ' + m);
   ok(true, 'reduced motion renders the static document (no scrub)');
   ok(await D.page.evaluate(() => !BB.Porch._state.obs.length), 'no scroll timeline is built under reduced motion');
   ok(await D.page.evaluate(() => !document.querySelector('.ov-caption')), 'no overture under reduced motion');
-  ok(await D.page.evaluate(() => !document.getElementById('welcomeOverlay').hidden),
-    'studio boot identical: welcome card up immediately');
+  ok(await D.page.evaluate(() => getComputedStyle(document.getElementById('app')).visibility === 'hidden'),
+    'segmentation holds under reduced motion: the studio waits off the page');
   await D.page.waitForFunction(() => {
     const c = document.querySelector('#phCounters .counter');
     return c && +c.textContent > 0;
@@ -257,15 +267,29 @@ const log = m => console.log('  · ' + m);
   }), 'counters render final pipeline values, no roll');
   ok(await D.page.evaluate(() => (document.getElementById('phType').textContent || '').includes('knee height')),
     'typed prompt is simply there under reduced motion');
+  await D.page.click('#phCtaTop');
+  await D.page.waitForFunction(() => !document.getElementById('welcomeOverlay').hidden, null, { timeout: 8000 });
+  ok(true, 'reduced-motion entry snaps straight to the standard welcome');
   ok(D.errors.length === 0, `zero console errors under reduced motion (${D.errors.slice(0, 2).join(' | ')})`);
   await D.ctx.close();
 
-  /* ============ E · phone: static chapters + the overture plays once ============ */
+  /* ============ E · phone: static chapters + the overture plays once, ON ENTRY ============ */
   const E = await newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await boot(E.page);
   ok(await E.page.evaluate(() => !!document.getElementById('porch')), 'phone first run shows the porch');
+  await E.page.waitForFunction(() => BB.Porch && document.getElementById('porch').dataset.mode === 'static', null, { timeout: 15000 });
+  ok(true, 'phone porch is the static-chapter document');
+  const posters = await E.page.waitForFunction(() => document.querySelectorAll('.ph-slot img').length >= 3, null, { timeout: 20000 })
+    .then(() => true).catch(() => false);
+  ok(posters, 'chapter poster stills render from the stage engine');
+  ok(await E.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow at 390');
+  // Segmentation: the overture waits for studio entry — it must never play
+  // invisibly behind the landing.
+  await E.page.waitForTimeout(1500);
+  ok(await E.page.evaluate(() => !document.querySelector('.ov-caption')), 'no overture while the landing is up');
+  await E.page.click('#phCtaTop');
   const ovStarted = await E.page.waitForSelector('.ov-caption', { timeout: 15000 }).then(() => true).catch(() => false);
-  ok(ovStarted, 'the overture plays on a phone first run');
+  ok(ovStarted, 'the overture plays on studio entry on a phone first run');
   ok(await E.page.evaluate(() => document.getElementById('welcomeOverlay').hidden),
     'welcome waits for the overture');
   ok(await E.page.evaluate(() => __bb.state.prefs4.seenOverture === true), 'overture marks prefs4.seenOverture');
@@ -276,12 +300,6 @@ const log = m => console.log('  · ' + m);
   await E.page.waitForFunction(() => !document.querySelector('.ov-caption') && !document.getElementById('welcomeOverlay').hidden,
     null, { timeout: 8000 });
   ok(true, 'pointerdown skips the overture and lands the standard welcome');
-  await E.page.waitForFunction(() => BB.Porch && document.getElementById('porch').dataset.mode === 'static', null, { timeout: 15000 });
-  ok(true, 'phone porch is the static-chapter document');
-  const posters = await E.page.waitForFunction(() => document.querySelectorAll('.ph-slot img').length >= 3, null, { timeout: 20000 })
-    .then(() => true).catch(() => false);
-  ok(posters, 'chapter poster stills render from the stage engine');
-  ok(await E.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow at 390');
   ok(E.errors.length === 0, `zero console errors on the phone path (${E.errors.slice(0, 2).join(' | ')})`);
   // reload: seenOverture persists — it never plays twice
   await E.page.reload();
@@ -289,6 +307,61 @@ const log = m => console.log('  · ' + m);
   await E.page.waitForTimeout(1200);
   ok(await E.page.evaluate(() => !document.querySelector('.ov-caption')), 'overture never plays twice');
   await E.ctx.close();
+
+  /* ============ F · routed pages: FAQ + sign-in are their own views ============ */
+  const F = await newPage();
+  await boot(F.page);
+  // landing → FAQ via the header: one view at a time
+  await F.page.click('#navFaq');
+  await F.page.waitForFunction(() => !document.getElementById('pageFaq').hidden, null, { timeout: 8000 });
+  ok(await F.page.evaluate(() => document.getElementById('porch').hidden), 'FAQ hides the landing — separate page, not the same scroll');
+  ok(await F.page.evaluate(() => getComputedStyle(document.getElementById('app')).visibility === 'hidden'),
+    'the studio stays off the page on the FAQ');
+  ok(await F.page.evaluate(() => document.querySelectorAll('#pageFaq .faq-item').length >= 10),
+    'FAQ carries a real body of questions');
+  ok(await F.page.evaluate(() => BB.Porch.view === 'faq' && location.hash === '#faq'), 'FAQ is addressable at #faq');
+  // FAQ → sign-in; the probe lands on the honest local-first note (no /api/auth here)
+  await F.page.click('#navSignin');
+  await F.page.waitForFunction(() => !document.getElementById('pageSignin').hidden, null, { timeout: 8000 });
+  await F.page.waitForFunction(() => /without accounts/.test(document.getElementById('signinBody').textContent), null, { timeout: 10000 });
+  ok(true, 'sign-in page renders the honest local-first state where accounts are not configured');
+  ok(await F.page.evaluate(() => document.getElementById('pageFaq').hidden), 'one public view at a time');
+  // brand returns to the landing; back/forward ride the hash honestly
+  await F.page.click('#siteBrand');
+  await F.page.waitForFunction(() => !document.getElementById('porch').hidden, null, { timeout: 8000 });
+  ok(true, 'the brand returns to the landing');
+  await F.page.goBack();
+  await F.page.waitForFunction(() => !document.getElementById('pageSignin').hidden, null, { timeout: 8000 });
+  ok(true, 'browser back returns to the sign-in page');
+  // entering the studio from a page clears the page hash and lands the welcome
+  await F.page.click('#pageSignin [data-enter]');
+  await F.page.waitForFunction(() => !document.getElementById('welcomeOverlay').hidden, null, { timeout: 8000 });
+  ok(await F.page.evaluate(() => getComputedStyle(document.getElementById('app')).visibility !== 'hidden'),
+    'a page CTA enters the studio');
+  ok(await F.page.evaluate(() => location.hash !== '#signin'), 'the page hash does not survive into the studio');
+  // in-app: More → FAQ routes out; back returns to the studio
+  await F.page.click('#moreBtn');
+  await F.page.click('#faqBtn');
+  await F.page.waitForFunction(() => !document.getElementById('pageFaq').hidden, null, { timeout: 8000 });
+  ok(true, 'More → FAQ reaches the FAQ from inside the studio');
+  await F.page.goBack();
+  await F.page.waitForFunction(() => document.getElementById('pageFaq').hidden &&
+    getComputedStyle(document.getElementById('app')).visibility !== 'hidden', null, { timeout: 8000 });
+  ok(true, 'browser back returns from the FAQ to the studio');
+  ok(F.errors.length === 0, `zero console errors across routed views (${F.errors.slice(0, 3).join(' | ')})`);
+  await F.ctx.close();
+
+  /* ============ G · deep link: a first visit at #faq lands on the FAQ ============ */
+  const G = await newPage();
+  await boot(G.page, '#faq');
+  ok(await G.page.evaluate(() => !document.getElementById('pageFaq').hidden), 'deep-linked #faq arrival lands on the FAQ page');
+  ok(await G.page.evaluate(() => !!document.getElementById('porch') && document.getElementById('porch').hidden),
+    'the unseen landing waits behind the FAQ');
+  await G.page.click('#siteBrand');
+  await G.page.waitForFunction(() => !document.getElementById('porch').hidden, null, { timeout: 8000 });
+  ok(true, 'first-visit FAQ arrival can still reach the landing');
+  ok(G.errors.length === 0, `zero console errors on deep-linked arrival (${G.errors.slice(0, 2).join(' | ')})`);
+  await G.ctx.close();
 
   /* ============ evidence screenshots (--shots) ============ */
   if (WANT_SHOTS) {

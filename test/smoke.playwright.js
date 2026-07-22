@@ -49,6 +49,10 @@ const clickMoreCtl = async sel => {
   // Shim the artifact key-value store over localStorage so persistence and
   // reload survival are testable end to end (same async surface as window.storage).
   await ctx.addInitScript(() => {
+    // The suite drives the studio, not the landing: arrive as a returning
+    // visitor so the porch gate routes straight to the app (segmentation
+    // keeps #app off the page while any public view is up).
+    try { localStorage.setItem('bb.porchSeen', '1'); } catch (e) { /* storage-less */ }
     window.storage = {
       async get(key) {
         const v = localStorage.getItem('bbshim:' + key);
