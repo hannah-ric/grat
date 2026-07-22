@@ -30,8 +30,147 @@
 <a class="skip-link" href="#view3d">Skip to the 3D model</a>
 <a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
 
-<!-- PORCH:BEGIN — landing narrative; owned by the landing workstream -->
-<section id="porch" class="porch" hidden></section>
+<!-- PORCH:BEGIN — landing narrative (2a). Ships visible and complete
+     (crawlable, JS-off readable); porch.js removes it pre-boot for
+     returning/share-link/?app arrivals. Figures are injected at runtime from
+     the live pipeline — a number hardcoded here is a founding-rule violation. -->
+<section id="porch" class="porch" data-beat="mast" aria-label="Blueprint Buddy — how it works">
+  <div class="ph-stage" aria-hidden="true"><canvas id="porchCanvas"></canvas></div>
+  <div class="ph-flow">
+
+    <header class="ph-mast">
+      <div class="ph-mast-top">
+        <svg class="ph-mark" width="44" height="44" viewBox="0 0 26 26" aria-hidden="true">
+          <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2" pathLength="1"/>
+          <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" pathLength="1"/>
+          <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+        </svg>
+        <span class="kicker">Blueprint Buddy</span>
+      </div>
+      <h1 class="ph-h1" id="phH1">Furniture that starts as a sentence.</h1>
+      <div class="ph-lead">
+        <p class="ph-lede" id="phLede">Describe the piece you want. Watch it drafted into a real blueprint, proven by real physics, and turned into plans you can build on Saturday.</p>
+        <div class="ph-cta-row">
+          <button type="button" class="btn primary" id="phCtaTop" data-enter="">Open the studio</button>
+          <a class="ph-cta-ghost" id="phCtaHow" href="#ph-ch1">See how it works &darr;</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="chapter" id="ph-ch1" data-ch="describe">
+      <span class="ph-num" aria-hidden="true">01</span>
+      <div class="ph-slot" data-poster="describe"></div>
+      <div class="ph-copy">
+        <span class="kicker">Describe</span>
+        <h2 class="ph-head">Say it like you&rsquo;d say it out loud.</h2>
+        <p class="ph-body">&ldquo;A walnut nightstand, two drawers, about knee height.&rdquo; That&rsquo;s enough &mdash; a photo works too. No CAD to learn, no template maze. The studio speaks carpenter, not computer.</p>
+        <p class="ph-prompt" id="phPrompt" aria-hidden="true"><span class="ph-type" id="phType">A walnut nightstand, two drawers, about knee height</span><span class="ph-caret"></span></p>
+      </div>
+    </section>
+
+    <section class="chapter" id="ph-ch2" data-ch="draft">
+      <span class="ph-num" aria-hidden="true">02</span>
+      <div class="ph-slot" data-poster="draft"></div>
+      <div class="ph-copy">
+        <span class="kicker">Draft</span>
+        <h2 class="ph-head">Watch it become a blueprint.</h2>
+        <p class="ph-body">Parametric templates draft your piece part by part &mdash; legs, aprons, joinery, drawer boxes &mdash; every dimension chosen by code that knows furniture. Change your mind in plain words; the drawing keeps up.</p>
+        <div class="ph-elev" id="phElev" role="img" aria-label="Front elevation of the nightstand, drawn by the studio"></div>
+      </div>
+    </section>
+
+    <section class="ph-band ph-shift" data-ch="shift" aria-label="One engine, any piece">
+      <div class="ph-band-inner">
+        <span class="kicker">Parametric</span>
+        <h2 class="ph-head">One engine. Any piece.</h2>
+        <div class="ph-shift-row" id="phShiftRow"></div>
+      </div>
+    </section>
+
+    <section class="ph-band ph-honesty" data-ch="honesty" aria-label="Why this is not just AI">
+      <div class="ph-band-inner">
+        <span class="kicker">The founding rule</span>
+        <h2 class="ph-head">Why this isn&rsquo;t &ldquo;just AI.&rdquo;</h2>
+        <ul class="ph-claims">
+          <li><b>The AI never writes a number.</b> It translates intent &mdash; &ldquo;lower, wider, walnut&rdquo; &mdash; and hands it to a deterministic drafting engine. Every millimetre is computed, never generated.</li>
+          <li><b>Numbers carry receipts.</b> Tap any dimension, span, or price in the app and see the formula behind it &mdash; that&rsquo;s the provenance system, not a promise.</li>
+          <li><b>Same design in, same numbers out.</b> No dice rolls in a cut list: our reference designs are frozen to 0.05&nbsp;mm and re-verified on every change.</li>
+          <li><b>It can say no.</b> A bookshelf that would sag under a real load of books fails its check and tells you why &mdash; then offers the fix.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="chapter" id="ph-ch3" data-ch="prove">
+      <span class="ph-num" aria-hidden="true">03</span>
+      <div class="ph-slot" data-poster="prove"></div>
+      <div class="ph-copy">
+        <span class="kicker">Prove</span>
+        <h2 class="ph-head">Physics gets a veto.</h2>
+        <p class="ph-body">Every design runs a structural gauntlet: shelf sag from real wood stiffness, racking, tipping, fastener duty &mdash; at safety factor 4, with creep counted in years, on material data from the U.S. Forest Service&rsquo;s Wood Handbook. When something won&rsquo;t hold, we say so &mdash; and one tap fixes it honestly.</p>
+        <div class="ph-plate" id="phPlate"></div>
+        <div class="ph-counters" id="phCounters"></div>
+      </div>
+    </section>
+
+    <section class="chapter" id="ph-ch4" data-ch="build">
+      <span class="ph-num" aria-hidden="true">04</span>
+      <div class="ph-slot" data-poster="build"></div>
+      <div class="ph-copy">
+        <span class="kicker">Build</span>
+        <h2 class="ph-head">From thin air to the workbench.</h2>
+        <p class="ph-body">The blueprint becomes wood &mdash; then a cut list with joinery allowances, a buying plan packed onto real boards, assembly steps with 3D joint close-ups, and a build mode that rides to the shop on your phone. Or stand the piece in your room in AR.</p>
+        <div class="ph-cuts" id="phCuts"></div>
+      </div>
+    </section>
+
+    <section class="ph-band" data-ch="calc" aria-label="Build versus buy">
+      <div class="ph-band-inner calc" id="phCalc">
+        <span class="kicker">Build vs buy</span>
+        <h2 class="ph-head">Price the wood, not the piece.</h2>
+        <p class="ph-body">Pick a piece, a size, and a species. The same buying plan the studio computes &mdash; real boards at editable default prices &mdash; beside what a comparable piece runs at retail.</p>
+        <div class="calc-rows" id="phCalcRows"></div>
+        <div class="calc-out">
+          <div>
+            <div class="calc-stats" id="phCalcStats"></div>
+            <p class="calc-dims" id="phCalcDims"></p>
+            <p class="calc-verdict" id="phCalcVerdict"></p>
+          </div>
+          <div class="calc-retail spec-plate" id="phCalcRetail"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ph-band" data-ch="entry" aria-label="Ways to start">
+      <div class="ph-band-inner">
+        <span class="kicker">Start</span>
+        <h2 class="ph-head">Three ways in.</h2>
+        <div class="entry-paths">
+          <button type="button" class="entry-card" data-enter="first">
+            <h3>First build</h3>
+            <p>Never built furniture before? Start from a proven starter &mdash; the studio sets your level to beginner and explains every step in plain words.</p>
+            <span class="entry-go">Open with starters &rarr;</span>
+          </button>
+          <button type="button" class="entry-card" data-enter="regular">
+            <h3>Regular maker</h3>
+            <p>You know a pocket screw from a dowel. Land on the prompt and describe the piece; the studio keeps pace at intermediate.</p>
+            <span class="entry-go">Open the prompt &rarr;</span>
+          </button>
+          <button type="button" class="entry-card" data-enter="pro">
+            <h3>Pro shop</h3>
+            <p>Straight to work at the advanced level: describe it, photograph it, or paste a BB4: share code to import a design.</p>
+            <span class="entry-go">Open at full depth &rarr;</span>
+          </button>
+        </div>
+        <div class="ph-close">
+          <p class="ph-trust">Runs entirely in your browser &middot; designs autosave on your device &middot; a share code carries a whole design in a line of text</p>
+          <p class="ph-spin" id="phSpin" hidden>Go on. Spin it.</p>
+          <button type="button" class="btn primary" id="phCtaEnd" data-enter="">Open the studio</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</section>
 <!-- PORCH:END -->
 
 <div id="app">

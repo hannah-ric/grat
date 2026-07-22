@@ -252,14 +252,16 @@ var BB = globalThis.BB = globalThis.BB || {};
      * become the ink lines, at full weight. Pooled per (bucket, theme). */
     const draftMats = new Map();
     const DRAFT_OPACITY = { solid: 0.96, selected: 0.96, dim: 0.4, ghost: 0.3, faint: 0.08, hidden: 0 };
+    let draftFill = 1; // porch materialization scalar: 1 = today's exact appearance
     function draftMaterialFor(bucket) {
       const key = bucket + '|' + curTheme;
       if (draftMats.has(key)) return draftMats.get(key);
       const pal = DRAFT[curTheme];
-      const opacity = DRAFT_OPACITY[bucket] !== undefined ? DRAFT_OPACITY[bucket] : 0.96;
+      const opacity = (DRAFT_OPACITY[bucket] !== undefined ? DRAFT_OPACITY[bucket] : 0.96) * draftFill;
       const c = new THREE.Color(bucket === 'selected' ? pal.ink : pal.fill);
       if (bucket === 'selected') c.lerp(new THREE.Color(pal.fill), 0.75); // pale ink tint
       const m = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity, depthWrite: opacity > 0.5 });
+      m.userData.bbBase = DRAFT_OPACITY[bucket] !== undefined ? DRAFT_OPACITY[bucket] : 0.96;
       draftMats.set(key, m);
       return m;
     }
@@ -1077,6 +1079,39 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
         camCur.theta = camGoal.theta - 0.55;
         camCur.dist = camGoal.dist * 1.3;
+      },
+      /* Porch display API (2026-07 overhaul, display-only — engine budget
+       * §5.1–5.2). Scripted camera pose: assign any of {theta, phi, dist}
+       * onto the damped goal; the standing follower integrates, reduced
+       * motion snaps like every other camera move. */
+      setCameraPose(p) {
+        if (!p) return;
+        if (p.theta !== undefined) camGoal.theta = p.theta;
+        if (p.phi !== undefined) camGoal.phi = Math.max(0.12, Math.min(1.52, p.phi));
+        if (p.dist !== undefined) camGoal.dist = Math.max(minDolly(E.bounds), Math.min(20000, p.dist));
+        if (E.reducedMotion) { Object.assign(camCur, camGoal); placeCamera(); }
+      },
+      /* Materialization start — sibling of heroAssemble (Materialize, not
+       * Assemble): parts keep home positions but grow from ~0 in build
+       * order. Reduced motion: k = 1 snaps scale home on the next frame. */
+      materializeStart() {
+        let i = 0;
+        for (const rec of E.meshes.values()) {
+          rec.cur.pos = { ...rec.target.pos };
+          rec.cur.scale = { x: 0.001, y: 0.001, z: 0.001 };
+          rec.delay = E.reducedMotion ? 0 : Math.min(i * 0.04, 0.6);
+          i++;
+        }
+      },
+      /* Draft-fill scalar 0–1: multiplies the pooled drafting fills' opacity
+       * so ink edges lead and paper washes in (drafting mode only). Mutates
+       * the bounded pool in place — zero allocation, stats() flat. */
+      setDraftFill(t) {
+        draftFill = Math.max(0, Math.min(1, +t || 0));
+        for (const m of draftMats.values()) {
+          m.opacity = m.userData.bbBase * draftFill;
+          m.depthWrite = m.opacity > 0.5;
+        }
       },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
       /* Read-only camera snapshot for probes and diagnostics: the damped
