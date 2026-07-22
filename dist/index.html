@@ -2076,11 +2076,264 @@ body.bm-playback .playback-bar { display: none !important; }
 .btn.plan-cta-pill { left: 0; right: 0; transform: none; margin-inline: auto; width: fit-content; }
 
 </style>
-<style>/* Blueprint Buddy — front porch styles (landing narrative, design-language §7).
-   Phase 2a (the landing workstream) owns this file; Phase 1 wires it into the
-   build empty. Inlined by build.js as a second <style> block after the app
-   stylesheet, so porch rules can consume every Showroom token but never need
-   to override app chrome. */
+<style>/* Blueprint Buddy — front porch styles (design-language §7). Tokens only —
+   both schemes come free; resting styles ARE the reduced-motion end state
+   (presets clear their inline styles); no ornament (premium-refit bar). */
+
+/* The app body is a fixed-viewport instrument (overflow hidden); the porch
+   is a document. While it exists the page scrolls, and paint containment
+   re-roots the studio's fixed overlays (phone chat sheet, pills) inside
+   #app's own 100dvh box so they never float over the narrative — visually
+   identical once the studio fills the viewport. Both rules dissolve with
+   the porch; .ph-open mirrors :has() for engines without it. */
+body:has(#porch:not([hidden])), body.ph-open { overflow: auto; overflow-x: clip; }
+body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
+
+/* The beat wash lives on the porch ROOT — beneath every layer — so the
+   transparent canvas above it keeps compositing: wash, then H1, then the
+   piece, then copy. The wash IS the cyclorama (front-porch 12b). */
+.porch {
+  position: relative; background: var(--paper); color: var(--ink);
+  overflow-x: clip;
+  transition: background var(--t-slow) var(--ease);
+}
+.porch[data-beat="describe"] { background: var(--seafoam-wash); }
+.porch[data-beat="draft"] { background: var(--amber-soft); }
+.porch[data-beat="prove"] { background: var(--fern-wash); }
+/* mast + build rest on --paper */
+
+/* ---- the stage: one sticky viewport-high transparent layer the chapters
+   scroll past. Pointer-inert until the handover. ---- */
+.ph-stage {
+  position: sticky; top: 0; z-index: 2; height: 100vh; height: 100dvh;
+  pointer-events: none;
+}
+.ph-stage canvas {
+  width: 100%; height: 100%; display: block;
+  /* stage blocking, one continuous shot: right of the headline at the
+     masthead, left of the copy column through the chapters, centered for
+     the handover — compositor-only, rides the house curve */
+  transform: translateX(14vw);
+  transition: transform 700ms var(--ease);
+}
+.porch[data-beat="describe"] .ph-stage canvas,
+.porch[data-beat="draft"] .ph-stage canvas,
+.porch[data-beat="prove"] .ph-stage canvas { transform: translateX(-11vw); }
+.porch[data-beat="build"] .ph-stage canvas { transform: translateX(-11vw); }
+.porch[data-live="1"] .ph-stage { pointer-events: auto; } /* the handover */
+.porch[data-live="1"] .ph-stage canvas { transform: translateX(10vw); }
+/* diegetic ink-wash when the stage flips draft <-> wood (keyframes shared
+   with the studio viewport; the global reduced-motion rules snap it) */
+.porch.ph-inkwash .ph-stage canvas { animation: inkwash var(--t-med) var(--ease); }
+
+/* Content flows OVER the sticky stage (negative pull). Copy and bands lift
+   to z 3 individually; the H1 stays at z 1 BEHIND the transparent canvas
+   (z 2) so the drafted piece physically occludes its own headline — the
+   occlusion sandwich (front-porch 14a). Ghost numerals sit at z 0. */
+.ph-flow { position: relative; margin-top: calc(-100vh); margin-top: calc(-100dvh); }
+.ph-mast-top, .ph-lead, .ph-copy, .ph-band { position: relative; z-index: 3; }
+.ph-h1 { position: relative; }
+.ph-slot { position: relative; z-index: 1; }
+
+/* ---- masthead (Act 0) ---- */
+.ph-mast {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: var(--space-xl) var(--space-l) var(--space-2xl);
+  max-width: 90rem; margin-inline: auto;
+}
+.ph-mast-top { display: flex; align-items: center; gap: var(--space-s); }
+/* Act 0: the brand strokes draw themselves — pure CSS, paints pre-JS; the
+   global reduced-motion rules collapse it to a snap. */
+.ph-mark [pathLength] {
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: ph-draw 900ms var(--ease) 120ms forwards;
+}
+.ph-mark circle[fill] { opacity: 0; animation: ph-in var(--t-slow) var(--ease) 900ms forwards; }
+@keyframes ph-draw { to { stroke-dashoffset: 0; } }
+@keyframes ph-in { to { opacity: 1; } }
+.ph-h1 {
+  z-index: 1; /* behind the transparent stage canvas — the piece breaks the type */
+  margin: 0; max-width: 12ch;
+  font: 900 var(--text-billboard)/var(--leading-display) var(--display);
+  letter-spacing: -0.015em; text-wrap: balance;
+}
+.ph-lead { display: flex; flex-direction: column; gap: var(--space-m); max-width: 44ch; }
+.ph-lede { margin: 0; font-size: var(--text-l); line-height: var(--leading-body); color: var(--ink-2); }
+.ph-cta-row { display: flex; flex-wrap: wrap; gap: var(--space-s); align-items: center; }
+.ph-cta-ghost {
+  display: inline-flex; align-items: center; min-height: var(--tap);
+  padding: 0 var(--space-s); border-radius: var(--radius-pill);
+  color: var(--link); text-decoration: none; font-weight: 600;
+}
+.ph-cta-ghost:hover { background: var(--panel-2); }
+
+/* ---- chapters ---- */
+/* NOTE: content-visibility is static-mode-only. Its forced paint containment
+   makes each chapter a stacking context, which would flatten the copy/canvas
+   z-interleave the occlusion sandwich depends on in scrub mode (measured,
+   not theorized — see phase2a findings). */
+.chapter {
+  position: relative; min-height: 132vh;
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: center; gap: var(--space-l);
+  padding: var(--space-2xl) var(--space-l);
+  max-width: 90rem; margin-inline: auto;
+}
+.ph-copy { grid-column: 2; display: flex; flex-direction: column; gap: var(--space-s); max-width: 46ch; }
+.ph-head { margin: 0; font: 700 var(--text-3xl)/var(--leading-display) var(--display); text-wrap: balance; }
+.ph-body { margin: 0; color: var(--ink-2); line-height: var(--leading-body); }
+.ph-num {
+  position: absolute; z-index: 0; top: 8vh; left: -0.06em;
+  font: 900 30vw/1 var(--display);
+  color: transparent; -webkit-text-stroke: 2px color-mix(in srgb, var(--ink) 9%, transparent);
+  pointer-events: none; user-select: none;
+}
+/* the typed prompt — a carpenter's sentence in the machine voice */
+.ph-prompt {
+  margin: var(--space-2xs) 0 0; padding: var(--space-xs) var(--space-s);
+  border: 1px solid var(--line-2); border-radius: var(--radius-m);
+  background: var(--panel); font-family: var(--mono); font-size: var(--text-s);
+  min-height: calc(var(--tap) * 0.8);
+}
+.ph-prompt .ph-caret {
+  display: inline-block; width: 1px; height: 1em; margin-right: 1px;
+  background: var(--accent); vertical-align: text-bottom;
+}
+.porch[data-anim="1"] .ph-prompt .ph-caret { animation: ph-blink var(--t-pulse) step-end infinite; }
+@keyframes ph-blink { 50% { opacity: 0; } }
+/* chapter 02: the elevation draws itself — the flagship linework moment */
+.ph-elev { margin-top: var(--space-s); }
+.ph-elev svg { width: 100%; height: auto; max-height: 46vh; }
+/* chapter 03: spec plate + verdict capsule; counters roll real figures */
+.ph-plate { background: color-mix(in srgb, var(--panel) 94%, transparent); border-radius: var(--radius-m); padding: var(--space-xs) var(--space-s); }
+.ph-verdict-line {
+  margin: var(--space-2xs) 0 0; padding-top: var(--space-2xs);
+  border-top: 1px solid var(--line);
+  font: 500 var(--text-xs)/1.5 var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--muted-2);
+}
+.ph-counters { display: flex; flex-wrap: wrap; gap: var(--space-l); margin-top: var(--space-xs); }
+.ph-counter .counter { display: block; font-size: var(--text-2xl); font-weight: 600; color: var(--ink); }
+.ph-counter .kicker { display: block; margin-top: var(--space-3xs); }
+/* chapter 04: real cut-list rows cascade in beside the stage */
+.ph-cuts { display: flex; flex-direction: column; gap: var(--space-2xs); margin-top: var(--space-s); }
+.ph-cut {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-xs);
+  padding: var(--space-2xs) var(--space-s);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  font-size: var(--text-s);
+}
+.ph-cut .ph-cut-dim { font: 500 var(--text-xs)/1.4 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+.ph-cut .ph-cut-name { font-weight: 600; white-space: nowrap; }
+.ph-cut .ph-cut-qty { color: var(--muted-2); }
+
+/* poster stills (phone / coarse / reduced-motion path): same chapters, the
+   stage state as an image per pose — one codepath with reduced motion */
+.ph-slot { grid-column: 1; grid-row: 1; align-self: center; min-height: 20vh; }
+.ph-slot img { width: 100%; max-width: 560px; height: auto; display: block; margin-inline: auto; }
+
+/* ---- full-bleed bands (they pass over the stage — opaque wash fields) ---- */
+.ph-band { position: relative; padding: var(--space-2xl) var(--space-l); background: var(--paper); }
+.ph-band-inner { max-width: 90rem; margin-inline: auto; display: flex; flex-direction: column; gap: var(--space-m); }
+.ph-honesty { background: var(--seafoam-wash); }
+.ph-claims { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--space-m); margin: 0; padding: 0; list-style: none; }
+.ph-claims li { display: flex; flex-direction: column; gap: var(--space-2xs); line-height: var(--leading-body); color: var(--ink-2); }
+.ph-claims b { color: var(--ink); font-size: var(--text-l); font-family: var(--display); font-weight: 600; }
+
+/* shapeshift fallback band: three live starter thumbnails */
+.ph-shift-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--space-m); }
+.ph-thumb { display: flex; flex-direction: column; gap: var(--space-2xs); align-items: center; text-align: center; }
+.ph-thumb img, .ph-thumb .ph-thumb-empty {
+  width: 100%; max-width: 15rem; aspect-ratio: 4 / 3; object-fit: cover;
+  border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel);
+}
+.ph-thumb .ph-thumb-empty { display: grid; place-items: center; color: var(--muted-2); }
+.ph-thumb figcaption { font-size: var(--text-s); color: var(--ink-2); }
+.ph-thumb .ph-thumb-parts { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted-2); }
+
+/* ---- build-vs-buy calculator (design-language §8) ---- */
+.calc { display: flex; flex-direction: column; gap: var(--space-m); }
+.calc-rows { display: flex; flex-direction: column; gap: var(--space-s); }
+.calc-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-xs); }
+.calc-row .kicker { flex: 0 0 7.5rem; }
+.calc-chip {
+  min-height: 36px; padding: 0.3rem 0.85rem;
+  border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  background: var(--panel); color: var(--ink-2); font-size: var(--text-s); font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.calc-chip:hover { border-color: var(--line-2); background: var(--panel-2); }
+.calc-chip[aria-pressed="true"] { background: var(--seafoam-wash); border-color: var(--seafoam-line); color: var(--seafoam-ink); }
+.calc-out { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-l); align-items: start; }
+.calc-stats { display: flex; flex-wrap: wrap; gap: var(--space-l); }
+.calc-stat > .counter { display: block; font-size: var(--text-2xl); font-weight: 600; }
+.calc-stat .counter .counter { display: inline; font-size: inherit; }
+.calc-stat > .kicker { display: block; margin-top: var(--space-3xs); }
+.calc-dims { color: var(--muted-2); font-size: var(--text-s); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.calc-verdict { margin: 0; font: 600 var(--text-l)/var(--leading-heading) var(--display); }
+.calc-verdict .counter { color: var(--accent); }
+.calc-retail { border-top: 1px solid var(--line-2); padding-top: var(--space-s); }
+.calc-retail .spec-plate-value { font-size: var(--text-m); }
+
+/* ---- entry paths + closing band ----
+   The closing band is transparent and viewport-high: the stage stands in the
+   open field beneath the cards for the handover ("Go on. Spin it."). */
+.ph-band[data-ch="entry"] { background: transparent; min-height: 100vh; min-height: 100dvh; }
+.entry-paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--space-m); }
+.entry-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2xs);
+  padding: var(--space-m); text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--radius-l); background: var(--panel);
+  color: var(--ink); font: inherit; line-height: var(--leading-body);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.entry-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--line-2); }
+.entry-card h3 { margin: 0; font: 700 var(--text-xl)/var(--leading-heading) var(--display); }
+.entry-card p { margin: 0; color: var(--ink-2); font-size: var(--text-s); }
+.entry-card .entry-go { margin-top: auto; padding-top: var(--space-xs); color: var(--link); font-weight: 700; font-size: var(--text-s); }
+.ph-close { display: flex; flex-direction: column; gap: var(--space-m); align-items: flex-start; }
+.ph-trust { margin: 0; max-width: 44ch; color: var(--muted-2); font-size: var(--text-s); }
+.ph-spin { margin: 0; font: 600 var(--text-xl)/var(--leading-heading) var(--display); }
+
+/* ---- overture captions (in-app, created by the director) ---- */
+.ov-caption {
+  position: absolute; z-index: 11; left: 50%; bottom: max(12vh, 84px);
+  transform: translateX(-50%); margin: 0; padding: var(--space-2xs) var(--space-s);
+  max-width: min(92%, 34ch); text-align: center;
+  font: 600 var(--text-l)/var(--leading-heading) var(--display); color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  border-radius: var(--radius-m);
+}
+.ov-skip { position: absolute; z-index: 12; top: max(12px, 2vh); right: var(--space-s); }
+
+/* ---- static parity: coarse pointers, narrow screens, reduced motion.
+   No sticky scrub — plain full-bleed chapters with poster stills; the copy
+   is simply there; counters render final values (Motion gate). ---- */
+.porch[data-mode="static"] .ph-stage { display: none; }
+.porch[data-mode="static"] .ph-flow { margin-top: 0; }
+.porch[data-mode="static"] .chapter { min-height: 0; content-visibility: auto; contain-intrinsic-size: auto 60vh; }
+.porch[data-mode="static"] .chapter[data-ch="describe"] { background: var(--seafoam-wash); }
+.porch[data-mode="static"] .chapter[data-ch="draft"] { background: var(--amber-soft); }
+.porch[data-mode="static"] .chapter[data-ch="prove"] { background: var(--fern-wash); }
+
+@media (max-width: 879px) {
+  .ph-mast { padding-inline: var(--space-s); }
+  .chapter { grid-template-columns: 1fr; padding-inline: var(--space-s); gap: var(--space-m); }
+  .ph-copy { grid-column: 1; }
+  .ph-slot { grid-column: 1; grid-row: auto; }
+  .ph-num { font-size: 38vw; top: 2vh; }
+  .ph-band { padding-inline: var(--space-s); }
+  .calc-out { grid-template-columns: 1fr; }
+  .calc-row .kicker { flex-basis: 100%; }
+}
+
+@media (forced-colors: active) {
+  .ph-stage { background: Canvas; }
+  .ph-slot img, .ph-thumb img { border: 1px solid CanvasText; }
+}
 </style>
 </head>
 <body>
@@ -2093,8 +2346,147 @@ body.bm-playback .playback-bar { display: none !important; }
 <a class="skip-link" href="#view3d">Skip to the 3D model</a>
 <a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
 
-<!-- PORCH:BEGIN — landing narrative; owned by the landing workstream -->
-<section id="porch" class="porch" hidden></section>
+<!-- PORCH:BEGIN — landing narrative (2a). Ships visible and complete
+     (crawlable, JS-off readable); porch.js removes it pre-boot for
+     returning/share-link/?app arrivals. Figures are injected at runtime from
+     the live pipeline — a number hardcoded here is a founding-rule violation. -->
+<section id="porch" class="porch" data-beat="mast" aria-label="Blueprint Buddy — how it works">
+  <div class="ph-stage" aria-hidden="true"><canvas id="porchCanvas"></canvas></div>
+  <div class="ph-flow">
+
+    <header class="ph-mast">
+      <div class="ph-mast-top">
+        <svg class="ph-mark" width="44" height="44" viewBox="0 0 26 26" aria-hidden="true">
+          <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2" pathLength="1"/>
+          <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" pathLength="1"/>
+          <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+        </svg>
+        <span class="kicker">Blueprint Buddy</span>
+      </div>
+      <h1 class="ph-h1" id="phH1">Furniture that starts as a sentence.</h1>
+      <div class="ph-lead">
+        <p class="ph-lede" id="phLede">Describe the piece you want. Watch it drafted into a real blueprint, proven by real physics, and turned into plans you can build on Saturday.</p>
+        <div class="ph-cta-row">
+          <button type="button" class="btn primary" id="phCtaTop" data-enter="">Open the studio</button>
+          <a class="ph-cta-ghost" id="phCtaHow" href="#ph-ch1">See how it works &darr;</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="chapter" id="ph-ch1" data-ch="describe">
+      <span class="ph-num" aria-hidden="true">01</span>
+      <div class="ph-slot" data-poster="describe"></div>
+      <div class="ph-copy">
+        <span class="kicker">Describe</span>
+        <h2 class="ph-head">Say it like you&rsquo;d say it out loud.</h2>
+        <p class="ph-body">&ldquo;A walnut nightstand, two drawers, about knee height.&rdquo; That&rsquo;s enough &mdash; a photo works too. No CAD to learn, no template maze. The studio speaks carpenter, not computer.</p>
+        <p class="ph-prompt" id="phPrompt" aria-hidden="true"><span class="ph-type" id="phType">A walnut nightstand, two drawers, about knee height</span><span class="ph-caret"></span></p>
+      </div>
+    </section>
+
+    <section class="chapter" id="ph-ch2" data-ch="draft">
+      <span class="ph-num" aria-hidden="true">02</span>
+      <div class="ph-slot" data-poster="draft"></div>
+      <div class="ph-copy">
+        <span class="kicker">Draft</span>
+        <h2 class="ph-head">Watch it become a blueprint.</h2>
+        <p class="ph-body">Parametric templates draft your piece part by part &mdash; legs, aprons, joinery, drawer boxes &mdash; every dimension chosen by code that knows furniture. Change your mind in plain words; the drawing keeps up.</p>
+        <div class="ph-elev" id="phElev" role="img" aria-label="Front elevation of the nightstand, drawn by the studio"></div>
+      </div>
+    </section>
+
+    <section class="ph-band ph-shift" data-ch="shift" aria-label="One engine, any piece">
+      <div class="ph-band-inner">
+        <span class="kicker">Parametric</span>
+        <h2 class="ph-head">One engine. Any piece.</h2>
+        <div class="ph-shift-row" id="phShiftRow"></div>
+      </div>
+    </section>
+
+    <section class="ph-band ph-honesty" data-ch="honesty" aria-label="Why this is not just AI">
+      <div class="ph-band-inner">
+        <span class="kicker">The founding rule</span>
+        <h2 class="ph-head">Why this isn&rsquo;t &ldquo;just AI.&rdquo;</h2>
+        <ul class="ph-claims">
+          <li><b>The AI never writes a number.</b> It translates intent &mdash; &ldquo;lower, wider, walnut&rdquo; &mdash; and hands it to a deterministic drafting engine. Every millimetre is computed, never generated.</li>
+          <li><b>Numbers carry receipts.</b> Tap any dimension, span, or price in the app and see the formula behind it &mdash; that&rsquo;s the provenance system, not a promise.</li>
+          <li><b>Same design in, same numbers out.</b> No dice rolls in a cut list: our reference designs are frozen to 0.05&nbsp;mm and re-verified on every change.</li>
+          <li><b>It can say no.</b> A bookshelf that would sag under a real load of books fails its check and tells you why &mdash; then offers the fix.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="chapter" id="ph-ch3" data-ch="prove">
+      <span class="ph-num" aria-hidden="true">03</span>
+      <div class="ph-slot" data-poster="prove"></div>
+      <div class="ph-copy">
+        <span class="kicker">Prove</span>
+        <h2 class="ph-head">Physics gets a veto.</h2>
+        <p class="ph-body">Every design runs a structural gauntlet: shelf sag from real wood stiffness, racking, tipping, fastener duty &mdash; at safety factor 4, with creep counted in years, on material data from the U.S. Forest Service&rsquo;s Wood Handbook. When something won&rsquo;t hold, we say so &mdash; and one tap fixes it honestly.</p>
+        <div class="ph-plate" id="phPlate"></div>
+        <div class="ph-counters" id="phCounters"></div>
+      </div>
+    </section>
+
+    <section class="chapter" id="ph-ch4" data-ch="build">
+      <span class="ph-num" aria-hidden="true">04</span>
+      <div class="ph-slot" data-poster="build"></div>
+      <div class="ph-copy">
+        <span class="kicker">Build</span>
+        <h2 class="ph-head">From thin air to the workbench.</h2>
+        <p class="ph-body">The blueprint becomes wood &mdash; then a cut list with joinery allowances, a buying plan packed onto real boards, assembly steps with 3D joint close-ups, and a build mode that rides to the shop on your phone. Or stand the piece in your room in AR.</p>
+        <div class="ph-cuts" id="phCuts"></div>
+      </div>
+    </section>
+
+    <section class="ph-band" data-ch="calc" aria-label="Build versus buy">
+      <div class="ph-band-inner calc" id="phCalc">
+        <span class="kicker">Build vs buy</span>
+        <h2 class="ph-head">Price the wood, not the piece.</h2>
+        <p class="ph-body">Pick a piece, a size, and a species. The same buying plan the studio computes &mdash; real boards at editable default prices &mdash; beside what a comparable piece runs at retail.</p>
+        <div class="calc-rows" id="phCalcRows"></div>
+        <div class="calc-out">
+          <div>
+            <div class="calc-stats" id="phCalcStats"></div>
+            <p class="calc-dims" id="phCalcDims"></p>
+            <p class="calc-verdict" id="phCalcVerdict"></p>
+          </div>
+          <div class="calc-retail spec-plate" id="phCalcRetail"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ph-band" data-ch="entry" aria-label="Ways to start">
+      <div class="ph-band-inner">
+        <span class="kicker">Start</span>
+        <h2 class="ph-head">Three ways in.</h2>
+        <div class="entry-paths">
+          <button type="button" class="entry-card" data-enter="first">
+            <h3>First build</h3>
+            <p>Never built furniture before? Start from a proven starter &mdash; the studio sets your level to beginner and explains every step in plain words.</p>
+            <span class="entry-go">Open with starters &rarr;</span>
+          </button>
+          <button type="button" class="entry-card" data-enter="regular">
+            <h3>Regular maker</h3>
+            <p>You know a pocket screw from a dowel. Land on the prompt and describe the piece; the studio keeps pace at intermediate.</p>
+            <span class="entry-go">Open the prompt &rarr;</span>
+          </button>
+          <button type="button" class="entry-card" data-enter="pro">
+            <h3>Pro shop</h3>
+            <p>Straight to work at the advanced level: describe it, photograph it, or paste a BB4: share code to import a design.</p>
+            <span class="entry-go">Open at full depth &rarr;</span>
+          </button>
+        </div>
+        <div class="ph-close">
+          <p class="ph-trust">Runs entirely in your browser &middot; designs autosave on your device &middot; a share code carries a whole design in a line of text</p>
+          <p class="ph-spin" id="phSpin" hidden>Go on. Spin it.</p>
+          <button type="button" class="btn primary" id="phCtaEnd" data-enter="">Open the studio</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</section>
 <!-- PORCH:END -->
 
 <div id="app">
@@ -2145,6 +2537,7 @@ body.bm-playback .playback-bar { display: none !important; }
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <button role="menuitem" id="porchReplayBtn"><span>See the intro again</span><span class="hint">landing tour</span></button>
           <!-- ≤560px folds the topbar Share CTA away; this entry keeps share
                codes AND import reachable on phones (X-05). -->
           <button role="menuitem" id="menuShareBtn" class="menu-share-item" aria-haspopup="dialog"><span>Share / Import</span><span class="hint">codes &amp; links</span></button>
@@ -14096,6 +14489,51 @@ var BB = globalThis.BB = globalThis.BB || {};
       } finally { M._forceOff(false); }
     }
 
+    /* ============ porch (browser only — landing workstream, guarded on BB.Porch) ============ */
+    if (BB.Porch && BB.Porch._gateDecision && BB.Porch._buildTracks) {
+      const P = BB.Porch;
+      // Gate matrix (front-porch §4d): returning users, #d= share links, and
+      // ?app arrivals bypass pre-paint; reduced motion = static parity.
+      let bad = null, combos = 0;
+      for (const seen of [false, true]) for (const reduced of [false, true])
+        for (const hash of ['', '#d=BB4abc', '#cut;split=58']) for (const search of ['', '?app', '?utm=x']) {
+          combos++;
+          const d = P._gateDecision(seen, reduced, hash, search);
+          const expShow = !seen && !hash.startsWith('#d=') && search !== '?app';
+          if (d.show !== expShow || d.static !== (expShow && reduced)) {
+            bad = `seen=${seen} reduced=${reduced} hash="${hash}" search="${search}" → ${JSON.stringify(d)}`;
+          }
+        }
+      test('porch', `gate matrix: ${combos} combos — returning/share-link/?app bypass, reduced = static parity`,
+        !bad, bad || 'all correct', 'all correct');
+
+      // The track table (§16a): continuous props tile p∈[0,1] with no gap or
+      // overlap; switch thresholds strictly monotone per prop.
+      const audit = table => {
+        const cont = new Map(), sws = new Map();
+        for (const r of table) {
+          if (r.p0 > r.p1) return `${r.prop} runs backward at ${r.p0}`;
+          const m = r.p1 > r.p0 ? cont : sws;
+          m.set(r.prop, (m.get(r.prop) || []).concat(r));
+        }
+        for (const [prop, rows] of cont) {
+          const s = [...rows].sort((x, y) => x.p0 - y.p0);
+          if (Math.abs(s[0].p0) > 1e-9 || Math.abs(s[s.length - 1].p1 - 1) > 1e-9) return `${prop} does not span [0,1]`;
+          for (let i = 1; i < s.length; i++) if (Math.abs(s[i].p0 - s[i - 1].p1) > 1e-9) return `${prop} gap/overlap at p=${s[i].p0}`;
+        }
+        for (const rows of sws.values()) {
+          for (let i = 1; i < rows.length; i++) if (!(rows[i].p0 > rows[i - 1].p0)) return `switch ${rows[i].prop} not monotone at p=${rows[i].p0}`;
+        }
+        return null;
+      };
+      const dflt = audit(P._buildTracks());
+      test('porch', 'default track table covers p∈[0,1] monotone, no same-property overlap',
+        !dflt, dflt || 'tiled + monotone', 'tiled + monotone');
+      const live = audit(P._tracks);
+      test('porch', 'live track table (measured anchors) holds the same contract',
+        !live, live || 'tiled + monotone', 'tiled + monotone');
+    }
+
     /* ============ 3D viewer contracts (browser only — engine.js loads there) ============ */
     if (BB.Engine && BB.Engine.minDolly) {
       // Interactive zoom floor (A-06): wheel/pinch dolly stops at a fraction
@@ -15053,14 +15491,16 @@ var BB = globalThis.BB = globalThis.BB || {};
      * become the ink lines, at full weight. Pooled per (bucket, theme). */
     const draftMats = new Map();
     const DRAFT_OPACITY = { solid: 0.96, selected: 0.96, dim: 0.4, ghost: 0.3, faint: 0.08, hidden: 0 };
+    let draftFill = 1; // porch materialization scalar: 1 = today's exact appearance
     function draftMaterialFor(bucket) {
       const key = bucket + '|' + curTheme;
       if (draftMats.has(key)) return draftMats.get(key);
       const pal = DRAFT[curTheme];
-      const opacity = DRAFT_OPACITY[bucket] !== undefined ? DRAFT_OPACITY[bucket] : 0.96;
+      const opacity = (DRAFT_OPACITY[bucket] !== undefined ? DRAFT_OPACITY[bucket] : 0.96) * draftFill;
       const c = new THREE.Color(bucket === 'selected' ? pal.ink : pal.fill);
       if (bucket === 'selected') c.lerp(new THREE.Color(pal.fill), 0.75); // pale ink tint
       const m = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity, depthWrite: opacity > 0.5 });
+      m.userData.bbBase = DRAFT_OPACITY[bucket] !== undefined ? DRAFT_OPACITY[bucket] : 0.96;
       draftMats.set(key, m);
       return m;
     }
@@ -15879,6 +16319,39 @@ var BB = globalThis.BB = globalThis.BB || {};
         camCur.theta = camGoal.theta - 0.55;
         camCur.dist = camGoal.dist * 1.3;
       },
+      /* Porch display API (2026-07 overhaul, display-only — engine budget
+       * §5.1–5.2). Scripted camera pose: assign any of {theta, phi, dist}
+       * onto the damped goal; the standing follower integrates, reduced
+       * motion snaps like every other camera move. */
+      setCameraPose(p) {
+        if (!p) return;
+        if (p.theta !== undefined) camGoal.theta = p.theta;
+        if (p.phi !== undefined) camGoal.phi = Math.max(0.12, Math.min(1.52, p.phi));
+        if (p.dist !== undefined) camGoal.dist = Math.max(minDolly(E.bounds), Math.min(20000, p.dist));
+        if (E.reducedMotion) { Object.assign(camCur, camGoal); placeCamera(); }
+      },
+      /* Materialization start — sibling of heroAssemble (Materialize, not
+       * Assemble): parts keep home positions but grow from ~0 in build
+       * order. Reduced motion: k = 1 snaps scale home on the next frame. */
+      materializeStart() {
+        let i = 0;
+        for (const rec of E.meshes.values()) {
+          rec.cur.pos = { ...rec.target.pos };
+          rec.cur.scale = { x: 0.001, y: 0.001, z: 0.001 };
+          rec.delay = E.reducedMotion ? 0 : Math.min(i * 0.04, 0.6);
+          i++;
+        }
+      },
+      /* Draft-fill scalar 0–1: multiplies the pooled drafting fills' opacity
+       * so ink edges lead and paper washes in (drafting mode only). Mutates
+       * the bounded pool in place — zero allocation, stats() flat. */
+      setDraftFill(t) {
+        draftFill = Math.max(0, Math.min(1, +t || 0));
+        for (const m of draftMats.values()) {
+          m.opacity = m.userData.bbBase * draftFill;
+          m.depthWrite = m.opacity > 0.5;
+        }
+      },
       stats() { return { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, meshes: E.meshes.size, materials: matPool.size }; },
       /* Read-only camera snapshot for probes and diagnostics: the damped
        * goal pose plus the current interactive dolly floor (A-06). */
@@ -15933,17 +16406,849 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.Engine = { create, minDolly };
 })();
 </script>
-<script>/* Blueprint Buddy — front porch (landing narrative, design-language §7).
- * Phase 2a (the landing workstream) implements this module. The stub exists
- * so build wiring, load order (after engine.js, before ui.js), and the
- * template's porch region are frozen by Phase 1 — the namespace must be
- * present even while the porch section stays hidden and inert.
- */
+<script>/* Blueprint Buddy — the front porch (landing narrative + first-run overture).
+ * Spec of record: docs/ui/front-porch.md amended by design-language §6–§8.
+ * Shape: the GATE runs at eval, pre-boot (returning/`#d=`/`?app` arrivals
+ * lose the porch before paint). The document ships complete in the template;
+ * this module adds live pipeline numbers and, on capable desktops, the
+ * scroll-driven Materialization: ONE Motion.scrollSync observer maps scroll
+ * fraction p through the code-owned track table onto damped engine goals —
+ * the follower smooths, scrollY never binds a transform, the wheel is never
+ * hijacked. (This anime build doesn't link createTimeline({autoplay:
+ * onScroll}) — verified; the observer's onUpdate is the composition, and
+ * Motion.timeline drives the time-based overture only.) Founding rule:
+ * every figure here reads from the live pipeline at render time; the only
+ * code-owned tables are INPUT presets and the labeled retail RANGE. Static
+ * parity: coarse pointer, <880 px, reduced motion, or no motion engine =
+ * the complete static document; any throw degrades to the same. */
 var BB = globalThis.BB = globalThis.BB || {};
 
 (function () {
   'use strict';
-  BB.Porch = {};
+
+  const doc = typeof document !== 'undefined' ? document : null;
+  const $ = id => doc && doc.getElementById(id);
+
+  /* ---------------- the gate (front-porch §4d) ---------------- */
+  /* Pure decision, selftest-matrixed: seen/link/app arrivals never see the
+   * porch; reduced motion sees it as the complete static document. */
+  function _gateDecision(seen, reduced, hash, search) {
+    const h = String(hash || '').replace(/^#/, '');
+    const link = h.startsWith('d=');
+    const app = /[?&]app(?:[=&]|$)/.test(String(search || ''));
+    const show = !seen && !link && !app;
+    return { show, static: show && !!reduced };
+  }
+
+  function peekSeen() {
+    try { if (localStorage.getItem('bb.porchSeen') === '1') return true; } catch (e) { /* storage-less */ }
+    try { return sessionStorage.getItem('bb.porchSeen') === '1'; } catch (e) { return false; }
+  }
+  function markSeen() {
+    try { localStorage.setItem('bb.porchSeen', '1'); return; } catch (e) { /* fall through */ }
+    try { sessionStorage.setItem('bb.porchSeen', '1'); } catch (e) { /* session-only env */ }
+  }
+
+  const reduceMq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const coarseMq = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+  const darkMq = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
+
+  const decision = _gateDecision(peekSeen(), reduceMq && reduceMq.matches,
+    typeof location !== 'undefined' ? location.hash : '',
+    typeof location !== 'undefined' ? location.search : '');
+
+  const porchEl = $ && $('porch');
+  if (porchEl && !decision.show) porchEl.remove();
+  else if (porchEl && doc.body) doc.body.classList.add('ph-open');
+  const active = !!(porchEl && decision.show);
+
+  /* Code-owned track table (§16a). Anchors = scroll fractions of chapter
+   * centers (measured at init; defaults keep it pure for selftest + the
+   * overture). Continuous rows tile [0,1] per prop; switch rows (p0===p1)
+   * commit whole (§8a). Camera = the §11a continuous shot: drift wide →
+   * square-on → dolly close → pull low/long; dist rides k × fitted dist. */
+  const DEFAULT_ANCHORS = { mast: 0, c1: 0.18, c2: 0.42, c3: 0.68, c4: 0.86, close: 1 };
+  function _buildTracks(a) {
+    a = a || DEFAULT_ANCHORS;
+    const seg = (prop, stops) => {
+      const rows = [];
+      for (let i = 0; i < stops.length - 1; i++) {
+        rows.push({ prop, p0: stops[i][0], p1: stops[i + 1][0], from: stops[i][1], to: stops[i + 1][1] });
+      }
+      return rows;
+    };
+    const sw = (prop, p0, to) => ({ prop, p0, p1: p0, to });
+    const draftOn = a.mast + (a.c1 - a.mast) * 0.55;
+    const draftOff = a.c3 + (a.c4 - a.c3) * 0.45;
+    const fillMid = (a.c1 + a.c2) / 2;
+    let bp = -1; // beat thresholds stay strictly monotone under any layout
+    const beatAt = p => { bp = Math.max(bp + 0.001, p); return bp; };
+    return [].concat(
+      seg('theta', [[0, 0.95], [a.c1, 0.5], [a.c2, 0], [a.c3, 0.45], [a.c4, 0.85], [1, 0.72]]),
+      seg('phi', [[0, 1.24], [a.c1, 1.09], [a.c2, 1.52], [a.c3, 1.22], [a.c4, 1.42], [1, 1.13]]),
+      seg('distK', [[0, 1.12], [a.c1, 1.5], [a.c2, 1.18], [a.c3, 0.68], [a.c4, 1.08], [1, 1.32]]),
+      seg('fill', [[0, 0], [a.c1, 0], [fillMid, 0.55], [a.c2, 1], [1, 1]]),
+      [sw('draft', draftOn, 1), sw('draft', draftOff, 0),
+        sw('mat', draftOn, 1),
+        sw('dims', a.c2 - 0.04, 1), sw('dims', draftOff, 0),
+        sw('ortho', a.c2 - 0.07, 1), sw('ortho', a.c2 + 0.09, 0),
+        sw('explode', a.c3 - 0.05, 0.14), sw('explode', draftOff + 0.02, 0),
+        sw('beat', beatAt(0), 'mast'), sw('beat', beatAt(draftOn), 'describe'),
+        sw('beat', beatAt((a.c1 + a.c2) / 2), 'draft'), sw('beat', beatAt(a.c3 - 0.07), 'prove'),
+        sw('beat', beatAt(draftOff), 'build')]
+    );
+  }
+  let tracks = _buildTracks();
+
+  /* Track evaluation: continuous props resolve to the segment containing p;
+   * switches reset to base then apply every crossed row in order, so a
+   * backward scrub honestly reverts each committed state. The io object is
+   * reused — the scroll apply allocates nothing. */
+  const SW_BASE = { draft: 0, mat: 0, dims: 0, ortho: 0, explode: 0, beat: 'mast' };
+  function evalTracks(p, io, table) {
+    io.pose.theta = io.pose.phi = io.pose.distK = io.pose.fill = null;
+    Object.assign(io.sw, SW_BASE);
+    for (const r of table || tracks) {
+      if (r.p1 > r.p0) {
+        if (p >= r.p0 && (p < r.p1 || r.p1 >= 1)) {
+          const t = Math.max(0, Math.min(1, (p - r.p0) / (r.p1 - r.p0)));
+          io.pose[r.prop] = r.from + (r.to - r.from) * t;
+        }
+      } else if (p >= r.p0) {
+        io.sw[r.prop] = r.to;
+      }
+    }
+  }
+
+  /* ---------------- shared pipeline data (the nightstand starter) ---------- */
+  let data = null;
+  function pipelineData() {
+    if (data) return data;
+    const K = BB.K, U = BB.Units;
+    const spec = BB.Spec.correctSpec(BB.Gallery.STARTERS[4].spec);
+    const model = BB.Parametric.build(spec);
+    const report = BB.Spec.validate(spec, model);
+    const integrity = BB.Structural.computeIntegrity(spec, model, { defaultLoad: 'auto' });
+    const cut = BB.Plans.cutList(spec, model);
+    data = { K, U, spec, model, report, integrity, cut };
+    return data;
+  }
+
+  /* ---------------- stage + scrub state ---------------- */
+  const S = {
+    mode: 'static', engine: null, D0: 3200, p: 0, inited: false,
+    sw: Object.assign({}, SW_BASE), pose: { theta: null, phi: null, distK: null, fill: null },
+    obs: [], cleanups: [], reveals: [], live: false, disposed: false,
+    numerals: [], numCache: []
+  };
+  const M = () => BB.Motion;
+
+  function anchorsFromLayout() {
+    const vh = innerHeight || 800;
+    const total = Math.max(1, porchEl.offsetHeight - vh);
+    const pr = porchEl.getBoundingClientRect();
+    const at = id => {
+      const n = $(id);
+      if (!n) return null;
+      const r = n.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (r.top - pr.top + r.height / 2 - vh / 2) / total));
+    };
+    const a = { mast: 0, c1: at('ph-ch1'), c2: at('ph-ch2'), c3: at('ph-ch3'), c4: at('ph-ch4'), close: 1 };
+    if (a.c1 == null || a.c2 == null || a.c3 == null || a.c4 == null) return DEFAULT_ANCHORS;
+    // enforce strict monotonic order so the table always tiles [0,1]
+    let last = 0;
+    for (const k of ['c1', 'c2', 'c3', 'c4']) { a[k] = Math.max(a[k], last + 0.02); last = a[k]; }
+    if (a.c4 >= 0.98) return DEFAULT_ANCHORS;
+    return a;
+  }
+
+  /* Apply one scroll fraction to the stage — the ONLY writer of stage state.
+   * Zero allocation: the pose object is reused; numeral transforms write
+   * only when their rounded pixel value changes. */
+  function applyP(p) {
+    S.p = p;
+    evalTracks(p, S);
+    const e = S.engine;
+    if (!e) return;
+    if (!S.live && S.pose.theta !== null) {
+      S.poseOut.theta = S.pose.theta;
+      S.poseOut.phi = S.pose.phi;
+      S.poseOut.dist = S.pose.distK * S.D0;
+      e.setCameraPose(S.poseOut);
+    }
+    e.setDraftFill(S.pose.fill == null ? 1 : S.pose.fill);
+    if (S.sw.draft !== S.swCur.draft) {
+      S.swCur.draft = S.sw.draft;
+      e.setDrafting(!!S.sw.draft);
+      if (porchEl && M().on()) { // diegetic ink-wash on the stage flip
+        porchEl.classList.remove('ph-inkwash');
+        void porchEl.offsetWidth;
+        porchEl.classList.add('ph-inkwash');
+      }
+    }
+    if (S.sw.mat !== S.swCur.mat) {
+      S.swCur.mat = S.sw.mat;
+      if (S.sw.mat) e.materializeStart();
+    }
+    if (S.sw.dims !== S.swCur.dims) { S.swCur.dims = S.sw.dims; e.setDims(!!S.sw.dims); }
+    if (S.sw.ortho !== S.swCur.ortho) { S.swCur.ortho = S.sw.ortho; e.setProjection(S.sw.ortho ? 'ortho' : 'persp'); }
+    if (S.sw.explode !== S.swCur.explode) { S.swCur.explode = S.sw.explode; e.setExplode(S.sw.explode || 0); }
+    if (S.sw.beat !== S.swCur.beat && porchEl) { S.swCur.beat = S.sw.beat; porchEl.dataset.beat = S.sw.beat; }
+    for (const r of S.reveals) {
+      if (!r.done && p >= r.p0) { r.done = true; try { r.fn(); } catch (err) { /* reveal is decoration */ } }
+    }
+    for (let i = 0; i < S.numerals.length; i++) {
+      const n = S.numerals[i];
+      const t = Math.max(0, Math.min(1, (p - n.p0) / (n.p1 - n.p0)));
+      const px = Math.round((0.5 - t) * 26);
+      if (px !== S.numCache[i]) { S.numCache[i] = px; n.el.style.transform = 'translateY(' + px + 'px)'; }
+    }
+  }
+  S.poseOut = { theta: 0, phi: 0, dist: 0 };
+  S.swCur = Object.assign({}, SW_BASE);
+
+  /* ---------------- DOM enrichment (live numbers only) ---------------- */
+  const el = (tag, cls, html) => {
+    const n = doc.createElement(tag);
+    if (cls) n.className = cls;
+    if (html !== undefined) n.innerHTML = html;
+    return n;
+  };
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  function fillElevation() {
+    const host = $('phElev');
+    if (!host) return;
+    const d = pipelineData();
+    host.innerHTML = BB.Drafting.elevationSVG(d.spec, d.model, 'front', v => d.U.fmtLength(v), { animatable: true });
+  }
+
+  function fillProve() {
+    const d = pipelineData();
+    const plate = $('phPlate'), counters = $('phCounters');
+    if (!plate || !counters) return;
+    const sum = d.integrity.summary;
+    const verdict = sum.verdict;
+    const stampText = verdict === 'pass' ? 'proven' : verdict === 'anchor' ? 'anchor required' : verdict;
+    const ws = sum.worstSag;
+    const sagLine = ws
+      ? `worst span sags ${esc(d.U.fmtSmall(ws.sag))} against ${esc(d.U.fmtSmall(ws.limit))} allowed · safety factor ${BB.Structural.SAFETY_FACTOR}`
+      : `no sagging span in this piece · safety factor ${BB.Structural.SAFETY_FACTOR}`;
+    const row = (l, v) => `<div class="spec-plate-row"><span class="spec-plate-label">${l}</span><span class="spec-plate-value">${v}</span></div>`;
+    plate.innerHTML = `<span class="stamp ${esc(verdict)}" id="phStamp">${esc(stampText)}</span><div class="spec-plate" style="border-top:0;padding-bottom:0">` +
+      row(esc(d.spec.meta.name), `${esc(d.U.fmtLength(d.spec.overall.width))} × ${esc(d.U.fmtLength(d.spec.overall.depth))} × ${esc(d.U.fmtLength(d.spec.overall.height))}`) +
+      (ws ? row('critical span', esc(d.U.fmtLength(ws.span))) : '') +
+      `</div><p class="ph-verdict-line">${sagLine}</p>`;
+    counters.textContent = '';
+    const spans = [];
+    for (const [v, label] of [[d.model.parts.length, 'parts drafted'],
+      [d.integrity.checks.length, 'structural checks'], [BB.Structural.SAFETY_FACTOR, 'safety factor']]) {
+      const w = el('div', 'ph-counter');
+      const c = el('span', 'counter', '0');
+      w.append(c, el('span', 'kicker', esc(label)));
+      counters.append(w);
+      spans.push([c, v]);
+    }
+    return { spans, stamp: $('phStamp') };
+  }
+
+  function fillCuts() {
+    const host = $('phCuts');
+    if (!host) return [];
+    const d = pipelineData();
+    host.textContent = '';
+    const rows = d.cut.slice(0, 6);
+    for (const r of rows) {
+      host.append(el('div', 'ph-cut',
+        `<span class="ph-cut-name">${esc(r.name)}</span><span class="ph-cut-qty">×${r.qty}</span>` +
+        `<span class="ph-cut-dim">${esc(d.U.fmtLength(r.L))} × ${esc(d.U.fmtLength(r.W))} × ${esc(d.U.fmtLength(r.T))}</span>`));
+    }
+    return [...host.children];
+  }
+
+  /* Shapeshift fallback band: three real starters, honest part counts —
+   * thumbnails render idle-time from a throwaway engine (gallery precedent).
+   * The closing band's starters row consolidates here (logged in findings). */
+  const SHIFT_STARTERS = [0, 3, 5];
+  function fillShift() {
+    const host = $('phShiftRow');
+    if (!host) return;
+    host.textContent = '';
+    const entries = [];
+    for (const i of SHIFT_STARTERS) {
+      const g = BB.Gallery.STARTERS[i];
+      const spec = BB.Spec.correctSpec(g.spec);
+      const model = BB.Parametric.build(spec);
+      const fig = el('figure', 'ph-thumb',
+        `<span class="ph-thumb-empty" aria-hidden="true">${BB.Icons ? BB.Icons.svg('board', 26) : ''}</span>
+         <figcaption>${esc(spec.meta.name)} <span class="ph-thumb-parts">· ${model.parts.length} parts</span></figcaption>`);
+      host.append(fig);
+      entries.push({ fig, spec, model });
+    }
+    const pass = () => {
+      try {
+        const canvas = doc.createElement('canvas');
+        canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:320px;height:240px;';
+        doc.body.append(canvas);
+        const mini = BB.Engine.create(canvas, { reducedMotion: true });
+        for (const e2 of entries) {
+          mini.setModel(e2.model, e2.spec, { snap: true });
+          mini.frame();
+          mini.snapNow();
+          const img = doc.createElement('img');
+          img.alt = '';
+          img.src = mini.renderNow().toDataURL('image/png');
+          const empty = e2.fig.querySelector('.ph-thumb-empty');
+          if (empty) empty.replaceWith(img);
+        }
+        mini.dispose();
+        canvas.remove();
+      } catch (e) { /* skeleton stays — decoration only */ }
+    };
+    if (globalThis.requestIdleCallback) requestIdleCallback(pass, { timeout: 2500 });
+    else setTimeout(pass, 1500);
+  }
+
+  /* ---------------- build-vs-buy calculator (design-language §8) ----------
+   * Input presets are code-owned dimension sets (inch-clean mm) fed to the
+   * REAL pipeline; RETAIL_COMPARABLE is a labeled ballpark range — a
+   * knowledge table, never a computed output. Money follows the BOM's own
+   * $x.xx convention; dimensions render through BB.Units. */
+  const CALC_TEMPLATES = [['table', 'Table'], ['desk', 'Desk'], ['bench', 'Bench'], ['bookshelf', 'Bookshelf'], ['nightstand', 'Nightstand'], ['cabinet', 'Cabinet']];
+  const CALC_SIZES = {
+    table: { S: [1219.2, 762, 736.6], M: [1524, 863.6, 736.6], L: [1828.8, 914.4, 749.3] },
+    desk: { S: [1066.8, 558.8, 736.6], M: [1320.8, 660.4, 736.6], L: [1524, 762, 736.6] },
+    bench: { S: [914.4, 355.6, 457.2], M: [1117.6, 381, 457.2], L: [1371.6, 406.4, 457.2] },
+    bookshelf: { S: [762, 279.4, 1219.2], M: [914.4, 304.8, 1828.8], L: [1066.8, 330.2, 2133.6] },
+    nightstand: { S: [457.2, 381, 558.8], M: [508, 406.4, 609.6], L: [609.6, 457.2, 660.4] },
+    cabinet: { S: [609.6, 406.4, 812.8], M: [762, 457.2, 914.4], L: [914.4, 508, 914.4] }
+  };
+  const RETAIL_COMPARABLE = { // per template × size class, USD, "typical store range"
+    table: { S: [400, 900], M: [600, 1500], L: [900, 2500] },
+    desk: { S: [250, 700], M: [400, 1100], L: [600, 1600] },
+    bench: { S: [150, 450], M: [200, 600], L: [300, 800] },
+    bookshelf: { S: [150, 500], M: [250, 800], L: [400, 1100] },
+    nightstand: { S: [150, 500], M: [250, 700], L: [350, 900] },
+    cabinet: { S: [400, 1200], M: [700, 1800], L: [1000, 2500] }
+  };
+  const CALC_SPECIES = ['red_oak', 'white_oak', 'hard_maple', 'walnut', 'cherry', 'ash'];
+  const money = v => '$' + (Math.round(v * 100) / 100).toFixed(2);
+  const calc = { template: 'table', size: 'M', species: 'red_oak', raf: 0, out: null };
+
+  function calcCompute() {
+    const K = BB.K, U = BB.Units;
+    const raw = BB.Spec.defaultSpec(calc.template);
+    const dims = CALC_SIZES[calc.template][calc.size];
+    raw.meta.level = 'intermediate';
+    raw.overall = { width: dims[0], depth: dims[1], height: dims[2] };
+    raw.wood.species = calc.species;
+    const spec = BB.Spec.correctSpec(raw);
+    const model = BB.Parametric.build(spec);
+    const cut = BB.Plans.cutList(spec, model);
+    const prices = K.defaultPrices();
+    const stockPlan = BB.Packing.planStock(spec, model, cut, { prices, stockMode: {} });
+    const integrity = BB.Structural.computeIntegrity(spec, model, { defaultLoad: 'auto' });
+    const steps = BB.Plans.assembly(spec, model, integrity, { stockPlan });
+    const est = BB.Plans.timeEstimate(spec, model, cut, steps, stockPlan);
+    return {
+      cost: stockPlan.totalCost,
+      boards: stockPlan.boards.length + stockPlan.sheets.length,
+      parts: model.parts.length,
+      hoursLow: est.hoursLow, hoursHigh: est.hoursHigh,
+      dims: `${U.fmtLength(spec.overall.width)} × ${U.fmtLength(spec.overall.depth)} × ${U.fmtLength(spec.overall.height)} · ${K.WOOD_SPECIES[spec.wood.species].label}`,
+      retail: RETAIL_COMPARABLE[calc.template][calc.size]
+    };
+  }
+
+  function calcRender(first) {
+    const r = calcCompute();
+    const stats = $('phCalcStats');
+    if (!stats) return;
+    if (first) {
+      const stat = (id, inner, k) => `<div class="calc-stat"><span class="counter"${id ? ` id="${id}"` : ''}>${inner}</span><span class="kicker">${k}</span></div>`;
+      stats.innerHTML = stat('phCalcCost', '0', 'wood, packed on real boards') +
+        stat('phCalcBoards', '0', 'boards &amp; sheets to buy') +
+        stat('phCalcParts', '0', 'parts, cut to size') +
+        stat('', '<span class="counter" id="phCalcHl">0</span>–<span class="counter" id="phCalcHh">0</span> h', 'honest bench time');
+      $('phCalcVerdict').innerHTML = 'Your cost: <span class="counter" id="phCalcCost2">$0.00</span> in wood — the rest is Saturday.';
+    }
+    const roll = (id, v, fmt) => {
+      const t = $(id);
+      if (!t) return;
+      // first paint writes plain text so the section-enter roll starts at 0;
+      // static mode always renders final values (reduced-motion parity).
+      if (S.mode === 'scrub' && !first) M().count(t, v, fmt ? { fmt } : undefined);
+      else { t.textContent = fmt ? fmt(v) : String(Math.round(v)); }
+    };
+    roll('phCalcCost', r.cost, money);
+    roll('phCalcCost2', r.cost, money);
+    roll('phCalcBoards', r.boards);
+    roll('phCalcParts', r.parts);
+    roll('phCalcHl', r.hoursLow);
+    roll('phCalcHh', r.hoursHigh);
+    $('phCalcDims').textContent = r.dims;
+    $('phCalcRetail').innerHTML = '<span class="kicker">A comparable piece at retail</span>' +
+      `<div class="spec-plate-row"><span class="spec-plate-label">typical store range</span><span class="spec-plate-value">$${r.retail[0]}–$${r.retail[1]}</span></div>` +
+      `<div class="spec-plate-row"><span class="spec-plate-label">your wood</span><span class="spec-plate-value" id="phCalcAgainst">${money(r.cost)}</span></div>`;
+    calc.out = r;
+  }
+
+  function calcSchedule() {
+    if (calc.raf) return;
+    calc.raf = requestAnimationFrame(() => { calc.raf = 0; calcRender(false); });
+  }
+
+  function buildCalc() {
+    const rows = $('phCalcRows');
+    if (!rows) return;
+    rows.textContent = '';
+    const K = BB.K;
+    const mkRow = (label, items, get, set) => {
+      const row = el('div', 'calc-row');
+      row.append(el('span', 'kicker', esc(label)));
+      for (const [key, text] of items) {
+        const chip = el('button', 'calc-chip', esc(text));
+        chip.type = 'button';
+        chip.setAttribute('aria-pressed', String(get() === key));
+        chip.onclick = () => {
+          set(key);
+          for (const c of row.querySelectorAll('.calc-chip')) c.setAttribute('aria-pressed', 'false');
+          chip.setAttribute('aria-pressed', 'true');
+          if (M().on()) M().pop(chip);
+          calcSchedule();
+        };
+        row.append(chip);
+      }
+      rows.append(row);
+    };
+    mkRow('Piece', CALC_TEMPLATES, () => calc.template, v => { calc.template = v; });
+    mkRow('Size', [['S', 'Small'], ['M', 'Medium'], ['L', 'Large']], () => calc.size, v => { calc.size = v; });
+    mkRow('Species', CALC_SPECIES.map(k => [k, K.WOOD_SPECIES[k].label]), () => calc.species, v => { calc.species = v; });
+    calcRender(true);
+  }
+
+  /* ---------------- entering the studio (design-language §7 handoff) ------- */
+  function seedLevel(path) {
+    const lv = path === 'first' ? 'beginner' : path === 'regular' ? 'intermediate' : path === 'pro' ? 'advanced' : null;
+    if (!lv) return;
+    try {
+      const sel = $('levelSelect');
+      if (sel) sel.value = lv;
+      const bb = globalThis.__bb;
+      if (bb && bb.state && bb.state.prefs4) {
+        bb.state.prefs4.level = lv;
+        BB.Store.savePrefs(bb.state.prefs4); // persists; ui.js enforces prefs4.level on every applied spec
+      }
+    } catch (e) { /* seeding is a courtesy, never load-bearing */ }
+  }
+
+  function enterStudio(path) {
+    markSeen();
+    const finish = () => {
+      teardown();
+      if (porchEl && porchEl.parentNode) porchEl.remove();
+      if (doc.body) doc.body.classList.remove('ph-open');
+      scrollTo(0, 0);
+      seedLevel(path);
+      if (path === 'first') {
+        const g = $('galleryBtn');
+        if (g) g.click();
+      }
+      const hero = $('heroText');
+      if (hero && hero.offsetParent) hero.focus();
+      else { const chat = $('chatText'); if (chat) chat.focus(); }
+    };
+    const m = M();
+    if (!m || !m.on()) { finish(); return; }
+    const bench = doc.querySelector('main.bench') || $('app');
+    let done = false;
+    const go = () => { if (!done) { done = true; finish(); } };
+    if (bench) {
+      addEventListener('scrollend', go, { once: true });
+      setTimeout(go, 900); // scrollend fallback
+      bench.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else go();
+  }
+
+  function teardown() {
+    if (S.disposed) return;
+    S.disposed = true;
+    for (const o of S.obs) { try { o.revert(); } catch (e) { /* observer already gone */ } }
+    S.obs.length = 0;
+    for (const fn of S.cleanups) { try { fn(); } catch (e) { /* best effort */ } }
+    S.cleanups.length = 0;
+    if (S.engine) { try { S.engine.dispose(); } catch (e) { /* GL already lost */ } S.engine = null; }
+  }
+
+  /* "See the intro again" — More-menu hook (verifier wires the menu item):
+   * clears the gate and reloads so the porch narrative replays. */
+  function replay() {
+    try { localStorage.removeItem('bb.porchSeen'); } catch (e) { /* ignore */ }
+    try { sessionStorage.removeItem('bb.porchSeen'); } catch (e) { /* ignore */ }
+    location.reload();
+  }
+
+  /* ---------------- init ---------------- */
+  function typeOn() {
+    const t = $('phType');
+    if (!t || !M().on()) return;
+    const full = t.dataset.full || t.textContent;
+    t.dataset.full = full;
+    t.textContent = '';
+    let i = 0;
+    const iv = setInterval(() => {
+      i++;
+      t.textContent = full.slice(0, i);
+      if (i >= full.length) clearInterval(iv);
+    }, 35);
+    S.cleanups.push(() => { clearInterval(iv); t.textContent = full; });
+  }
+
+  function stageTheme() {
+    if (!S.engine) return;
+    const explicit = doc.documentElement.dataset.theme;
+    const dark = explicit ? explicit === 'dark' : !!(darkMq && darkMq.matches);
+    S.engine.setTheme(dark ? 'dark' : 'light');
+  }
+
+  function initScrub() {
+    const canvas = $('porchCanvas');
+    const d = pipelineData();
+    const engine = BB.Engine.create(canvas, { reducedMotion: false });
+    S.engine = engine;
+    engine.setModel(d.model, d.spec);
+    engine.resize();
+    engine.frame();
+    S.D0 = engine.cameraPose().dist;
+    stageTheme();
+    const mo = new MutationObserver(stageTheme);
+    mo.observe(doc.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    S.cleanups.push(() => mo.disconnect());
+    if (darkMq) {
+      darkMq.addEventListener('change', stageTheme);
+      S.cleanups.push(() => darkMq.removeEventListener('change', stageTheme));
+    }
+    const ro = new ResizeObserver(() => engine.resize());
+    ro.observe(canvas.parentElement);
+    S.cleanups.push(() => ro.disconnect());
+    engine.materializeStart(); // the piece assembles into the masthead frame
+
+    // measured anchors → the one code-owned track table
+    const a = anchorsFromLayout();
+    tracks = _buildTracks(a);
+    BB.Porch._tracks = tracks;
+    BB.Porch._anchors = a;
+
+    // ghost numeral drift rides the same driver (few px, cached writes)
+    S.numerals.length = 0;
+    [['ph-ch1', a.c1], ['ph-ch2', a.c2], ['ph-ch3', a.c3], ['ph-ch4', a.c4]].forEach(([id, c]) => {
+      const n = doc.querySelector('#' + id + ' .ph-num');
+      if (n) { S.numerals.push({ el: n, p0: Math.max(0, c - 0.16), p1: Math.min(1, c + 0.16) }); S.numCache.push(null); }
+    });
+
+    // copy reveals fire on section enter, through the same p; each threshold
+    // re-derives from the anchors when the layout re-measures
+    const rev = (layout, fn) => S.reveals.push({ p0: layout(a), layout, fn, done: false });
+    const m = M();
+    rev(x => Math.max(0.001, x.c1 - 0.14), () => {
+      const c = doc.querySelector('#ph-ch1 .ph-copy');
+      m.lines(c.querySelector('.ph-head'));
+      m.reveal(c.querySelector('.ph-body'));
+      typeOn();
+    });
+    rev(x => x.c2 - 0.14, () => {
+      const c = doc.querySelector('#ph-ch2 .ph-copy');
+      m.lines(c.querySelector('.ph-head'));
+      m.reveal(c.querySelector('.ph-body'));
+      m.draw($('phElev'), { dur: 900 });
+    });
+    rev(x => (x.c2 + x.c3) / 2 - 0.05, () => {
+      m.cascade(doc.querySelectorAll('.ph-claims li'));
+    });
+    rev(x => x.c3 - 0.14, () => {
+      const c = doc.querySelector('#ph-ch3 .ph-copy');
+      m.lines(c.querySelector('.ph-head'));
+      m.reveal(c.querySelector('.ph-body'));
+      const pv = fillProve();
+      if (pv) {
+        m.settle($('phStamp'));
+        for (const [span, v] of pv.spans) m.count(span, v);
+      }
+    });
+    rev(x => x.c4 - 0.14, () => {
+      const c = doc.querySelector('#ph-ch4 .ph-copy');
+      m.lines(c.querySelector('.ph-head'));
+      m.reveal(c.querySelector('.ph-body'));
+      m.cascade(fillCuts());
+    });
+    rev(x => Math.min(0.94, x.c4 + (1 - x.c4) * 0.3), () => {
+      calcSchedule(); // counters roll in as the calculator enters
+      m.cascade(porchEl.querySelectorAll('.entry-card'));
+    });
+    // the handover: the stage goes orbit-live at the closing band
+    rev(() => 0.93, () => {
+      S.live = true;
+      porchEl.dataset.live = '1';
+      const spin = $('phSpin');
+      if (spin) { spin.hidden = false; m.reveal(spin); }
+    });
+
+    // masthead reveal on load
+    m.lines($('phH1'));
+    m.reveal($('phLede'), { delay: 120 });
+    porchEl.dataset.anim = '1';
+
+    // THE driver: one scroll observer → track table → damped engine goals
+    const sc = m.scrollSync(porchEl, {
+      enter: 'start start', leave: 'end end', sync: false,
+      onUpdate: self => applyP(self.progress)
+    });
+    S.obs.push(sc);
+    applyP(0);
+
+    // content-visibility materialization changes the porch's height after
+    // init — re-measure the observer's bounds and the anchor table when it
+    // does, so p honestly spans [0,1] over the real document.
+    let lastH = porchEl.offsetHeight;
+    const roP = new ResizeObserver(() => {
+      const h = porchEl.offsetHeight;
+      if (Math.abs(h - lastH) < 40) return;
+      lastH = h;
+      try { sc.refresh(); } catch (e) { /* observer gone */ }
+      const a2 = anchorsFromLayout();
+      tracks = _buildTracks(a2);
+      BB.Porch._tracks = tracks;
+      BB.Porch._anchors = a2;
+      for (let i = 0; i < S.numerals.length; i++) {
+        const c = [a2.c1, a2.c2, a2.c3, a2.c4][i];
+        S.numerals[i].p0 = Math.max(0, c - 0.16);
+        S.numerals[i].p1 = Math.min(1, c + 0.16);
+      }
+      for (const r2 of S.reveals) if (r2.layout) r2.p0 = r2.layout(a2);
+    });
+    roP.observe(porchEl);
+    S.cleanups.push(() => roP.disconnect());
+  }
+
+  const POSTER_POSES = {
+    describe: { draft: 1, fill: 0.4, dims: 0, ortho: 0, explode: 0, theta: 0.5, phi: 1.09, distK: 1.5 },
+    draft: { draft: 1, fill: 1, dims: 1, ortho: 1, explode: 0, theta: 0, phi: 1.52, distK: 1.18 },
+    prove: { draft: 1, fill: 1, dims: 1, ortho: 0, explode: 0.14, theta: 0.45, phi: 1.22, distK: 0.68 },
+    build: { draft: 0, fill: 1, dims: 0, ortho: 0, explode: 0, theta: 0.85, phi: 1.42, distK: 1.08 }
+  };
+  async function initStatic() {
+    const pv = fillProve();
+    if (pv) for (const [c, v] of pv.spans) c.textContent = String(v); // final values — static parity
+    fillCuts();
+    try {
+      const d = pipelineData();
+      const canvas = doc.createElement('canvas');
+      canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:640px;height:480px;';
+      doc.body.append(canvas);
+      const eng = BB.Engine.create(canvas, { reducedMotion: true });
+      eng.setModel(d.model, d.spec, { snap: true });
+      eng.frame();
+      const D0 = eng.cameraPose().dist;
+      const explicit = doc.documentElement.dataset.theme;
+      eng.setTheme(explicit === 'dark' || (!explicit && darkMq && darkMq.matches) ? 'dark' : 'light');
+      for (const [key, q] of Object.entries(POSTER_POSES)) {
+        const slot = doc.querySelector(`.ph-slot[data-poster="${key}"]`);
+        if (!slot) continue;
+        eng.setDrafting(!!q.draft);
+        eng.setDraftFill(q.fill);
+        eng.setDims(!!q.dims);
+        eng.setProjection(q.ortho ? 'ortho' : 'persp');
+        eng.setExplode(q.explode);
+        eng.setCameraPose({ theta: q.theta, phi: q.phi, dist: q.distK * D0 });
+        // one engine tick applies bucket/drafting materials (they swap in the
+        // tick, not in the setters); reducedMotion k=1 settles it in a frame
+        await new Promise(r => requestAnimationFrame(r));
+        eng.snapNow();
+        const img = doc.createElement('img');
+        img.alt = '';
+        img.src = eng.renderNow().toDataURL('image/png');
+        slot.textContent = '';
+        slot.append(img);
+      }
+      eng.dispose();
+      canvas.remove();
+    } catch (e) { /* the document stands without stills */ }
+  }
+
+  function init() {
+    if (!active || S.inited) return;
+    S.inited = true;
+    try {
+      const fine = !(coarseMq && coarseMq.matches);
+      const wide = (innerWidth || 0) >= 880;
+      S.mode = (fine && wide && M() && M().on()) ? 'scrub' : 'static';
+      BB.Porch.mode = S.mode;
+      porchEl.dataset.mode = S.mode;
+      // shared enrichment (both modes)
+      fillElevation();
+      fillShift();
+      buildCalc();
+      // CTAs — every path lands through one enterStudio
+      for (const b of porchEl.querySelectorAll('[data-enter]')) {
+        b.addEventListener('click', () => enterStudio(b.dataset.enter || null));
+      }
+      // working in the studio below IS entry — mark seen so regulars skip
+      const app = $('app');
+      if (app) {
+        const mark = () => markSeen();
+        app.addEventListener('pointerdown', mark, { once: true, capture: true, passive: true });
+        app.addEventListener('focusin', mark, { once: true, capture: true });
+      }
+      if (S.mode === 'scrub') initScrub();
+      else initStatic().catch(() => { /* the document stands without stills */ });
+    } catch (e) {
+      // any throw = the complete static document, silently
+      try { if (porchEl) { porchEl.dataset.mode = 'static'; } teardown(); } catch (e2) { /* stand down */ }
+    }
+  }
+
+  /* Porch/overture start only after the boot skeleton is gone (§12 budget:
+   * boot stays untouched); poll is cheap and self-cancels. */
+  function schedule() {
+    if (!active) return;
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      if (!doc.getElementById('bootSkeleton') || Date.now() - t0 > 6000) {
+        clearInterval(iv);
+        requestAnimationFrame(() => requestAnimationFrame(init));
+      }
+    }, 120);
+  }
+
+  /* ---------------- the Overture (front-porch §3, in-app, first-run) ------ */
+  /* Wanted only where the porch cannot scrub the story itself: static-mode
+   * porch on a motion-capable device (phones/coarse per design-language §11).
+   * The caller (ui.js boot tail) adds its own gates: first run, !reduced,
+   * WebGL alive, skeleton removed. */
+  function shouldOverture(o) {
+    o = o || {};
+    if (o.seenOverture || o.reduced || o.webgl === false || o.skeletonGone === false) return false;
+    if (!active) return false;
+    if (!(M() && M().on())) return false;
+    const fine = !(coarseMq && coarseMq.matches);
+    const wide = (innerWidth || 0) >= 880;
+    return !(fine && wide); // desktop scrub owns the story; the overture is the phone's
+  }
+
+  const OV_CAPTIONS = [
+    'Say what you want to build.',
+    'Code drafts it — every dimension computed, none guessed.',
+    'Physics checks it. Honestly.',
+    'Then we turn it into wood, cut lists, and build steps.'
+  ];
+  function overture(engine, opts) {
+    opts = opts || {};
+    const m = M();
+    if (!engine || !m || !m.on()) return false;
+    const wrap = $('viewportWrap');
+    if (!wrap) return false;
+    let finished = false, started = false;
+    const caption = el('p', 'ov-caption');
+    caption.setAttribute('aria-live', 'polite');
+    const skip = el('button', 'btn small ghost ov-skip', 'Skip');
+    skip.type = 'button';
+    wrap.append(caption, skip);
+    const tl = m.timeline({ defaults: { ease: 'linear' } });
+    const obj = { p: 0 };
+    const io = { pose: { theta: null, phi: null, distK: null }, sw: Object.assign({}, SW_BASE) };
+    const cur = Object.assign({}, SW_BASE);
+    const pose = { theta: 0, phi: 0, dist: 0 };
+    const ovTracks = _buildTracks(DEFAULT_ANCHORS);
+    const D0 = engine.cameraPose().dist;
+    let capIdx = -1;
+    const apply = () => {
+      started = true;
+      const p = obj.p;
+      evalTracks(p, io, ovTracks);
+      if (io.pose.theta !== null) {
+        pose.theta = io.pose.theta; pose.phi = io.pose.phi; pose.dist = io.pose.distK * D0;
+        engine.setCameraPose(pose);
+      }
+      engine.setDraftFill(io.pose.fill == null ? 1 : io.pose.fill);
+      for (const k of ['draft', 'mat', 'dims', 'ortho', 'explode']) {
+        if (io.sw[k] !== cur[k]) {
+          cur[k] = io.sw[k];
+          if (k === 'draft') {
+            engine.setDrafting(!!cur.draft);
+            wrap.classList.remove('inkwash'); void wrap.offsetWidth; wrap.classList.add('inkwash');
+          } else if (k === 'mat' && cur.mat) engine.materializeStart();
+          else if (k === 'dims') engine.setDims(!!cur.dims);
+          else if (k === 'ortho') engine.setProjection(cur.ortho ? 'ortho' : 'persp');
+          else if (k === 'explode') engine.setExplode(cur.explode || 0);
+        }
+      }
+      const beats = [0.02, 0.2, 0.62, 0.8];
+      let idx = -1;
+      for (let i = 0; i < beats.length; i++) if (p >= beats[i]) idx = i;
+      if (idx !== capIdx && idx >= 0) {
+        capIdx = idx;
+        caption.textContent = OV_CAPTIONS[idx];
+        m.reveal(caption);
+        if (idx === 2 && opts.integrity) {
+          const sum = opts.integrity.summary;
+          const ws = sum.worstSag;
+          const stamp = el('span', 'stamp ' + sum.verdict,
+            (sum.verdict === 'pass' ? 'proven' : sum.verdict === 'anchor' ? 'anchor required' : sum.verdict) +
+            (ws ? ` — sags ${BB.Units.fmtSmall(ws.sag)} of ${BB.Units.fmtSmall(ws.limit)} allowed` : ''));
+          caption.append(doc.createElement('br'), stamp);
+          m.settle(stamp);
+        }
+      }
+    };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      try { tl.cancel(); } catch (e) { /* inert */ }
+      removeEventListener('pointerdown', finish, true);
+      removeEventListener('wheel', finish, true);
+      removeEventListener('keydown', finish, true);
+      try {
+        engine.setDrafting(false);
+        engine.setDims(false);
+        engine.setDraftFill(1);
+        engine.setProjection('persp');
+        engine.setExplode(0);
+        engine.frame();
+        engine.snapNow();
+      } catch (e) { /* engine already standard */ }
+      caption.remove();
+      skip.remove();
+      // mirror the story to chat for AT continuity
+      try {
+        const log = $('chatLog');
+        if (log) {
+          const msg = el('div', 'msg bot');
+          msg.innerHTML = `<div class="bubble">${OV_CAPTIONS.map(esc).join(' ')}</div>`;
+          log.append(msg);
+        }
+      } catch (e) { /* chat mirror is a courtesy */ }
+      if (typeof opts.onDone === 'function') opts.onDone();
+    };
+    skip.onclick = finish;
+    addEventListener('pointerdown', finish, true);
+    addEventListener('wheel', finish, true);
+    addEventListener('keydown', finish, true);
+    tl.add(obj, { p: 1, duration: 7600, ease: 'linear', onUpdate: apply, onComplete: finish }, 0);
+    tl.init();
+    setTimeout(() => { if (!started) finish(); }, 400); // first-frame watchdog
+    setTimeout(() => { if (!finished) finish(); }, 12000); // absolute guard
+    try { skip.focus(); } catch (e) { /* focus best-effort */ }
+    return true;
+  }
+
+  schedule();
+
+  BB.Porch = {
+    active, mode: S.mode,
+    enterStudio, replay, overture, shouldOverture,
+    _gateDecision, _buildTracks, _tracks: tracks, _anchors: DEFAULT_ANCHORS,
+    _state: S, _calc: calc, _applyP: applyP
+  };
 })();
 </script>
 <script>/* Blueprint Buddy — UI shell. All DOM wiring lives here; every design change
@@ -19490,8 +20795,33 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
     if (!opened) {
-      showWelcome(projectCount > 0);
-      botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
+      const welcome = () => {
+        showWelcome(projectCount > 0);
+        botSay('Welcome to the shop. Describe a piece (or drop in a photo), pick a starter, or bring in a saved design — the seed table behind the welcome card is live right now. Everything autosaves as you work.', []);
+      };
+      // Porch integration point 1 (front-porch §3): first run only, motion
+      // allowed, WebGL alive, skeleton removed — the Materialization plays
+      // once on the main engine, then lands the exact standard welcome.
+      // Any throw or a missed first frame falls back to today's boot.
+      let played = false;
+      try {
+        if (BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
+          seenOverture: !!state.prefs4.seenOverture,
+          reduced: reduceMq.matches,
+          webgl: !!state.engine,
+          skeletonGone: !$('bootSkeleton')
+        })) {
+          played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
+          if (played) {
+            state.prefs4.seenOverture = true;
+            Store.savePrefs(state.prefs4);
+            // Session-scoped after the save: two theater beats never chain in
+            // one session (porch §2) — the starter hero stays one-shot-ever.
+            state.prefs4.seenHero = true;
+          }
+        }
+      } catch (e) { played = false; /* the overture is never load-bearing */ }
+      if (!played) welcome();
     }
 
     // Gallery thumbnails render off the critical path once boot settles.
@@ -19714,6 +21044,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     });
     $('referenceBtn').onclick = () => selectTab('reference');
+    // The landing tour is replayable (design-language §6.5); the item hides
+    // where the porch can never return (e.g. storage-less frames).
+    const porchReplay = $('porchReplayBtn');
+    if (porchReplay) {
+      if (BB.Porch && typeof BB.Porch.replay === 'function') porchReplay.onclick = () => BB.Porch.replay();
+      else porchReplay.hidden = true;
+    }
     /* mode navigation */
     $('mode-design').onclick = () => setMode('design');
     $('mode-plan').onclick = () => setMode('plan');

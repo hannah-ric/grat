@@ -3791,6 +3791,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     });
     $('referenceBtn').onclick = () => selectTab('reference');
+    // The landing tour is replayable (design-language §6.5); the item hides
+    // where the porch can never return (e.g. storage-less frames).
+    const porchReplay = $('porchReplayBtn');
+    if (porchReplay) {
+      if (BB.Porch && typeof BB.Porch.replay === 'function') porchReplay.onclick = () => BB.Porch.replay();
+      else porchReplay.hidden = true;
+    }
     /* mode navigation */
     $('mode-design').onclick = () => setMode('design');
     $('mode-plan').onclick = () => setMode('plan');
