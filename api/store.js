@@ -34,12 +34,15 @@ const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/;
 // uses that SAME per-uid keyspace for authoritative billing/usage records —
 // bb:{uid}:subscription and bb:{uid}:usage:ai:<month> (and usage:tokens:<month>).
 // A store write to one of those names would alias an entitlement key and let a
-// signed-in user self-grant Pro or reset their own AI meter (E-01/E-02). Reserve
-// the entitlement roots so they can never be reached through this endpoint. We do
+// signed-in user self-grant Pro or reset their own AI meter (E-01/E-02). The
+// credits pivot adds the ledger family the same way: credits / ledger /
+// design:* / designs:index / bphash:* / artifact:* / bpimg:* are written ONLY
+// by api/_credits.js and api/blueprint.js — a user must never be able to mint
+// their own balance or forge an issued blueprint through this endpoint. We do
 // NOT ban colons (client docs are projects:index / prices:v1 / prefs:v2 /
 // project:* / thumb:*) nor rename the user keyspace — only these exact roots and
 // their subkeys are off-limits, for reads, writes, and deletes alike.
-const RESERVED_DOC = /^(subscription|usage)(:|$)/;
+const RESERVED_DOC = /^(subscription|usage|credits|ledger|design|designs|bphash|artifact|bpimg)(:|$)/;
 // A project document (src/store.js PROJECT_PREFIX = 'project:'); note this does
 // NOT match 'projects:index' (the index), 'prices:v1', 'prefs:v2', or 'thumb:*'.
 const PROJECT_DOC_RE = /^project:/;

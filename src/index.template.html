@@ -363,6 +363,7 @@
             <div class="menu-group-label">Export</div>
             <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
                  means nothing to a thumb (C-14). -->
+            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint">issued</span></button>
             <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
             <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
             <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
@@ -408,6 +409,7 @@
           </div>
         </div>
       </div>
+      <button id="creditChip" class="btn small credit-chip" hidden aria-live="polite"></button>
       <button id="shareBtn" class="btn share-cta" aria-haspopup="dialog">Share</button>
     </div>
   </header>
@@ -524,10 +526,24 @@
           <div class="inspector-body" id="inspBody"></div>
         </div>
 
+        <!-- The Adjust rail (credits pivot): a first-class editing surface for
+             the whole design — dimensions, species, finish, level, counts —
+             because chat is behind sign-in and anonymous editing must not
+             depend on discovering the part inspector. -->
+        <div class="adjust-rail" id="adjustRail" role="region" aria-label="Adjust this design" hidden>
+          <div class="adjust-head">
+            <h3>Adjust</h3>
+            <button class="btn icon ghost" id="adjustClose" aria-label="Close adjust panel"></button>
+          </div>
+          <div class="adjust-body" id="adjustBody"></div>
+        </div>
+
         <div class="stage-controls">
           <!-- Always visible: Dimensions, Blueprint, Fit, View. Camera
                presets, explode, and help live inside the View popover. -->
           <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
+            <button class="btn small ghost" id="adjustBtn" aria-pressed="false" aria-expanded="false" aria-controls="adjustRail" title="Adjust dimensions, wood, and finish">Adjust</button>
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>

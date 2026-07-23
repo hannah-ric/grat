@@ -48,15 +48,44 @@ const CHECKS = [
     required: true,
     remedy: 'Add the Stripe integration, or paste the key from Stripe Dashboard → Developers → API keys.'
   },
+  // Credit packs are the current offer (api/billing.js?action=credits).
+  {
+    key: 'STRIPE_CREDIT_PACK_1_PRICE_ID',
+    required: true,
+    remedy: 'Create a one-time $9 Price ("1 blueprint credit") in the Stripe Dashboard and paste its price_... ID here.'
+  },
+  {
+    key: 'STRIPE_CREDIT_PACK_3_PRICE_ID',
+    required: true,
+    remedy: 'Create a one-time Price for the 3-credit pack in the Stripe Dashboard and paste its price_... ID here.'
+  },
+  {
+    key: 'STRIPE_CREDIT_PACK_10_PRICE_ID',
+    required: true,
+    remedy: 'Create a one-time Price for the 10-credit pack in the Stripe Dashboard and paste its price_... ID here.'
+  },
+  {
+    key: 'STRIPE_CREDIT_PACK_25_PRICE_ID',
+    required: true,
+    remedy: 'Create a one-time Price for the 25-credit pack in the Stripe Dashboard and paste its price_... ID here.'
+  },
+  // Legacy subscription prices — kept configured and dormant (existing
+  // subscribers are honored; the plan is no longer sold).
   {
     key: 'STRIPE_PRO_MONTHLY_PRICE_ID',
-    required: true,
-    remedy: 'Create a recurring monthly Price for Blueprint Buddy Pro in the Stripe Dashboard and paste its price_... ID here.'
+    required: false,
+    remedy: 'Legacy Pro monthly price (dormant). Keep it set so grandfathered subscriptions keep working.'
   },
   {
     key: 'STRIPE_PRO_YEARLY_PRICE_ID',
-    required: true,
-    remedy: 'Create a recurring yearly Price for Blueprint Buddy Pro in the Stripe Dashboard and paste its price_... ID here.'
+    required: false,
+    remedy: 'Legacy Pro yearly price (dormant). Keep it set so grandfathered subscriptions keep working.'
+  },
+  // The AI spend backstop (E-07a). Advisory: unset = disabled.
+  {
+    key: 'AI_MONTHLY_TOKEN_BUDGET',
+    required: false,
+    remedy: 'No monthly output-token ceiling is set for the AI proxy. Set AI_MONTHLY_TOKEN_BUDGET (e.g. 2000000) as a backstop, and ALSO set a spend limit in the Anthropic Console — the console limit is a human step nothing in this repo can perform.'
   },
   {
     key: 'STRIPE_WEBHOOK_SECRET',

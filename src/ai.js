@@ -38,9 +38,27 @@ var BB = globalThis.BB = globalThis.BB || {};
   const VERBATIM_TURNS = 6;
   const CONTINUE_PROMPT = 'Continue exactly where you stopped. No repetition, no preamble.';
 
+  /* The one-line budget digest (audit M-22): the current design's estimated
+   * materials total, computed by CODE from the same BOM the Buy tab shows —
+   * user-edited prices included when the UI passes them. The model never
+   * computes a price; it only reasons against this number and the $/bd ft
+   * column in the knowledge digest. Best-effort: any failure returns ''. */
+  function budgetLine(spec, prices) {
+    try {
+      if (!BB.Parametric || !BB.Plans || !BB.Packing || !BB.Structural) return '';
+      const model = BB.Parametric.build(spec);
+      if (!model || !model.parts || !model.parts.length) return '';
+      const integ = BB.Structural.computeIntegrity(spec, model, {});
+      const cut = BB.Plans.cutList(spec, model);
+      const stock = BB.Packing.planStock(spec, model, cut, { prices });
+      const bom = BB.Plans.bom(spec, model, { integrity: integ, stock, prices });
+      return `BUDGET: current estimated materials total $${bom.total} (code-computed, live price table). Answer budget asks against this and the $/bdft column; never invent prices.`;
+    } catch (e) { return ''; }
+  }
+
   /* ---------------- system prompt: static schema doc + level joint list +
    * knowledge digests + current spec in wire format. Nothing else. -------- */
-  function systemPrompt(spec) {
+  function systemPrompt(spec, prices) {
     return [
       'You are the design intent engine inside Blueprint Buddy, a parametric furniture design tool.',
       'You NEVER compute geometry. You propose intent; the app owns all math, snaps stock sizes, and re-validates everything.',
@@ -67,9 +85,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Hardware style intent only — every count, rating, and bore is code
       // (BB.HW), so capacities and formulas never spend prompt tokens.
       BB.HW ? BB.HW.digestLine() : '',
+      // Everything after the marker is the PER-CALL tail (uncached — see
+      // api/chat.js C14): the wire spec and the code-computed budget line.
       '--- current spec (wire format) ---',
-      JSON.stringify(Codec().encode(spec))
-    ].join('\n');
+      JSON.stringify(Codec().encode(spec)),
+      budgetLine(spec, prices)
+    ].filter(Boolean).join('\n');
   }
 
   /* ---------------- JSON extraction ---------------- */
@@ -470,6 +491,25 @@ var BB = globalThis.BB = globalThis.BB || {};
   // (audit L-14).
   let proxyUnconfigured = false;
 
+  /* Credits pivot: where may the offline intent parser still answer?
+   *   - non-browser hosts (the headless test suites drive it directly);
+   *   - dev hosts (localhost & friends — the documented dev/test path);
+   *   - hosts with NO proxy route at all (a static file or claude.ai
+   *     artifact — the standalone-app capability stays intact).
+   * The one place it is now FORBIDDEN is a production deploy whose proxy
+   * answered 503 (route exists, ANTHROPIC_API_KEY missing): there the UI
+   * says "AI is not configured on this site" instead of quietly serving a
+   * toy parser that looks like the product. */
+  function isDevHost() {
+    if (typeof location === 'undefined') return false;
+    return /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(location.hostname || '');
+  }
+  function localParserAllowed() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return true;
+    if (!proxyUnconfigured) return true;
+    return isDevHost();
+  }
+
   async function proxyTransport(system, messages) {
     let response;
     try {
@@ -488,14 +528,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (response.status === 503) proxyUnconfigured = true; // route exists, key missing (L-14)
       throw new Error('proxy unavailable (' + response.status + ')');
     }
-    // Usage limit (402) and rate limit (429) are AUTHORITATIVE, not transport
-    // failures — surface them distinctly so the UI can prompt an upgrade instead
-    // of silently dropping to the offline parser. The proxy stays alive.
-    if (response.status === 402 || response.status === 429) {
+    // Sign-in required (401), usage limit (402), and rate limit (429) are
+    // AUTHORITATIVE answers, not transport failures — surface them distinctly
+    // so the UI can prompt sign-in / name the ceiling instead of silently
+    // dropping to the offline parser. The proxy stays alive.
+    if (response.status === 401 || response.status === 402 || response.status === 429) {
       let payload = null;
       try { payload = await response.json(); } catch (e) { /* no body */ }
-      const err = new Error(response.status === 402 ? 'usage_limit' : 'rate_limited');
-      if (response.status === 402) { err.usageLimit = true; err.billing = payload && payload.billing; }
+      const err = new Error(response.status === 401 ? 'auth_required' : response.status === 402 ? 'usage_limit' : 'rate_limited');
+      if (response.status === 401) err.authRequired = true;
+      else if (response.status === 402) { err.usageLimit = true; err.billing = payload && payload.billing; }
       else err.rateLimited = true;
       throw err;
     }
@@ -693,9 +735,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     const phrasing = String(userText || '');
     userText = BB.Units.normalizeLengthText(userText);
     const onStatus = opts.onStatus || (() => {});
-    if (!hasRemote()) return { reply: localModel(userText, spec, { phrasing }), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
+    if (!hasRemote()) {
+      if (!localParserAllowed()) {
+        // A keyless DEPLOY (proxy route exists, no ANTHROPIC_API_KEY): the
+        // offline parser must never impersonate the product in production.
+        // Dev hosts and no-proxy hosts (static / claude.ai) keep it.
+        return { reply: null, turns: opts.turns || [], unconfigured: true, error: 'AI is not configured on this site. The design tools all work — but chat needs the site owner to set the AI key.' };
+      }
+      return { reply: localModel(userText, spec, { phrasing }), turns: opts.turns || [], local: true, unconfigured: proxyUnconfigured };
+    }
 
-    const system = systemPrompt(spec);
+    const system = systemPrompt(spec, opts.prices);
     const turns = opts.turns || [];
     const digest = opts.digest || '';
     const userContent = opts.image
@@ -755,10 +805,14 @@ var BB = globalThis.BB = globalThis.BB || {};
           : 'The model never produced a valid design reply.'
       };
     } catch (err) {
-      // Usage/rate limits are authoritative server answers, not outages — never
-      // mask them behind the offline parser.
+      // Sign-in and usage/rate limits are authoritative server answers, not
+      // outages — never mask them behind the offline parser.
+      if (err && err.authRequired) return { reply: null, turns, authRequired: true };
       if (err && err.usageLimit) return { reply: null, turns, usageLimit: true, billing: err.billing || null };
       if (err && err.rateLimited) return { reply: null, turns, rateLimited: true };
+      if (!localParserAllowed()) {
+        return { reply: null, turns, unconfigured: proxyUnconfigured, error: proxyUnconfigured ? 'AI is not configured on this site. The design tools all work — but chat needs the site owner to set the AI key.' : 'The design service is unreachable. Your design is untouched — try again in a moment.' };
+      }
       if (opts.image) return { reply: null, turns, error: 'The design service is unreachable, and photo analysis needs it. Text refinements still work offline.' };
       // G13: the transport EXISTED and died mid-flight (hasRemote() was true
       // above — a session that starts offline returns early and never lands
@@ -779,6 +833,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * buildable design". */
   function roundDecision(res) {
     if (!res) return 'bail';
+    if (res.authRequired) return 'auth';
     if (res.usageLimit) return 'billing';
     if (res.rateLimited) return 'rate';
     if (!res.reply) return 'bail';
@@ -916,7 +971,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.AI = {
-    systemPrompt, extractJSON, looksTruncated, classify, localModel, respond, apply,
+    systemPrompt, budgetLine, extractJSON, looksTruncated, classify, localModel, respond, apply,
     setTransport, callModel, buildMessages, buildCritique, rejectionMarker, roundDecision, downscaleImage, stepContext,
     supportsImages, hasRemote, VISION_PROMPT,
     unconfigured: () => proxyUnconfigured, // keyless proxy seen this session (L-14)

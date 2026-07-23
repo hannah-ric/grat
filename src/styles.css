@@ -171,6 +171,40 @@
 .pricing-note { margin: 0; color: var(--muted); font-size: var(--text-xs); text-align: center; }
 @media (min-width: 680px) { .pricing-grid { grid-template-columns: 1fr 1fr; } .pricing-shell { padding: var(--space-l); } }
 
+/* ---- credits pivot: pricing surfaces ---- */
+.pricing-grid-credits { grid-template-columns: 1fr 1fr; }
+@media (min-width: 680px) { .pricing-grid-credits { grid-template-columns: repeat(4, 1fr); } }
+.pricing-facts { margin: 0; padding: 0 var(--space-s); list-style: none; display: flex; flex-direction: column; gap: .5rem; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-caption); }
+.pricing-facts li::before { content: '✓'; margin-right: .55rem; color: var(--green); font-weight: 700; }
+.pricing-balance { font: 600 var(--text-s) var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+.spend-confirm { width: min(560px, calc(100vw - 2rem)); }
+.spend-actions { display: flex; justify-content: flex-end; gap: var(--space-s); padding: var(--space-s) var(--space-m) 0; }
+.credit-chip { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Locked Plan tabs read as a preview, not an error. */
+.plan-preview { display: flex; flex-direction: column; gap: var(--s3); }
+.plan-preview .preview-locked svg { opacity: .55; vertical-align: -2px; }
+.preview-steps { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: .45rem; color: var(--ink-2); }
+.preview-cta { border: 1px solid var(--line-2); border-radius: var(--radius-m); background: var(--paper); padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); align-items: flex-start; }
+.preview-cta p { margin: 0; max-width: 62ch; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-body); }
+.preview-email { display: flex; flex-direction: column; gap: var(--s2); }
+.preview-email-row { display: flex; gap: var(--s2); }
+.preview-email input[type="email"] { flex: 1; min-width: 0; padding: .45rem .6rem; border: 1px solid var(--line-2); border-radius: var(--radius-s); background: var(--panel); color: var(--ink); font: inherit; }
+
+/* The Adjust rail — the inspector's sibling, docked on the LEFT so the two
+   can coexist; same surface treatment, same param controls. */
+.adjust-rail {
+  position: absolute; top: calc(var(--s3) + 60px); left: var(--s3); width: 280px; z-index: 15;
+  background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(10px);
+  border: 1px solid var(--line-2); border-radius: var(--radius-l); box-shadow: var(--shadow-lg);
+  max-height: calc(100% - var(--s5) - 60px); overflow-y: auto; overscroll-behavior: contain;
+}
+.adjust-head { display: flex; align-items: center; padding: var(--s3) var(--s3) var(--s2); gap: var(--s2); }
+.adjust-head h3 { margin: 0; font-family: var(--display); font-size: var(--text-l); flex: 1; }
+.adjust-body { padding: 0 var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
+@media (max-width: 720px) { .adjust-rail { width: min(280px, calc(100vw - 2 * var(--s3))); } }
+@media (forced-colors: active) { .adjust-rail, .preview-cta { border: 1px solid CanvasText; } }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #17110F;

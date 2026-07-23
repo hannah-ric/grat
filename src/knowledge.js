@@ -830,8 +830,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     return keys.map(k => { const r = ergoRow(k); return `${r.label.toLowerCase().replace(/ height| seat/g, '')} ${r.min}-${r.max}`; }).join(', ') + ' mm';
   }
   function knowledgeDigest() {
+    // Real $/bd ft, not $-dots (audit M-22): "keep it under $200" and
+    // "cheapest wood that won't sag" are only answerable against numbers.
+    // These are the DEFAULT prices; the current design's estimated total
+    // (user-edited prices included) rides the prompt tail via AI.budgetLine.
     const w = Object.values(WOOD_SPECIES).map(s =>
-      `${s.key}(janka ${s.janka},move ${s.movement},$${'●'.repeat(s.costTier)})`).join(' ');
+      `${s.key}(janka ${s.janka},move ${s.movement},$${s.pricePerBdFt}/bdft)`).join(' ');
     // min===max rows (single standard sizes, e.g. queen_bed_width) print one
     // number — "1524–1524mm" spent tokens saying nothing.
     const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min === r.max ? r.min : `${r.min}–${r.max}`}mm`).join('; ');

@@ -1372,9 +1372,11 @@ section('prompt budget: hard ceiling with measured headroom');
   // deliberate spend), then 2000 → 2040 for the C1 bed-size anchor rows
   // (~35 tokens), then 2040 → 2060 for the G7 e-budget clause (~18 tokens),
   // then 2060 → 2290 for the G6 ask-or-disclose policy (~170 tokens — the
-  // sev-5 silent-guessing fix) and the G10 floor-boundary line (~56 tokens);
+  // sev-5 silent-guessing fix) and the G10 floor-boundary line (~56 tokens),
+  // then 2290 → 2400 for the M-22 budget digest (real $/bd ft per species +
+  // the code-computed materials total — budget asks were unanswerable);
   // the guard still catches accidental bloat.
-  ok(tokens <= 2290, `system prompt stays under the 2290-token ceiling (measured ${tokens})`);
+  ok(tokens <= 2400, `system prompt stays under the 2400-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
@@ -1459,11 +1461,23 @@ async function testKeylessProxyState() {
   ok(hasFlag && keyless.AI.unconfigured() === false, 'AI.unconfigured() exists and starts false');
   const spec503 = keyless.Spec.correctSpec({ meta: { template: 'table' } });
   const r1 = await keyless.AI.respond('make it walnut', spec503, { turns: [] });
-  ok(r1.local === true && r1.reply && r1.reply.kind === 'diff', 'keyless proxy still answers via the local parser');
+  // Credits pivot: on a production deploy the offline parser must never
+  // impersonate the product — a keyless proxy is an HONEST error state.
+  ok(r1.reply === null && !r1.local, 'keyless PRODUCTION deploy never answers via the local parser');
+  ok(/not configured/i.test(r1.error || ''), 'the user is told AI is not configured on this site');
   eq(r1.unconfigured, true, '503 surfaces the distinct unconfigured state');
   ok(hasFlag && keyless.AI.unconfigured() === true, 'the session remembers the keyless proxy');
   const r2 = await keyless.AI.respond('make it pine', spec503, { turns: [] });
   eq(r2.unconfigured, true, 'unconfigured persists on the hasRemote fast path');
+  ok(r2.reply === null, 'the fast path stays an honest error too');
+  // The SAME keyless 503 on a dev host keeps the parser (the documented
+  // dev/test path) — gating is by host, not by luck.
+  const keylessDev = load({
+    console, window: {}, document: {}, location: { hostname: 'localhost' },
+    fetch: async () => ({ status: 503, ok: false, json: async () => ({ error: { message: 'no key' } }) })
+  });
+  const rDev = await keylessDev.AI.respond('make it walnut', keylessDev.Spec.correctSpec({ meta: { template: 'table' } }), { turns: [] });
+  ok(rDev.local === true && rDev.reply && rDev.reply.kind === 'diff', 'localhost keyless keeps the dev parser path');
   // Genuine offline: the network itself is down — NOT "not configured".
   const offline = load({
     console, window: {}, document: {},

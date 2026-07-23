@@ -355,8 +355,10 @@ function objectBodyReq(url, bodyObj, headers) {
     const rmkv = useTempKV();
     let st = await E.statusFor('u:free');
     eq(st.plan, 'free', 'no subscription → Free');
-    eq(st.entitlements.aiMonthlyLimit, 25, 'Free AI cap');
+    // Credits pivot: the monthly AI meter is an abuse ceiling, not the offer.
+    eq(st.entitlements.aiMonthlyLimit, 200, 'Free AI ceiling (abuse guard, not the 25-message offer)');
     eq(st.entitlements.projectLimit, 3, 'Free project cap');
+    ok(st.credits && typeof st.credits.balance === 'number', 'status carries the credit balance (the real offer)');
     await E.incrementAI('u:free'); await E.incrementAI('u:free');
     eq((await E.getUsage('u:free')).aiMessages, 2, 'incrementAI accrues usage');
 
@@ -457,20 +459,19 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
-  /* ---------------- chat: anonymous metering + rate limit (A4b) ---------------- */
-  section('chat: anonymous requests are metered and rate-limited (A4b)');
+  /* ---------------- chat: sign-in gate + per-uid metering + burst (A4b → credits pivot) ---------------- */
+  section('chat: AI is behind sign-in; per-uid metering is an abuse ceiling; burst guard holds (A4b)');
   {
     const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
     process.env.ANTHROPIC_API_KEY = 'sk-test';
     const realFetch = globalThis.fetch;
     globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) });
-    // Vercel sets x-real-ip to the verified client IP; serve.js hands the direct
-    // socket. anonMeterId must key off those, never the client-forgeable XFF.
-    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+    const mkC = uid => S.sessionCookieFor({ uid, name: 'T', provider: 'dev' }, fakeReq('/')).split(';')[0];
+    const chatReq = uid => fakeReq('/api/chat', { method: 'POST', headers: uid ? { cookie: mkC(uid) } : {}, body: { messages: [{ role: 'user', content: 'hi' }] } });
 
-    // (E-03) The meter identity must derive from a non-forgeable source. An
-    // attacker who rotates the leftmost X-Forwarded-For must NOT mint fresh
-    // 25-msg + burst buckets on the owner-funded key.
+    // (E-03) The anon meter identity stays non-forgeable (kept for any future
+    // anonymous preview path): rotating X-Forwarded-For must never mint buckets.
     {
       const spoofA = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.7', 'x-forwarded-for': '1.1.1.1' }, socket: { remoteAddress: '10.0.0.9' } });
       const spoofB = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.7', 'x-forwarded-for': '2.2.2.2' }, socket: { remoteAddress: '10.0.0.9' } });
@@ -481,31 +482,36 @@ function objectBodyReq(url, bodyObj, headers) {
       ok(spoofA !== chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.8' }, socket: {} }), 'genuinely different real IPs still get distinct buckets');
     }
 
-    // (a) an anonymous call is proxied AND metered by hashed IP — no more free-for-all
+    // (a) anonymous chat is refused — AI is behind sign-in (credits pivot).
     let res = fakeRes();
-    await chat(chatReq('203.0.113.10'), res);
-    eq(res.statusCode, 200, 'anonymous chat is proxied');
-    eq((await E.getUsage(chat.anonMeterId({ headers: { 'x-real-ip': '203.0.113.10' }, socket: {} }))).aiMessages, 1,
-      'anonymous usage is metered by IP (signing out no longer resets to unlimited)');
+    await chat(chatReq(null), res);
+    eq(res.statusCode, 401, 'anonymous chat → 401 auth_required');
+    eq(json(res).error && json(res).error.type, 'auth_required', 'with a branchable error type');
 
-    // (b) once an anon IP hits the Free cap, the proxy refuses with 402
-    const meterB = chat.anonMeterId({ headers: { 'x-real-ip': '203.0.113.20' }, socket: {} });
-    for (let i = 0; i < E.FREE.aiMonthlyLimit; i++) await E.incrementAI(meterB);
+    // (b) signed-in chat is proxied AND metered per uid.
     res = fakeRes();
-    await chat(chatReq('203.0.113.20'), res);
-    eq(res.statusCode, 402, 'anonymous over the Free cap → 402, not a free bypass');
+    await chat(chatReq('dev:meter1'), res);
+    eq(res.statusCode, 200, 'signed-in chat is proxied');
+    eq((await E.getUsage('dev:meter1')).aiMessages, 1, 'signed-in usage is metered per uid');
 
-    // (c) burst guard: with NO durable meter (KV down/unset) a rapid run from one
-    //     IP is still capped by the in-memory guard — "no storage" ≠ "unlimited".
+    // (c) over the monthly abuse ceiling → 402 (a guard, not an upsell).
+    for (let i = 0; i < E.FREE.aiMonthlyLimit; i++) await E.incrementAI('dev:meter2');
+    res = fakeRes();
+    await chat(chatReq('dev:meter2'), res);
+    eq(res.statusCode, 402, 'over the abuse ceiling → 402');
+    ok(!/upgrade/i.test((json(res).error || {}).message || ''), 'the ceiling message never sells an upgrade');
+
+    // (d) burst guard: with NO durable meter (KV down/unset) a rapid run from
+    //     one uid is still capped in-memory — "no storage" ≠ "unlimited".
     delete process.env.BB_KV_FILE;
     let got429 = false, sent = 0;
-    for (; sent < 70 && !got429; sent++) { res = fakeRes(); await chat(chatReq('203.0.113.30'), res); if (res.statusCode === 429) got429 = true; }
-    ok(got429, `a burst from one IP is rate-limited (429) with no KV (tripped after ${sent})`);
+    for (; sent < 70 && !got429; sent++) { res = fakeRes(); await chat(chatReq('dev:burst'), res); if (res.statusCode === 429) got429 = true; }
+    ok(got429, `a burst from one uid is rate-limited (429) with no KV (tripped after ${sent})`);
 
-    // (d) no key → 503, never a crash
+    // (e) no key → 503, never a crash
     delete process.env.ANTHROPIC_API_KEY;
     res = fakeRes();
-    await chat(chatReq('203.0.113.40'), res);
+    await chat(chatReq('dev:meter3'), res);
     eq(res.statusCode, 503, 'no ANTHROPIC_API_KEY → 503');
 
     globalThis.fetch = realFetch;
@@ -535,29 +541,25 @@ function objectBodyReq(url, bodyObj, headers) {
       'signed-out upgrade no longer closes the dialog before (maybe) redirecting');
   }
 
-  /* ---------------- billing client: card bullets match entitlements (A-08) ---------------- */
-  section('billing: Pro/Free card bullets match real entitlements (A-08)');
+  /* ---------------- billing client: the credits dialog matches the real offer (A-08) ---------------- */
+  section('billing: the client pricing surface sells credits, honestly (A-08, credits pivot)');
   {
     const vm = require('vm');
     const src = fs.readFileSync(path.join(__dirname, '../src/billing.js'), 'utf8');
 
-    // Isolate the Pro (featured) card markup.
-    const proMatch = src.match(/price-card featured[\s\S]*?<\/section>/);
-    ok(!!proMatch, 'Pro card markup found');
-    const pro = proMatch ? proMatch[0] : '';
-    // The oversell is gone — structural reports are FREE, not a Pro-only feature.
-    ok(!/Structural reports/i.test(pro), 'Pro card no longer sells free "Structural reports"');
-    // Every entitlement that flips Free→Pro must be represented by a bullet.
-    const diff = [];
-    if (E.PRO.projectLimit === null && E.FREE.projectLimit !== null) diff.push({ cap: 'unlimited projects', re: /unlimited/i });
-    if (E.PRO.aiMonthlyLimit > E.FREE.aiMonthlyLimit) diff.push({ cap: 'more AI messages', re: /AI messages/i });
-    if (E.PRO.premiumExports && !E.FREE.premiumExports) diff.push({ cap: 'premium exports', re: /export|SketchUp|Print plans/i });
-    if (E.PRO.advancedFeatures && !E.FREE.advancedFeatures) diff.push({ cap: 'Build mode', re: /Build mode/i });
-    eq(diff.length, 4, 'all four Free→Pro entitlement flips are enumerated');
-    for (const d of diff) ok(d.re.test(pro), `Pro card represents the "${d.cap}" entitlement gain`);
+    // The subscription is no longer sold client-side (the server paths stay dormant).
+    ok(!/Upgrade to Pro/.test(src), 'the client no longer sells the Pro subscription');
+    ok(!/data-upgrade/.test(src), 'the old subscription upgrade button is gone');
+    // Honest facts the dialog must state: the refinement window, free
+    // re-downloads, never-charge-twice, and 12-month expiry.
+    ok(/free re-?download|re-download/i.test(src), 'copy states re-downloads are free');
+    ok(/never charges twice/i.test(src), 'copy states the idempotency guarantee');
+    ok(/12 months/.test(src), 'copy states the 12-month expiry');
+    ok(/first credit/i.test(src), 'copy states the free signup credit');
 
-    // Free card sync copy is provider-conditional, not a hardcoded cloud promise.
-    ok(!/Device and cloud sync<\/li>/.test(src), 'Free card no longer hardcodes "Device and cloud sync"');
+    // Confirm-before-spend exists and names the cost.
+    ok(/confirmIssue/.test(src) && /1 credit/i.test(src), 'a confirm-before-spend dialog names the 1-credit cost');
+
     const sandbox = {}; sandbox.globalThis = sandbox;
     vm.runInNewContext(src, sandbox);
     const B = sandbox.BB && sandbox.BB.Billing;
@@ -566,6 +568,14 @@ function objectBodyReq(url, bodyObj, headers) {
       eq(B.freeSyncLabel({ providers: [] }), 'Device sync', 'no providers → device-only sync copy (honest)');
       eq(B.freeSyncLabel({ providers: ['github'] }), 'Device and cloud sync', 'providers present → cloud sync copy');
     }
+    ok(B && typeof B.confirmIssue === 'function' && typeof B.issue === 'function', 'issue + confirmIssue ride BB.Billing');
+    // The offer is credits: all four launch packs are purchasable ($9 flat single).
+    const packs = (B && B.CREDIT_PACKS || []).map(p => p.n);
+    eq(packs, [1, 3, 10, 25], 'all four launch packs are offered');
+    const single = (B && B.CREDIT_PACKS || []).find(p => p.n === 1);
+    eq(single && single.price, 9, 'launch pricing is $9 flat for a single credit');
+    // The display mirror agrees with the server authority on the ceilings.
+    ok(src.includes(`aiMonthlyLimit: ${E.FREE.aiMonthlyLimit}`), 'client TIERS mirror matches the server FREE ceiling');
   }
 
   /* ---------------- observability: structured error reporting (E-08) ---------------- */
@@ -596,30 +606,32 @@ function objectBodyReq(url, bodyObj, headers) {
   section('chat: optional monthly token spend ceiling (E-07a)');
   {
     const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
     process.env.ANTHROPIC_API_KEY = 'sk-test';
     process.env.AI_MONTHLY_TOKEN_BUDGET = '150';
     const realFetch = globalThis.fetch;
     let upstreamCalls = 0;
     globalThis.fetch = async () => { upstreamCalls++; return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 100 } }) }; };
-    const chatReq = ip => fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': ip }, body: { messages: [{ role: 'user', content: 'hi' }] } });
-    const meter = chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.61' }, socket: {} });
+    const mkC = uid => S.sessionCookieFor({ uid, name: 'T', provider: 'dev' }, fakeReq('/')).split(';')[0];
+    const chatReq = uid => fakeReq('/api/chat', { method: 'POST', headers: { cookie: mkC(uid) }, body: { messages: [{ role: 'user', content: 'hi' }] } });
+    const meter = 'dev:budget1';
 
     // First call under budget → proxied AND meters the 100 output tokens.
     let res = fakeRes();
-    await chat(chatReq('198.51.100.61'), res);
+    await chat(chatReq(meter), res);
     eq(res.statusCode, 200, 'first call under the token budget is proxied');
     eq((await E.getTokenUsage(meter)).tokens, 100, 'output tokens from the Anthropic response are metered');
 
     // Second call still under budget → proxied, counter accrues to 200.
     res = fakeRes();
-    await chat(chatReq('198.51.100.61'), res);
+    await chat(chatReq(meter), res);
     eq(res.statusCode, 200, 'second call still under budget is proxied');
     eq((await E.getTokenUsage(meter)).tokens, 200, 'token counter accrues across calls');
 
     // Third call: 200 >= 150 → refused PRE-upstream with a distinct 429.
     upstreamCalls = 0;
     res = fakeRes();
-    await chat(chatReq('198.51.100.61'), res);
+    await chat(chatReq(meter), res);
     eq(res.statusCode, 429, 'over the token budget → 429 (client tolerates it as rate-limited)');
     eq(upstreamCalls, 0, 'the ceiling is enforced PRE-upstream — no Anthropic call is made');
     ok(json(res).error && /budget|limit/i.test(json(res).error.message || ''), 'the 429 carries a distinct budget message');
@@ -627,9 +639,9 @@ function objectBodyReq(url, bodyObj, headers) {
     // Disabled by default: unset env var → no ceiling, no token counting.
     delete process.env.AI_MONTHLY_TOKEN_BUDGET;
     res = fakeRes();
-    await chat(chatReq('198.51.100.62'), res);
+    await chat(chatReq('dev:budget2'), res);
     eq(res.statusCode, 200, 'unset budget → disabled (current behavior)');
-    eq((await E.getTokenUsage(chat.anonMeterId({ headers: { 'x-real-ip': '198.51.100.62' }, socket: {} }))).tokens, 0, 'no token counting when the budget is unset');
+    eq((await E.getTokenUsage('dev:budget2')).tokens, 0, 'no token counting when the budget is unset');
 
     // Honest copy: the pricing dialog states a request can span several messages.
     const billingSrc = fs.readFileSync(path.join(__dirname, '../src/billing.js'), 'utf8');
@@ -644,19 +656,21 @@ function objectBodyReq(url, bodyObj, headers) {
   section('chat: the upstream fetch carries an abort timeout (C6)');
   {
     const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
     process.env.ANTHROPIC_API_KEY = 'sk-test';
     const realFetch = globalThis.fetch;
+    const mkC = uid => ({ cookie: S.sessionCookieFor({ uid, name: 'T', provider: 'dev' }, fakeReq('/')).split(';')[0] });
     let seenOpts = null;
     globalThis.fetch = async (url, opts) => { seenOpts = opts; return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) }; };
     let res = fakeRes();
-    await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.90' }, body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
+    await chat(fakeReq('/api/chat', { method: 'POST', headers: mkC('dev:abort1'), body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
     eq(res.statusCode, 200, 'stubbed upstream still proxies');
     ok(seenOpts && seenOpts.signal instanceof AbortSignal, 'the upstream fetch receives an AbortSignal timeout');
     // An abort rejection rides the existing 502 unreachable path — the
     // request resolves instead of hanging forever.
     globalThis.fetch = async () => { const e = new Error('The operation was aborted'); e.name = 'TimeoutError'; throw e; };
     res = fakeRes();
-    await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.91' }, body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
+    await chat(fakeReq('/api/chat', { method: 'POST', headers: mkC('dev:abort2'), body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
     eq(res.statusCode, 502, 'a timed-out upstream resolves into the 502 unreachable path');
     globalThis.fetch = realFetch;
     rmkv();
@@ -667,15 +681,17 @@ function objectBodyReq(url, bodyObj, headers) {
   section('chat: system prompt splits into a cached prefix + per-call tail (C14)');
   {
     const rmkv = useTempKV();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
     process.env.ANTHROPIC_API_KEY = 'sk-test';
     const realFetch = globalThis.fetch;
     let seenPayload = null;
     globalThis.fetch = async (url, opts) => { seenPayload = JSON.parse(opts.body); return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn' }) }; };
+    const cacheCookie = { cookie: S.sessionCookieFor({ uid: 'dev:cache1', name: 'T', provider: 'dev' }, fakeReq('/')).split(';')[0] };
     const send = async system => {
       const res = fakeRes();
       const body = { messages: [{ role: 'user', content: 'hi' }] };
       if (system !== undefined) body.system = system;
-      await chat(fakeReq('/api/chat', { method: 'POST', headers: { 'x-real-ip': '198.51.100.95' }, body }), res);
+      await chat(fakeReq('/api/chat', { method: 'POST', headers: cacheCookie, body }), res);
       return res;
     };
 

@@ -300,6 +300,40 @@ BlueprintBuddyImport.build
   };
   const printSVG = svg => String(svg).replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PRINT_COLORS[v] || '#333');
 
+  /* Drawer-hardware setout rows (slides, runners, pull bores) — one source
+   * shared by the in-app print sheet and the server-issued blueprint sheet
+   * set (api/_sheets.js), so the two documents can never disagree. */
+  function hardwareRows(spec, model) {
+    const U = BB.Units;
+    const dim = v => U.fmtLength(v);
+    const hw = [];
+    if (BB.HW && model.drawers) {
+      for (const d of model.drawers) {
+        const n = d.index + 1;
+        if (d.runner === 'side_mount_slides' && d.slideLen) {
+          hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtDrill(3)}.` });
+        } else if (d.runner === 'undermount_slides' && d.slideLen) {
+          hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
+        } else if (d.runner === 'wood_runners') {
+          hw.push({ label: 'Wooden runners', qty: 2, where: `Drawer ${n} opening`, text: `Hardwood rails from the cut list, glued + screwed level; ${U.fmtSmall(1)} side clearance, computed vertical clearance in the steps.` });
+        }
+        const pu = d.pull || {};
+        const eff = BB.HW.PULLS[pu.style || pu.styleKey];
+        if (eff && (pu.style || pu.styleKey) !== 'none_touch') {
+          const text = pu.holes === 0
+            ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
+            : pu.ctcMM
+              ? `${pu.holes} × ${U.fmtDrill(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
+              : `One ${U.fmtDrill(eff.boreDia || 5)} bore, centered on the shared centerline.`;
+          hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
+        } else if (eff) {
+          hw.push({ label: 'Magnetic touch latch', qty: 1, where: `Drawer ${n} front`, text: `Latch behind the front, striker on the box; needs ${U.fmtSmall(2)}–${U.fmtSmall(3)} of travel in the reveal.` });
+        }
+      }
+    }
+    return hw;
+  }
+
   function printHTML(spec, model, cut, bomData, steps, stock, opts) {
     // The print sheet is a display surface: it follows the current display
     // preference via BB.Units (unlike the geometry exports above).
@@ -339,31 +373,7 @@ BlueprintBuddyImport.build
     let joineryHTML = '';
     if (BB.Fasteners) {
       const rows = BB.Fasteners.detailRows(spec, model);
-      const hw = [];
-      if (BB.HW && model.drawers) {
-        for (const d of model.drawers) {
-          const n = d.index + 1;
-          if (d.runner === 'side_mount_slides' && d.slideLen) {
-            hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtDrill(3)}.` });
-          } else if (d.runner === 'undermount_slides' && d.slideLen) {
-            hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
-          } else if (d.runner === 'wood_runners') {
-            hw.push({ label: 'Wooden runners', qty: 2, where: `Drawer ${n} opening`, text: `Hardwood rails from the cut list, glued + screwed level; ${U.fmtSmall(1)} side clearance, computed vertical clearance in the steps.` });
-          }
-          const pu = d.pull || {};
-          const eff = BB.HW.PULLS[pu.style || pu.styleKey];
-          if (eff && (pu.style || pu.styleKey) !== 'none_touch') {
-            const text = pu.holes === 0
-              ? (eff.key === 'edge_pull' ? 'Top-edge screws, pre-drilled — end grain.' : 'Template-routed face mortise.')
-              : pu.ctcMM
-                ? `${pu.holes} × ${U.fmtDrill(5)} through-bores at ${dim(pu.ctcMM)} centers on the shared centerline; M4 × ${dim(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} (crosses box front + front).`
-                : `One ${U.fmtDrill(eff.boreDia || 5)} bore, centered on the shared centerline.`;
-            hw.push({ label: eff.label, qty: pu.count || 1, where: `Drawer ${n} front`, text });
-          } else if (eff) {
-            hw.push({ label: 'Magnetic touch latch', qty: 1, where: `Drawer ${n} front`, text: `Latch behind the front, striker on the box; needs ${U.fmtSmall(2)}–${U.fmtSmall(3)} of travel in the reveal.` });
-          }
-        }
-      }
+      const hw = hardwareRows(spec, model);
       if (rows.length || hw.length) {
         const jr = rows.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('') +
           hw.map(r => `<tr><td>${esc(r.label)}</td><td class="num">${r.qty}</td><td>${esc(r.where)}</td><td>${esc(r.text)}</td></tr>`).join('');
@@ -424,5 +434,5 @@ BlueprintBuddyImport.build
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
   }
 
-  BB.Exports = { toDAE, toRuby, toCSV, printHTML, printSVG, download, slug, ROLE_COLORS };
+  BB.Exports = { toDAE, toRuby, toCSV, printHTML, printSVG, hardwareRows, download, slug, ROLE_COLORS };
 })();

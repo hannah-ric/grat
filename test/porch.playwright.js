@@ -196,7 +196,9 @@ const log = m => console.log('  · ' + m);
     'studio entry brings the app back on screen');
   ok(await A.page.evaluate(() => document.getElementById('siteHeader').hidden && document.getElementById('siteFooter').hidden),
     'the public header and footer leave with the landing');
-  ok(await A.page.evaluate(() => localStorage.getItem('bb.porchSeen') === '1'), 'studio entry sets bb.porchSeen');
+  // Versioned seen-flag (credits pivot): the stored value is the pricing
+  // revision, so a future offer change reshows the porch to returning visitors.
+  ok(await A.page.evaluate(() => localStorage.getItem('bb.porchSeen') === 'credits-2026-07'), 'studio entry sets bb.porchSeen to the pricing revision');
   ok(await A.page.evaluate(() => document.activeElement && document.activeElement.id === 'heroText'),
     'arrival focuses the hero prompt');
   ok(await A.page.evaluate(() => !document.getElementById('welcomeOverlay').hidden), 'welcome card still up on first entry');

@@ -32,13 +32,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { show, static: show && !!reduced };
   }
 
+  /* The porch now carries pricing and lead capture, so "seen" is versioned:
+   * bump PRICING_REV whenever the offer changes and every returning visitor
+   * sees the porch once more (credits pivot §4 decision). A legacy '1' from
+   * the overture era counts as unseen — those visitors predate the offer.
+   * Share-link (#d=) and ?app arrivals still bypass, as before. */
+  const PRICING_REV = 'credits-2026-07';
   function peekSeen() {
-    try { if (localStorage.getItem('bb.porchSeen') === '1') return true; } catch (e) { /* storage-less */ }
-    try { return sessionStorage.getItem('bb.porchSeen') === '1'; } catch (e) { return false; }
+    try { if (localStorage.getItem('bb.porchSeen') === PRICING_REV) return true; } catch (e) { /* storage-less */ }
+    try { return sessionStorage.getItem('bb.porchSeen') === PRICING_REV; } catch (e) { return false; }
   }
   function markSeen() {
-    try { localStorage.setItem('bb.porchSeen', '1'); return; } catch (e) { /* fall through */ }
-    try { sessionStorage.setItem('bb.porchSeen', '1'); } catch (e) { /* session-only env */ }
+    try { localStorage.setItem('bb.porchSeen', PRICING_REV); return; } catch (e) { /* fall through */ }
+    try { sessionStorage.setItem('bb.porchSeen', PRICING_REV); } catch (e) { /* session-only env */ }
   }
 
   const reduceMq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -481,6 +487,39 @@ var BB = globalThis.BB = globalThis.BB || {};
     mkRow('Size', [['S', 'Small'], ['M', 'Medium'], ['L', 'Large']], () => calc.size, v => { calc.size = v; });
     mkRow('Species', CALC_SPECIES.map(k => [k, K.WOOD_SPECIES[k].label]), () => calc.species, v => { calc.species = v; });
     calcRender(true);
+    buildCalcCapture();
+  }
+
+  /* The calculator is a qualified-intent signal — capture it instead of
+   * discarding it (credits pivot, Phase 5). Optional, quiet, and honest:
+   * storage-less or API-less hosts show a plain failure note. */
+  function buildCalcCapture() {
+    const host = $('phCalc');
+    if (!host || $('phCalcLead')) return;
+    const wrap = el('form', 'calc-lead');
+    wrap.id = 'phCalcLead';
+    wrap.innerHTML = `<label class="kicker" for="phCalcEmail">Email me this estimate</label>
+      <div class="calc-lead-row">
+        <input type="email" id="phCalcEmail" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email address">
+        <button type="submit" class="btn small">Send it</button>
+      </div>
+      <p class="calc-lead-note" id="phCalcLeadNote" role="status"></p>`;
+    wrap.addEventListener('submit', async e => {
+      e.preventDefault();
+      const note = $('phCalcLeadNote');
+      const email = $('phCalcEmail').value.trim();
+      const r = calc.out || {};
+      try {
+        const res = await fetch('/api/lead', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, kind: 'calculator', context: JSON.stringify({ template: calc.template, size: calc.size, species: calc.species, cost: r.cost, boards: r.boards, parts: r.parts, hours: [r.hoursLow, r.hoursHigh] }) })
+        });
+        note.textContent = res.ok ? 'Saved — the estimate is on its way.' : 'Couldn’t save that right now — the studio itself is one click away.';
+      } catch (err) {
+        note.textContent = 'Couldn’t save that right now — the studio itself is one click away.';
+      }
+    });
+    host.append(wrap);
   }
 
   /* ---------------- entering the studio (design-language §7 handoff) ------- */
