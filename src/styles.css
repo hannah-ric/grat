@@ -2136,10 +2136,6 @@ body::after {
 @media print { body::after { display: none; } }
 @media (forced-colors: active) { body::after { display: none; } }
 
-/* ---- entrance grammar: the house rise gains a breath of scale so cards
-   and panels arrive as objects, not slides. Same name, same call sites. */
-@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.988); } }
-
 /* ---- topbar: the console. A barely-there top light and the tri-stripe
    riding its bottom rule — the one place the stripe crosses the studio. */
 .topbar {

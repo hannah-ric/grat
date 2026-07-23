@@ -55,8 +55,12 @@ scrollbar-hiding rules by specificity.
 ## Guardrails honored
 
 - Tokens only; every color is a `color-mix` of existing Showroom families.
-- Resting styles are the reduced-motion end state; no new keyframes beyond
-  a scale breath added to the existing `rise` entrance.
+- Resting styles are the reduced-motion end state; no new keyframes at all.
+  (A scale breath on the house `rise` entrance was tried and reverted: the
+  phone plan-entry guarantee — the first plan row visible without a drag,
+  X-07 — measures content at entry, and a scaled first frame on a tall
+  panel shifts near-top rows past the chat sheet. The entrance grammar
+  belongs to the presets, not to deeper CSS keyframes.)
 - Verdicts still ship as text capsules (the new `.stamp` ring is an inset
   hairline of `currentColor`, not a signal).
 - One filled primary per screen: the quiet tiers (`.ghost`,
