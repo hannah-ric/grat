@@ -67,6 +67,9 @@ body.ph-open .skip-link { display: none; }
 /* diegetic ink-wash when the stage flips draft <-> wood (keyframes shared
    with the studio viewport; the global reduced-motion rules snap it) */
 .porch.ph-inkwash .ph-stage canvas { animation: inkwash var(--t-med) var(--ease); }
+/* while the viewport is being resized the vw offsets must track layout, not
+   ease after it — porch.js holds this class during the resize stream */
+.porch.ph-resizing .ph-stage canvas { transition: none; }
 
 /* Content flows OVER the sticky stage (negative pull). Copy and bands lift
    to z 3 individually; the H1 stays at z 1 BEHIND the transparent canvas
