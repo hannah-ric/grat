@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET' && action === 'status') {
-      return sendJSON(res, 200, await E.statusFor(session.uid));
+      return sendJSON(res, 200, await E.statusFor(session.uid, req));
     }
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'GET, POST');

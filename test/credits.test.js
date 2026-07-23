@@ -241,12 +241,66 @@ const issue = (uid, body) => {
     drop();
   }
 
+  /* ---------------- pricing edges: concurrency + farming guards ---------------- */
+  section('credits: concurrent charges never double-spend (atomic reservation)');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const uid = 'dev:race1';
+    await Credits.grant(uid, 2, { reason: 'purchase', sourceId: 'cs_race' }); // + signup = 3
+    const results = await Promise.all([1, 2, 3, 4, 5].map(i =>
+      Credits.charge(uid, { specHash: 'race' + i, blueprintId: 'bp_r' + i, reason: 'issue' })));
+    eq(results.filter(r => r.ok).length, 3, 'exactly as many concurrent charges land as there are credits');
+    eq(results.filter(r => !r.ok && r.error === 'insufficient_credits').length, 2, 'the racing losers are refused, not double-spent');
+    eq((await Credits.state(uid)).balance, 0, 'the balance is exactly zero afterwards');
+    const again = await Credits.charge(uid, { specHash: 'race6', reason: 'issue' });
+    ok(again.ok === false && again.error === 'insufficient_credits', 'a later charge on the drained account is still refused');
+    drop();
+  }
+
+  section('credits: concurrent first reads mint exactly one signup grant');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const uid = 'dev:race2';
+    await Promise.all([Credits.state(uid), Credits.state(uid), Credits.state(uid)]);
+    eq((await Credits.state(uid)).balance, 1, 'the signup credit lands exactly once');
+    const led = await Credits.ledgerFor(uid);
+    eq(led.filter(e => e.type === 'grant' && e.reason === 'signup').length, 1, 'one signup grant on the ledger, not three');
+    drop();
+  }
+
+  section('credits: the signup grant is capped per client IP (farming guard)');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const farmIp = '203.0.113.9';
+    for (let i = 0; i < Credits.SIGNUP_IP_CAP; i++) {
+      const st = await Credits.state('dev:farm' + i, { ip: farmIp });
+      eq(st.balance, 1, `signup grant ${i + 1} within the cap lands`);
+    }
+    const over = await Credits.state('dev:farm-over', { ip: farmIp });
+    eq(over.balance, 0, 'the grant past the cap is refused');
+    const led = await Credits.ledgerFor('dev:farm-over');
+    ok(led.length === 1 && led[0].type === 'deny' && led[0].reason === 'signup_ip_capped',
+      'the refusal is written to the ledger, never silent');
+    eq((await Credits.state('dev:farm-over', { ip: '198.51.100.7' })).balance, 0,
+      'a capped account stays at zero — the denial is per account, not per request');
+    eq((await Credits.state('dev:farm-fresh', { ip: '198.51.100.7' })).balance, 1,
+      'a different IP still gets the signup credit');
+    eq((await Credits.state('dev:farm-noip')).balance, 1,
+      'callers with no request context (webhooks, tests) are unaffected');
+    await Credits.grant('dev:farm-over', 3, { reason: 'purchase', sourceId: 'cs_capped' });
+    eq((await Credits.state('dev:farm-over')).balance, 3, 'a capped account can still buy credits');
+    drop();
+  }
+
   /* ---------------- the ledger is not user-writable ---------------- */
   section('store: credit/ledger/blueprint namespaces are reserved (never user-writable)');
   {
     cleanEnv();
     const drop = useTempKV();
-    for (const doc of ['credits', 'ledger', 'design:bp_1', 'designs:index', 'bphash:abc', 'artifact:abc', 'bpimg:abc']) {
+    for (const doc of ['credits', 'creditbal', 'ledger', 'design:bp_1', 'designs:index', 'bphash:abc', 'artifact:abc', 'bpimg:abc']) {
       const res = fakeRes();
       await store(fakeReq('/api/store?doc=' + encodeURIComponent(doc), { headers: mkCookie('dev:evil'), method: 'PUT', body: { value: '{"balance":999}' } }), res);
       eq(res.statusCode, 400, `PUT ${doc} is refused`);
