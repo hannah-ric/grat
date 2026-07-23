@@ -37,6 +37,16 @@ function readBody(req) {
 function priceFor(interval) {
   return interval === 'year' ? process.env.STRIPE_PRO_YEARLY_PRICE_ID : process.env.STRIPE_PRO_MONTHLY_PRICE_ID;
 }
+/* Credit packs (the current offer — launch pricing $9 flat, packs at
+ * declining unit price). Price IDs live in Stripe; the pack SIZES are the
+ * contract here and in the webhook. The subscription prices above stay
+ * configured and dormant (kept, not deleted). */
+const PACKS = Object.freeze({
+  1: 'STRIPE_CREDIT_PACK_1_PRICE_ID',
+  3: 'STRIPE_CREDIT_PACK_3_PRICE_ID',
+  10: 'STRIPE_CREDIT_PACK_10_PRICE_ID',
+  25: 'STRIPE_CREDIT_PACK_25_PRICE_ID'
+});
 
 module.exports = async function handler(req, res) {
   const session = S.sessionFrom(req);
@@ -48,7 +58,7 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET' && action === 'status') {
-      return sendJSON(res, 200, await E.statusFor(session.uid));
+      return sendJSON(res, 200, await E.statusFor(session.uid, req));
     }
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'GET, POST');
@@ -56,6 +66,32 @@ module.exports = async function handler(req, res) {
     }
     const body = await readBody(req);
     const saved = await E.getSubscription(session.uid);
+
+    if (action === 'credits') {
+      // One-time payment for a credit pack. The webhook credits the ledger
+      // when the session completes; nothing is granted here.
+      const pack = Number(body.pack);
+      if (!PACKS[pack]) return sendJSON(res, 400, { error: 'unknown_pack' });
+      const price = process.env[PACKS[pack]];
+      if (!price) return sendJSON(res, 503, { error: 'price_unconfigured' });
+      let customerId = saved && saved.customerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({ name: session.name || undefined, metadata: { bb_uid: session.uid } });
+        customerId = customer.id;
+        await E.setSubscription(session.uid, { customerId, status: saved ? saved.status : 'none', updatedAt: new Date().toISOString() });
+      }
+      const checkout = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        customer: customerId,
+        client_reference_id: session.uid,
+        line_items: [{ price, quantity: 1 }],
+        allow_promotion_codes: true,
+        metadata: { bb_uid: session.uid, bb_credits: String(pack) },
+        success_url: `${origin(req)}/?billing=credits&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin(req)}/?billing=canceled`
+      });
+      return sendJSON(res, 200, { url: checkout.url });
+    }
 
     if (action === 'checkout') {
       const interval = body.interval === 'year' ? 'year' : 'month';

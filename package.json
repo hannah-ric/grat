@@ -10,7 +10,7 @@
     "dev": "node serve.js",
     "build": "node build.js",
     "start": "node serve.js --no-watch",
-    "test": "node test/unit.test.js && node test/audit.test.js && node test/golden.test.js && node test/battery.js && node test/server.test.js",
+    "test": "node test/unit.test.js && node test/audit.test.js && node test/golden.test.js && node test/battery.js && node test/server.test.js && node test/credits.test.js",
     "test:battery": "node test/battery.js",
     "test:server": "node test/server.test.js",
     "test:handcalc": "node test/handcalc.js",

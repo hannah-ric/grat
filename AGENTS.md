@@ -17,7 +17,7 @@ a prompt, and never let model output write a dimension directly into state.
 npm install --ignore-scripts   # only devDependency is Playwright (tests)
 npm run build                  # node build.js → dist/index.html (single file)
 npm run dev                    # build + serve on $PORT (3000) + watch + /api/chat proxy
-npm test                       # unit + audit-regression + golden-corpus (node, no browser)
+npm test                       # unit + audit + golden + battery + server + credits (node, no browser)
 npm run test:smoke             # build + drive the real app in headless Chromium
 npm run test:porch             # build + drive the landing (porch) in headless Chromium
 npm run test:handcalc          # hand-arithmetic vs engine worksheet (audit asset)
@@ -43,7 +43,10 @@ hand-edit a digest string.
   `joinery3d.js` + `jointview.js` the joint inspector, `gltf.js` GLB export,
   `icons.js` SVG icon set, `motion.js` the `BB.Motion` animation-preset
   library over vendored anime.js — presets by name only, one reduced-motion
-  gate, `porch.js` + `porch.css` the first-visit landing narrative — see
+  gate, `porch.js` + `porch.css` the front of house: the first-visit landing
+  narrative plus the hash-routed public pages (`#faq`, `#signin`) and the
+  shared site header/footer — one view on screen at a time, the studio
+  (`#app`) stays booted but off the page while any public view is up — see
   `docs/overhaul/design-language.md`). Modules attach to the `BB` global;
   load order is set in `build.js`. Physical constants live in `knowledge.js`
   (one source each — see `docs/audit/02-constants-reference.md`).
@@ -56,11 +59,22 @@ hand-edit a digest string.
   hashed IP + a burst limit), `auth.js` (optional OAuth logins → stateless
   HMAC session cookies; `_session.js` is the shared signer, not an endpoint),
   `store.js` (optional per-user document store on Upstash/Vercel KV REST, or a
-  local JSON file in dev), `billing.js` + `stripe-webhook.js` (optional Stripe
-  subscriptions → the Free/Pro gate; `_entitlements.js` is the entitlement/
-  usage authority, `_stripe.js` the client — both shared libs, not endpoints).
+  local JSON file in dev), `blueprint.js` (the unit of sale — credits pivot:
+  runs the whole `src/` pipeline in Node via `_pipeline.js`, validates FIRST,
+  charges second through the `_credits.js` ledger, renders the sheet set +
+  1:1 templates third, refunds on failure; corrected-spec hash = idempotency
+  key; `?share=` is the free public page), `lead.js` (email capture),
+  `billing.js` + `stripe-webhook.js` (Stripe credit packs via one-time
+  checkout, ledger-credited by the webhook; legacy Pro subscription paths
+  kept dormant; `_entitlements.js` is the entitlement/usage authority,
+  `_stripe.js` the client — both shared libs, not endpoints). AI is behind
+  sign-in; the monthly meter is an abuse ceiling, not the offer. The
+  `credits`/`creditbal`/`ledger`/`design*`/`bphash`/`artifact`/`bpimg` roots
+  are reserved in `store.js` like `subscription`/`usage` — never user-writable
+  (`creditbal` is the atomic INCRBY spend counter; per-IP signup counters
+  live at `bb:ipgrant:*`, outside the per-uid keyspace).
   All auth/storage/billing degrades: no env vars → the client persists to
-  `localStorage` and shows no login or upgrade UI (see `DEPLOYMENT.md`).
+  `localStorage` and shows no login or purchase UI (see `DEPLOYMENT.md`).
 - `serve.js` — zero-dep dev server; mounts every `api/` handler locally.
 - `vendor/` — Three.js, anime.js v4.5.0 (`anime.umd.min.js`), + the Fraunces /
   Hanken Grotesk / IBM Plex Mono fonts, committed, inlined at build time.

@@ -49,6 +49,10 @@ const clickMoreCtl = async sel => {
   // Shim the artifact key-value store over localStorage so persistence and
   // reload survival are testable end to end (same async surface as window.storage).
   await ctx.addInitScript(() => {
+    // The suite drives the studio, not the landing: arrive as a returning
+    // visitor so the porch gate routes straight to the app (segmentation
+    // keeps #app off the page while any public view is up).
+    try { localStorage.setItem('bb.porchSeen', 'credits-2026-07'); } catch (e) { /* storage-less */ }
     window.storage = {
       async get(key) {
         const v = localStorage.getItem('bbshim:' + key);
@@ -58,14 +62,11 @@ const clickMoreCtl = async sel => {
       async set(key, value) { localStorage.setItem('bbshim:' + key, value); },
       async delete(key) { localStorage.removeItem('bbshim:' + key); }
     };
-    // Build Mode + premium exports are Pro features (the SaaS layer gates them
-    // behind `advancedFeatures`/`premiumExports`). The artifact-storage shim above
-    // makes Store.init() skip the /api/auth probe, so grant Pro directly the moment
-    // BB.Store loads — re-runs on every navigation, so it survives reloads.
-    const PRO = { plan: 'pro', entitlements: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500, premiumExports: true, advancedFeatures: true }, usage: { aiMessages: 0 }, subscription: { status: 'active' } };
-    const grant = setInterval(() => {
-      if (globalThis.BB && BB.Store && BB.Store.setBilling) { BB.Store.setBilling(PRO); clearInterval(grant); }
-    }, 5);
+    // Credits pivot: no Pro grant on boot. This static host presents NO
+    // billing evidence, so nothing is gated (the C-01 unconfigured-origin
+    // contract) — exactly how the artifact/static deployment behaves in the
+    // wild. Tier gating itself is exercised in the dedicated billing
+    // sections below by injecting billing evidence per-section.
   });
 
   await page.goto(`http://127.0.0.1:${port}/`);
@@ -628,21 +629,25 @@ const clickMoreCtl = async sel => {
   ok(!gear.inCut, 'metal slides never reach the cut list');
 
   // Accounts: on a true static host (no providers, no billing evidence) the
-  // section stays hidden. The smoke shim's granted billing IS billing
-  // evidence, so with it present the persistent plans surface shows (A-05) —
-  // rendered explicitly here because the boot render races the shim's grant.
+  // section stays hidden. Injected billing evidence (a configured origin)
+  // shows the persistent credits/pricing surface (A-05) — the credits pivot
+  // removed the boot-time Pro grant, so evidence is injected per-check.
   const acct = await page.evaluate(() => {
     const real = BB.Store.auth().billing;
     BB.Store.setBilling(null);
     __bb.renderAccount();
     const bare = document.getElementById('accountArea').hidden;
-    BB.Store.setBilling(real);
+    BB.Store.setBilling({ plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 200 }, usage: { aiMessages: 0 }, credits: { balance: 1, purchased: 0 } });
     __bb.renderAccount();
     const withBilling = document.getElementById('accountArea').hidden;
-    return { bare, withBilling };
+    const menuText = document.getElementById('accountArea').textContent;
+    BB.Store.setBilling(real);
+    __bb.renderAccount();
+    return { bare, withBilling, menuText };
   });
   ok(acct.bare === true, 'account section hidden with no providers and no billing evidence');
-  ok(acct.withBilling === false, 'billing evidence shows the persistent plans surface (A-05)');
+  ok(acct.withBilling === false, 'billing evidence shows the persistent pricing surface (A-05)');
+  ok(/credit/i.test(acct.menuText), 'the persistent surface sells credits, not the retired subscription');
 
   // Integrity tab: checks, movement, tappable fix through the pipeline.
   await page.click('#tab-integrity');
@@ -1558,10 +1563,10 @@ const clickMoreCtl = async sel => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(300);
 
-  /* ================= A-05: usage meter + persistent upgrade surface ============ */
-  // A billing-configured origin shows Free users the wall BEFORE they hit it:
-  // a compact remaining-messages meter by the chat input, and a persistent
-  // Plans entry in the More menu — not only the paywall dialog.
+  /* ================= A-05 → credits pivot: the meter is an abuse ceiling ====== */
+  // The monthly AI meter no longer defines the offer: it stays quiet through
+  // ordinary use, appears only once meaningfully spent (> half the ceiling),
+  // and NEVER carries an upgrade affordance — refinement must feel free.
   const meter = await page.evaluate(() => {
     const grab = () => {
       const m = document.getElementById('aiUsage');
@@ -1573,49 +1578,77 @@ const clickMoreCtl = async sel => {
       };
     };
     const real = BB.Store.auth().billing;
-    BB.Store.setBilling({ plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 7 } });
+    const bill = used => ({ plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 200 }, usage: { aiMessages: used }, credits: { balance: 1, purchased: 0 } });
+    BB.Store.setBilling(bill(7));
     if (__bb.renderAccount) __bb.renderAccount();
-    const free = grab();
+    const light = grab();
+    BB.Store.setBilling(bill(150));
+    if (__bb.renderAccount) __bb.renderAccount();
+    const heavy = grab();
     BB.Store.setBilling(real);
     if (__bb.renderAccount) __bb.renderAccount();
     const restored = grab();
-    return { free, restored };
+    return { light, heavy, restored };
   });
-  ok(meter.free.visible && /18 of 25/.test(meter.free.text),
-    `free user with known usage sees the remaining-messages meter (got "${meter.free.text.trim()}")`);
-  ok(/Upgrade/i.test(meter.free.text), 'the meter carries an Upgrade affordance for Free');
-  ok(meter.free.areaShown && meter.free.menuHasPlans, 'billing-configured origin gets a persistent Plans entry in More');
+  ok(!meter.light.visible, 'ordinary AI use never shows a meter (iteration must feel free)');
+  ok(meter.heavy.visible && /50 of 200/.test(meter.heavy.text),
+    `heavy use shows the abuse-ceiling meter (got "${meter.heavy.text.trim()}")`);
+  ok(!/Upgrade/i.test(meter.heavy.text), 'the meter never sells an upgrade (the ceiling is not the offer)');
+  ok(meter.heavy.areaShown && meter.heavy.menuHasPlans, 'billing-configured origin keeps a persistent pricing entry in More');
   ok(!meter.restored.visible, 'meter hides again when usage is zero/unknown');
 
-  /* ================= X-04: the Build gate announces itself ================= */
-  // Free users get a visible + aria-communicated Pro lock on the Build mode
-  // button, so the paywall is announced BEFORE the tap; activation still
-  // opens the pricing dialog, never a bare dead-end.
-  const lock = await page.evaluate(() => {
-    const real = BB.Store.auth().billing;
-    BB.Store.setBilling({ plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 0 } });
+  /* ================= X-04 → credits pivot: the Build gate announces itself ===== */
+  // On a configured origin an UNCREDITED design shows a lock on Build (the
+  // blueprint includes the shop companion). Activation for a signed-in user
+  // with a credit opens the CONFIRM-BEFORE-SPEND dialog (never a silent
+  // spend, never a bare dead-end); the plan tabs read as previews.
+  const lock = await page.evaluate(async () => {
+    const realBilling = BB.Store.auth().billing;
+    const realAuth = BB.Store.auth;
+    const FREE1 = { plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 200 }, usage: { aiMessages: 0 }, credits: { balance: 1, purchased: 0 } };
+    BB.Store.auth = () => Object.assign(realAuth(), { user: { name: 'Smoke Tester', provider: 'dev' }, billing: FREE1 });
     if (__bb.renderAccount) __bb.renderAccount();
     __bb.renderReadiness();
     const lockEl = document.getElementById('buildModeLock');
     const btn = document.getElementById('buildModeBtn');
     const free = {
       lockVisible: !!lockEl && !lockEl.hidden && !!lockEl.querySelector('svg'),
-      aria: btn.getAttribute('aria-label') || ''
+      aria: btn.getAttribute('aria-label') || '',
+      chip: (document.getElementById('creditChip') || {}).textContent || '',
+      chipShown: !!(document.getElementById('creditChip') && !document.getElementById('creditChip').hidden)
     };
     btn.click();
-    const dlg = document.querySelector('.pricing-dialog');
-    free.modal = !!(dlg && dlg.open);
+    await new Promise(r => setTimeout(r, 120)); // the issue flow is async
+    const confirm = document.querySelector('.spend-confirm');
+    free.confirmShown = !!(confirm && confirm.open);
+    free.confirmText = confirm ? confirm.textContent : '';
     free.buildEntered = __bb.state.buildMode;
-    if (dlg && dlg.open) dlg.close();
-    BB.Store.setBilling(real);
+    if (confirm && confirm.open) {
+      confirm.querySelector('[data-spend-cancel]').click(); // never spend silently — and never spend in a smoke test
+      await new Promise(r => setTimeout(r, 50));
+    }
+    // The locked plan tabs read as a PREVIEW with real facts + one CTA.
+    __bb.selectTab && __bb.selectTab('cut');
+    const preview = document.querySelector('.plan-preview');
+    free.previewShown = !!preview;
+    free.previewText = preview ? preview.textContent : '';
+    BB.Store.auth = realAuth;
+    BB.Store.setBilling(realBilling);
     if (__bb.renderAccount) __bb.renderAccount();
     __bb.renderReadiness();
-    return { free, pro: { lockVisible: !!lockEl && !lockEl.hidden } };
+    __bb.selectTab && __bb.selectTab('cut');
+    return { free, unconfigured: { lockVisible: !!lockEl && !lockEl.hidden, previewShown: !!document.querySelector('.plan-preview') } };
   });
-  ok(lock.free.lockVisible, 'free users see a visible Pro lock glyph on the Build button');
-  ok(/\bPro\b/.test(lock.free.aria), `Build button aria announces the Pro gate before the tap (got "${lock.free.aria}")`);
-  ok(lock.free.modal && !lock.free.buildEntered, 'activating locked Build still opens the pricing dialog, not the shop');
-  ok(!lock.pro.lockVisible, 'Pro entitlement clears the lock affordance');
+  ok(lock.free.lockVisible, 'an uncredited design shows a visible lock glyph on the Build button');
+  ok(/blueprint/i.test(lock.free.aria), `Build button aria announces the blueprint gate before the tap (got "${lock.free.aria}")`);
+  ok(lock.free.chipShown && /1 credit/.test(lock.free.chip), `signed-in balance shows in the top bar (got "${lock.free.chip}")`);
+  ok(lock.free.confirmShown && !lock.free.buildEntered, 'activating locked Build opens confirm-before-spend, not the shop');
+  ok(/1 credit/i.test(lock.free.confirmText) && /Balance after/i.test(lock.free.confirmText),
+    'the confirm dialog names the cost and the balance after — never a silent spend');
+  ok(lock.free.previewShown && /in your blueprint/i.test(lock.free.previewText) && /Issue blueprint/i.test(lock.free.previewText),
+    'locked Cut tab reads as a preview of the blueprint with an issue CTA');
+  ok(!lock.unconfigured.lockVisible && !lock.unconfigured.previewShown,
+    'an unconfigured origin (this static host) gates nothing — C-01 holds');
 
   /* ================= A-04: the Free project-cap loop ================= */
   // At the 3-project cap the autosave path must stay calm AND honest: the
@@ -1623,10 +1656,14 @@ const clickMoreCtl = async sel => {
   // plainly that nothing is saved (with a working share-code way out), and
   // later blocked saves surface only the passive indicator/banner.
   const cap = await page.evaluate(async () => {
-    const FREE = { plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 25, premiumExports: false, advancedFeatures: false }, usage: { aiMessages: 0 } };
+    const FREE = { plan: 'free', entitlements: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 200 }, usage: { aiMessages: 0 }, credits: { balance: 0, purchased: 0 } };
     const realIdx = await BB.Store.loadIndex();
     const realProject = __bb.state.project;
     const realBilling = BB.Store.auth().billing;
+    const realAuth = BB.Store.auth;
+    // The cap applies to SIGNED-IN free users (anonymous users don't save at
+    // all under the credits tier model) — stub a session for this section.
+    BB.Store.auth = () => Object.assign(realAuth(), { user: { name: 'Smoke Tester', provider: 'dev' }, billing: FREE });
     await BB.Store.set('projects:index', [1, 2, 3].map(i => ({ id: 'seed' + i, name: 'Seed ' + i, updated: Date.now() - i, dims: null, progressPct: 0 })));
     BB.Store.setBilling(FREE);
     __bb.state.project = null;
@@ -1651,6 +1688,7 @@ const clickMoreCtl = async sel => {
       if (shareOpens) document.getElementById('shareClose').click();
     }
     // restore the world for the tests that follow
+    BB.Store.auth = realAuth;
     await BB.Store.set('projects:index', realIdx);
     __bb.state.project = realProject;
     BB.Store.setBilling(realBilling);
@@ -1675,7 +1713,10 @@ const clickMoreCtl = async sel => {
     const json = (body, status) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
     window.fetch = async (url, opts) => {
       const u = String(url);
-      if (u.startsWith('/api/auth')) return json({ user: { id: 'u1', name: 'Cap Tester' }, providers: ['dev'], storage: true }, 200);
+      // providers deliberately empty: with the credits tier model, provider
+      // evidence would flip billingConfigured() on for the REST of the run
+      // and lock the plan tabs for every later section on this static host.
+      if (u.startsWith('/api/auth')) return json({ user: { id: 'u1', name: 'Cap Tester' }, providers: [], storage: true }, 200);
       if (u.startsWith('/api/store')) {
         if (opts && opts.method === 'PUT' && u.includes('doc=project%3A')) return json({ error: 'project_limit', limit: 3 }, 403);
         return json({ value: JSON.stringify([]) }, 200);

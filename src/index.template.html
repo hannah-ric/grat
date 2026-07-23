@@ -36,6 +36,30 @@
 <a class="skip-link" href="#view3d">Skip to the 3D model</a>
 <a class="skip-link" href="#panel-main" id="skipToPlans">Skip to plans</a>
 
+<!-- FRONT OF HOUSE (segmentation): one fixed header shared by the public
+     views — landing, FAQ, sign-in. porch.js owns the routing (#faq /
+     #signin / landing / studio) and unhides it; the studio never shows it.
+     Ships hidden so the JS-off document reads as the porch alone. -->
+<header id="siteHeader" class="site-nav" hidden>
+  <a class="site-brand" href="#" id="siteBrand" aria-label="Blueprint Buddy — home">
+    <!-- Static mark (no pathLength): the Act 0 stroke draw belongs to the
+         porch's pre-JS masthead; a header that appears mid-eval must simply
+         be there. -->
+    <svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true">
+      <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+      <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+    </svg>
+    <span class="site-brand-name">Blueprint<b>Buddy</b></span>
+  </a>
+  <nav class="site-links" aria-label="Site">
+    <a href="#ph-ch1" id="navHow">How it works</a>
+    <a href="#faq" id="navFaq">FAQ</a>
+    <a href="#signin" id="navSignin">Sign in</a>
+    <button type="button" class="btn primary site-cta" data-enter="">Open the studio</button>
+  </nav>
+</header>
+
 <!-- PORCH:BEGIN — landing narrative (2a). Ships visible and complete
      (crawlable, JS-off readable); porch.js removes it pre-boot for
      returning/share-link/?app arrivals. Figures are injected at runtime from
@@ -186,6 +210,114 @@
 </section>
 <!-- PORCH:END -->
 
+<!-- FAQ — its own page, routed at #faq. Static content: every claim here is
+     a product truth the porch, the help modal, or the docs already stand
+     behind; figures stay out of it (the founding rule owns numbers). -->
+<main id="pageFaq" class="page" hidden aria-label="Frequently asked questions">
+  <div class="page-inner">
+    <span class="kicker">Questions &amp; answers</span>
+    <h1 class="page-title">Fair questions, straight answers.</h1>
+    <p class="page-lede">What Blueprint Buddy is, how it thinks, and what happens to your designs.</p>
+
+    <h2 class="faq-group">The studio</h2>
+    <details class="faq-item">
+      <summary>What is Blueprint Buddy?</summary>
+      <div class="faq-a"><p>A furniture design studio that starts from a sentence. Describe the piece you want — or upload a photo of one — and the studio drafts it into an interactive 3D model, checks it against real structural physics, and turns it into a cut list, a buying plan with cutting diagrams, and step-by-step assembly instructions you can take to the workbench.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Do I need to know CAD, or be an experienced woodworker?</summary>
+      <div class="faq-a"><p>No. You describe the piece the way you&rsquo;d say it out loud &mdash; &ldquo;a walnut nightstand, two drawers, about knee height&rdquo; &mdash; and refine it in plain words. Pick your skill level (beginner, intermediate, advanced) and the studio explains as much or as little as you want. Never built furniture before? Start from a proven starter and every step is spelled out.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Isn&rsquo;t this just AI making things up?</summary>
+      <div class="faq-a"><p><b>No — and this is the founding rule.</b> The AI only translates your intent: &ldquo;lower, wider, walnut.&rdquo; Every dimension, joint, and price is then computed by a deterministic drafting engine — code that knows furniture, not a language model guessing. The same design in always produces the same numbers out, and you can tap any number in the app to see the formula behind it.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Can I trust that what I build will hold up?</summary>
+      <div class="faq-a"><p>Every design runs a structural gauntlet before you see it: shelf sag from real wood stiffness, racking, tipping, fastener duty — on material data from the U.S. Forest Service&rsquo;s Wood Handbook, with a generous safety factor and long-term creep counted in. When something won&rsquo;t hold, the studio says so honestly and offers the fix. It can — and does — say no.</p></div>
+    </details>
+
+    <h2 class="faq-group">Designing &amp; building</h2>
+    <details class="faq-item">
+      <summary>What kinds of furniture can it design?</summary>
+      <div class="faq-a"><p>Tables, desks, benches, bookshelves, nightstands, and cabinets are drafted from deep parametric templates — and beyond those, a construction grammar of posts, rails, panels, and slabs lets the studio draft novel pieces from a description or a photo. Everything is sized to you: your dimensions, your wood species, your skill level.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>What do I actually get at the end?</summary>
+      <div class="faq-a"><p>Working plans: a cut list with joinery allowances already applied, a buying plan that packs your parts onto real boards you can price and purchase, dimensioned drawings, assembly steps with 3D joint close-ups, and a full-screen Build mode that rides to the shop on your phone with checkable steps. Exports include a printable drawing sheet, SVG, CSV, a 3D model for AR, and SketchUp.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Can I see the piece in my room before I build it?</summary>
+      <div class="faq-a"><p>Yes. Export the 3D model (.glb) and on most Android phones you can stand the piece in your room at true size through AR; on iOS it takes one pass through Apple&rsquo;s free Reality Converter. On any device, the in-studio 3D view orbits, explodes, and measures the piece from every side.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>Inches or millimetres?</summary>
+      <div class="faq-a"><p>Both. The studio computes in exact millimetres internally and displays in fractional inches or millimetres — your choice, switchable any time, with a dual-display option that shows both everywhere.</p></div>
+    </details>
+
+    <h2 class="faq-group">Accounts, saving &amp; cost</h2>
+    <details class="faq-item">
+      <summary>Do I need an account?</summary>
+      <div class="faq-a"><p>No. The studio runs entirely in your browser and autosaves designs to your device. Where sign-in is offered, an account adds cloud sync — your projects follow you to any device — but it&rsquo;s never required to design or build.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>How do I share a design or move it between devices?</summary>
+      <div class="faq-a"><p>Every design compresses into a share code — one line of text that carries the whole piece. Paste it anywhere: a message, a note, another device. Share links do the same through a URL. No account needed on either end.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>What does it cost?</summary>
+      <div class="faq-a"><p>Designing is free. On installations with accounts enabled, an optional Pro plan raises the monthly AI-message allowance, removes the saved-project cap, and unlocks premium exports — you&rsquo;ll see plans and pricing in the studio wherever that applies. Nothing you&rsquo;ve designed is ever held hostage: share codes and core exports stay open.</p></div>
+    </details>
+    <details class="faq-item">
+      <summary>What happens to my data?</summary>
+      <div class="faq-a"><p>Your designs live in your browser unless you sign in, in which case projects sync to your account&rsquo;s private store. Design chat goes through the studio&rsquo;s own server to the AI service to interpret your intent — the geometry itself is computed locally in your browser. There&rsquo;s no ad tracking and nothing is sold.</p></div>
+    </details>
+
+    <div class="page-close">
+      <p>Still curious? The studio answers best in person — a live workbench with a drafted piece is one click away.</p>
+      <button type="button" class="btn primary" data-enter="">Open the studio</button>
+    </div>
+  </div>
+</main>
+
+<!-- Sign-in — its own page, routed at #signin. porch.js renders the card
+     from the real auth probe: providers where accounts are configured, an
+     honest local-first note where they aren't. -->
+<main id="pageSignin" class="page" hidden aria-label="Sign in">
+  <div class="page-inner page-inner-narrow">
+    <span class="kicker">Account</span>
+    <h1 class="page-title">Sign in.</h1>
+    <p class="page-lede">Projects sync to your account and follow you to any bench. The studio itself works signed out — designs save to this device.</p>
+    <div class="signin-card" id="signinBody">
+      <p class="signin-note">Checking this workshop&rsquo;s sign-in options&hellip;</p>
+    </div>
+    <p class="signin-fine">Signing in sets one session cookie on this device and stores your projects in your account&rsquo;s private space. Signed out, everything stays in this browser.</p>
+  </div>
+</main>
+
+<!-- Footer — the quiet close of every public page. -->
+<footer id="siteFooter" class="site-footer" hidden>
+  <div class="site-footer-inner">
+    <div class="site-footer-brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+        <path d="M7 19 V9 a2 2 0 0 1 2-2 h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="17.5" cy="17.5" r="2.2" fill="var(--accent)"/>
+      </svg>
+      <div>
+        <span class="site-brand-name">Blueprint<b>Buddy</b></span>
+        <p class="site-footer-tag">Describe it. We&rsquo;ll draft it.</p>
+      </div>
+    </div>
+    <nav class="site-footer-links" aria-label="Footer">
+      <a href="#ph-ch1" id="footHow">How it works</a>
+      <a href="#faq">FAQ</a>
+      <a href="#signin" id="footSignin">Sign in</a>
+    </nav>
+    <p class="site-footer-note">Runs entirely in your browser &middot; designs autosave on your device &middot; every number is computed, never generated.</p>
+  </div>
+</footer>
+
 <div id="app">
   <header class="topbar">
     <div class="brand">
@@ -234,6 +366,7 @@
           <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
           <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
           <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <button role="menuitem" id="faqBtn"><span>FAQ</span><span class="hint">about the studio</span></button>
           <button role="menuitem" id="porchReplayBtn"><span>See the intro again</span><span class="hint">landing tour</span></button>
           <!-- ≤560px folds the topbar Share CTA away; this entry keeps share
                codes AND import reachable on phones (X-05). -->
@@ -243,6 +376,7 @@
             <div class="menu-group-label">Export</div>
             <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
                  means nothing to a thumb (C-14). -->
+            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint">issued</span></button>
             <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
             <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
             <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
@@ -293,6 +427,7 @@
           </div>
         </div>
       </div>
+      <button id="creditChip" class="btn small credit-chip" hidden aria-live="polite"></button>
       <button id="shareBtn" class="btn share-cta" aria-haspopup="dialog">Share</button>
     </div>
   </header>
@@ -409,10 +544,24 @@
           <div class="inspector-body" id="inspBody"></div>
         </div>
 
+        <!-- The Adjust rail (credits pivot): a first-class editing surface for
+             the whole design — dimensions, species, finish, level, counts —
+             because chat is behind sign-in and anonymous editing must not
+             depend on discovering the part inspector. -->
+        <div class="adjust-rail" id="adjustRail" role="region" aria-label="Adjust this design" hidden>
+          <div class="adjust-head">
+            <h3>Adjust</h3>
+            <button class="btn icon ghost" id="adjustClose" aria-label="Close adjust panel"></button>
+          </div>
+          <div class="adjust-body" id="adjustBody"></div>
+        </div>
+
         <div class="stage-controls">
           <!-- Always visible: Dimensions, Blueprint, Fit, View. Camera
                presets, explode, and help live inside the View popover. -->
           <div class="control-card viewport-toolbar" role="toolbar" aria-label="Viewport controls">
+            <button class="btn small ghost" id="adjustBtn" aria-pressed="false" aria-expanded="false" aria-controls="adjustRail" title="Adjust dimensions, wood, and finish">Adjust</button>
+            <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="dimsToggle" aria-pressed="false" aria-label="Dimensions"><span class="track"></span><span class="vt-long">Dimensions</span><span class="vt-short" aria-hidden="true">Dims</span></button>
             <span class="vt-sep" aria-hidden="true"></span>
             <button class="toggle" id="draftToggle" aria-pressed="false" aria-label="Blueprint view" title="Technical-drawing view"><span class="track"></span><span class="vt-long">Blueprint</span><span class="vt-short" aria-hidden="true">Draft</span></button>

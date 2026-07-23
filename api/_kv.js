@@ -23,6 +23,9 @@ function restBackend() {
       ? command(['SET', key, value, 'EX', String(options.ex)])
       : command(['SET', key, value]),
     del: key => command(['DEL', key]),
+    // SET NX: returns 'OK' when the key was absent and is now set, null when
+    // it already existed — the atomic claim primitive api/_credits.js builds on.
+    setnx: (key, value) => command(['SET', key, value, 'NX']),
     incr: key => command(['INCR', key]),
     incrby: (key, n) => command(['INCRBY', key, String(n)]),
     expire: (key, seconds) => command(['EXPIRE', key, String(seconds)])
@@ -56,6 +59,16 @@ function fileBackend() {
       return 'OK';
     },
     del: async key => { const map = read(); delete map[key]; write(map); return 1; },
+    // Atomic within the process (no await between read and write), mirroring
+    // the REST backend's SET NX semantics: 'OK' on claim, null when taken.
+    setnx: async (key, value) => {
+      const map = read();
+      const existing = unwrap(map, key);
+      if (existing !== null && existing !== undefined) return null;
+      map[key] = value;
+      write(map);
+      return 'OK';
+    },
     incr: async key => {
       const map = read();
       const current = Number(unwrap(map, key) || 0);

@@ -2,14 +2,27 @@
    both schemes come free; resting styles ARE the reduced-motion end state
    (presets clear their inline styles); no ornament (premium-refit bar). */
 
-/* The app body is a fixed-viewport instrument (overflow hidden); the porch
-   is a document. While it exists the page scrolls, and paint containment
-   re-roots the studio's fixed overlays (phone chat sheet, pills) inside
-   #app's own 100dvh box so they never float over the narrative — visually
-   identical once the studio fills the viewport. Both rules dissolve with
-   the porch; .ph-open mirrors :has() for engines without it. */
+/* The app body is a fixed-viewport instrument (overflow hidden); the public
+   views (landing / FAQ / sign-in) are documents. Segmentation: while any
+   public view is up the page scrolls THAT document only — the studio (#app)
+   stays booted (engine, autosave probes) but leaves the scroll page
+   entirely: a visibility-hidden fixed layer that can't be reached, tabbed
+   into, or scrolled to. Both selectors dissolve when the studio takes over;
+   .ph-open mirrors :has() for engines without it (and is the JS-routed
+   truth once porch.js runs). */
 body:has(#porch:not([hidden])), body.ph-open { overflow: auto; overflow-x: clip; }
-body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
+body:has(#porch:not([hidden])) #app, body.ph-open #app {
+  contain: paint;
+  position: fixed; inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Skip links target the studio — meaningless while it's off the page. */
+body.ph-open .skip-link { display: none; }
+/* The studio's arrival: one quiet settle, collapsed by the global
+   reduced-motion rules like every other animation. */
+#app.studio-enter { animation: studio-enter var(--t-slow) var(--ease); }
+@keyframes studio-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* The beat wash lives on the porch ROOT — beneath every layer — so the
    transparent canvas above it keeps compositing: wash, then H1, then the
@@ -72,6 +85,11 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
   max-width: 90rem; margin-inline: auto;
 }
 .ph-mast-top { display: flex; align-items: center; gap: var(--space-s); }
+/* Once the fixed site header is up (JS-routed views) the masthead's own
+   brand row would double it — the header carries the mark from then on.
+   Pre-JS (no .ph-open class yet) the in-flow row still paints Act 0. */
+body.ph-open .ph-mast-top { display: none; }
+body.ph-open .ph-mast { padding-top: calc(var(--foh-nav-h) + var(--space-xl)); }
 /* Act 0: the brand strokes draw themselves — pure CSS, paints pre-JS; the
    global reduced-motion rules collapse it to a snap. */
 .ph-mark [pathLength] {
@@ -268,4 +286,174 @@ body:has(#porch:not([hidden])) #app, body.ph-open #app { contain: paint; }
 @media (forced-colors: active) {
   .ph-stage { background: Canvas; }
   .ph-slot img, .ph-thumb img { border: 1px solid CanvasText; }
+}
+
+/* ================= front of house: header, pages, footer =================
+   One fixed header and one footer shared by every public view (landing,
+   FAQ, sign-in). Tokens only — both themes come free; no ornament. */
+.porch { --foh-nav-h: 3.75rem; }
+body { --foh-nav-h: 3.75rem; }
+
+.site-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+  height: var(--foh-nav-h);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-s); padding: 0 var(--space-l);
+  background: color-mix(in srgb, var(--paper) 84%, transparent);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.site-nav.scrolled { border-bottom-color: var(--line); background: color-mix(in srgb, var(--paper) 92%, transparent); }
+.site-brand {
+  display: inline-flex; align-items: center; gap: var(--space-2xs);
+  min-height: var(--tap); color: var(--ink); text-decoration: none;
+}
+.site-brand-name { font: 700 var(--text-m)/1 var(--display); letter-spacing: -0.01em; }
+.site-brand-name b { font-weight: 500; color: var(--ink-2); }
+.site-links { display: flex; align-items: center; gap: var(--space-2xs); }
+.site-links a {
+  display: inline-flex; align-items: center; min-height: var(--tap);
+  padding: 0 var(--space-xs); border-radius: var(--radius-pill);
+  color: var(--ink-2); text-decoration: none; font-weight: 600; font-size: var(--text-s);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.site-links a:hover { background: var(--panel-2); color: var(--ink); }
+.site-links .site-cta { margin-left: var(--space-2xs); }
+
+/* ---- page frame (FAQ, sign-in): a quiet editorial document ---- */
+.page {
+  min-height: 100vh; min-height: 100dvh;
+  padding: calc(var(--foh-nav-h) + var(--space-2xl)) var(--space-l) var(--space-2xl);
+  background: var(--paper); color: var(--ink);
+}
+.page-inner { max-width: 46rem; margin-inline: auto; display: flex; flex-direction: column; gap: var(--space-m); }
+.page-inner-narrow { max-width: 30rem; }
+.page-title {
+  margin: 0; font: 700 var(--text-3xl)/var(--leading-display) var(--display);
+  letter-spacing: -0.01em; text-wrap: balance;
+}
+.page-lede { margin: 0; max-width: 52ch; font-size: var(--text-l); line-height: var(--leading-body); color: var(--ink-2); }
+.page-close {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-s);
+  margin-top: var(--space-l); padding-top: var(--space-m); border-top: 1px solid var(--line);
+}
+.page-close p { margin: 0; color: var(--ink-2); max-width: 44ch; }
+
+/* ---- FAQ: grouped ledger of plain answers ---- */
+.faq-group {
+  margin: var(--space-l) 0 0;
+  font: 600 var(--text-xs)/1.4 var(--body); letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--muted-2);
+}
+.faq-item { border-top: 1px solid var(--line); }
+.faq-item:last-of-type { border-bottom: 1px solid var(--line); }
+.faq-item summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-s);
+  padding: var(--space-s) 0; cursor: pointer; list-style: none;
+  font: 600 var(--text-l)/var(--leading-heading) var(--display); color: var(--ink);
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after {
+  content: "+"; flex: none; align-self: center;
+  font: 500 var(--text-xl)/1 var(--mono); color: var(--muted-2);
+  transition: transform var(--t-fast) var(--ease);
+}
+.faq-item[open] summary::after { content: "−"; color: var(--accent); }
+.faq-item summary:hover { color: var(--accent); }
+.faq-a { padding: 0 0 var(--space-m); max-width: 60ch; }
+.faq-a p { margin: 0 0 var(--space-2xs); color: var(--ink-2); line-height: var(--leading-body); }
+.faq-a p:last-child { margin-bottom: 0; }
+.faq-a b { color: var(--ink); }
+
+/* ---- sign-in card ---- */
+.signin-card {
+  display: flex; flex-direction: column; gap: var(--space-s); align-items: stretch;
+  padding: var(--space-m); border: 1px solid var(--line); border-radius: var(--radius-l);
+  background: var(--panel); box-shadow: var(--shadow);
+}
+.signin-card .btn { justify-content: center; }
+.signin-btn { width: 100%; }
+.signin-note { margin: 0; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-body); }
+.signin-user { display: flex; align-items: center; gap: var(--space-2xs); font-weight: 600; }
+.signin-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
+.signin-fine { margin: 0; color: var(--muted-2); font-size: var(--text-xs); line-height: 1.6; max-width: 52ch; }
+
+/* ---- footer: the quiet close of every public page ---- */
+.site-footer { border-top: 1px solid var(--line); background: var(--paper); padding: var(--space-xl) var(--space-l); }
+.site-footer-inner {
+  max-width: 90rem; margin-inline: auto;
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-l);
+}
+.site-footer-brand { display: flex; align-items: flex-start; gap: var(--space-2xs); }
+.site-footer-tag { margin: var(--space-3xs) 0 0; color: var(--muted-2); font-size: var(--text-s); }
+.site-footer-links { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
+.site-footer-links a {
+  display: inline-flex; align-items: center; min-height: var(--tap);
+  padding: 0 var(--space-xs); border-radius: var(--radius-pill);
+  color: var(--ink-2); text-decoration: none; font-weight: 600; font-size: var(--text-s);
+}
+.site-footer-links a:hover { background: var(--panel-2); color: var(--ink); }
+.site-footer-note { flex-basis: 100%; margin: 0; color: var(--muted-2); font-size: var(--text-xs); line-height: 1.6; }
+
+@media (max-width: 639px) {
+  .site-nav { padding: 0 var(--space-s); }
+  .site-nav #navHow { display: none; }
+  .site-brand-name { display: none; }
+  .page { padding-inline: var(--space-s); }
+  .site-footer { padding-inline: var(--space-s); }
+}
+
+@media (forced-colors: active) {
+  .site-nav, .site-footer { border-color: CanvasText; background: Canvas; }
+  .signin-card, .faq-item { border-color: CanvasText; }
+}
+
+/* ---- calculator lead capture (credits pivot, Phase 5) ---- */
+.calc-lead { margin-top: var(--space-s); display: flex; flex-direction: column; gap: var(--space-2xs); max-width: 26rem; }
+.calc-lead-row { display: flex; gap: var(--space-2xs); }
+.calc-lead input[type="email"] { flex: 1; min-width: 0; padding: .5rem .65rem; border: 1px solid var(--line-2, #b9b2a0); border-radius: 6px; background: var(--panel, #fff); color: inherit; font: inherit; }
+.calc-lead-note { margin: 0; font-size: .8rem; color: var(--muted, #777); min-height: 1.1em; }
+@media (forced-colors: active) { .calc-lead input[type="email"] { border-color: CanvasText; } }
+
+/* ================= 2026-07 Deluxe refit — front of house =================
+   The studio's elevation pass carried onto the porch (docs/ui/deluxe-refit.md):
+   the tri-stripe crowns the public pages, cards gain the same lift-with-a-wink
+   physics, chrome gains the studio top light. Tokens only; resting styles
+   stay the reduced-motion end state. */
+
+/* the stripe crowns the landing — the porch's cover-band edge (pre-JS view;
+   once the fixed header is up, the header's seated stripe takes over) */
+.porch::after {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--stripe); z-index: 5; pointer-events: none;
+}
+body.ph-open .porch::after { display: none; }
+/* the seated site header carries the stripe exactly like the studio console */
+.site-nav.scrolled::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+  background: var(--stripe); opacity: .85; pointer-events: none;
+}
+
+/* entry paths + calc chips: objects with press physics */
+@media (hover: hover) and (pointer: fine) {
+  .entry-card:hover { transform: translateY(-3px) rotate(-.4deg); box-shadow: var(--shadow-lg); }
+  .entry-card:active { transform: translateY(0); }
+  .ph-thumb img { transition: transform var(--t-med) var(--ease); }
+  .ph-thumb:hover img { transform: translateY(-3px) rotate(.4deg); }
+}
+.entry-card {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--panel) 94%, var(--structure-ink) 6%), var(--panel) 60%);
+  box-shadow: var(--edge-light);
+}
+.calc-chip[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--seafoam-line); }
+
+/* the fixed site header takes the studio's console treatment when seated */
+.site-nav.scrolled { box-shadow: var(--shadow); }
+.signin-card { box-shadow: var(--shadow), var(--edge-light); }
+
+@media (forced-colors: active) {
+  .porch::after, .site-nav.scrolled::after { display: none; }
 }

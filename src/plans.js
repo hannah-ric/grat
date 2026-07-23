@@ -298,20 +298,25 @@ var BB = globalThis.BB = globalThis.BB || {};
      * telling the builder to slide it in later is physically impossible
      * (audit F-S1-2). */
     const slideIn = spec.joinery.box === 'butt_screws' || spec.joinery.box === 'pocket_screws';
+    // Pre-finish reminder (audit M-09), once, on the FIRST drawer step: an
+    // assembled drawer bank's boxes and opening interiors are unreachable
+    // for a clean finish. Text amendment only — never a new step id (the
+    // golden corpus freezes the id list).
+    const preFinish = ' Pre-finish the drawer boxes (inside and out) and the openings’ interior faces now — an assembled drawer bank can’t be finished cleanly.';
     for (const d of model.drawers) {
       const n = d.index + 1;
       const ids = id => d.partIds.filter(p => p.includes(id));
       const boxIds = [...ids('side'), ...ids('boxfront'), ...ids('boxback')];
       if (slideIn) {
         out.push(step(`dr${n}_box`, `Drawer ${n}: build the box`,
-          `Join the sides, box front, and box back with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside). Check the diagonals — square now or fight it forever.`,
+          `Join the sides, box front, and box back with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside). Check the diagonals — square now or fight it forever.${n === 1 ? preFinish : ''}`,
           boxIds, { drawer: d.index }));
         out.push(step(`dr${n}_bottom`, `Drawer ${n}: fit the bottom`,
           `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of the sides and front (the back is relieved). Slide in the ${len(6)} bottom from the rear — no glue, it floats.`,
           ids('bottom'), { drawer: d.index }));
       } else {
         out.push(step(`dr${n}_box`, `Drawer ${n}: groove, then build the box around its bottom`,
-          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.`,
+          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.${n === 1 ? preFinish : ''}`,
           boxIds.concat(ids('bottom')), { drawer: d.index }));
       }
       const railIds = model.parts.filter(p => p.role === 'rail').slice(d.index, d.index + 2).map(p => p.id);
@@ -333,10 +338,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       out.push(step(`dr${n}_hang`, `Drawer ${n}: hang the box`,
         `Set the box on its runners and check it runs true with an even gap.`, boxIds.concat(ids('bottom')), { drawer: d.index }));
+      // Screws from inside the box need the full drilling schedule (M-04):
+      // clearance through the box front, pilot into the false front — or the
+      // front stands off on the threads instead of drawing tight.
+      const frontScrews = `screw it from inside the box with #8 × ${len(25)} screws — ${drill(4.5)} clearance holes through the box front, pilot ${drill(2.8)} into the false front, so it draws up tight`;
       out.push(step(`dr${n}_front`, `Drawer ${n}: attach the front`,
         d.frontStyle === 'inset'
-          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then screw it from inside the box with #8 × ${len(25)} screws.`
-          : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and screw it from inside the box with #8 × ${len(25)} screws.`,
+          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then ${frontScrews}.`
+          : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and ${frontScrews}.`,
         ids('front'), { drawer: d.index }));
       // Steps speak the EFFECTIVE style — the one pullSpec actually fitted.
       const pull = d.pull || { styleKey: 'bar_pull', style: 'bar_pull', count: 1, ctcMM: 0 };
@@ -532,10 +541,10 @@ var BB = globalThis.BB = globalThis.BB || {};
           [c.a, c.b]));
       });
     } else if (t === 'bookshelf') {
-      out.push(step('s1', 'Join the case', `Fasten the top and bottom between the sides with ${caP}. Clamp square before anything sets.`, ids('side_1', 'side_2', 'top_1', 'bottom_1')));
+      out.push(step('s1', 'Join the case', `Dry-fit the whole case and check square before any glue. Then fasten the top and bottom between the sides with ${caP}. Clamp square before anything sets.`, ids('side_1', 'side_2', 'top_1', 'bottom_1')));
       const shelves = model.parts.filter(p => p.role === 'shelf').map(p => p.id);
       if (shelves.length) out.push(step('s2', 'Add the shelves', `Fit each shelf with ${caP}, working bottom to top.`, shelves));
-      if (has('back_1')) out.push(step('s3', 'Fit the back', 'Square the case to the back panel and fasten it — the back is what keeps everything square.', ['back_1']));
+      if (has('back_1')) out.push(step('s3', 'Fit the back', 'Pre-finish the interior faces and shelves first — once the back is on, the inside is unreachable for a clean finish. Then square the case to the back panel and fasten it — the back is what keeps everything square.', ['back_1']));
     } else if (t === 'cabinet') {
       /* One carcass glue-up: with mortise-&-tenon (or doweled) rails the
        * sides cannot spread to seat the rails once the bottom is glued —
@@ -548,20 +557,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       const housedShelf = ['dado', 'sliding_dovetail', 'rabbet'].includes(spec.joinery.case);
       if (shelves.length) out.push(step('s2', 'Fit the shelves',
         `Fit each shelf with ${caP} now, while the back is open${housedShelf ? ' — a housed shelf slides in from the back and CANNOT go in after the back panel is on' : ''}.`, shelves));
-      if (has('back_1')) out.push(step('s3', 'Fit the back', 'Fasten the back panel — square the carcass to it first.', ['back_1']));
+      if (has('back_1')) out.push(step('s3', 'Fit the back', 'Pre-finish the carcass interior and shelves first — unreachable once the back is on. Then fasten the back panel — square the carcass to it first.', ['back_1']));
       if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else if (t === 'nightstand') {
-      out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
+      out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies. Dry-fit and check square before any glue.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
       out.push(step('s2', 'Connect with back apron and rails', `Join the back apron and the front drawer rails between the side frames with ${frP}.`, ['apron_back_1', ...rails]));
       if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf', 'Notch the shelf around the legs and fasten it.', ['shelf_1']));
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
-      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
-      out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. Work on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
+      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
+      out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. ${isKnockdown(spec.joinery.frame) ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
       out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
     }
     // Mandatory anti-tip anchoring: an instruction step, not an aside. A

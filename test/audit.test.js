@@ -1849,11 +1849,11 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
   ok(!kdSteps.some(s => (s.joints || []).some(j => j.type === 'kd_bolt') && /glue/i.test(s.text)),
     'no step that makes a kd_bolt joint mentions glue');
 
-  // The glued wording stays byte-identical for glued frames (golden guard).
+  // Glued frames keep a real glue instruction (now with the M-10 dry-fit).
   const gl = pipeline(Spec.defaultSpec('table'));
   const g1 = Plans.assembly(gl.spec, gl.model, null, {}).find(s => s.id === 's1');
-  ok(g1 && /with pocket screws\. Glue, clamp, and check for square\./.test(g1.text),
-    `glued frames keep the original sentence — got "${g1 && g1.text}"`);
+  ok(g1 && /with pocket screws\. Dry-fit first, then glue, clamp, and check for square\./.test(g1.text),
+    `glued frames keep the glue sentence (with dry-fit, M-10) — got "${g1 && g1.text}"`);
 
   // Custom path: the unconditional " Dry-fit before glue." suffix (ref4's
   // live bed rails: "…with knockdown bolts. Dry-fit before glue.").
@@ -1922,6 +1922,111 @@ section('G10 correctionNotes records the grounding translation correction never 
   sunk.custom.parts.forEach(p => { p.pos.y -= 300; });
   const sunkNotes = Spec.correctionNotes(sunk, Spec.correctSpec(Spec.clone(sunk)));
   ok(sunkNotes.length === 1 && /sat ~300 mm below the floor/.test(sunkNotes[0]), `a sunk proposal is named too — got "${sunkNotes[0]}"`);
+}
+
+/* ================= M-04 (2026-07 credits pivot): screwed joints draw tight ================= */
+section('M-04 screw setouts name the clearance hole and countersink, not just the pilot');
+{
+  // A screwed case joint: the near member gets a shank CLEARANCE hole (the
+  // screw must spin free in it to draw the joint tight) and the flat head a
+  // countersink — "Pilot X" alone will not close the joint.
+  const r = pipeline({
+    meta: { name: 'Shelf case', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 800, depth: 280, height: 1100 },
+    structure: { shelfCount: 2, backPanel: true }
+  });
+  const joint = r.model.joints.find(j => j.type === 'butt_screws');
+  ok(joint, 'a beginner bookshelf has screwed case joints');
+  if (joint) {
+    const lay = Fasteners.layoutForJoint(r.spec, r.model, joint);
+    ok(/clearance/i.test(lay.text), `setout names the clearance hole — got "${lay.text}"`);
+    ok(/countersink|counterbore/i.test(lay.text), 'setout names the countersink (or counterbore when the member is thick)');
+    ok(lay.fasteners.every(f => f.kind !== 'screw' || f.clearanceMM > f.pilotMM), 'screw fasteners carry a clearance Ø larger than the pilot');
+  }
+  // The drawer-front attachment (screws from inside the box) needs the same.
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const ig = Structural.computeIntegrity(ns.spec, ns.model, {});
+  const stock = Packing.planStock(ns.spec, ns.model, Plans.cutList(ns.spec, ns.model), {});
+  const steps = Plans.assembly(ns.spec, ns.model, ig, { stockPlan: stock });
+  const front = steps.find(s => s.id === 'dr1_front');
+  ok(front && /clearance/i.test(front.text), `drawer-front step names the clearance holes — got "${front && front.text}"`);
+}
+
+/* ================= M-09: pre-finish before the case closes ================= */
+section('M-09 cases with backs or drawer banks say pre-finish before closing');
+{
+  const shelf = pipeline({
+    meta: { name: 'Shelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 800, depth: 280, height: 1100 },
+    structure: { shelfCount: 2, backPanel: true }
+  });
+  const ig = Structural.computeIntegrity(shelf.spec, shelf.model, {});
+  const steps = Plans.assembly(shelf.spec, shelf.model, ig, {});
+  const back = steps.find(s => s.id === 's3');
+  ok(back && /pre-?finish/i.test(back.text), 'the back-panel step demands pre-finishing the interior first');
+  // Golden guard: the amendment is TEXT only — the step id list is unchanged
+  // (a new step id would diverge the frozen corpus).
+  ok(!steps.some(s => /^prefinish/.test(s.id)), 'no new step id is minted (text amendment only)');
+
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const ig2 = Structural.computeIntegrity(ns.spec, ns.model, {});
+  const steps2 = Plans.assembly(ns.spec, ns.model, ig2, {});
+  const box1 = steps2.find(s => s.id === 'dr1_box');
+  ok(box1 && /pre-?finish/i.test(box1.text), 'the first drawer step demands pre-finishing boxes and openings');
+  const box2 = steps2.find(s => s.id === 'dr2_box');
+  ok(box2 && !/pre-?finish/i.test(box2.text), 'the reminder appears once, not on every drawer');
+}
+
+/* ================= M-10: dry-fit before glue on template paths ================= */
+section('M-10 template glue-up steps demand a dry-fit (the custom path already did)');
+{
+  const table = pipeline({ meta: { name: 'T', template: 'table', level: 'intermediate', units: 'mm' } });
+  const igT = Structural.computeIntegrity(table.spec, table.model, {});
+  const stepsT = Plans.assembly(table.spec, table.model, igT, {});
+  ok(/dry-?fit/i.test((stepsT.find(s => s.id === 's1') || {}).text || ''), 'table end-frame glue-up says dry-fit first');
+  ok(/dry-?fit/i.test((stepsT.find(s => s.id === 's2') || {}).text || ''), 'table frame-join glue-up says dry-fit first');
+
+  const shelf = pipeline({
+    meta: { name: 'S', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 800, depth: 280, height: 1100 }, structure: { shelfCount: 2, backPanel: true }
+  });
+  const igS = Structural.computeIntegrity(shelf.spec, shelf.model, {});
+  ok(/dry-?fit/i.test((Plans.assembly(shelf.spec, shelf.model, igS, {}).find(s => s.id === 's1') || {}).text || ''), 'bookshelf case step says dry-fit first');
+
+  const ns = pipeline({
+    meta: { name: 'N', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 }, drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const igN = Structural.computeIntegrity(ns.spec, ns.model, {});
+  ok(/dry-?fit/i.test((Plans.assembly(ns.spec, ns.model, igN, {}).find(s => s.id === 's1') || {}).text || ''), 'nightstand side-frame step says dry-fit first');
+}
+
+/* ================= M-22: real prices reach the model ================= */
+section('M-22 budget digest: species $/bd ft + the current design total reach the prompt');
+{
+  // The WOOD digest line carries real $/bd ft, not $-dots — "keep it under
+  // $200" is only answerable against numbers.
+  const digest = K.knowledgeDigest();
+  ok(digest.includes(`$${K.WOOD_SPECIES.red_oak.pricePerBdFt}/bdft`), 'digest carries red oak $/bd ft');
+  ok(digest.includes(`$${K.WOOD_SPECIES.walnut.pricePerBdFt}/bdft`), 'digest carries walnut $/bd ft');
+  ok(!/\$●/.test(digest), 'the $-dot tier glyphs are gone');
+  // The system prompt carries the CURRENT design's estimated total, computed
+  // by code (the model never computes it), placed AFTER the cache-split
+  // marker so the byte-stable prefix stays cacheable.
+  const spec = Spec.correctSpec({ meta: { name: 'B', template: 'table', level: 'beginner', units: 'mm' } });
+  const line = AI.budgetLine(spec, null);
+  ok(/\$\d/.test(line), `budgetLine carries a real dollar total — got "${line}"`);
+  const sys = AI.systemPrompt(spec);
+  const marker = sys.indexOf('--- current spec (wire format) ---');
+  ok(sys.indexOf(line) > marker && marker > 0, 'budget line rides the per-call tail, after the cache-split marker');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

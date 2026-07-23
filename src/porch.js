@@ -32,13 +32,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { show, static: show && !!reduced };
   }
 
+  /* The porch now carries pricing and lead capture, so "seen" is versioned:
+   * bump PRICING_REV whenever the offer changes and every returning visitor
+   * sees the porch once more (credits pivot §4 decision). A legacy '1' from
+   * the overture era counts as unseen — those visitors predate the offer.
+   * Share-link (#d=) and ?app arrivals still bypass, as before. */
+  const PRICING_REV = 'credits-2026-07';
   function peekSeen() {
-    try { if (localStorage.getItem('bb.porchSeen') === '1') return true; } catch (e) { /* storage-less */ }
-    try { return sessionStorage.getItem('bb.porchSeen') === '1'; } catch (e) { return false; }
+    try { if (localStorage.getItem('bb.porchSeen') === PRICING_REV) return true; } catch (e) { /* storage-less */ }
+    try { return sessionStorage.getItem('bb.porchSeen') === PRICING_REV; } catch (e) { return false; }
   }
   function markSeen() {
-    try { localStorage.setItem('bb.porchSeen', '1'); return; } catch (e) { /* fall through */ }
-    try { sessionStorage.setItem('bb.porchSeen', '1'); } catch (e) { /* session-only env */ }
+    try { localStorage.setItem('bb.porchSeen', PRICING_REV); return; } catch (e) { /* fall through */ }
+    try { sessionStorage.setItem('bb.porchSeen', PRICING_REV); } catch (e) { /* session-only env */ }
   }
 
   const reduceMq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -51,8 +57,67 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   const porchEl = $ && $('porch');
   if (porchEl && !decision.show) porchEl.remove();
-  else if (porchEl && doc.body) doc.body.classList.add('ph-open');
   const active = !!(porchEl && decision.show);
+
+  /* ---------------- front-of-house views (segmentation) ----------------
+   * The landing, FAQ, and sign-in pages are separate views from the studio:
+   * exactly one is on screen at a time. While any public view is up, the
+   * studio (#app) stays booted but leaves the page entirely (see porch.css
+   * .ph-open rules) — the narrative is never one scroll away from the
+   * workbench. Routing is the location hash (#faq, #signin); everything
+   * else resolves to the landing (first visit) or the studio. */
+  function _routeFromHash(hash, alive) {
+    const h = String(hash || '').replace(/^#/, '').split(';')[0];
+    if (h === 'faq') return 'faq';
+    if (h === 'signin') return 'signin';
+    return alive ? 'landing' : 'app';
+  }
+  const PAGE_IDS = { faq: 'pageFaq', signin: 'pageSignin' };
+  let view = null;
+  let firstRunCb = null; // ui.js parks the first-run welcome/overture here
+
+  function landingAlive() { return !!(porchEl && porchEl.isConnected); }
+
+  function showView(v) {
+    if (!doc || !doc.body) return;
+    if (v === 'landing' && !landingAlive()) v = 'app';
+    const pub = v !== 'app';
+    if (landingAlive()) porchEl.hidden = v !== 'landing';
+    for (const k in PAGE_IDS) { const p = $(PAGE_IDS[k]); if (p) p.hidden = v !== k; }
+    const header = $('siteHeader'), footer = $('siteFooter');
+    if (header) header.hidden = !pub;
+    if (footer) footer.hidden = !pub;
+    doc.body.classList.toggle('ph-open', pub);
+    const changed = view !== null && view !== v;
+    view = v;
+    BB.Porch.view = v;
+    if (changed) {
+      // a chapter anchor rides the hash back onto the landing; else the top
+      const target = v === 'landing' && /^#ph-/.test(location.hash) ? doc.querySelector(location.hash) : null;
+      if (target) target.scrollIntoView();
+      else scrollTo(0, 0);
+    }
+    if (pub) updateNav();
+    if (v === 'signin') renderSignin();
+    if (v === 'landing' && active && !S.inited) schedule();
+  }
+
+  function updateNav() {
+    const alive = landingAlive();
+    for (const id of ['navHow', 'footHow']) { const n = $(id); if (n) n.hidden = !alive; }
+    let user = null;
+    try { user = BB.Store && BB.Store.auth ? BB.Store.auth().user : null; } catch (e) { /* pre-boot */ }
+    for (const id of ['navSignin', 'footSignin']) { const n = $(id); if (n) n.textContent = user ? 'Account' : 'Sign in'; }
+  }
+
+  /* ui.js defers the first-run theater (welcome card / phone overture) here
+   * while a public view is up — it plays on studio entry, where it's
+   * actually visible, instead of invisibly behind the landing. */
+  function deferFirstRun(fn) {
+    if (typeof fn !== 'function' || !landingAlive()) return false;
+    firstRunCb = fn;
+    return true;
+  }
 
   /* Code-owned track table (§16a). Anchors = scroll fractions of chapter
    * centers (measured at init; defaults keep it pure for selftest + the
@@ -422,6 +487,39 @@ var BB = globalThis.BB = globalThis.BB || {};
     mkRow('Size', [['S', 'Small'], ['M', 'Medium'], ['L', 'Large']], () => calc.size, v => { calc.size = v; });
     mkRow('Species', CALC_SPECIES.map(k => [k, K.WOOD_SPECIES[k].label]), () => calc.species, v => { calc.species = v; });
     calcRender(true);
+    buildCalcCapture();
+  }
+
+  /* The calculator is a qualified-intent signal — capture it instead of
+   * discarding it (credits pivot, Phase 5). Optional, quiet, and honest:
+   * storage-less or API-less hosts show a plain failure note. */
+  function buildCalcCapture() {
+    const host = $('phCalc');
+    if (!host || $('phCalcLead')) return;
+    const wrap = el('form', 'calc-lead');
+    wrap.id = 'phCalcLead';
+    wrap.innerHTML = `<label class="kicker" for="phCalcEmail">Email me this estimate</label>
+      <div class="calc-lead-row">
+        <input type="email" id="phCalcEmail" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email address">
+        <button type="submit" class="btn small">Send it</button>
+      </div>
+      <p class="calc-lead-note" id="phCalcLeadNote" role="status"></p>`;
+    wrap.addEventListener('submit', async e => {
+      e.preventDefault();
+      const note = $('phCalcLeadNote');
+      const email = $('phCalcEmail').value.trim();
+      const r = calc.out || {};
+      try {
+        const res = await fetch('/api/lead', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, kind: 'calculator', context: JSON.stringify({ template: calc.template, size: calc.size, species: calc.species, cost: r.cost, boards: r.boards, parts: r.parts, hours: [r.hoursLow, r.hoursHigh] }) })
+        });
+        note.textContent = res.ok ? 'Saved — the estimate is on its way.' : 'Couldn’t save that right now — the studio itself is one click away.';
+      } catch (err) {
+        note.textContent = 'Couldn’t save that right now — the studio itself is one click away.';
+      }
+    });
+    host.append(wrap);
   }
 
   /* ---------------- entering the studio (design-language §7 handoff) ------- */
@@ -449,32 +547,41 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   function enterStudio(path) {
     markSeen();
-    const finish = () => {
-      teardown();
-      if (porchEl && porchEl.parentNode) porchEl.remove();
-      if (doc.body) doc.body.classList.remove('ph-open');
-      scrollTo(0, 0);
-      seedLevel(path);
-      if (path === 'first') {
-        // The starters dialog owns focus (aria-modal trap) — stealing it back
-        // for the hero prompt would fight the trap.
-        const g = $('galleryBtn');
-        if (g) { g.click(); return; }
-      }
-      const hero = $('heroText');
-      if (hero && hero.offsetParent) hero.focus();
-      else { const chat = $('chatText'); if (chat) chat.focus(); }
-    };
-    const m = M();
-    if (!m || !m.on()) { finish(); return; }
-    const bench = doc.querySelector('main.bench') || $('app');
-    let done = false;
-    const go = () => { if (!done) { done = true; finish(); } };
-    if (bench) {
-      addEventListener('scrollend', go, { once: true });
-      setTimeout(go, 900); // scrollend fallback
-      bench.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else go();
+    teardown();
+    if (porchEl && porchEl.parentNode) porchEl.remove();
+    // a page hash (#faq/#signin) must not survive into the studio — a reload
+    // there should land back in the studio, not on the page
+    if (/^#(faq|signin)$/.test(location.hash || '')) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* sandboxed frame */ }
+    }
+    showView('app');
+    scrollTo(0, 0);
+    seedLevel(path);
+    const app = $('app');
+    if (app && M() && M().on()) { // one quiet settle on arrival
+      app.classList.remove('studio-enter');
+      void app.offsetWidth;
+      app.classList.add('studio-enter');
+    }
+    // Deferred first-run theater plays on arrival — the welcome card, or the
+    // phone overture (suppressed when the starters dialog is the ask).
+    if (firstRunCb) {
+      const fn = firstRunCb;
+      firstRunCb = null;
+      try { fn({ suppressOverture: path === 'first' }); } catch (e) { /* never load-bearing */ }
+    }
+    if (path === 'first') {
+      // The starters dialog owns focus (aria-modal trap) — stealing it back
+      // for the hero prompt would fight the trap.
+      const g = $('galleryBtn');
+      if (g) { g.click(); return; }
+    }
+    const hero = $('heroText');
+    if (hero && hero.offsetParent) hero.focus();
+    else if (!doc.querySelector('.ov-caption')) { // the overture owns focus while it plays
+      const chat = $('chatText');
+      if (chat) chat.focus();
+    }
   }
 
   function teardown() {
@@ -493,6 +600,63 @@ var BB = globalThis.BB = globalThis.BB || {};
     try { localStorage.removeItem('bb.porchSeen'); } catch (e) { /* ignore */ }
     try { sessionStorage.removeItem('bb.porchSeen'); } catch (e) { /* ignore */ }
     location.reload();
+  }
+
+  /* ---------------- sign-in page (#signin) ----------------
+   * Rendered from the REAL auth probe: provider buttons where the origin
+   * offers accounts, the signed-in identity when there is one, and an honest
+   * local-first note where accounts aren't configured. */
+  const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
+  let signinProbe = 'idle'; // idle | busy | done
+  function renderSignin() {
+    const box = $('signinBody');
+    if (!box) return;
+    const St = BB.Store;
+    const a = St && St.auth ? St.auth() : { user: null, providers: [] };
+    if (signinProbe === 'idle' && St && St.init) {
+      signinProbe = 'busy';
+      Promise.resolve()
+        .then(() => St.init({ timeoutMs: 4000 }))
+        .catch(() => null)
+        .then(() => {
+          signinProbe = 'done';
+          if (view === 'signin') renderSignin();
+          updateNav();
+        });
+    }
+    box.textContent = '';
+    const note = t => el('p', 'signin-note', t);
+    const btn = (cls, label) => {
+      const b = el('button', 'btn signin-btn' + (cls ? ' ' + cls : ''), label);
+      b.type = 'button';
+      return b;
+    };
+    if (a.user) {
+      const row = el('div', 'signin-user',
+        (a.user.avatar ? `<img class="signin-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : '') +
+        `<span>${esc(a.user.name)}</span>`);
+      box.append(row, note('You’re signed in — projects sync to your account and follow you to any device.'));
+      const open = btn('primary', 'Open the studio');
+      open.dataset.enter = '';
+      const out = btn('', 'Sign out');
+      out.onclick = () => { location.href = St.logoutUrl; };
+      box.append(open, out);
+    } else if (a.providers && a.providers.length) {
+      for (const p of a.providers) {
+        const b = btn('primary', 'Continue with ' + esc(PROVIDER_LABELS[p] || p));
+        // signing in is intent to work — land in the studio after the round trip
+        b.onclick = () => { markSeen(); location.href = St.loginUrl(p); };
+        box.append(b);
+      }
+      box.append(note('No passwords held here — sign-in runs through your existing account. Your projects then follow you to any device.'));
+    } else if (signinProbe !== 'done') {
+      box.append(note('Checking this workshop’s sign-in options…'));
+    } else {
+      box.append(note('This workshop runs without accounts: designs autosave to this device, and a share code carries a whole design anywhere in a line of text.'));
+      const open = btn('primary', 'Open the studio');
+      open.dataset.enter = '';
+      box.append(open);
+    }
   }
 
   /* ---------------- init ---------------- */
@@ -691,21 +855,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       S.mode = (fine && wide && M() && M().on()) ? 'scrub' : 'static';
       BB.Porch.mode = S.mode;
       porchEl.dataset.mode = S.mode;
-      // shared enrichment (both modes)
+      // shared enrichment (both modes); CTAs land through the one document-
+      // level [data-enter] delegate (bootstrap below) — header, footer, and
+      // page CTAs share the exact same door.
       fillElevation();
       fillShift();
       buildCalc();
-      // CTAs — every path lands through one enterStudio
-      for (const b of porchEl.querySelectorAll('[data-enter]')) {
-        b.addEventListener('click', () => enterStudio(b.dataset.enter || null));
-      }
-      // working in the studio below IS entry — mark seen so regulars skip
-      const app = $('app');
-      if (app) {
-        const mark = () => markSeen();
-        app.addEventListener('pointerdown', mark, { once: true, capture: true, passive: true });
-        app.addEventListener('focusin', mark, { once: true, capture: true });
-      }
       if (S.mode === 'scrub') initScrub();
       else initStatic().catch(() => { /* the document stands without stills */ });
     } catch (e) {
@@ -715,11 +870,18 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* Porch/overture start only after the boot skeleton is gone (§12 budget:
-   * boot stays untouched); poll is cheap and self-cancels. */
+   * boot stays untouched) AND the landing is the on-screen view — a #faq or
+   * #signin arrival initializes the scrub only once the visitor actually
+   * lands on it (hidden porch = unmeasurable anchors). Poll is cheap and
+   * self-cancels. */
+  let scheduled = false;
   function schedule() {
-    if (!active) return;
+    if (!active || scheduled) return;
+    scheduled = true;
     const t0 = Date.now();
     const iv = setInterval(() => {
+      if (S.inited || S.disposed || !landingAlive()) { clearInterval(iv); return; }
+      if (view !== 'landing') return;
       if (!doc.getElementById('bootSkeleton') || Date.now() - t0 > 6000) {
         clearInterval(iv);
         requestAnimationFrame(() => requestAnimationFrame(init));
@@ -848,12 +1010,38 @@ var BB = globalThis.BB = globalThis.BB || {};
     return true;
   }
 
-  schedule();
-
   BB.Porch = {
-    active, mode: S.mode,
-    enterStudio, replay, overture, shouldOverture,
-    _gateDecision, _buildTracks, _tracks: tracks, _anchors: DEFAULT_ANCHORS,
+    active, mode: S.mode, view: null,
+    enterStudio, replay, overture, shouldOverture, deferFirstRun, showView,
+    _gateDecision, _routeFromHash, _buildTracks, _tracks: tracks, _anchors: DEFAULT_ANCHORS,
     _state: S, _calc: calc, _applyP: applyP
   };
+
+  /* ---------------- bootstrap: resolve the arrival view ---------------- */
+  if (doc && doc.body) {
+    // every "Open the studio" CTA — porch, header, footer, FAQ, sign-in —
+    // goes through the one door
+    doc.addEventListener('click', e => {
+      const b = e.target && e.target.closest ? e.target.closest('[data-enter]') : null;
+      if (!b) return;
+      e.preventDefault();
+      enterStudio(b.dataset.enter || null);
+    });
+    addEventListener('hashchange', () => {
+      const v = _routeFromHash(location.hash, landingAlive());
+      if (v !== view) showView(v);
+    });
+    // fixed header takes its hairline once the page is off the top
+    let navTick = false;
+    addEventListener('scroll', () => {
+      if (navTick) return;
+      navTick = true;
+      requestAnimationFrame(() => {
+        navTick = false;
+        const h = $('siteHeader');
+        if (h && !h.hidden) h.classList.toggle('scrolled', scrollY > 8);
+      });
+    }, { passive: true });
+    showView(_routeFromHash(typeof location !== 'undefined' ? location.hash : '', landingAlive()));
+  }
 })();

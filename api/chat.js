@@ -120,18 +120,28 @@ module.exports = async function handler(req, res) {
     return sendJSON(res, 503, errBody('AI proxy not configured: set ANTHROPIC_API_KEY in the environment.'));
   }
 
+  /* Credits pivot: AI is behind sign-in (anonymous users get the live
+   * example + inspector edits, never the model). The hashed-IP anonymous
+   * meter (anonMeterId) stays in place for any future anonymous preview
+   * path and still backs the burst guard below. */
   const session = S.sessionFrom(req);
-  const meterId = session ? session.uid : anonMeterId(req);
+  if (!session) {
+    return sendJSON(res, 401, { type: 'error', error: { type: 'auth_required', message: 'Sign in to design with AI — your first blueprint credit is free.' } });
+  }
+  const meterId = session.uid;
   const tokenBudget = parseInt(process.env.AI_MONTHLY_TOKEN_BUDGET, 10) || 0; // 0 / unset = disabled
   if (!burstOK(meterId)) {
     return sendJSON(res, 429, { type: 'error', error: { type: 'rate_limited', message: 'Too many requests — please slow down.' } });
   }
+  /* The monthly message meter is an ABUSE CEILING only (credits pivot): it
+   * protects the proxy key, it is not the offer, and the client no longer
+   * opens an upgrade dialog on this 402 — refinement must feel free. */
   try {
-    const account = await E.statusFor(meterId);
+    const account = await E.statusFor(meterId, req);
     if (account.usage.aiMessages >= account.entitlements.aiMonthlyLimit) {
       return sendJSON(res, 402, {
         type: 'error',
-        error: { type: 'usage_limit', message: 'Monthly AI message limit reached.' },
+        error: { type: 'usage_limit', message: 'This month’s AI usage ceiling is reached — it resets with the calendar month. Your designs, plans, and credits are unaffected.' },
         billing: account
       });
     }
