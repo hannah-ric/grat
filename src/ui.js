@@ -343,7 +343,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * billing payload (fetched or pushed by the chat proxy) or sign-in
    * providers. Static hosts and claude.ai stay quiet as before (A-05). */
   function billingConfigured(a) {
-    return !!(a.billing || (a.providers && a.providers.length));
+    return !!(a.billing || (a.providers && a.providers.length) || a.passwordAuth);
   }
 
   /* ---------------- the credited-design model (credits pivot 2026-07) ----
@@ -397,7 +397,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       b.onclick = () => { window.location.href = Store.loginUrl(p); };
       row.append(b);
     }
-    if (!a.providers.length) {
+    if (a.passwordAuth) {
+      const b = el('button', 'btn small', 'Sign in with email');
+      b.onclick = () => { location.hash = '#signin'; };
+      row.append(b);
+    }
+    if (!a.providers.length && !a.passwordAuth) {
       const b = el('button', 'btn small', 'About sign-in');
       b.onclick = () => { location.hash = '#signin'; };
       row.append(b);
@@ -562,6 +567,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         b.setAttribute('role', 'menuitem');
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
+      }
+      // Email + password lives on the dedicated #signin page (form + password
+      // manager support); the menu routes there rather than inlining a form.
+      if (a.passwordAuth) {
+        const em = el('button', '', '<span>Sign in with email</span><span class="hint">free credit + sync</span>');
+        em.setAttribute('role', 'menuitem');
+        em.onclick = () => { location.hash = '#signin'; };
+        area.append(em);
       }
       // Persistent plans surface (A-05): the offer must be findable before
       // the wall, not only at it.
