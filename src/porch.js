@@ -419,6 +419,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     return {
       cost: stockPlan.totalCost,
       boards: stockPlan.boards.length + stockPlan.sheets.length,
+      boardCount: stockPlan.boards.length, sheetCount: stockPlan.sheets.length,
       parts: model.parts.length,
       hoursLow: est.hoursLow, hoursHigh: est.hoursHigh,
       dims: `${U.fmtLength(spec.overall.width)} × ${U.fmtLength(spec.overall.depth)} × ${U.fmtLength(spec.overall.height)} · ${K.WOOD_SPECIES[spec.wood.species].label}`,
@@ -431,10 +432,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     const stats = $('phCalcStats');
     if (!stats) return;
     if (first) {
-      const stat = (id, inner, k) => `<div class="calc-stat"><span class="counter"${id ? ` id="${id}"` : ''}>${inner}</span><span class="kicker">${k}</span></div>`;
+      const stat = (id, inner, k, kid) => `<div class="calc-stat"><span class="counter"${id ? ` id="${id}"` : ''}>${inner}</span><span class="kicker"${kid ? ` id="${kid}"` : ''}>${k}</span></div>`;
       stats.innerHTML = stat('phCalcCost', '0', 'wood, packed on real boards') +
-        stat('phCalcBoards', '0', 'boards &amp; sheets to buy') +
-        stat('phCalcParts', '0', 'parts, cut to size') +
+        stat('phCalcBoards', '0', 'boards &amp; sheets to buy', 'phCalcBoardsK') +
+        stat('phCalcParts', '0', 'parts, cut to size', 'phCalcPartsK') +
         stat('', '<span class="counter" id="phCalcHl">0</span>–<span class="counter" id="phCalcHh">0</span> h', 'honest bench time');
       $('phCalcVerdict').innerHTML = 'Your cost: <span class="counter" id="phCalcCost2">$0.00</span> in wood — the rest is Saturday.';
     }
@@ -452,6 +453,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     roll('phCalcParts', r.parts);
     roll('phCalcHl', r.hoursLow);
     roll('phCalcHh', r.hoursHigh);
+    // the labels are live like the figures — "1 boards & sheets" on a
+    // computed number undercuts the trust the number is there to earn
+    const bk = $('phCalcBoardsK');
+    if (bk) {
+      bk.textContent = r.sheetCount === 0 ? (r.boardCount === 1 ? 'board to buy' : 'boards to buy')
+        : r.boardCount === 0 ? (r.sheetCount === 1 ? 'sheet to buy' : 'sheets to buy')
+        : 'boards & sheets to buy';
+    }
+    const pk = $('phCalcPartsK');
+    if (pk) pk.textContent = r.parts === 1 ? 'part, cut to size' : 'parts, cut to size';
     $('phCalcDims').textContent = r.dims;
     $('phCalcRetail').innerHTML = '<span class="kicker">A comparable piece at retail</span>' +
       `<div class="spec-plate-row"><span class="spec-plate-label">typical store range</span><span class="spec-plate-value">$${r.retail[0]}–$${r.retail[1]}</span></div>` +

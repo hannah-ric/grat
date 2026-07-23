@@ -128,6 +128,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     const x0 = uMin - pad, y0 = vMin - pad * 0.55;
     const w = (uMax - uMin) + pad * 1.5, h = (vMax - vMin) + pad * 1.8;
     const fs = Math.max(14, span * 0.035);
+    /* The view title anchors to the viewBox centre, not the geometry centre:
+     * the left dimension stack pads the frame asymmetrically, so a geometry-
+     * anchored title reads visibly off-centre in the rendered drawing. The
+     * fs*0.06 nudge half-compensates text-anchor="middle" centring the
+     * advance width, which includes the trailing 0.12em letter-space. */
+    const titleX = x0 + w / 2 + fs * 0.06;
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${nf(x0)} ${nf(y0)} ${nf(w)} ${nf(h)}" class="bb-elevation" role="img" aria-label="${V.title} elevation">
   <style>
     .bb-elevation { font-family: var(--mono); }
@@ -143,7 +149,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   </g>
     ${openings}
     ${dims.join('\n    ')}
-  <text class="vtitle" x="${nf((uMin + uMax) / 2)}" y="${nf(vMax + off + 34)}" text-anchor="middle">${V.title} ELEVATION</text>
+  <text class="vtitle" x="${nf(titleX)}" y="${nf(vMax + off + 34)}" text-anchor="middle">${V.title} ELEVATION</text>
 </svg>`;
   }
 
