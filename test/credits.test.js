@@ -48,7 +48,7 @@ const webhook = require('../api/stripe-webhook.js');
 
 const cleanEnv = () => {
   for (const k of ['AUTH_SECRET', 'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
-    'BB_KV_FILE', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY', 'APP_ORIGIN',
+    'BB_KV_FILE', 'BB_SIGNUP_IP_CAP', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY', 'APP_ORIGIN',
     'STRIPE_CREDIT_PACK_1_PRICE_ID', 'STRIPE_CREDIT_PACK_3_PRICE_ID', 'STRIPE_CREDIT_PACK_10_PRICE_ID', 'STRIPE_CREDIT_PACK_25_PRICE_ID',
     'STRIPE_PRO_MONTHLY_PRICE_ID', 'STRIPE_PRO_YEARLY_PRICE_ID']) delete process.env[k];
 };
@@ -121,6 +121,49 @@ const issue = (uid, body) => {
     ok(led.some(e => e.type === 'expire' && e.amount === -2), 'expiry is written to the ledger, never silent');
     const c = await Credits.charge(uid, { specHash: 'h2', blueprintId: 'bp_2', reason: 'issue' });
     ok(c.ok, 'charge succeeds from the oldest unexpired grant');
+    drop();
+  }
+
+  section('credits: concurrent charges serialize — one credit can never double-spend');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const uid = 'dev:race1';
+    await Credits.state(uid); // mint the signup credit outside the race: balance 1
+    const results = await Promise.all(Array.from({ length: 6 }, (_, i) =>
+      Credits.charge(uid, { specHash: 'race-h' + i, reason: 'issue' })));
+    eq(results.filter(r => r.ok).length, 1, 'exactly one of six concurrent charges lands');
+    eq((await Credits.state(uid)).balance, 0, 'balance ends at zero, never negative');
+    const led = await Credits.ledgerFor(uid);
+    eq(led.filter(e => e.type === 'charge').length, 1, 'exactly one charge reaches the ledger');
+    drop();
+  }
+
+  section('credits: the free signup credit is capped per client IP (farming damper)');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    process.env.BB_SIGNUP_IP_CAP = '2';
+    process.env.AUTH_SECRET = SECRET; // the IP-hash salt — must be stable across the section
+    const ip = '203.0.113.9';
+    eq((await Credits.state('dev:farm1', { ip })).balance, 1, 'first account from an IP gets the credit');
+    eq((await Credits.state('dev:farm2', { ip })).balance, 1, 'second account still gets it');
+    eq((await Credits.state('dev:farm3', { ip })).balance, 0, 'the account past the cap opens with an empty book');
+    const led = await Credits.ledgerFor('dev:farm3');
+    ok(led.length === 1 && led[0].reason === 'signup_ip_capped' && led[0].amount === 0,
+      'the withheld grant is written down, never silent');
+    eq((await Credits.state('dev:farm3', { ip: '198.51.100.7' })).balance, 0, 'the decision is per account and sticks');
+    eq((await Credits.state('dev:farm4', { ip: '198.51.100.7' })).balance, 1, 'a different IP is unaffected');
+    eq((await Credits.state('dev:farm5')).balance, 1, 'no IP in hand fails open to the grant');
+    // The cap reaches blueprint issuance: a capped fresh account has nothing to spend.
+    const res = fakeRes();
+    await blueprint(fakeReq('/api/blueprint', {
+      method: 'POST',
+      headers: Object.assign({ 'x-forwarded-for': ip }, mkCookie('dev:farm6')),
+      body: { spec: VALID_SPEC }
+    }), res);
+    eq(res.statusCode, 402, 'a capped fresh account cannot issue on a free credit');
+    delete process.env.BB_SIGNUP_IP_CAP;
     drop();
   }
 
@@ -225,6 +268,27 @@ const issue = (uid, body) => {
     drop();
   }
 
+  section('blueprint: an in-window piece-type morph stays free but is written down (pricing telemetry)');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const KV = require('../api/_kv.js');
+    const uid = 'dev:morph1';
+    const first = json(await issue(uid, { spec: VALID_SPEC }));
+    ok(first.charged === true, 'the table commits on the signup credit');
+    const bench = JSON.parse(JSON.stringify(VALID_SPEC));
+    bench.meta.template = 'bench'; bench.meta.name = 'Morphed Bench'; bench.overall.height = 450;
+    const second = json(await issue(uid, { spec: bench, designId: first.id }));
+    ok(second.charged === false && second.id === first.id,
+      'the morph inside the window is still free — the brief’s no-threshold rule is unchanged');
+    const design = JSON.parse(await KV.backend().get(`bb:${uid}:design:${first.id}`));
+    eq(design.template, 'bench', 'the design record tracks the current piece type');
+    ok(Array.isArray(design.morphs) && design.morphs.length === 1 &&
+      design.morphs[0].from === 'table' && design.morphs[0].to === 'bench',
+      'each piece-type hop is recorded for the future pricing revisit');
+    drop();
+  }
+
   section('blueprint: a failure after the charge refunds automatically');
   {
     cleanEnv();
@@ -246,7 +310,7 @@ const issue = (uid, body) => {
   {
     cleanEnv();
     const drop = useTempKV();
-    for (const doc of ['credits', 'ledger', 'design:bp_1', 'designs:index', 'bphash:abc', 'artifact:abc', 'bpimg:abc']) {
+    for (const doc of ['credits', 'creditlock', 'ledger', 'design:bp_1', 'designs:index', 'bphash:abc', 'artifact:abc', 'bpimg:abc']) {
       const res = fakeRes();
       await store(fakeReq('/api/store?doc=' + encodeURIComponent(doc), { headers: mkCookie('dev:evil'), method: 'PUT', body: { value: '{"balance":999}' } }), res);
       eq(res.statusCode, 400, `PUT ${doc} is refused`);

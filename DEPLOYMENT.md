@@ -50,6 +50,7 @@ vercel env add ANTHROPIC_API_KEY development
 | `STRIPE_PRO_MONTHLY_PRICE_ID` / `STRIPE_PRO_YEARLY_PRICE_ID` | For subscriptions | Server-side only | The recurring Price IDs for Blueprint Buddy Pro (create one monthly, one yearly). |
 | `STRIPE_WEBHOOK_SECRET` | For subscriptions | Server-side only (`api/stripe-webhook.js`) | Signing secret (`whsec_…`) for the webhook endpoint — without it, paid upgrades never activate. **Stored as a sensitive (encrypted) var on Vercel.** See the Subscriptions section below. |
 | `APP_ORIGIN` | **Recommended in production** | Server-side only | Canonical origin (e.g. `https://your-app.com`) for OAuth redirect URIs and Stripe success/cancel URLs. When unset these are derived from the `Host`/`X-Forwarded-Host` header; **set `APP_ORIGIN` in production** so a spoofed header can never influence a redirect target. |
+| `BB_SIGNUP_IP_CAP` | No | Server-side only (`api/_credits.js`) | Max free signup credits granted per client IP per rolling 30 days (default `5`; `0` disables). Damps throwaway-OAuth-account farming; the IP is salted-hashed, never stored, and a capped account can still sign in, save, and buy packs. For volume abuse, pair with a Vercel WAF rate-limit rule on `/api/auth`. |
 
 ## Accounts & cloud persistence (optional)
 

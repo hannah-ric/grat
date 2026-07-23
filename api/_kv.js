@@ -19,9 +19,14 @@ function restBackend() {
   };
   return {
     get: key => command(['GET', key]),
-    set: (key, value, options) => options && options.ex
-      ? command(['SET', key, value, 'EX', String(options.ex)])
-      : command(['SET', key, value]),
+    // options.nx makes the write atomic-if-absent (returns null when the key
+    // already exists) — the primitive behind the per-user credit mutex.
+    set: (key, value, options) => {
+      const parts = ['SET', key, value];
+      if (options && options.ex) parts.push('EX', String(options.ex));
+      if (options && options.nx) parts.push('NX');
+      return command(parts);
+    },
     del: key => command(['DEL', key]),
     incr: key => command(['INCR', key]),
     incrby: (key, n) => command(['INCRBY', key, String(n)]),
@@ -51,6 +56,7 @@ function fileBackend() {
     get: async key => unwrap(read(), key),
     set: async (key, value, options) => {
       const map = read();
+      if (options && options.nx && unwrap(map, key) !== null) return null;
       map[key] = options && options.ex ? { value, expiresAt: Date.now() + options.ex * 1000 } : value;
       write(map);
       return 'OK';

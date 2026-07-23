@@ -181,11 +181,12 @@ module.exports = async function handler(req, res) {
   if (!session) return sendJSON(res, 401, { error: 'auth_required' });
   if (!kv) return sendJSON(res, 503, { error: 'storage_unconfigured' });
   const uid = session.uid;
+  const clientIp = S.clientIP(req); // feeds the signup-farming cap in _credits.js
 
   try {
     if (req.method === 'GET') {
       if (url.searchParams.get('list')) {
-        const [index, credits] = await Promise.all([readJSON(kv, designIndexKey(uid), []), Credits.state(uid)]);
+        const [index, credits] = await Promise.all([readJSON(kv, designIndexKey(uid), []), Credits.state(uid, { ip: clientIp })]);
         return sendJSON(res, 200, { designs: index, balance: credits.balance });
       }
       const id = url.searchParams.get('id');
@@ -253,7 +254,7 @@ module.exports = async function handler(req, res) {
         design = openDesign;
       } else {
         // 3) CHARGE — a fresh design commit.
-        const chargeRes = await Credits.charge(uid, { specHash: cHash, blueprintId: null, reason: 'issue' });
+        const chargeRes = await Credits.charge(uid, { specHash: cHash, blueprintId: null, reason: 'issue', ip: clientIp });
         if (!chargeRes.ok) {
           return sendJSON(res, 402, { error: chargeRes.error || 'insufficient_credits', balance: chargeRes.balance });
         }
@@ -263,6 +264,7 @@ module.exports = async function handler(req, res) {
         design = {
           id: 'bp_' + crypto.randomBytes(6).toString('hex'),
           name: evaluated.spec.meta.name,
+          template: evaluated.spec.meta.template || 'custom',
           committedAt: now,
           windowEndsAt: now + Credits.WINDOW_DAYS * 86400e3,
           revision: 0,
@@ -292,6 +294,20 @@ module.exports = async function handler(req, res) {
         }));
       }
       if (!cached) {
+        // Pricing telemetry, not pricing logic: "unlimited refinement" is per
+        // design id, so a committed table can legally morph into a bench on
+        // the same credit inside the window. The brief chose no threshold —
+        // write each piece-type hop onto the design record and the logs so a
+        // future pricing revisit is decided on data, not anecdote.
+        const tpl = evaluated.spec.meta.template || 'custom';
+        if (!design.template) {
+          design.template = tpl;
+        } else if (design.template !== tpl) {
+          design.morphs = (design.morphs || []).slice(-19);
+          design.morphs.push({ ts: now, from: design.template, to: tpl });
+          Log.report('blueprint', 'window_morph', { id: design.id, from: design.template, to: tpl });
+          design.template = tpl;
+        }
         design.revision += 1;
         if (!design.specHashes.includes(cHash)) design.specHashes.push(cHash);
         design.artifactHash = aHash;
@@ -319,7 +335,7 @@ module.exports = async function handler(req, res) {
       return sendJSON(res, 500, { error: 'render_failed', refunded: charged });
     }
 
-    if (balance === null) balance = (await Credits.state(uid)).balance;
+    if (balance === null) balance = (await Credits.state(uid, { ip: clientIp })).balance;
     return sendJSON(res, 200, {
       ok: true,
       id: design.id,

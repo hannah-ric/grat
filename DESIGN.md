@@ -88,6 +88,26 @@ CSS. Reduced motion collapses every animation to a snap, in both worlds.
   rotation quaternions) for AR handoff; rotation bug fixed in the COLLADA and
   SketchUp exporters (previously translation-only).
 
+## Commercial posture (decided trade-offs, July 2026)
+
+- **The plan-tab wall is soft, and that is accepted.** The whole pipeline is
+  client-side by design, so every locked number exists in browser memory; the
+  preview lock keeps them out of the DOM but a determined devtools user can
+  read them. The defensible product is the **server-issued artifact** — the
+  stamped, versioned sheet set and 1:1 templates, refund-backed issuance, free
+  re-downloads, the refinement window — not the secrecy of the numbers. A
+  server-rendered viewer for the free tier would contradict the offline-first
+  architecture and is deliberately not on the roadmap. Frame the wall in copy
+  as "the blueprint is issued with the credit", not "the numbers are hidden".
+- **"Unlimited refinement for 30 days" is per design id, not per piece.** A
+  committed table can legally morph into a bench on one credit inside the
+  window. No threshold logic ships (the brief's rule); instead every
+  piece-type hop is recorded on the design record (`morphs`) and logged
+  (`window_morph`), so the first pricing revisit is decided on data.
+- **The signup credit is per OAuth identity, damped per IP.** Fresh-account
+  grants are capped per client IP per 30 days (`BB_SIGNUP_IP_CAP`,
+  `api/_credits.js`); a capped account still works and can buy packs.
+
 ## Roadmap (designed, not yet built)
 
 **Tier 1 — shop truth continued:** stretchers as a first-class template

@@ -42,7 +42,7 @@ const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/;
 // NOT ban colons (client docs are projects:index / prices:v1 / prefs:v2 /
 // project:* / thumb:*) nor rename the user keyspace — only these exact roots and
 // their subkeys are off-limits, for reads, writes, and deletes alike.
-const RESERVED_DOC = /^(subscription|usage|credits|ledger|design|designs|bphash|artifact|bpimg)(:|$)/;
+const RESERVED_DOC = /^(subscription|usage|credits|creditlock|ledger|design|designs|bphash|artifact|bpimg)(:|$)/;
 // A project document (src/store.js PROJECT_PREFIX = 'project:'); note this does
 // NOT match 'projects:index' (the index), 'prices:v1', 'prefs:v2', or 'thumb:*'.
 const PROJECT_DOC_RE = /^project:/;
@@ -79,9 +79,9 @@ function readBody(req) {
 
 /* The Free plan's project ceiling, or null for unlimited (Pro) / when it can't
  * be determined. Fails open: a storage hiccup must never block a user's save. */
-async function projectLimitFor(uid) {
+async function projectLimitFor(uid, ip) {
   try {
-    const status = await E.statusFor(uid);
+    const status = await E.statusFor(uid, { ip });
     const limit = status && status.entitlements ? status.entitlements.projectLimit : null;
     return (limit === null || limit === undefined) ? null : limit;
   } catch (e) {
@@ -133,7 +133,7 @@ module.exports = async function handler(req, res) {
       // to an existing project always succeed (a downgraded ex-Pro user never
       // loses edits); Pro/unlimited plans and non-project docs are unaffected.
       if (PROJECT_DOC_RE.test(doc)) {
-        const limit = await projectLimitFor(sess.uid);
+        const limit = await projectLimitFor(sess.uid, S.clientIP(req));
         if (limit !== null) {
           const existing = await kv.get(key);
           if ((existing === undefined || existing === null) && (await projectCount(kv, sess.uid)) >= limit) {
