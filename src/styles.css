@@ -2101,3 +2101,235 @@ body.bm-playback .playback-bar { display: none !important; }
 /* The floating plan CTA centers without transform so Motion.pop — which
    owns inline transforms while it runs — can pulse it without unseating it. */
 .btn.plan-cta-pill { left: 0; right: 0; transform: none; margin-inline: auto; width: fit-content; }
+
+/* ================= 2026-07 Deluxe refit =================
+   The retro-funk, 3D-accented elevation pass (docs/ui/deluxe-refit.md).
+   One override layer, tokens only: no selector renames, no DOM changes, no
+   new colors outside the Showroom families. Three signatures, used with
+   restraint: (1) the tri-stripe — rust/ochre/seafoam racing stripe on
+   non-scrolling chrome edges; (2) studio-light depth — one warm top-light
+   inset + layered shadows on raised surfaces; (3) press/lift physics on
+   interactive objects, gated to fine pointers. Every animation here rides
+   the existing transitions, so the global reduced-motion rules collapse
+   all of it for free. */
+
+:root {
+  /* the one funky flourish: a mid-century racing stripe in the three brand
+     families — action, annotation, proof. Decoration only, never a signal. */
+  --stripe: linear-gradient(90deg,
+    var(--accent) 0 34%, var(--amber) 34% 67%, var(--seafoam) 67% 100%);
+  /* studio top-light: structure-ink is near-cream in both schemes, so the
+     same inset reads as paper sheen in light and rim light in dark */
+  --edge-light: inset 0 1px 0 color-mix(in oklab, var(--structure-ink) 30%, transparent);
+  /* film grain — procedural SVG noise, self-contained (no external assets) */
+  --grain-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+
+/* ---- atmosphere: one fixed film-grain wash over the whole instrument.
+   Pointer-inert, 4% — texture, never a contrast event. Print and forced
+   colors opt out entirely. */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 3000; pointer-events: none;
+  background: var(--grain-url) repeat 0 0 / 180px 180px;
+  opacity: .04;
+}
+@media print { body::after { display: none; } }
+@media (forced-colors: active) { body::after { display: none; } }
+
+/* ---- entrance grammar: the house rise gains a breath of scale so cards
+   and panels arrive as objects, not slides. Same name, same call sites. */
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.988); } }
+
+/* ---- topbar: the console. A barely-there top light and the tri-stripe
+   riding its bottom rule — the one place the stripe crosses the studio. */
+.topbar {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--panel) 96%, var(--structure-ink) 4%), var(--panel) 72%);
+  box-shadow: var(--edge-light);
+}
+.topbar::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: var(--stripe); opacity: .85; pointer-events: none;
+}
+.brand-button svg { transition: transform var(--t-med) var(--ease); }
+.brand-button:hover svg, .brand-button:focus-visible svg { transform: rotate(-8deg) scale(1.05); }
+
+/* ---- mode nav: a machined gear selector — recessed well, raised segment. */
+.mode-nav {
+  box-shadow: inset 0 1.5px 4px color-mix(in oklab, var(--structure-2) 16%, transparent);
+}
+.mode-btn[aria-current="page"] {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--panel) 94%, var(--structure-ink) 6%), var(--panel));
+  box-shadow: var(--shadow), var(--edge-light);
+}
+.mode-btn.build-cta {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 88%, var(--structure-ink) 12%),
+    var(--accent) 46%,
+    color-mix(in srgb, var(--accent) 90%, var(--structure-2) 10%));
+  box-shadow: var(--shadow), inset 0 1px 0 color-mix(in oklab, var(--accent-ink) 28%, transparent);
+}
+.mode-btn.build-cta:hover {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 88%, var(--structure-ink) 12%),
+    var(--accent) 46%,
+    color-mix(in srgb, var(--accent) 90%, var(--structure-2) 10%));
+}
+
+/* ---- button physics: lift on approach, press on commit. Fine pointers
+   only — a thumb never sees a sticky hover. The quiet tiers stay quiet. */
+.btn { box-shadow: 0 1px 0 color-mix(in oklab, var(--structure-2) 7%, transparent), var(--edge-light); }
+.btn.ghost, .btn.small.ghost { box-shadow: none; }
+.btn.primary {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 89%, var(--structure-ink) 11%),
+    var(--accent) 48%,
+    color-mix(in srgb, var(--accent) 90%, var(--structure-2) 10%));
+  box-shadow: var(--shadow), inset 0 1px 0 color-mix(in oklab, var(--accent-ink) 28%, transparent);
+}
+.btn.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 89%, var(--structure-ink) 11%),
+    var(--accent) 48%,
+    color-mix(in srgb, var(--accent) 90%, var(--structure-2) 10%));
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) { transform: translateY(-1px); }
+  .btn.primary:hover:not(:disabled) { box-shadow: var(--shadow-lg), inset 0 1px 0 color-mix(in oklab, var(--accent-ink) 28%, transparent); }
+  .btn:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+}
+/* welcome-open demotes the chat Send to the quiet tier — flatten its skin too */
+body.welcome-open .chat-input .btn.primary { background: var(--panel); }
+
+/* ---- dropdown menus: sprung from their anchor corner, glassier. */
+.menu {
+  transform: translateY(-10px) scale(.96); transform-origin: top right;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-lg), var(--edge-light);
+}
+.menu.open { transform: none; }
+
+/* ---- tabs: the drafting-pencil underline gets weight and a soft halo. */
+.tab::after { height: 3px; box-shadow: 0 -1px 8px color-mix(in srgb, var(--accent) 30%, transparent); }
+.tab[aria-selected="true"] {
+  background: linear-gradient(180deg, transparent 40%, color-mix(in srgb, var(--accent-soft) 55%, transparent));
+}
+
+/* ---- the stage: a lit workshop, not empty beige. Floor band below,
+   key light above, drafting registration corners framing the volume. */
+.viewport-wrap {
+  background:
+    radial-gradient(120% 90% at 50% 28%, color-mix(in oklab, var(--panel) 74%, transparent), transparent 70%),
+    radial-gradient(90% 55% at 50% 106%, color-mix(in oklab, var(--panel-3) 42%, transparent), transparent 62%),
+    linear-gradient(to top, color-mix(in oklab, var(--panel-2) 50%, transparent), transparent 30%),
+    var(--paper);
+}
+.viewport-wrap::before {
+  content: ""; position: absolute; inset: 12px; z-index: 2; pointer-events: none;
+  --reg-ink: color-mix(in srgb, var(--ink-2) 34%, transparent);
+  background:
+    linear-gradient(var(--reg-ink), var(--reg-ink)) left 0 top 0 / 16px 1.5px,
+    linear-gradient(var(--reg-ink), var(--reg-ink)) left 0 top 0 / 1.5px 16px,
+    linear-gradient(var(--reg-ink), var(--reg-ink)) right 0 top 0 / 16px 1.5px,
+    linear-gradient(var(--reg-ink), var(--reg-ink)) right 0 top 0 / 1.5px 16px,
+    linear-gradient(var(--reg-ink), var(--reg-ink)) left 0 bottom 0 / 16px 1.5px,
+    linear-gradient(var(--reg-ink), var(--reg-ink)) left 0 bottom 0 / 1.5px 16px,
+    linear-gradient(var(--reg-ink), var(--reg-ink)) right 0 bottom 0 / 16px 1.5px,
+    linear-gradient(var(--reg-ink), var(--reg-ink)) right 0 bottom 0 / 1.5px 16px;
+  background-repeat: no-repeat;
+}
+body.drafting .viewport-wrap::before { --reg-ink: var(--blueprint-grid); }
+body.welcome-open .viewport-wrap::before { display: none; }
+/* the gesture hint speaks the machine voice — a quiet HUD readout */
+.viewport-hint {
+  font: 550 var(--text-xs)/1.5 var(--mono); letter-spacing: .06em;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+}
+
+/* ---- floating chrome (toolbar, playback, inspector, adjust): deeper
+   glass, one studio top light. */
+.control-card, .playback-bar {
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.12); backdrop-filter: blur(14px) saturate(1.12);
+  box-shadow: var(--shadow), var(--edge-light);
+}
+.inspector, .adjust-rail {
+  -webkit-backdrop-filter: blur(14px) saturate(1.12); backdrop-filter: blur(14px) saturate(1.12);
+  box-shadow: var(--shadow-lg), var(--edge-light);
+}
+
+/* ---- the plan panel seats under the splitter with a machined shadow line */
+.panel { box-shadow: inset 0 10px 14px -14px color-mix(in oklab, var(--structure-2) 42%, transparent); }
+
+/* ---- cards are objects: sheet gradient at rest; lift with a wink of
+   rotation on browsing surfaces (never on data tiles). */
+.welcome-card, .gallery-card, .hero-starter, .project-card {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--paper) 94%, var(--structure-ink) 6%), var(--paper) 60%);
+}
+@media (hover: hover) and (pointer: fine) {
+  .welcome-card:hover, .gallery-card:hover, .hero-starter:hover {
+    transform: translateY(-3px) rotate(-.4deg); box-shadow: var(--shadow-lg);
+  }
+  .gallery-card .g-thumb { transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease); }
+  .gallery-card:hover .g-thumb { transform: scale(1.03); }
+}
+
+/* ---- the welcome sheet: the showpiece object on first paint. */
+.welcome {
+  border-color: var(--line-2);
+  box-shadow: var(--shadow-lg), var(--edge-light);
+}
+
+/* ---- modals: a rust datum line along the lid + blurred backdrop —
+   the dialog reads as a sheet pulled from the flat file. */
+.scrim { -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); }
+.modal { box-shadow: var(--shadow-lg), inset 0 3px 0 var(--accent), var(--edge-light); }
+.drawer-panel { box-shadow: var(--shadow-lg), inset 3px 0 0 var(--accent); }
+
+/* ---- chat: the maker's message is an object; the engine answers on paper. */
+.msg.user .bubble {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 90%, var(--structure-ink) 10%), var(--accent));
+  box-shadow: var(--shadow);
+}
+
+/* ---- verdict capsules: a printed-label ring — text still carries the
+   meaning, the ring just seats the capsule on the sheet. */
+.stamp { box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 24%, transparent); }
+
+/* ---- empty states: an honest drafting sheet awaiting linework. */
+.empty-state {
+  border: 1.5px dashed var(--line-2); border-radius: var(--radius-l);
+  background:
+    linear-gradient(color-mix(in srgb, var(--panel-2) 24%, transparent) 1px, transparent 1px) 0 0 / 100% 28px,
+    transparent;
+}
+
+/* ---- build-mode header carries the stripe into the shop. */
+.bm-head { position: relative; }
+.bm-head::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+  background: var(--stripe); opacity: .9; pointer-events: none;
+}
+
+/* ---- ink-dark popovers (provenance, why-tips) get a hairline seat. */
+.prov-pop, .why-tip { border: 1px solid color-mix(in oklab, var(--paper) 20%, transparent); }
+
+/* ---- scrollbars join the instrument: thin, warm, quiet. The tabs bar
+   keeps its own scrollbar-hiding rules (higher specificity). */
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink-2) 30%, transparent) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink-2) 28%, transparent);
+  border-radius: var(--radius-pill); border: 3px solid transparent; background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--ink-2) 46%, transparent); background-clip: padding-box; }
+
+@media (forced-colors: active) {
+  .topbar::after, .bm-head::after { display: none; }
+}
