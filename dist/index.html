@@ -20607,8 +20607,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   function syncHash() {
     const path = state.mode === 'design'
       ? 'design'
-      : state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '/' + state.refTab : '');
-    const h = '#' + path + `;split=${state.prefs4.ui.split};chat=${state.prefs4.ui.chatCollapsed ? 1 : 0}`;
+      : state.tab + (state.tab === 'reference' && state.refTab !== 'wood' ? '_' + state.refTab : '');
+    // The hash must stay a valid CSS identifier ([a-z0-9_] only). The old
+    // "#design;split=58;chat=0" form was written verbatim to location.hash,
+    // and hosts that feed location.hash straight into querySelector (e.g. the
+    // v0 preview runtime's mutation observer) throw a SyntaxError on the ';'
+    // and '='. Underscore-delimited tokens round-trip cleanly and never throw.
+    // split is already a rounded integer (see setSplit) and chat is 0|1.
+    const h = `#${path}_s${state.prefs4.ui.split}_c${state.prefs4.ui.chatCollapsed ? 1 : 0}`;
     if (location.hash !== h) {
       try { history.replaceState(null, '', h); } catch (e) { /* sandboxed frame: tabs still work, hash doesn't */ }
     }
@@ -20624,8 +20630,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       syncHash();
       return true;
     }
-    const bits = raw.split(';');
-    const parts = (bits.shift() || '').split('/');
+    // Peel off the UI-param suffix, then the remaining tokens are the tab
+    // path. New selector-safe form: "<path>_s<split>_c<chat>" with the path's
+    // subtab joined by '_'. Legacy form ";split=<n>;chat=<n>" (with '/' subtab)
+    // is still accepted so old bookmarks keep working.
+    let body = raw, split = null, chat = null, sub = '_';
+    const mNew = body.match(/_s(\d+)_c([01])$/);
+    if (mNew) { split = +mNew[1]; chat = mNew[2]; body = body.slice(0, mNew.index); }
+    else {
+      const mOld = body.match(/;split=(\d+);chat=([01])/);
+      if (mOld) { split = +mOld[1]; chat = mOld[2]; }
+      body = body.split(';')[0];
+      sub = '/';
+    }
+    const parts = body.split(sub);
     if (parts[0] === 'design') {
       setMode('design', { silent: true });
     } else if (parts[0] === 'bom') {
@@ -20639,18 +20657,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       state.tab = parts[0];
       if (parts[0] === 'reference' && REF_TABS.includes(parts[1])) state.refTab = parts[1];
     } else return false;
-    bits.forEach(bit => {
-      const eq = bit.indexOf('=');
-      if (eq < 0) return;
-      const key = bit.slice(0, eq);
-      const value = bit.slice(eq + 1);
-      if (key === 'split') {
-        const pct = +value;
-        if (isFinite(pct)) setSplit(pct, { persist: false });
-      } else if (key === 'chat' && (value === '0' || value === '1')) {
-        setChatCollapsed(value === '1', { persist: false });
-      }
-    });
+    if (split !== null && isFinite(split)) setSplit(split, { persist: false });
+    if (chat === '0' || chat === '1') setChatCollapsed(chat === '1', { persist: false });
     return true;
   }
 
