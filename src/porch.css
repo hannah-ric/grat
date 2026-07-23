@@ -412,3 +412,44 @@ body { --foh-nav-h: 3.75rem; }
 .calc-lead input[type="email"] { flex: 1; min-width: 0; padding: .5rem .65rem; border: 1px solid var(--line-2, #b9b2a0); border-radius: 6px; background: var(--panel, #fff); color: inherit; font: inherit; }
 .calc-lead-note { margin: 0; font-size: .8rem; color: var(--muted, #777); min-height: 1.1em; }
 @media (forced-colors: active) { .calc-lead input[type="email"] { border-color: CanvasText; } }
+
+/* ================= 2026-07 Deluxe refit — front of house =================
+   The studio's elevation pass carried onto the porch (docs/ui/deluxe-refit.md):
+   the tri-stripe crowns the public pages, cards gain the same lift-with-a-wink
+   physics, chrome gains the studio top light. Tokens only; resting styles
+   stay the reduced-motion end state. */
+
+/* the stripe crowns the landing — the porch's cover-band edge (pre-JS view;
+   once the fixed header is up, the header's seated stripe takes over) */
+.porch::after {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--stripe); z-index: 5; pointer-events: none;
+}
+body.ph-open .porch::after { display: none; }
+/* the seated site header carries the stripe exactly like the studio console */
+.site-nav.scrolled::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+  background: var(--stripe); opacity: .85; pointer-events: none;
+}
+
+/* entry paths + calc chips: objects with press physics */
+@media (hover: hover) and (pointer: fine) {
+  .entry-card:hover { transform: translateY(-3px) rotate(-.4deg); box-shadow: var(--shadow-lg); }
+  .entry-card:active { transform: translateY(0); }
+  .ph-thumb img { transition: transform var(--t-med) var(--ease); }
+  .ph-thumb:hover img { transform: translateY(-3px) rotate(.4deg); }
+}
+.entry-card {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--panel) 94%, var(--structure-ink) 6%), var(--panel) 60%);
+  box-shadow: var(--edge-light);
+}
+.calc-chip[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--seafoam-line); }
+
+/* the fixed site header takes the studio's console treatment when seated */
+.site-nav.scrolled { box-shadow: var(--shadow); }
+.signin-card { box-shadow: var(--shadow), var(--edge-light); }
+
+@media (forced-colors: active) {
+  .porch::after, .site-nav.scrolled::after { display: none; }
+}
