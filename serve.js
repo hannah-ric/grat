@@ -21,13 +21,20 @@ const DIST = path.join(root, 'dist');
 const PORT = Number(process.env.PORT) || 3000;
 const WATCH = !process.argv.includes('--no-watch');
 
-/* ---- .env (optional, local dev only) ---- */
-try {
-  for (const line of fs.readFileSync(path.join(root, '.env'), 'utf8').split('\n')) {
-    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
-    if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
-  }
-} catch (e) { /* no .env — fine */ }
+/* ---- env files (optional, local dev only) ----
+ * First real env wins, then .env, then .env.development.local — the last is
+ * where the hosting platform mirrors managed vars (AUTH_SECRET, KV, OAuth,
+ * Stripe) for local dev, so loading it here is what lets sign-in and billing
+ * actually light up on `node serve.js`. Neither file overrides a var already
+ * present in the real environment. */
+for (const envFile of ['.env', '.env.development.local']) {
+  try {
+    for (const line of fs.readFileSync(path.join(root, envFile), 'utf8').split('\n')) {
+      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+      if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
+  } catch (e) { /* file absent — fine */ }
+}
 
 /* ---- build ---- */
 function build() {

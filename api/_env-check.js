@@ -118,14 +118,21 @@ function evaluate() {
     else advisory.push(check);
   }
 
-  // OAuth is a PAIR check, not a single key: at least one of Google/GitHub must
-  // have both id + secret, or no one can sign in and billing/Pro is unreachable.
+  // Sign-in availability. Email + password (api/_passwords.js) works on
+  // AUTH_SECRET + a KV store alone, so the front door is open as soon as those
+  // required vars are set — even with no OAuth app. OAuth is a PAIR check (at
+  // least one of Google/GitHub with BOTH id + secret) and is purely additive.
+  const passwordAuthPresent = !!process.env.AUTH_SECRET &&
+    (!!(process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL) &&
+     !!(process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN));
   const oauthPresent =
     !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) ||
     !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
   if (!oauthPresent) advisory.push({
     key: 'OAuth provider (Google or GitHub)',
-    remedy: 'No OAuth client pair is configured, so no one can sign in and billing/Pro checkout is unreachable. Set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET or GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET.'
+    remedy: passwordAuthPresent
+      ? 'No OAuth client pair is configured. Email + password sign-in already works, so accounts and billing are reachable; adding GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (or the GitHub pair) offers one-click social sign-in too.'
+      : 'No sign-in method is configured, so no one can sign in and billing/Pro checkout is unreachable. Either set AUTH_SECRET + a KV store (enables email + password) or add GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (or the GitHub pair).'
   });
 
   return { missing, advisory };

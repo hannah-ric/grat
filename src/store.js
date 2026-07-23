@@ -221,10 +221,34 @@ var BB = globalThis.BB = globalThis.BB || {};
   const authState = () => ({
     user: auth && auth.user ? auth.user : null,
     providers: auth && Array.isArray(auth.providers) ? auth.providers : [],
+    passwordAuth: !!(auth && auth.passwordAuth),
     storage: !!(auth && auth.storage),
     cloud: remoteAlive,
     billing: auth && auth.billing ? auth.billing : null
   });
+
+  /* Email + password sign-in (POST /api/auth). action is 'login' or
+   * 'register'; on success the server has set the session cookie, so we
+   * re-probe to run the same cloud upgrade + device→cloud migration an OAuth
+   * return would. Rejects with an Error whose .code is the server's stable
+   * machine code (invalid_credentials, email_taken, weak_password, …) so the
+   * UI can map it to copy. */
+  async function passwordAuth(action, creds) {
+    const r = await fetch('/api/auth', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ action }, creds || {}))
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) {
+      const e = new Error(data.error || 'auth_failed');
+      e.code = data.error || 'auth_failed';
+      throw e;
+    }
+    try { await init(); }
+    catch (e) { auth = auth || { providers: [], passwordAuth: true }; auth.user = data.user; }
+    return authState();
+  }
   const setBilling = billing => {
     auth = auth || { user: null, providers: [], storage: false };
     auth.billing = billing;
@@ -441,7 +465,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     get, set, del, hasStorage,
     consumeWriteDenial: () => { const d = writeDenial; writeDenial = null; return d; },
     isPersistent: () => persistenceMode() !== 'session',
-    persistenceMode, init, auth: authState, setBilling, onModeChange,
+    persistenceMode, init, auth: authState, setBilling, onModeChange, passwordAuth,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
     logoutUrl: '/api/auth?logout=1',
     newId, loadIndex, saveProject, loadProject, loadThumb, deleteProject, renameProject, duplicateProject,

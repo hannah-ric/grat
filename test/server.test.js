@@ -174,6 +174,75 @@ function objectBodyReq(url, bodyObj, headers) {
     ok(/HttpOnly/.test(sess) && /SameSite=Lax/.test(sess), 'session cookie is HttpOnly + SameSite=Lax');
   }
 
+  section('auth: email + password register / login (POST) mints the same session');
+  {
+    cleanEnv();
+    // passwordAuth needs AUTH_SECRET + a KV store, and NO OAuth provider — this
+    // is the sign-in-less-provider deployment the feature exists to unlock.
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    const cleanup = useTempKV();
+
+    // Probe advertises password auth even with zero OAuth providers.
+    let res = fakeRes();
+    await auth(fakeReq('/api/auth?me=1'), res);
+    let data = json(res);
+    eq(data.providers, [], 'no OAuth provider configured');
+    eq(data.passwordAuth, true, 'password auth available on AUTH_SECRET + KV alone');
+
+    const post = body => fakeReq('/api/auth', { method: 'POST', body });
+    const sessOf = r => [].concat(r.headers['set-cookie'] || []).find(c => c.startsWith('bb_sess=') && !/bb_sess=;/.test(c));
+
+    // Register mints a session carrying an email-scoped uid.
+    res = fakeRes();
+    await auth(post({ action: 'register', email: 'Maker@Example.com', password: 'goodpassword1', name: 'Mak' }), res);
+    data = json(res);
+    eq(res.statusCode, 200, 'register returns 200');
+    ok(data.ok && data.user && data.user.provider === 'password', 'register returns a password-provider user');
+    const regSess = sessOf(res);
+    ok(!!regSess, 'register mints a session cookie');
+    const payload = S.verify(decodeURIComponent(regSess.split(';')[0].split('=').slice(1).join('=')), process.env.AUTH_SECRET);
+    ok(payload && /^email:/.test(payload.uid), 'session carries an email-scoped uid');
+
+    // The new account gets its free signup credit (freemium hook). The grant
+    // is lazy on first read with IP context, exactly like the OAuth path.
+    const st = await E.statusFor(payload.uid, fakeReq('/', { headers: { 'x-forwarded-for': '203.0.113.9' } })).catch(() => null);
+    ok(st && st.credits && st.credits.balance >= 1, 'new account receives a free signup credit');
+
+    // Duplicate registration is rejected without leaking a stack.
+    res = fakeRes();
+    await auth(post({ action: 'register', email: 'maker@example.com', password: 'goodpassword1' }), res);
+    eq(res.statusCode, 409, 'duplicate email → 409');
+    eq(json(res).error, 'email_taken', 'duplicate email → email_taken code');
+
+    // Wrong password is a generic 401 — never reveals the address exists.
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'maker@example.com', password: 'wrongpassword' }), res);
+    eq(res.statusCode, 401, 'bad password → 401');
+    eq(json(res).error, 'invalid_credentials', 'bad password → generic invalid_credentials');
+
+    // Unknown address is the SAME generic 401 (no user enumeration).
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'nobody@example.com', password: 'whatever12' }), res);
+    eq(json(res).error, 'invalid_credentials', 'unknown email → identical invalid_credentials code');
+
+    // Correct login (case-insensitive email) mints a session for the same uid.
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'MAKER@example.com', password: 'goodpassword1' }), res);
+    eq(res.statusCode, 200, 'correct login → 200');
+    const loginSess = sessOf(res);
+    ok(!!loginSess, 'login mints a session cookie');
+    const p2 = S.verify(decodeURIComponent(loginSess.split(';')[0].split('=').slice(1).join('=')), process.env.AUTH_SECRET);
+    eq(p2 && p2.uid, payload.uid, 'login resolves to the same account uid as register');
+
+    // Weak password on register is rejected up front.
+    res = fakeRes();
+    await auth(post({ action: 'register', email: 'weak@example.com', password: 'short' }), res);
+    eq(res.statusCode, 400, 'weak password → 400');
+    eq(json(res).error, 'weak_password', 'weak password → weak_password code');
+
+    cleanup();
+  }
+
   /* ---------------- store: auth gate, doc rules, file backend ---------------- */
   section('store: /api/store auth gate + document round trip');
   {

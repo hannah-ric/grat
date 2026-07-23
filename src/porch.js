@@ -608,6 +608,18 @@ var BB = globalThis.BB = globalThis.BB || {};
    * local-first note where accounts aren't configured. */
   const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
   let signinProbe = 'idle'; // idle | busy | done
+  let signinMode = 'login'; // login | register — the email/password form's mode
+  // Server error codes (api/_passwords.js) → human copy. Login stays generic
+  // on a bad address so the page never reveals which emails are registered.
+  const PASSWORD_ERROR_COPY = {
+    invalid_credentials: 'That email and password don’t match. Check them and try again.',
+    email_taken: 'An account already exists for that email — switch to Sign in.',
+    weak_password: 'Use at least 8 characters for your password.',
+    invalid_email: 'Enter a valid email address.',
+    invalid_password: 'That password can’t be used. Try a different one.',
+    too_many_attempts: 'Too many attempts. Wait a few minutes, then try again.',
+    storage_unconfigured: 'Accounts are temporarily unavailable. Please try again shortly.'
+  };
   function renderSignin() {
     const box = $('signinBody');
     if (!box) return;
@@ -641,22 +653,90 @@ var BB = globalThis.BB = globalThis.BB || {};
       const out = btn('', 'Sign out');
       out.onclick = () => { location.href = St.logoutUrl; };
       box.append(open, out);
-    } else if (a.providers && a.providers.length) {
+      return;
+    }
+    const hasOAuth = !!(a.providers && a.providers.length);
+    const hasPassword = !!a.passwordAuth;
+    if (hasOAuth) {
       for (const p of a.providers) {
         const b = btn('primary', 'Continue with ' + esc(PROVIDER_LABELS[p] || p));
         // signing in is intent to work — land in the studio after the round trip
         b.onclick = () => { markSeen(); location.href = St.loginUrl(p); };
         box.append(b);
       }
-      box.append(note('No passwords held here — sign-in runs through your existing account. Your projects then follow you to any device.'));
-    } else if (signinProbe !== 'done') {
+    }
+    if (hasOAuth && hasPassword) {
+      box.append(el('div', 'signin-or', '<span>or</span>'));
+    }
+    if (hasPassword) {
+      box.append(buildPasswordForm());
+      box.append(note('Your first blueprint credit is free with a new account, and your projects follow you to any device.'));
+    } else if (!hasOAuth && signinProbe !== 'done') {
       box.append(note('Checking this workshop’s sign-in options…'));
-    } else {
+    } else if (!hasOAuth) {
       box.append(note('This workshop runs without accounts: designs autosave to this device, and a share code carries a whole design anywhere in a line of text.'));
       const open = btn('primary', 'Open the studio');
       open.dataset.enter = '';
       box.append(open);
+    } else {
+      // OAuth-only origin (no password auth configured).
+      box.append(note('Sign-in runs through your existing account. Your projects then follow you to any device.'));
     }
+  }
+
+  /* The email + password form. One <form> so Enter submits and browser
+   * password managers recognise it; a mode toggle flips between signing in
+   * and creating an account (the name field appears only on register). */
+  function buildPasswordForm() {
+    const register = signinMode === 'register';
+    const form = el('form', 'signin-form');
+    form.setAttribute('novalidate', '');
+    form.autocomplete = 'on';
+    form.innerHTML =
+      `<h2 class="signin-form-title">${register ? 'Create your account' : 'Sign in with email'}</h2>` +
+      (register ? `<label class="signin-field"><span>Name <em>(optional)</em></span>
+         <input type="text" name="name" autocomplete="name" maxlength="80" placeholder="Your name"></label>` : '') +
+      `<label class="signin-field"><span>Email</span>
+         <input type="email" name="email" autocomplete="email" required placeholder="you@example.com"></label>
+       <label class="signin-field"><span>Password</span>
+         <input type="password" name="password" autocomplete="${register ? 'new-password' : 'current-password'}"
+           required minlength="8" placeholder="${register ? 'At least 8 characters' : 'Your password'}"></label>
+       <p class="signin-error" role="alert" aria-live="polite" hidden></p>
+       <button type="submit" class="btn primary signin-btn signin-submit">${register ? 'Create account — free credit' : 'Sign in'}</button>
+       <p class="signin-toggle">${register ? 'Already have an account?' : 'New here?'}
+         <button type="button" class="linkish" data-signin-toggle>${register ? 'Sign in' : 'Create one — it’s free'}</button></p>`;
+    const errEl = form.querySelector('.signin-error');
+    const submit = form.querySelector('.signin-submit');
+    const showError = code => {
+      errEl.textContent = PASSWORD_ERROR_COPY[code] || 'Something went wrong. Please try again.';
+      errEl.hidden = false;
+    };
+    form.querySelector('[data-signin-toggle]').onclick = () => {
+      signinMode = register ? 'login' : 'register';
+      renderSignin();
+    };
+    form.onsubmit = async e => {
+      e.preventDefault();
+      errEl.hidden = true;
+      const data = new FormData(form);
+      const email = String(data.get('email') || '').trim();
+      const password = String(data.get('password') || '');
+      if (!email) return showError('invalid_email');
+      if (password.length < 8) return showError('weak_password');
+      submit.disabled = true;
+      submit.textContent = register ? 'Creating account…' : 'Signing in…';
+      try {
+        await BB.Store.passwordAuth(register ? 'register' : 'login',
+          { email, password, name: String(data.get('name') || '') });
+        // Session is set and state re-probed — land in the studio to work.
+        enterStudio();
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = register ? 'Create account — free credit' : 'Sign in';
+        showError(err && err.code);
+      }
+    };
+    return form;
   }
 
   /* ---------------- init ---------------- */

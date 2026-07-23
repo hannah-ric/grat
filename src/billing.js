@@ -34,6 +34,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   function account() { return BB.Store && BB.Store.auth ? BB.Store.auth() : { user: null, billing: null }; }
   function status() { return account().billing || { plan: 'free', entitlements: FREE, usage: { aiMessages: 0 }, credits: null }; }
   function isPro() { return status().plan === 'pro'; } // legacy badge only
+  /* The explicit account tier for display: 'paid' when a legacy Pro plan is
+   * active OR the account has ever bought a credit pack; 'free' otherwise. A
+   * paying credits customer is a paid account even at a zero balance — what
+   * makes them paid is having purchased, not the current balance. */
+  function tier() {
+    const s = status();
+    if (s.plan === 'pro') return 'paid';
+    const purchased = s.credits && typeof s.credits.purchased === 'number' ? s.credits.purchased : 0;
+    return purchased > 0 ? 'paid' : 'free';
+  }
   /* The credit balance, or null when the server has not told us yet. */
   function credits() {
     const c = status().credits;
@@ -192,6 +202,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const a = account();
     const provider = a.providers && a.providers[0];
     if (provider) window.location.href = BB.Store.loginUrl(provider);
+    else if (a.passwordAuth) window.location.hash = '#signin';
   }
 
   function setNote(message) {
@@ -205,16 +216,18 @@ var BB = globalThis.BB = globalThis.BB || {};
    * with no provider configured we say so plainly instead of closing the
    * dialog with nothing happening. */
   function signedOutUpgradeNote(a) {
-    const provider = a && a.providers && a.providers[0];
-    return provider
+    const canSignIn = !!(a && ((a.providers && a.providers.length) || a.passwordAuth));
+    return canSignIn
       ? { redirect: true, note: 'Taking you to sign in — your first credit is free, and you can buy more once you are signed in.' }
       : { redirect: false, note: "Sign-in isn't available on this site yet, so credits can't be purchased here." };
   }
 
-  /* Free-tier sync bullet: cloud sync needs a sign-in provider, so on a
-   * providerless deployment the honest promise is device-only sync (A-08). */
+  /* Free-tier sync bullet: cloud sync needs a sign-in method (OAuth OR email +
+   * password), so on a sign-in-less deployment the honest promise is
+   * device-only sync (A-08). */
   function freeSyncLabel(a) {
-    return (a && a.providers && a.providers.length) ? 'Device and cloud sync' : 'Device sync';
+    const canSignIn = !!(a && ((a.providers && a.providers.length) || a.passwordAuth));
+    return canSignIn ? 'Device and cloud sync' : 'Device sync';
   }
 
   /* Billing is "configured" only when the origin gave us evidence: a billing
@@ -224,7 +237,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * entitlement authority whenever billing is real. */
   function configured() {
     const a = account();
-    return !!(a.billing || (a.providers && a.providers.length));
+    return !!(a.billing || (a.providers && a.providers.length) || a.passwordAuth);
   }
 
   async function gateNewProject() {
@@ -244,7 +257,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Billing = {
-    status, isPro, credits, refresh, open, confirmIssue, issue, buyPack, configured,
+    status, isPro, tier, credits, refresh, open, confirmIssue, issue, buyPack, configured,
     gateNewProject, manage: () => api('portal', {}).then(d => { if (d.url) window.location.href = d.url; }).catch(() => setNote('Billing is temporarily unavailable.')),
     handleReturn, signedOutUpgradeNote, freeSyncLabel,
     CREDIT_PACKS, WINDOW_DAYS

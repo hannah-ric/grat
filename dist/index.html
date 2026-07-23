@@ -1686,8 +1686,14 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .menu-account { display: flex; align-items: center; gap: var(--s2); padding: 7px 10px; font: 550 var(--text-s) var(--body); color: var(--ink); }
 .menu-account .account-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; }
 .menu-account .account-avatar.fallback { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); }
-.menu-account .account-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-account .account-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-account .hint { color: var(--muted); font-size: var(--text-xs); }
+/* explicit account tier — a status pill, always present next to the name */
+.tier-badge { flex: none; padding: 0.15rem 0.45rem; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; border: 1px solid transparent; }
+.tier-badge.tier-free { color: var(--muted); background: var(--panel-2, var(--panel)); border-color: var(--line); }
+.tier-badge.tier-paid { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+/* the credit balance rides beside the tier pill as a second, quieter fact */
+.menu-account .plan-badge.credit { flex: none; color: var(--ink-2, var(--ink)); background: var(--panel-2, var(--panel)); border-color: var(--line); }
 
 /* ---------------- provenance popover ---------------- */
 .prov-btn {
@@ -2725,6 +2731,32 @@ body { --foh-nav-h: 3.75rem; }
 .signin-user { display: flex; align-items: center; gap: var(--space-2xs); font-weight: 600; }
 .signin-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
 .signin-fine { margin: 0; color: var(--muted-2); font-size: var(--text-xs); line-height: 1.6; max-width: 52ch; }
+
+/* email + password form — shares the card's tokens so it reads as one piece
+   with the OAuth buttons above it */
+.signin-or {
+  display: flex; align-items: center; gap: var(--space-xs);
+  color: var(--muted-2); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em;
+}
+.signin-or::before, .signin-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.signin-form { display: flex; flex-direction: column; gap: var(--space-s); text-align: left; }
+.signin-form-title { margin: 0; font-size: var(--text-m); font-weight: 700; color: var(--ink); }
+.signin-field { display: flex; flex-direction: column; gap: var(--space-3xs); }
+.signin-field > span { font-size: var(--text-s); font-weight: 600; color: var(--ink-2); }
+.signin-field > span em { font-weight: 400; font-style: normal; color: var(--muted-2); }
+.signin-field input {
+  padding: .6rem .7rem; border: 1px solid var(--line-2, var(--line)); border-radius: var(--radius-m, 8px);
+  background: var(--paper); color: var(--ink); font: inherit; min-height: var(--tap);
+}
+.signin-field input:focus-visible { outline: 2px solid var(--accent, var(--ink)); outline-offset: 1px; border-color: transparent; }
+.signin-error { margin: 0; color: var(--danger, #b3261e); font-size: var(--text-s); line-height: 1.5; }
+.signin-toggle { margin: 0; font-size: var(--text-s); color: var(--ink-2); text-align: center; }
+.linkish {
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 600;
+  color: var(--accent, var(--ink)); text-decoration: underline; cursor: pointer;
+}
+.linkish:hover { opacity: .8; }
+@media (forced-colors: active) { .signin-field input { border-color: CanvasText; } }
 
 /* ---- footer: the quiet close of every public page ---- */
 .site-footer { border-top: 1px solid var(--line); background: var(--paper); padding: var(--space-xl) var(--space-l); }
@@ -13400,10 +13432,34 @@ var BB = globalThis.BB = globalThis.BB || {};
   const authState = () => ({
     user: auth && auth.user ? auth.user : null,
     providers: auth && Array.isArray(auth.providers) ? auth.providers : [],
+    passwordAuth: !!(auth && auth.passwordAuth),
     storage: !!(auth && auth.storage),
     cloud: remoteAlive,
     billing: auth && auth.billing ? auth.billing : null
   });
+
+  /* Email + password sign-in (POST /api/auth). action is 'login' or
+   * 'register'; on success the server has set the session cookie, so we
+   * re-probe to run the same cloud upgrade + device→cloud migration an OAuth
+   * return would. Rejects with an Error whose .code is the server's stable
+   * machine code (invalid_credentials, email_taken, weak_password, …) so the
+   * UI can map it to copy. */
+  async function passwordAuth(action, creds) {
+    const r = await fetch('/api/auth', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ action }, creds || {}))
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) {
+      const e = new Error(data.error || 'auth_failed');
+      e.code = data.error || 'auth_failed';
+      throw e;
+    }
+    try { await init(); }
+    catch (e) { auth = auth || { providers: [], passwordAuth: true }; auth.user = data.user; }
+    return authState();
+  }
   const setBilling = billing => {
     auth = auth || { user: null, providers: [], storage: false };
     auth.billing = billing;
@@ -13620,7 +13676,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     get, set, del, hasStorage,
     consumeWriteDenial: () => { const d = writeDenial; writeDenial = null; return d; },
     isPersistent: () => persistenceMode() !== 'session',
-    persistenceMode, init, auth: authState, setBilling, onModeChange,
+    persistenceMode, init, auth: authState, setBilling, onModeChange, passwordAuth,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
     logoutUrl: '/api/auth?logout=1',
     newId, loadIndex, saveProject, loadProject, loadThumb, deleteProject, renameProject, duplicateProject,
@@ -13665,6 +13721,16 @@ var BB = globalThis.BB = globalThis.BB || {};
   function account() { return BB.Store && BB.Store.auth ? BB.Store.auth() : { user: null, billing: null }; }
   function status() { return account().billing || { plan: 'free', entitlements: FREE, usage: { aiMessages: 0 }, credits: null }; }
   function isPro() { return status().plan === 'pro'; } // legacy badge only
+  /* The explicit account tier for display: 'paid' when a legacy Pro plan is
+   * active OR the account has ever bought a credit pack; 'free' otherwise. A
+   * paying credits customer is a paid account even at a zero balance — what
+   * makes them paid is having purchased, not the current balance. */
+  function tier() {
+    const s = status();
+    if (s.plan === 'pro') return 'paid';
+    const purchased = s.credits && typeof s.credits.purchased === 'number' ? s.credits.purchased : 0;
+    return purchased > 0 ? 'paid' : 'free';
+  }
   /* The credit balance, or null when the server has not told us yet. */
   function credits() {
     const c = status().credits;
@@ -13823,6 +13889,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const a = account();
     const provider = a.providers && a.providers[0];
     if (provider) window.location.href = BB.Store.loginUrl(provider);
+    else if (a.passwordAuth) window.location.hash = '#signin';
   }
 
   function setNote(message) {
@@ -13836,16 +13903,18 @@ var BB = globalThis.BB = globalThis.BB || {};
    * with no provider configured we say so plainly instead of closing the
    * dialog with nothing happening. */
   function signedOutUpgradeNote(a) {
-    const provider = a && a.providers && a.providers[0];
-    return provider
+    const canSignIn = !!(a && ((a.providers && a.providers.length) || a.passwordAuth));
+    return canSignIn
       ? { redirect: true, note: 'Taking you to sign in — your first credit is free, and you can buy more once you are signed in.' }
       : { redirect: false, note: "Sign-in isn't available on this site yet, so credits can't be purchased here." };
   }
 
-  /* Free-tier sync bullet: cloud sync needs a sign-in provider, so on a
-   * providerless deployment the honest promise is device-only sync (A-08). */
+  /* Free-tier sync bullet: cloud sync needs a sign-in method (OAuth OR email +
+   * password), so on a sign-in-less deployment the honest promise is
+   * device-only sync (A-08). */
   function freeSyncLabel(a) {
-    return (a && a.providers && a.providers.length) ? 'Device and cloud sync' : 'Device sync';
+    const canSignIn = !!(a && ((a.providers && a.providers.length) || a.passwordAuth));
+    return canSignIn ? 'Device and cloud sync' : 'Device sync';
   }
 
   /* Billing is "configured" only when the origin gave us evidence: a billing
@@ -13855,7 +13924,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * entitlement authority whenever billing is real. */
   function configured() {
     const a = account();
-    return !!(a.billing || (a.providers && a.providers.length));
+    return !!(a.billing || (a.providers && a.providers.length) || a.passwordAuth);
   }
 
   async function gateNewProject() {
@@ -13875,7 +13944,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Billing = {
-    status, isPro, credits, refresh, open, confirmIssue, issue, buyPack, configured,
+    status, isPro, tier, credits, refresh, open, confirmIssue, issue, buyPack, configured,
     gateNewProject, manage: () => api('portal', {}).then(d => { if (d.url) window.location.href = d.url; }).catch(() => setNote('Billing is temporarily unavailable.')),
     handleReturn, signedOutUpgradeNote, freeSyncLabel,
     CREDIT_PACKS, WINDOW_DAYS
@@ -17792,6 +17861,18 @@ var BB = globalThis.BB = globalThis.BB || {};
    * local-first note where accounts aren't configured. */
   const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
   let signinProbe = 'idle'; // idle | busy | done
+  let signinMode = 'login'; // login | register — the email/password form's mode
+  // Server error codes (api/_passwords.js) → human copy. Login stays generic
+  // on a bad address so the page never reveals which emails are registered.
+  const PASSWORD_ERROR_COPY = {
+    invalid_credentials: 'That email and password don’t match. Check them and try again.',
+    email_taken: 'An account already exists for that email — switch to Sign in.',
+    weak_password: 'Use at least 8 characters for your password.',
+    invalid_email: 'Enter a valid email address.',
+    invalid_password: 'That password can’t be used. Try a different one.',
+    too_many_attempts: 'Too many attempts. Wait a few minutes, then try again.',
+    storage_unconfigured: 'Accounts are temporarily unavailable. Please try again shortly.'
+  };
   function renderSignin() {
     const box = $('signinBody');
     if (!box) return;
@@ -17825,22 +17906,90 @@ var BB = globalThis.BB = globalThis.BB || {};
       const out = btn('', 'Sign out');
       out.onclick = () => { location.href = St.logoutUrl; };
       box.append(open, out);
-    } else if (a.providers && a.providers.length) {
+      return;
+    }
+    const hasOAuth = !!(a.providers && a.providers.length);
+    const hasPassword = !!a.passwordAuth;
+    if (hasOAuth) {
       for (const p of a.providers) {
         const b = btn('primary', 'Continue with ' + esc(PROVIDER_LABELS[p] || p));
         // signing in is intent to work — land in the studio after the round trip
         b.onclick = () => { markSeen(); location.href = St.loginUrl(p); };
         box.append(b);
       }
-      box.append(note('No passwords held here — sign-in runs through your existing account. Your projects then follow you to any device.'));
-    } else if (signinProbe !== 'done') {
+    }
+    if (hasOAuth && hasPassword) {
+      box.append(el('div', 'signin-or', '<span>or</span>'));
+    }
+    if (hasPassword) {
+      box.append(buildPasswordForm());
+      box.append(note('Your first blueprint credit is free with a new account, and your projects follow you to any device.'));
+    } else if (!hasOAuth && signinProbe !== 'done') {
       box.append(note('Checking this workshop’s sign-in options…'));
-    } else {
+    } else if (!hasOAuth) {
       box.append(note('This workshop runs without accounts: designs autosave to this device, and a share code carries a whole design anywhere in a line of text.'));
       const open = btn('primary', 'Open the studio');
       open.dataset.enter = '';
       box.append(open);
+    } else {
+      // OAuth-only origin (no password auth configured).
+      box.append(note('Sign-in runs through your existing account. Your projects then follow you to any device.'));
     }
+  }
+
+  /* The email + password form. One <form> so Enter submits and browser
+   * password managers recognise it; a mode toggle flips between signing in
+   * and creating an account (the name field appears only on register). */
+  function buildPasswordForm() {
+    const register = signinMode === 'register';
+    const form = el('form', 'signin-form');
+    form.setAttribute('novalidate', '');
+    form.autocomplete = 'on';
+    form.innerHTML =
+      `<h2 class="signin-form-title">${register ? 'Create your account' : 'Sign in with email'}</h2>` +
+      (register ? `<label class="signin-field"><span>Name <em>(optional)</em></span>
+         <input type="text" name="name" autocomplete="name" maxlength="80" placeholder="Your name"></label>` : '') +
+      `<label class="signin-field"><span>Email</span>
+         <input type="email" name="email" autocomplete="email" required placeholder="you@example.com"></label>
+       <label class="signin-field"><span>Password</span>
+         <input type="password" name="password" autocomplete="${register ? 'new-password' : 'current-password'}"
+           required minlength="8" placeholder="${register ? 'At least 8 characters' : 'Your password'}"></label>
+       <p class="signin-error" role="alert" aria-live="polite" hidden></p>
+       <button type="submit" class="btn primary signin-btn signin-submit">${register ? 'Create account — free credit' : 'Sign in'}</button>
+       <p class="signin-toggle">${register ? 'Already have an account?' : 'New here?'}
+         <button type="button" class="linkish" data-signin-toggle>${register ? 'Sign in' : 'Create one — it’s free'}</button></p>`;
+    const errEl = form.querySelector('.signin-error');
+    const submit = form.querySelector('.signin-submit');
+    const showError = code => {
+      errEl.textContent = PASSWORD_ERROR_COPY[code] || 'Something went wrong. Please try again.';
+      errEl.hidden = false;
+    };
+    form.querySelector('[data-signin-toggle]').onclick = () => {
+      signinMode = register ? 'login' : 'register';
+      renderSignin();
+    };
+    form.onsubmit = async e => {
+      e.preventDefault();
+      errEl.hidden = true;
+      const data = new FormData(form);
+      const email = String(data.get('email') || '').trim();
+      const password = String(data.get('password') || '');
+      if (!email) return showError('invalid_email');
+      if (password.length < 8) return showError('weak_password');
+      submit.disabled = true;
+      submit.textContent = register ? 'Creating account…' : 'Signing in…';
+      try {
+        await BB.Store.passwordAuth(register ? 'register' : 'login',
+          { email, password, name: String(data.get('name') || '') });
+        // Session is set and state re-probed — land in the studio to work.
+        enterStudio();
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = register ? 'Create account — free credit' : 'Sign in';
+        showError(err && err.code);
+      }
+    };
+    return form;
   }
 
   /* ---------------- init ---------------- */
@@ -18575,7 +18724,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * billing payload (fetched or pushed by the chat proxy) or sign-in
    * providers. Static hosts and claude.ai stay quiet as before (A-05). */
   function billingConfigured(a) {
-    return !!(a.billing || (a.providers && a.providers.length));
+    return !!(a.billing || (a.providers && a.providers.length) || a.passwordAuth);
   }
 
   /* ---------------- the credited-design model (credits pivot 2026-07) ----
@@ -18629,7 +18778,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       b.onclick = () => { window.location.href = Store.loginUrl(p); };
       row.append(b);
     }
-    if (!a.providers.length) {
+    if (a.passwordAuth) {
+      const b = el('button', 'btn small', 'Sign in with email');
+      b.onclick = () => { location.hash = '#signin'; };
+      row.append(b);
+    }
+    if (!a.providers.length && !a.passwordAuth) {
       const b = el('button', 'btn small', 'About sign-in');
       b.onclick = () => { location.hash = '#signin'; };
       row.append(b);
@@ -18767,17 +18921,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!show) return;
     if (a.user) {
       const row = el('div', 'menu-account');
-      const plan = a.billing && a.billing.plan === 'pro' ? 'Pro' : 'Free';
+      // Explicit account tier (Free/Paid) is always shown; the credit balance
+      // sits beside it so status and spendable balance read as two facts, not
+      // one overloaded chip. 'Paid' = legacy Pro OR has ever purchased a pack.
+      const t = BB.Billing.tier();
+      const tierLabel = t === 'paid' ? 'Paid' : 'Free';
       const balance = BB.Billing.credits();
+      const balanceChip = balance !== null
+        ? `<span class="plan-badge credit">${balance} credit${balance === 1 ? '' : 's'}</span>` : '';
       row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="account-avatar fallback" aria-hidden="true">${BB.Icons.svg('user', 14)}</span>`}
         <span class="account-name">${esc(a.user.name)}</span>
-        <span class="plan-badge">${balance !== null ? `${balance} credit${balance === 1 ? '' : 's'}` : plan}</span>`;
+        <span class="tier-badge tier-${t}" title="${t === 'paid' ? 'Paid account — you’ve purchased blueprint credits.' : 'Free account — your first blueprint credit is on us.'}">${tierLabel}</span>
+        ${balanceChip}`;
       area.append(row);
       const billingBtn = el('button', '', '<span>Buy credits</span><span class="hint">one credit = one blueprint</span>');
       billingBtn.setAttribute('role', 'menuitem');
       billingBtn.onclick = () => BB.Billing.open();
       area.append(billingBtn);
-      if (plan === 'Pro') {
+      if (a.billing && a.billing.plan === 'pro') {
         // Grandfathered subscribers keep their portal (legacy, honored).
         const manageBtn = el('button', '', '<span>Manage subscription</span><span class="hint">legacy Pro plan</span>');
         manageBtn.setAttribute('role', 'menuitem');
@@ -18794,6 +18955,14 @@ var BB = globalThis.BB = globalThis.BB || {};
         b.setAttribute('role', 'menuitem');
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
+      }
+      // Email + password lives on the dedicated #signin page (form + password
+      // manager support); the menu routes there rather than inlining a form.
+      if (a.passwordAuth) {
+        const em = el('button', '', '<span>Sign in with email</span><span class="hint">free credit + sync</span>');
+        em.setAttribute('role', 'menuitem');
+        em.onclick = () => { location.hash = '#signin'; };
+        area.append(em);
       }
       // Persistent plans surface (A-05): the offer must be findable before
       // the wall, not only at it.

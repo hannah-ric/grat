@@ -4,11 +4,17 @@
  * OAuth 2.0 authorization-code flows — no auth SDK, no client-side vendor
  * script (the app must stay a self-contained single file):
  *
- *   GET /api/auth?me=1               -> { user, providers, storage } (never errors)
- *   GET /api/auth?provider=google    -> 302 to Google sign-in
- *   GET /api/auth?provider=github    -> 302 to GitHub sign-in
- *   GET /api/auth?code=…&state=…     -> OAuth callback: sets the session cookie
- *   GET /api/auth?logout=1           -> clears the cookie
+ *   GET  /api/auth?me=1              -> { user, providers, passwordAuth, storage } (never errors)
+ *   GET  /api/auth?provider=google  -> 302 to Google sign-in
+ *   GET  /api/auth?provider=github  -> 302 to GitHub sign-in
+ *   GET  /api/auth?code=…&state=…   -> OAuth callback: sets the session cookie
+ *   GET  /api/auth?logout=1         -> clears the cookie
+ *   POST /api/auth {action:register|login, email, password, name?}
+ *                                   -> email+password account: sets the session cookie
+ *
+ * Email + password (api/_passwords.js) needs no external provider — it runs
+ * on AUTH_SECRET and the KV store the app already has, and mints the exact
+ * same session an OAuth login would. It is a first-class account.
  *
  * Sessions are stateless HMAC cookies (api/_session.js) — nothing stored
  * server-side. CSRF: the outbound redirect carries a random `state` echoed
@@ -28,6 +34,8 @@
 const crypto = require('crypto');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
+const P = require('./_passwords.js');
+const Credits = require('./_credits.js');
 const Env = require('./_env-check.js');
 const Log = require('./_log.js');
 
@@ -93,6 +101,54 @@ function redirect(res, to, cookies) {
   res.end();
 }
 
+/* Mirrors the readBody in api/store.js / api/billing.js: prefer a body the
+ * platform already parsed, else read the stream with a small size cap. */
+function readBody(req) {
+  if (req.body !== undefined) {
+    return Promise.resolve(typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
+  }
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', c => {
+      size += c.length;
+      if (size > 16384) { reject(new Error('body too large')); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch (e) { reject(new Error('invalid JSON')); } });
+    req.on('error', reject);
+  });
+}
+
+/* Email + password over POST. Both actions mint the same stateless session
+ * an OAuth login does, so downstream (billing, store, gating) can't tell a
+ * password account from a federated one. Errors are stable machine codes the
+ * client maps to copy; login never reveals whether an address is registered. */
+const PASSWORD_ERROR_STATUS = {
+  email_taken: 409, too_many_attempts: 429, storage_unconfigured: 503,
+  invalid_email: 400, weak_password: 400, invalid_password: 400,
+  invalid_credentials: 401, unknown_action: 400, bad_request: 400
+};
+const EXPECTED_PASSWORD_ERROR = new Set(['email_taken', 'too_many_attempts', 'invalid_email', 'weak_password', 'invalid_password', 'invalid_credentials', 'unknown_action', 'bad_request']);
+
+async function handlePassword(req, res) {
+  if (!P.available()) return sendJSON(res, 404, { error: 'password auth not configured' });
+  let body;
+  try { body = await readBody(req); } catch (e) { return sendJSON(res, 400, { error: 'bad_request' }); }
+  const action = body && body.action;
+  try {
+    let user;
+    if (action === 'register') user = await P.register(body);
+    else if (action === 'login') user = await P.login(body, { ip: Credits.clientIp(req) });
+    else throw Object.assign(new Error('unknown_action'), { code: 'unknown_action' });
+    return sendJSON(res, 200, { ok: true, user: { name: user.name, provider: user.provider, avatar: null } }, [S.sessionCookieFor(user, req)]);
+  } catch (e) {
+    const code = (e && e.code) || 'auth_failed';
+    if (!EXPECTED_PASSWORD_ERROR.has(code)) Log.report('auth', 'password_' + (action || 'unknown') + '_failed', e);
+    return sendJSON(res, PASSWORD_ERROR_STATUS[code] || 400, { error: code });
+  }
+}
+
 async function exchangeCode(providerKey, code, req) {
   const p = PROVIDERS[providerKey];
   const form = new URLSearchParams({
@@ -126,9 +182,10 @@ async function exchangeCode(providerKey, code, req) {
 }
 
 module.exports = async function handler(req, res) {
+  if (req.method === 'POST') return handlePassword(req, res);
   if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
-    return sendJSON(res, 405, { error: 'GET only' });
+    res.setHeader('Allow', 'GET, POST');
+    return sendJSON(res, 405, { error: 'GET or POST only' });
   }
   const url = new URL(req.url, 'http://localhost');
   const q = url.searchParams;
@@ -144,6 +201,7 @@ module.exports = async function handler(req, res) {
     return sendJSON(res, 200, {
       user: sess ? { name: sess.name, provider: sess.p, avatar: sess.av || null } : null,
       providers: providersAvailable(),
+      passwordAuth: P.available(),
       storage: storageConfigured(),
       billing
     });
