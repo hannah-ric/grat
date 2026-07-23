@@ -6,9 +6,169 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = __dirname;
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
+
+/* ---- source stripping (2026-07 audit, outcome D) ----
+ * dist shipped ~260 KB of src comments and blank lines verbatim. Stripping
+ * happens HERE, at build time only — src/ stays fully commented; the
+ * readability-vs-payload tradeoff the design-language doc declined never
+ * actually existed, because the two live in different files.
+ *
+ * The method is line-granularity by design: only lines whose ENTIRE trimmed
+ * content is comment (or nothing) are deleted, so every line containing code
+ * passes through byte for byte and regex-literal ambiguity can never corrupt
+ * code (a tokenizer-based stripper was measured drifting on
+ * `.replace(/\\/g, ...)` in exports.js — that failure mode is structurally
+ * excluded here, not merely handled). Two guards on top:
+ *   1. a conservative lexer that only VETOES: a line is deletable only when
+ *      the lexer can prove it starts outside strings and template literals
+ *      (a blank line inside a template literal is content, not whitespace).
+ *      A lexer mistake therefore needs a second, independent mistake — a
+ *      code line that also reads as a pure comment line — before it can
+ *      change behavior.
+ *   2. every stripped JS module must still parse (vm.Script) or the build
+ *      fails loudly.
+ */
+
+/* Lexer state at the start of each line: 'code' means provably outside
+ * strings, template literals, and block comments. Anything uncertain
+ * (including regex internals) reports non-code and blocks deletion. */
+function jsLineStates(src) {
+  const KW = new Set(['return', 'typeof', 'case', 'in', 'of', 'do', 'else',
+    'void', 'delete', 'new', 'instanceof', 'yield', 'await', 'throw']);
+  const st = ['code'];
+  let mode = 'code';
+  const tpl = []; // brace depth per open ${ } interpolation
+  let lastSig = '', word = '';
+  const regexOK = () => lastSig === '' || '([{,;=:!&|?+-*/%~^<>'.includes(lastSig) || KW.has(word);
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i], d = src[i + 1];
+    if (c === '\n') {
+      if (mode === 'line') mode = 'code';
+      st.push(mode === 'code' ? 'code' : mode === 'block' ? 'comment' : 'other');
+      continue;
+    }
+    if (mode === 'code') {
+      if (c === '/' && d === '/') { mode = 'line'; i++; }
+      else if (c === '/' && d === '*') { mode = 'block'; i++; }
+      else if (c === "'") mode = 'sq';
+      else if (c === '"') mode = 'dq';
+      else if (c === '`') mode = 'tpl';
+      else if (c === '/' && regexOK()) mode = 'regex';
+      else {
+        if (tpl.length) {
+          if (c === '{') tpl[tpl.length - 1]++;
+          else if (c === '}') {
+            if (tpl[tpl.length - 1] === 0) { tpl.pop(); mode = 'tpl'; }
+            else tpl[tpl.length - 1]--;
+          }
+        }
+        if (/[A-Za-z0-9_$]/.test(c)) word += c;
+        else if (!/\s/.test(c)) word = '';
+        if (!/\s/.test(c)) lastSig = c;
+      }
+    } else if (mode === 'sq') {
+      if (c === '\\') i++;
+      else if (c === "'") { mode = 'code'; lastSig = "'"; word = ''; }
+    } else if (mode === 'dq') {
+      if (c === '\\') i++;
+      else if (c === '"') { mode = 'code'; lastSig = '"'; word = ''; }
+    } else if (mode === 'tpl') {
+      if (c === '\\') i++;
+      else if (c === '`') { mode = 'code'; lastSig = '`'; word = ''; }
+      else if (c === '$' && d === '{') { tpl.push(0); mode = 'code'; lastSig = '{'; word = ''; i++; }
+    } else if (mode === 'regex') {
+      if (c === '\\') i++;
+      else if (c === '[') mode = 'class';
+      else if (c === '/') { mode = 'code'; lastSig = ')'; word = ''; }
+    } else if (mode === 'class') {
+      if (c === '\\') i++;
+      else if (c === ']') mode = 'regex';
+    } else if (mode === 'block') {
+      if (c === '*' && d === '/') { mode = 'code'; i++; }
+    } // 'line' waits for \n above
+  }
+  return st;
+}
+
+/* CSS crosses lines only inside block comments (strings can't span lines). */
+function cssLineStates(src) {
+  const st = ['code'];
+  let mode = 'code';
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i], d = src[i + 1];
+    if (c === '\n') { st.push(mode === 'block' ? 'comment' : mode === 'code' ? 'code' : 'other'); continue; }
+    if (mode === 'code') {
+      if (c === '/' && d === '*') { mode = 'block'; i++; }
+      else if (c === "'") mode = 'sq';
+      else if (c === '"') mode = 'dq';
+    } else if (mode === 'block') {
+      if (c === '*' && d === '/') { mode = 'code'; i++; }
+    } else if (mode === 'sq') {
+      if (c === '\\') i++; else if (c === "'") mode = 'code';
+    } else if (mode === 'dq') {
+      if (c === '\\') i++; else if (c === '"') mode = 'code';
+    }
+  }
+  return st;
+}
+
+/* Is this line, in its entirety, comments and whitespace? (`//` is JS-only.) */
+function isPureCommentLine(t, css) {
+  let s = t;
+  for (;;) {
+    s = s.replace(/^\s+/, '');
+    if (s === '') return true;
+    if (!css && s.startsWith('//')) return true;
+    if (s.startsWith('/*')) {
+      const k = s.indexOf('*/', 2);
+      if (k === -1) return false; // unclosed here — the multi-line path owns it
+      s = s.slice(k + 2);
+      continue;
+    }
+    return false;
+  }
+}
+
+function stripSource(src, { css = false } = {}) {
+  const lines = src.split('\n');
+  const state = css ? cssLineStates(src) : jsLineStates(src);
+  const keep = [];
+  let i = 0;
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (state[i] === 'code') {
+      if (isPureCommentLine(t, css)) { i++; continue; }
+      if (t.startsWith('/*') && !t.includes('*/')) {
+        // multi-line block comment opening a full line: drop through the
+        // close — unless the closing line carries code, in which case keep
+        // the whole run verbatim rather than edit any line
+        let j = i + 1;
+        while (j < lines.length && !lines[j].includes('*/')) j++;
+        const after = j < lines.length ? lines[j].slice(lines[j].indexOf('*/') + 2) : 'x';
+        if (after.trim() === '') { i = j + 1; continue; }
+        for (const stop = Math.min(j, lines.length - 1); i <= stop; i++) keep.push(lines[i]);
+        continue;
+      }
+    }
+    keep.push(lines[i]);
+    i++;
+  }
+  return keep.join('\n');
+}
+
+function stripJS(name, code) {
+  const out = stripSource(code);
+  try {
+    new vm.Script(out, { filename: name });
+  } catch (e) {
+    throw new Error(`build: stripped ${name} no longer parses — ${e.message}`);
+  }
+  return out;
+}
 const readB64 = p => fs.readFileSync(path.join(root, p)).toString('base64');
 
 const fontURI = f => `data:font/woff2;base64,${readB64('vendor/fonts/' + f)}`;
@@ -30,16 +190,16 @@ const FONT_FILES = {
   MONO_600: 'ibm-plex-mono-latin-600-normal.woff2',
 };
 
-let css = read('src/styles.css');
+let css = stripSource(read('src/styles.css'), { css: true });
 for (const [key, file] of Object.entries(FONT_FILES)) {
   css = css.replace(`{{FONT_${key}}}`, fontURI(file));
 }
 
-const js = name => read('src/' + name).replace(/<\/script>/gi, '<\\/script>');
+const js = name => stripJS(name, read('src/' + name)).replace(/<\/script>/gi, '<\\/script>');
 
 let html = read('src/index.template.html')
   .replace('{{CSS}}', css)
-  .replace('{{CSS_PORCH}}', () => read('src/porch.css'))
+  .replace('{{CSS_PORCH}}', () => stripSource(read('src/porch.css'), { css: true }))
   .replace('{{THREE}}', () => read('vendor/three.min.js').replace(/<\/script>/gi, '<\\/script>'))
   .replace('{{ANIME}}', () => read('vendor/anime.umd.min.js').replace(/<\/script>/gi, '<\\/script>'))
   .replace('{{JS_KNOWLEDGE}}', () => js('knowledge.js'))
@@ -78,3 +238,5 @@ fs.writeFileSync(path.join(root, 'dist/index.html'), html);
  * the app is one page, so there is deliberately no sitemap line. */
 fs.writeFileSync(path.join(root, 'dist/robots.txt'), 'User-agent: *\nAllow: /\n');
 console.log(`dist/index.html — ${(html.length / 1024).toFixed(0)} KB (+ robots.txt)`);
+
+module.exports = { stripSource, stripJS };
