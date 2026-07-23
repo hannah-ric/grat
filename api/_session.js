@@ -61,17 +61,6 @@ function isSecure(req) {
   return !!(req.socket && req.socket.encrypted);
 }
 
-/* Best-effort client IP behind Vercel's proxy. x-vercel-forwarded-for is set
- * by Vercel's edge and cannot be client-supplied; the generic headers are
- * proxy-controlled on Vercel too but spoofable on a bare deployment — callers
- * must treat the result as an abuse signal, never an identity. */
-function clientIP(req) {
-  const h = (req && req.headers) || {};
-  const pick = v => String(v || '').split(',')[0].trim();
-  return pick(h['x-vercel-forwarded-for']) || pick(h['x-forwarded-for']) ||
-    pick(h['x-real-ip']) || (req && req.socket && req.socket.remoteAddress) || null;
-}
-
 function cookie(name, value, opts) {
   opts = opts || {};
   const bits = [`${name}=${encodeURIComponent(value)}`, 'Path=/', 'HttpOnly', 'SameSite=Lax'];
@@ -103,6 +92,6 @@ const clearSessionCookie = req => cookie(SESSION_COOKIE, '', { secure: isSecure(
 
 module.exports = {
   SESSION_COOKIE, STATE_COOKIE, SESSION_DAYS,
-  sign, verify, parseCookies, isSecure, clientIP, cookie,
+  sign, verify, parseCookies, isSecure, cookie,
   sessionFrom, sessionCookieFor, clearSessionCookie, b64u, unb64u
 };

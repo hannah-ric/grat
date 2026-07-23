@@ -35,14 +35,17 @@ const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/;
 // bb:{uid}:subscription and bb:{uid}:usage:ai:<month> (and usage:tokens:<month>).
 // A store write to one of those names would alias an entitlement key and let a
 // signed-in user self-grant Pro or reset their own AI meter (E-01/E-02). The
-// credits pivot adds the ledger family the same way: credits / ledger /
-// design:* / designs:index / bphash:* / artifact:* / bpimg:* are written ONLY
-// by api/_credits.js and api/blueprint.js — a user must never be able to mint
-// their own balance or forge an issued blueprint through this endpoint. We do
-// NOT ban colons (client docs are projects:index / prices:v1 / prefs:v2 /
-// project:* / thumb:*) nor rename the user keyspace — only these exact roots and
-// their subkeys are off-limits, for reads, writes, and deletes alike.
-const RESERVED_DOC = /^(subscription|usage|credits|creditlock|ledger|design|designs|bphash|artifact|bpimg)(:|$)/;
+// credits pivot adds the ledger family the same way: credits / creditbal /
+// ledger / design:* / designs:index / bphash:* / artifact:* / bpimg:* are
+// written ONLY by api/_credits.js and api/blueprint.js — a user must never be
+// able to mint their own balance (creditbal is the atomic spend counter) or
+// forge an issued blueprint through this endpoint. The per-IP signup counters
+// (bb:ipgrant:*) live outside every per-uid keyspace, like bb:leads, so they
+// need no entry here. We do NOT ban colons (client docs are projects:index /
+// prices:v1 / prefs:v2 / project:* / thumb:*) nor rename the user keyspace —
+// only these exact roots and their subkeys are off-limits, for reads, writes,
+// and deletes alike.
+const RESERVED_DOC = /^(subscription|usage|credits|creditbal|ledger|design|designs|bphash|artifact|bpimg)(:|$)/;
 // A project document (src/store.js PROJECT_PREFIX = 'project:'); note this does
 // NOT match 'projects:index' (the index), 'prices:v1', 'prefs:v2', or 'thumb:*'.
 const PROJECT_DOC_RE = /^project:/;
@@ -79,9 +82,9 @@ function readBody(req) {
 
 /* The Free plan's project ceiling, or null for unlimited (Pro) / when it can't
  * be determined. Fails open: a storage hiccup must never block a user's save. */
-async function projectLimitFor(uid, ip) {
+async function projectLimitFor(uid, req) {
   try {
-    const status = await E.statusFor(uid, { ip });
+    const status = await E.statusFor(uid, req);
     const limit = status && status.entitlements ? status.entitlements.projectLimit : null;
     return (limit === null || limit === undefined) ? null : limit;
   } catch (e) {
@@ -133,7 +136,7 @@ module.exports = async function handler(req, res) {
       // to an existing project always succeed (a downgraded ex-Pro user never
       // loses edits); Pro/unlimited plans and non-project docs are unaffected.
       if (PROJECT_DOC_RE.test(doc)) {
-        const limit = await projectLimitFor(sess.uid, S.clientIP(req));
+        const limit = await projectLimitFor(sess.uid, req);
         if (limit !== null) {
           const existing = await kv.get(key);
           if ((existing === undefined || existing === null) && (await projectCount(kv, sess.uid)) >= limit) {

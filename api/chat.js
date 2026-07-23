@@ -137,7 +137,7 @@ module.exports = async function handler(req, res) {
    * protects the proxy key, it is not the offer, and the client no longer
    * opens an upgrade dialog on this 402 — refinement must feel free. */
   try {
-    const account = await E.statusFor(meterId, { ip: S.clientIP(req) });
+    const account = await E.statusFor(meterId, req);
     if (account.usage.aiMessages >= account.entitlements.aiMonthlyLimit) {
       return sendJSON(res, 402, {
         type: 'error',

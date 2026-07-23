@@ -15,6 +15,10 @@
  *   - the corrected-spec hash is the idempotency key — the same corrected
  *     spec never charges twice (reloads, retries, re-exports, re-downloads);
  *   - refinements within WINDOW_DAYS of commit are free (pass designId);
+ *     the window is per DESIGN ID with no material-change threshold — a
+ *     committed design may legitimately be refined into an entirely
+ *     different piece on its one credit (deliberate launch simplicity;
+ *     this is the pricing rule to revisit first if it gets gamed);
  *   - meta.name / meta.units are display-only and never a material change;
  *   - a material change after the window closes charges a fresh credit.
  *
@@ -181,12 +185,12 @@ module.exports = async function handler(req, res) {
   if (!session) return sendJSON(res, 401, { error: 'auth_required' });
   if (!kv) return sendJSON(res, 503, { error: 'storage_unconfigured' });
   const uid = session.uid;
-  const clientIp = S.clientIP(req); // feeds the signup-farming cap in _credits.js
+  const ip = Credits.clientIp(req); // rides every ledger call: signup-cap context
 
   try {
     if (req.method === 'GET') {
       if (url.searchParams.get('list')) {
-        const [index, credits] = await Promise.all([readJSON(kv, designIndexKey(uid), []), Credits.state(uid, { ip: clientIp })]);
+        const [index, credits] = await Promise.all([readJSON(kv, designIndexKey(uid), []), Credits.state(uid, { ip })]);
         return sendJSON(res, 200, { designs: index, balance: credits.balance });
       }
       const id = url.searchParams.get('id');
@@ -254,7 +258,7 @@ module.exports = async function handler(req, res) {
         design = openDesign;
       } else {
         // 3) CHARGE — a fresh design commit.
-        const chargeRes = await Credits.charge(uid, { specHash: cHash, blueprintId: null, reason: 'issue', ip: clientIp });
+        const chargeRes = await Credits.charge(uid, { specHash: cHash, blueprintId: null, reason: 'issue', ip });
         if (!chargeRes.ok) {
           return sendJSON(res, 402, { error: chargeRes.error || 'insufficient_credits', balance: chargeRes.balance });
         }
@@ -294,11 +298,10 @@ module.exports = async function handler(req, res) {
         }));
       }
       if (!cached) {
-        // Pricing telemetry, not pricing logic: "unlimited refinement" is per
-        // design id, so a committed table can legally morph into a bench on
-        // the same credit inside the window. The brief chose no threshold —
-        // write each piece-type hop onto the design record and the logs so a
-        // future pricing revisit is decided on data, not anecdote.
+        // Pricing telemetry, not pricing logic: the no-threshold window rule
+        // above lets a committed table legally morph into a bench on one
+        // credit. Write each piece-type hop onto the design record and the
+        // logs so the "revisit first if it gets gamed" call is made on data.
         const tpl = evaluated.spec.meta.template || 'custom';
         if (!design.template) {
           design.template = tpl;
@@ -335,7 +338,7 @@ module.exports = async function handler(req, res) {
       return sendJSON(res, 500, { error: 'render_failed', refunded: charged });
     }
 
-    if (balance === null) balance = (await Credits.state(uid, { ip: clientIp })).balance;
+    if (balance === null) balance = (await Credits.state(uid, { ip })).balance;
     return sendJSON(res, 200, {
       ok: true,
       id: design.id,

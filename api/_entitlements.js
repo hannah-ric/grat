@@ -82,12 +82,14 @@ async function addTokens(uid, n) {
   return total;
 }
 
-/* ctx.ip (optional, from S.clientIP(req)) reaches the lazy signup grant so
- * the per-IP farming cap can see first contact wherever it happens. */
-async function statusFor(uid, ctx) {
+/* req is optional request context: when present, the client IP rides along to
+ * Credits.state so the lazy signup grant is subject to the per-IP farming cap
+ * (a fresh account's FIRST contact is usually the auth?me probe → here). */
+async function statusFor(uid, req) {
+  const ctx = req ? { ip: Credits.clientIp(req) } : undefined;
   const [subscription, usage, credits] = await Promise.all([
     getSubscription(uid), getUsage(uid),
-    Credits.state(uid, { ip: ctx && ctx.ip }).catch(() => ({ configured: false, balance: 0, purchased: 0 }))
+    Credits.state(uid, ctx).catch(() => ({ configured: false, balance: 0, purchased: 0 }))
   ]);
   const isPro = !!(subscription && ACTIVE_STATUSES.has(subscription.status));
   let entitlements = isPro ? PRO : FREE;

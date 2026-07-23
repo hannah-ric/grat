@@ -19,15 +19,13 @@ function restBackend() {
   };
   return {
     get: key => command(['GET', key]),
-    // options.nx makes the write atomic-if-absent (returns null when the key
-    // already exists) — the primitive behind the per-user credit mutex.
-    set: (key, value, options) => {
-      const parts = ['SET', key, value];
-      if (options && options.ex) parts.push('EX', String(options.ex));
-      if (options && options.nx) parts.push('NX');
-      return command(parts);
-    },
+    set: (key, value, options) => options && options.ex
+      ? command(['SET', key, value, 'EX', String(options.ex)])
+      : command(['SET', key, value]),
     del: key => command(['DEL', key]),
+    // SET NX: returns 'OK' when the key was absent and is now set, null when
+    // it already existed — the atomic claim primitive api/_credits.js builds on.
+    setnx: (key, value) => command(['SET', key, value, 'NX']),
     incr: key => command(['INCR', key]),
     incrby: (key, n) => command(['INCRBY', key, String(n)]),
     expire: (key, seconds) => command(['EXPIRE', key, String(seconds)])
@@ -56,12 +54,21 @@ function fileBackend() {
     get: async key => unwrap(read(), key),
     set: async (key, value, options) => {
       const map = read();
-      if (options && options.nx && unwrap(map, key) !== null) return null;
       map[key] = options && options.ex ? { value, expiresAt: Date.now() + options.ex * 1000 } : value;
       write(map);
       return 'OK';
     },
     del: async key => { const map = read(); delete map[key]; write(map); return 1; },
+    // Atomic within the process (no await between read and write), mirroring
+    // the REST backend's SET NX semantics: 'OK' on claim, null when taken.
+    setnx: async (key, value) => {
+      const map = read();
+      const existing = unwrap(map, key);
+      if (existing !== null && existing !== undefined) return null;
+      map[key] = value;
+      write(map);
+      return 'OK';
+    },
     incr: async key => {
       const map = read();
       const current = Number(unwrap(map, key) || 0);

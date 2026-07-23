@@ -69,8 +69,10 @@ hand-edit a digest string.
   kept dormant; `_entitlements.js` is the entitlement/usage authority,
   `_stripe.js` the client — both shared libs, not endpoints). AI is behind
   sign-in; the monthly meter is an abuse ceiling, not the offer. The
-  `credits`/`ledger`/`design*`/`bphash`/`artifact`/`bpimg` roots are reserved
-  in `store.js` like `subscription`/`usage` — never user-writable.
+  `credits`/`creditbal`/`ledger`/`design*`/`bphash`/`artifact`/`bpimg` roots
+  are reserved in `store.js` like `subscription`/`usage` — never user-writable
+  (`creditbal` is the atomic INCRBY spend counter; per-IP signup counters
+  live at `bb:ipgrant:*`, outside the per-uid keyspace).
   All auth/storage/billing degrades: no env vars → the client persists to
   `localStorage` and shows no login or purchase UI (see `DEPLOYMENT.md`).
 - `serve.js` — zero-dep dev server; mounts every `api/` handler locally.

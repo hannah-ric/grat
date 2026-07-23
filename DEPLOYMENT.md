@@ -50,7 +50,15 @@ vercel env add ANTHROPIC_API_KEY development
 | `STRIPE_PRO_MONTHLY_PRICE_ID` / `STRIPE_PRO_YEARLY_PRICE_ID` | For subscriptions | Server-side only | The recurring Price IDs for Blueprint Buddy Pro (create one monthly, one yearly). |
 | `STRIPE_WEBHOOK_SECRET` | For subscriptions | Server-side only (`api/stripe-webhook.js`) | Signing secret (`whsec_…`) for the webhook endpoint — without it, paid upgrades never activate. **Stored as a sensitive (encrypted) var on Vercel.** See the Subscriptions section below. |
 | `APP_ORIGIN` | **Recommended in production** | Server-side only | Canonical origin (e.g. `https://your-app.com`) for OAuth redirect URIs and Stripe success/cancel URLs. When unset these are derived from the `Host`/`X-Forwarded-Host` header; **set `APP_ORIGIN` in production** so a spoofed header can never influence a redirect target. |
-| `BB_SIGNUP_IP_CAP` | No | Server-side only (`api/_credits.js`) | Max free signup credits granted per client IP per rolling 30 days (default `5`; `0` disables). Damps throwaway-OAuth-account farming; the IP is salted-hashed, never stored, and a capped account can still sign in, save, and buy packs. For volume abuse, pair with a Vercel WAF rate-limit rule on `/api/auth`. |
+
+> **Signup-farming damper (no env var):** the free signup credit is capped per
+> client IP — `SIGNUP_IP_CAP` grants per `SIGNUP_IP_WINDOW_DAYS` rolling window,
+> constants in `api/_credits.js` (currently 5 per 7 days). The IP comes from
+> `x-real-ip` (set by Vercel; see the deployment note in that file if you front
+> the app with another proxy), is salted-hashed, and never stored. A capped
+> account still signs in, saves, and can buy packs, and the denial is written
+> to its ledger so support can `grant()` manually. For volume abuse, pair with
+> a Vercel WAF rate-limit rule on `/api/auth`.
 
 ## Accounts & cloud persistence (optional)
 

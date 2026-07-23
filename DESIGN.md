@@ -105,8 +105,9 @@ CSS. Reduced motion collapses every animation to a snap, in both worlds.
   piece-type hop is recorded on the design record (`morphs`) and logged
   (`window_morph`), so the first pricing revisit is decided on data.
 - **The signup credit is per OAuth identity, damped per IP.** Fresh-account
-  grants are capped per client IP per 30 days (`BB_SIGNUP_IP_CAP`,
-  `api/_credits.js`); a capped account still works and can buy packs.
+  grants are capped per client IP per rolling window (`SIGNUP_IP_CAP` /
+  `SIGNUP_IP_WINDOW_DAYS` in `api/_credits.js`); the denial lands on the
+  account's ledger, and a capped account still works and can buy packs.
 
 ## Roadmap (designed, not yet built)
 
