@@ -268,6 +268,7 @@ module.exports = async function handler(req, res) {
         design = {
           id: 'bp_' + crypto.randomBytes(6).toString('hex'),
           name: evaluated.spec.meta.name,
+          template: evaluated.spec.meta.template || 'custom',
           committedAt: now,
           windowEndsAt: now + Credits.WINDOW_DAYS * 86400e3,
           revision: 0,
@@ -297,6 +298,19 @@ module.exports = async function handler(req, res) {
         }));
       }
       if (!cached) {
+        // Pricing telemetry, not pricing logic: the no-threshold window rule
+        // above lets a committed table legally morph into a bench on one
+        // credit. Write each piece-type hop onto the design record and the
+        // logs so the "revisit first if it gets gamed" call is made on data.
+        const tpl = evaluated.spec.meta.template || 'custom';
+        if (!design.template) {
+          design.template = tpl;
+        } else if (design.template !== tpl) {
+          design.morphs = (design.morphs || []).slice(-19);
+          design.morphs.push({ ts: now, from: design.template, to: tpl });
+          Log.report('blueprint', 'window_morph', { id: design.id, from: design.template, to: tpl });
+          design.template = tpl;
+        }
         design.revision += 1;
         if (!design.specHashes.includes(cHash)) design.specHashes.push(cHash);
         design.artifactHash = aHash;

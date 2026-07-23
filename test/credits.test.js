@@ -225,6 +225,27 @@ const issue = (uid, body) => {
     drop();
   }
 
+  section('blueprint: an in-window piece-type morph stays free but is written down (pricing telemetry)');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const KV = require('../api/_kv.js');
+    const uid = 'dev:morph1';
+    const first = json(await issue(uid, { spec: VALID_SPEC }));
+    ok(first.charged === true, 'the table commits on the signup credit');
+    const bench = JSON.parse(JSON.stringify(VALID_SPEC));
+    bench.meta.template = 'bench'; bench.meta.name = 'Morphed Bench'; bench.overall.height = 450;
+    const second = json(await issue(uid, { spec: bench, designId: first.id }));
+    ok(second.charged === false && second.id === first.id,
+      'the morph inside the window is still free — the no-threshold rule is unchanged');
+    const design = JSON.parse(await KV.backend().get(`bb:${uid}:design:${first.id}`));
+    eq(design.template, 'bench', 'the design record tracks the current piece type');
+    ok(Array.isArray(design.morphs) && design.morphs.length === 1 &&
+      design.morphs[0].from === 'table' && design.morphs[0].to === 'bench',
+      'each piece-type hop is recorded for the future pricing revisit');
+    drop();
+  }
+
   section('blueprint: a failure after the charge refunds automatically');
   {
     cleanEnv();
