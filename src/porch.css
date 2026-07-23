@@ -216,7 +216,14 @@ body.ph-open .ph-mast { padding-top: calc(var(--foh-nav-h) + var(--space-xl)); }
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .calc-chip:hover { border-color: var(--line-2); background: var(--panel-2); }
-.calc-chip[aria-pressed="true"] { background: var(--seafoam-wash); border-color: var(--seafoam-line); color: var(--seafoam-ink); }
+/* selection is seafoam's job, ink on the mid-tone swatch (the B-06 contract
+   the segmented control already keeps — the wash pairing failed AA in dark) */
+.calc-chip[aria-pressed="true"] { background: var(--seafoam); border-color: var(--seafoam); color: var(--seafoam-ink); }
+/* the second channel: a glyph, so selection still reads where colour can't —
+   forced colors strips swatches but keeps generated text */
+.calc-chip[aria-pressed="true"]::before { content: "✓"; margin-right: 0.35em; }
+/* under a thumb every chip holds the full --tap floor (A-08 precedent) */
+@media (pointer: coarse) { .calc-chip { min-height: var(--tap); } }
 .calc-out { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-l); align-items: start; }
 .calc-stats { display: flex; flex-wrap: wrap; gap: var(--space-l); }
 .calc-stat > .counter { display: block; font-size: var(--text-2xl); font-weight: 600; }
@@ -306,7 +313,10 @@ body { --foh-nav-h: 3.75rem; }
 .site-nav.scrolled { border-bottom-color: var(--line); background: color-mix(in srgb, var(--paper) 92%, transparent); }
 .site-brand {
   display: inline-flex; align-items: center; gap: var(--space-2xs);
-  min-height: var(--tap); color: var(--ink); text-decoration: none;
+  /* --tap floor in both axes: with the name hidden (<640px) the mark alone
+     measured 30px wide — the box grows, the visual mark does not */
+  min-height: var(--tap); min-width: var(--tap);
+  color: var(--ink); text-decoration: none;
 }
 .site-brand-name { font: 700 var(--text-m)/1 var(--display); letter-spacing: -0.01em; }
 .site-brand-name b { font-weight: 500; color: var(--ink-2); }
