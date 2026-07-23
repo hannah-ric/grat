@@ -375,6 +375,32 @@ body { --foh-nav-h: 3.75rem; }
 .signin-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
 .signin-fine { margin: 0; color: var(--muted-2); font-size: var(--text-xs); line-height: 1.6; max-width: 52ch; }
 
+/* email + password form — shares the card's tokens so it reads as one piece
+   with the OAuth buttons above it */
+.signin-or {
+  display: flex; align-items: center; gap: var(--space-xs);
+  color: var(--muted-2); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em;
+}
+.signin-or::before, .signin-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.signin-form { display: flex; flex-direction: column; gap: var(--space-s); text-align: left; }
+.signin-form-title { margin: 0; font-size: var(--text-m); font-weight: 700; color: var(--ink); }
+.signin-field { display: flex; flex-direction: column; gap: var(--space-3xs); }
+.signin-field > span { font-size: var(--text-s); font-weight: 600; color: var(--ink-2); }
+.signin-field > span em { font-weight: 400; font-style: normal; color: var(--muted-2); }
+.signin-field input {
+  padding: .6rem .7rem; border: 1px solid var(--line-2, var(--line)); border-radius: var(--radius-m, 8px);
+  background: var(--paper); color: var(--ink); font: inherit; min-height: var(--tap);
+}
+.signin-field input:focus-visible { outline: 2px solid var(--accent, var(--ink)); outline-offset: 1px; border-color: transparent; }
+.signin-error { margin: 0; color: var(--danger, #b3261e); font-size: var(--text-s); line-height: 1.5; }
+.signin-toggle { margin: 0; font-size: var(--text-s); color: var(--ink-2); text-align: center; }
+.linkish {
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 600;
+  color: var(--accent, var(--ink)); text-decoration: underline; cursor: pointer;
+}
+.linkish:hover { opacity: .8; }
+@media (forced-colors: active) { .signin-field input { border-color: CanvasText; } }
+
 /* ---- footer: the quiet close of every public page ---- */
 .site-footer { border-top: 1px solid var(--line); background: var(--paper); padding: var(--space-xl) var(--space-l); }
 .site-footer-inner {

@@ -540,17 +540,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!show) return;
     if (a.user) {
       const row = el('div', 'menu-account');
-      const plan = a.billing && a.billing.plan === 'pro' ? 'Pro' : 'Free';
+      // Explicit account tier (Free/Paid) is always shown; the credit balance
+      // sits beside it so status and spendable balance read as two facts, not
+      // one overloaded chip. 'Paid' = legacy Pro OR has ever purchased a pack.
+      const t = BB.Billing.tier();
+      const tierLabel = t === 'paid' ? 'Paid' : 'Free';
       const balance = BB.Billing.credits();
+      const balanceChip = balance !== null
+        ? `<span class="plan-badge credit">${balance} credit${balance === 1 ? '' : 's'}</span>` : '';
       row.innerHTML = `${a.user.avatar ? `<img class="account-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="account-avatar fallback" aria-hidden="true">${BB.Icons.svg('user', 14)}</span>`}
         <span class="account-name">${esc(a.user.name)}</span>
-        <span class="plan-badge">${balance !== null ? `${balance} credit${balance === 1 ? '' : 's'}` : plan}</span>`;
+        <span class="tier-badge tier-${t}" title="${t === 'paid' ? 'Paid account — you’ve purchased blueprint credits.' : 'Free account — your first blueprint credit is on us.'}">${tierLabel}</span>
+        ${balanceChip}`;
       area.append(row);
       const billingBtn = el('button', '', '<span>Buy credits</span><span class="hint">one credit = one blueprint</span>');
       billingBtn.setAttribute('role', 'menuitem');
       billingBtn.onclick = () => BB.Billing.open();
       area.append(billingBtn);
-      if (plan === 'Pro') {
+      if (a.billing && a.billing.plan === 'pro') {
         // Grandfathered subscribers keep their portal (legacy, honored).
         const manageBtn = el('button', '', '<span>Manage subscription</span><span class="hint">legacy Pro plan</span>');
         manageBtn.setAttribute('role', 'menuitem');
