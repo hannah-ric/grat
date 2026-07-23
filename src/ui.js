@@ -728,7 +728,14 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* A locked Plan tab reads as a PREVIEW, not an error: the user sees what
    * the blueprint contains — real part names, real counts, real totals —
-   * with only the buildable numbers withheld. One CTA, honest copy. */
+   * with only the buildable numbers withheld. One CTA, honest copy.
+   * Honesty note: this wall is presentation, not protection. The whole
+   * pipeline runs client-side by design, so every withheld number already
+   * exists in browser memory and a determined user can read cut dims from
+   * devtools. The product being sold is the server-issued artifact
+   * (api/blueprint.js — rendered sheet set, 1:1 templates, permanence),
+   * which is where the engineering weight lives. Accept the soft wall; do
+   * NOT add client-side obfuscation here — it only hurts honest users. */
   function renderLockedPreview(root, tab) {
     const wrap = el('div', 'plan-preview');
     const lockGlyph = BB.Icons ? BB.Icons.svg('lock', 13) : '';

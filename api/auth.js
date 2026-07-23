@@ -139,7 +139,7 @@ module.exports = async function handler(req, res) {
     const sess = S.sessionFrom(req);
     let billing = null;
     if (sess) {
-      try { billing = await E.statusFor(sess.uid); } catch (error) { Log.report('auth', 'billing_lookup_failed', error); billing = null; }
+      try { billing = await E.statusFor(sess.uid, req); } catch (error) { Log.report('auth', 'billing_lookup_failed', error); billing = null; }
     }
     return sendJSON(res, 200, {
       user: sess ? { name: sess.name, provider: sess.p, avatar: sess.av || null } : null,
