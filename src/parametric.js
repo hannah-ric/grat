@@ -294,6 +294,106 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { openings, drawers };
   }
 
+  /* ---------------- cabinet doors (LIVE) ----------------
+   * Doors cover the open carcass face below any drawer bank (or the full
+   * body when there are no drawers). Style intent (count, overlay/inset,
+   * hinge key, pull key) comes from the corrected spec; every rating,
+   * count, bore, and position is computed here / in BB.HW.
+   */
+  function buildDoors(spec, zone, parts) {
+    const doors = [];
+    if (!spec.doors || !spec.doors.count) return doors;
+    const count = Math.min(2, Math.max(1, Math.round(spec.doors.count)));
+    const inset = spec.doors.frontStyle !== 'overlay';
+    const frontT = 19;
+    const sp = spec.wood.species;
+    const gap = 2;
+    const openW = zone.clearW;
+    const openH = zone.yTop - zone.yBottom;
+    if (openH < 120 || openW < 150) return doors;
+    const hingeKey = (BB.HW && spec.hardware && BB.HW.HINGES[spec.hardware.hinge])
+      ? spec.hardware.hinge
+      : (inset ? 'butt_brass' : 'euro_cup');
+    const hingeCat = BB.HW ? BB.HW.hingePick(hingeKey, inset ? 'inset' : 'overlay') : null;
+    const pullStyle = (BB.HW && spec.hardware && BB.HW.PULLS[spec.hardware.pull])
+      ? spec.hardware.pull
+      : 'knob_round';
+
+    for (let i = 0; i < count; i++) {
+      let fw, fh, px;
+      if (count === 1) {
+        fw = inset ? openW - 2 * gap : Math.min(zone.overlayMaxW || openW + 20, openW + 20);
+        px = zone.x || 0;
+      } else {
+        const half = openW / 2;
+        fw = inset ? half - 1.5 * gap : half + Math.min(10, ((zone.overlayMaxW || openW + 20) - openW) / 2);
+        px = (zone.x || 0) + (i === 0 ? -half / 2 : half / 2);
+      }
+      fh = inset ? openH - 2 * gap : openH + Math.min(20, 16);
+      const frontZ = inset ? zone.zFront - frontT / 2 : zone.zFront + frontT / 2;
+      const cy = zone.yBottom + openH / 2;
+      const id = `door_${i + 1}`;
+      const hingeSide = count === 1 ? 'left' : (i === 0 ? 'left' : 'right');
+      parts.push(part(id, `door_${Math.round(fw)}x${Math.round(fh)}`, 'door', count === 1 ? 'Door' : `Door ${i + 1}`,
+        fw, fh, frontT, px, cy, frontZ,
+        { material: sp, group: 'door', explode: { x: hingeSide === 'left' ? -0.8 : 0.8, y: 0, z: 0.6 } }));
+
+      const doorKg = BB.HW ? BB.HW.panelWeightKg(fw, fh, frontT, sp) : 5;
+      const hCount = BB.HW ? BB.HW.doorHingeCount(fh, doorKg) : 2;
+      const hingeIds = [];
+      for (let hi = 0; hi < hCount; hi++) {
+        const hy = cy - fh / 2 + 80 + (hCount === 1 ? fh / 2 - 80 : (fh - 160) * hi / Math.max(1, hCount - 1));
+        const hx = hingeSide === 'left' ? px - fw / 2 + 15 : px + fw / 2 - 15;
+        const hid = `door_${i + 1}_hinge_${hi + 1}`;
+        parts.push(part(hid, 'hinge', 'hinge', `Door ${i + 1} hinge`,
+          35, 12, 20, hx, hy, frontZ - frontT / 2 - 10,
+          { material: 'hardware', hardware: true, group: 'frame' }));
+        hingeIds.push(hid);
+      }
+
+      let boringNote = '';
+      let tbMM = 5, cupDia = 35, cupDepth = 13;
+      if (hingeCat && hingeCat.key === 'euro_cup') {
+        const overlayMM = inset ? 0 : Math.max(0, (fw - (count === 1 ? openW : openW / 2)) / 2);
+        const bore = BB.HW.cupBoring(overlayMM, 0);
+        tbMM = bore.tbMM; cupDia = bore.cupDia; cupDepth = bore.cupDepth;
+        boringNote = `${hCount} × 35 mm cups, boring distance ${tbMM} mm, plate setback ${bore.plateSetback} mm`;
+      } else if (hingeCat) {
+        boringNote = `${hCount} × ${hingeCat.label.toLowerCase()}`;
+      }
+
+      const pSpec = BB.HW ? BB.HW.pullSpec(fw, pullStyle) : { style: 'knob_round', count: 1, ctcMM: 0, holes: 1 };
+      const pullIds = [];
+      if (pSpec.style !== 'none_touch') {
+        const isKnob = /knob|ring/.test(pSpec.style);
+        const pw = isKnob ? 35 : Math.max(60, Math.min(fw - 40, (pSpec.ctcMM || 96) + 14));
+        const ph = isKnob ? 35 : 12;
+        const pd = 22;
+        const pullX = hingeSide === 'left' ? px + fw / 2 - 40 : px - fw / 2 + 40;
+        const pullY = cy;
+        for (let pi = 0; pi < pSpec.count; pi++) {
+          const pid = `door_${i + 1}_pull${pSpec.count > 1 ? '_' + (pi + 1) : ''}`;
+          parts.push(part(pid, 'pull', 'pull', `Door ${i + 1} pull`,
+            pw, ph, pd, pullX, pullY, frontZ + frontT / 2 + pd / 2,
+            { material: 'hardware', group: 'door' }));
+          pullIds.push(pid);
+        }
+      }
+
+      doors.push({
+        index: i, partId: id, hingeSide, t: frontT,
+        w: fw, h: fh,
+        hinge: {
+          key: hingeCat ? hingeCat.key : hingeKey,
+          label: hingeCat ? hingeCat.label : 'Door hinge',
+          count: hCount, boringNote, tbMM, cupDia, cupDepth
+        },
+        hingeIds, pull: Object.assign({ styleKey: pullStyle }, pSpec), pullIds
+      });
+    }
+    return doors;
+  }
+
   /* ---------------- templates ---------------- */
 
   function tableLike(spec) {
@@ -341,7 +441,25 @@ var BB = globalThis.BB = globalThis.BB || {};
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
 
-    return { parts, joints, openings: [], drawers: [] };
+    // Lower stretchers (Tier 1 LIVE): a pair of long rails between the legs
+    // at ~40% of leg height — code-owned thickness/height; AI only flips the
+    // structure.stretchers intent. Credits racking and shortens unbraced length.
+    if (st.stretchers) {
+      const strH = Math.min(70, Math.max(50, Math.round(st.apronHeight * 0.7)));
+      const strT = st.apronThickness;
+      const strY = Math.max(strH / 2 + 20, Math.round(legH * 0.38));
+      const strLen = frameW - 2 * legT;
+      const strZ = frameD / 2 - strT / 2;
+      [[-strZ, 1], [strZ, 2]].forEach(([z, i]) => {
+        parts.push(part(`stretcher_long_${i}`, 'stretcher_long', 'stretcher', 'Stretcher',
+          strLen, strH, strT, 0, strY, z,
+          { material: sp, explode: { x: 0, y: -0.3, z: Math.sign(z) * 0.6 } }));
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: strY, z } });
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: strY, z } });
+      });
+    }
+
+    return { parts, joints, openings: [], drawers: [], doors: [] };
   }
 
   function bookshelf(spec) {
@@ -380,7 +498,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
-    return { parts, joints, openings: [], drawers: [] };
+    return { parts, joints, openings: [], drawers: [], doors: [] };
   }
 
   function nightstand(spec) {
@@ -445,7 +563,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       runnerTargets: ['apron_side_1', 'apron_side_2']
     };
     const bankOut = buildBank(spec, zone, parts, joints, '');
-    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers, doors: [] };
   }
 
   function cabinet(spec) {
@@ -514,7 +632,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -innerW / 2, y, z: 0 } });
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: innerW / 2, y, z: 0 } });
     }
-    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+
+    // Doors on the open face below the drawer bank (or the full body when
+    // there are no drawers). Intent: spec.doors; numbers: buildDoors + HW.
+    const doorZone = {
+      clearW: innerW, x: 0,
+      yBottom: shelfZoneBottom, yTop: shelfZoneTop,
+      zFront: o.depth / 2,
+      overlayMaxW: innerW + Math.min(20, sideT)
+    };
+    // When there is no drawer bank, doors get the full carcass opening.
+    if (!spec.drawers) {
+      doorZone.yBottom = base + 19;
+      doorZone.yTop = o.height - topT;
+    }
+    const doors = buildDoors(spec, doorZone, parts);
+    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers, doors };
   }
 
   /* ---------------- custom (novel) compositions ----------------
@@ -553,7 +686,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         pos: { x: (a.pos.x + b.pos.x) / 2, y: (a.pos.y + b.pos.y) / 2, z: (a.pos.z + b.pos.z) / 2 }
       });
     }
-    return { parts, joints, openings: [], drawers: [] };
+    return { parts, joints, openings: [], drawers: [], doors: [] };
   }
 
   /* ---------------- entry point ---------------- */
@@ -566,6 +699,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (t === 'custom') m = customBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
+    m.doors = m.doors || [];
     // Round sizes/positions to 0.1 mm so exports and cut lists are stable.
     for (const p of m.parts) {
       for (const k of ['w', 'h', 'd']) p.size[k] = Math.round(p.size[k] * 10) / 10;

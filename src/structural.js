@@ -965,6 +965,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!custom) {
         if (hasRole('apron')) mults.push({ label: 'apron frame ties the legs', mult: 1.2 });
         if (hasRole('rail')) mults.push({ label: 'drawer rails triangulate the frame', mult: 1.1 });
+        if (hasRole('stretcher')) mults.push({ label: 'lower stretchers brace the legs', mult: 1.35 });
         if (hasRole('back')) mults.push({ label: 'back panel acts as a shear panel', mult: 1.5 });
         if (spec.joinery.case === 'dado' && hasRole('shelf')) mults.push({ label: 'fixed shelves housed in dados', mult: 1.15 });
       } else {
@@ -982,6 +983,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (rack.score < 40) {
         if (CARCASS.includes(t) && !spec.structure.backPanel) fixes.push({ id: 'back', label: 'Add a back panel', patch: { structure: { backPanel: true } } });
         if (CARCASS.includes(t) && spec.joinery.case !== 'dado' && allowed.includes('dado')) fixes.push({ id: 'dados', label: 'House shelves in dados', patch: { joinery: { case: 'dado' } } });
+        if (TABLE_LIKE.includes(t) && !spec.structure.stretchers) fixes.push({ id: 'stretchers', label: 'Add lower stretchers', patch: { structure: { stretchers: true } } });
         if (TABLE_LIKE.includes(t) && spec.joinery.frame !== 'mortise_tenon' && allowed.includes('mortise_tenon')) fixes.push({ id: 'mt', label: 'Mortise & tenon frame', patch: { joinery: { frame: 'mortise_tenon' } } });
         if (TABLE_LIKE.includes(t) && spec.joinery.frame === 'butt_screws') fixes.push({ id: 'pocket', label: 'Pocket-screw the frame', patch: { joinery: { frame: 'pocket_screws' } } });
       }
@@ -1008,7 +1010,7 @@ var BB = globalThis.BB = globalThis.BB || {};
               const q = other && byId.get(other);
               return q && q.pos.y > 0.15 * l.size.h && q.pos.y < 0.75 * l.size.h;
             }))
-          : parts.some(p => p.role === 'shelf' || p.role === 'rail');
+          : parts.some(p => p.role === 'shelf' || p.role === 'rail' || p.role === 'stretcher');
         const worst = legs.reduce((m, l) => {
           const len = l.size.h * (braced ? 0.6 : 1);
           const minT = Math.min(l.size.w, l.size.d);

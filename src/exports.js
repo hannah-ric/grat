@@ -311,7 +311,7 @@ BlueprintBuddyImport.build
       for (const d of model.drawers) {
         const n = d.index + 1;
         if (d.runner === 'side_mount_slides' && d.slideLen) {
-          hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtDrill(3)}.` });
+          hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(10)} per side, pilot ${U.fmtDrill(3)}.` });
         } else if (d.runner === 'undermount_slides' && d.slideLen) {
           hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
         } else if (d.runner === 'wood_runners') {

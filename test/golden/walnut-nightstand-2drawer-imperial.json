@@ -26,7 +26,8 @@
    "shelfThickness": 19,
    "sideThickness": 18,
    "backPanel": true,
-   "toeKick": false
+   "toeKick": false,
+   "stretchers": false
   },
   "joinery": {
    "frame": "dowels",
@@ -35,13 +36,15 @@
   },
   "finish": "hardwax_oil",
   "hardware": {
-   "pull": "bar_pull"
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
   },
   "drawers": {
    "count": 2,
    "frontStyle": "inset",
    "runner": "side_mount_slides"
   },
+  "doors": null,
   "custom": null
  },
  "validation": {
@@ -720,7 +723,7 @@
    },
    {
     "kind": "fastener",
-    "label": "#8 × 1 15/16 in wood screw (pilot 1/8 in)",
+    "label": "#8 × 1 15/16 in wood screw (pilot 7/64 in)",
     "qty": 4,
     "price": 0.24
    },
@@ -738,7 +741,7 @@
    },
    {
     "kind": "fastener",
-    "label": "M4 × 5/8 in pan-head screws (pilot 1/8 in)",
+    "label": "M4 × 3/8 in pan-head screws (pilot 1/8 in)",
     "qty": 8,
     "price": 1
    },
@@ -762,7 +765,7 @@
    },
    {
     "kind": "fastener",
-    "label": "M4 × 5/8 in pan-head screws (pilot 1/8 in)",
+    "label": "M4 × 3/8 in pan-head screws (pilot 1/8 in)",
     "qty": 8,
     "price": 1
    },

@@ -26,7 +26,8 @@
    "shelfThickness": 19,
    "sideThickness": 18,
    "backPanel": true,
-   "toeKick": false
+   "toeKick": false,
+   "stretchers": false
   },
   "joinery": {
    "frame": "pocket_screws",
@@ -35,9 +36,11 @@
   },
   "finish": "wipe_poly",
   "hardware": {
-   "pull": "bar_pull"
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
   },
   "drawers": null,
+  "doors": null,
   "custom": {
    "parts": [
     {
@@ -323,7 +326,7 @@
    },
    {
     "kind": "fastener",
-    "label": "#8 × 50 mm wood screw (pilot 3.2 mm)",
+    "label": "#8 × 50 mm wood screw (pilot 2.8 mm)",
     "qty": 6,
     "price": 0.36
    },

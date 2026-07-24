@@ -41,7 +41,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   /* Roles whose failure is structural: their rows carry the clear-stock note
    * (audit F-S3-7 — design values assume clear, straight-grained wood). */
-  const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth'];
+  const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'stretcher', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth', 'door'];
 
   /* ---------------- cut list ---------------- */
   function cutList(spec, model) {
@@ -223,7 +223,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         } else {
           items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         }
-        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+        items.push({ kind: 'fastener', label: `M4 × ${len(10)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
       }
       // Pull lines print the EFFECTIVE style — what pullSpec actually fitted
       // — so the label and the boring instructions can never disagree. A
@@ -250,6 +250,37 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
+
+    // Cabinet doors: hinges sized by BB.HW.doorHingeCount; pulls reuse the
+    // same style/intent path as drawers (code owns counts and bores).
+    for (const d of (model.doors || [])) {
+      const h = d.hinge || {};
+      const hKey = h.key || 'euro_cup';
+      const hCat = BB.HW && BB.HW.HINGES[hKey];
+      const hPrice = hCat ? hCat.price : 4.5;
+      items.push({
+        kind: 'hardware',
+        label: h.label || (hCat && hCat.label) || 'Door hinge',
+        qty: h.count || 2,
+        detail: `door ${d.index + 1}${h.boringNote ? ' — ' + h.boringNote : ''}`,
+        price: hp('hinge_' + hKey, hPrice) * (h.count || 2)
+      });
+      const pull = d.pull || { style: 'knob_round', count: 1, ctcMM: 0, holes: 1 };
+      const effKey = pull.style || pull.styleKey || 'knob_round';
+      if (effKey !== 'none_touch') {
+        const pStyle = BB.HW && BB.HW.PULLS[effKey];
+        if (pStyle) {
+          const boreDetail = pull.ctcMM
+            ? `${pull.holes} × ${drill(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.t || 19))}`
+            : `one ${drill(pStyle.boreDia || 5)} bore · M4 × ${len(BB.HW.pullScrewLenMM(d.t || 19))}`;
+          items.push({
+            kind: 'hardware', label: pStyle.label, qty: pull.count || 1,
+            detail: `door ${d.index + 1} — ${boreDetail}`,
+            price: hp('pull_' + pStyle.key, pStyle.price) * (pull.count || 1)
+          });
+        }
+      }
+    }
     // No shelf-pin line: every template shelf is JOINED to the sides (the
     // model, cut list, and structural engine all treat it as fixed), so pins
     // would be phantom hardware nothing installs (audit FE-C1/H-02). Pins
@@ -275,6 +306,40 @@ var BB = globalThis.BB = globalThis.BB || {};
   function jointsFor(model, partIds) {
     const set = new Set(partIds);
     return model.joints.filter(j => set.has(j.a) || set.has(j.b));
+  }
+
+  /* Cabinet doors (LIVE): hang after the carcass is square. Counts, boring,
+   * and plate setback come from BB.HW — style intent only on the wire. */
+  function doorSteps(spec, model, out) {
+    if (!model.doors || !model.doors.length) return;
+    const len = mm => U().fmtLength(mm);
+    const drill = mm => U().fmtDrill(mm);
+    const pre = model.doors.length
+      ? ' Pre-finish the door faces (both sides) before hanging — once hinged, the inside face is awkward.'
+      : '';
+    model.doors.forEach((d, i) => {
+      const n = d.index + 1;
+      const h = d.hinge || {};
+      const hLabel = (h.label || 'hinge').toLowerCase();
+      const bore = h.boringNote || (h.cupDia
+        ? `Bore ${h.count} × ${drill(h.cupDia)} cups ${len(h.cupDepth || 13)} deep, boring distance ${len(h.tbMM || 5)} from the door edge.`
+        : `Mortise ${h.count} hinges flush and hang true.`);
+      out.push(step(`door${n}_hang`, `Door ${n}: hang the door`,
+        `${bore} Hang on the ${d.hingeSide || 'left'} side with the ${hLabel}s; set an even reveal all around.${i === 0 ? pre : ''}`,
+        [d.partId].concat(d.hingeIds || []), { door: d.index }));
+      const pull = d.pull;
+      if (pull && pull.style && pull.style !== 'none_touch') {
+        const pStyle = BB.HW && BB.HW.PULLS[pull.style];
+        const pLabel = pStyle ? pStyle.label.toLowerCase() : 'pull';
+        const screwLen = BB.HW ? BB.HW.pullScrewLenMM(d.t || 19) : 25;
+        const boreDetail = pull.ctcMM
+          ? `${pull.holes} × ${drill(5)} through-bores at ${len(pull.ctcMM)} centers · M4 × ${len(screwLen)}`
+          : `one centered ${drill((pStyle && pStyle.boreDia) || 5)} bore · M4 × ${len(screwLen)}`;
+        out.push(step(`door${n}_pull`, `Door ${n}: add the ${pLabel}`,
+          `Mount the ${pLabel} from the inside — ${boreDetail}.`,
+          d.pullIds || [], { door: d.index }));
+      }
+    });
   }
 
   function drawerSteps(spec, model, out, opts) {
@@ -307,18 +372,18 @@ var BB = globalThis.BB = globalThis.BB || {};
           `Join the sides, box front, and box back with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside). Check the diagonals — square now or fight it forever.${n === 1 ? preFinish : ''}`,
           boxIds, { drawer: d.index }));
         out.push(step(`dr${n}_bottom`, `Drawer ${n}: fit the bottom`,
-          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of the sides and front (the back is relieved). Slide in the ${len(6)} bottom from the rear — no glue, it floats.`,
+          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of the sides and front (the back is relieved) — cut to the MEASURED thickness of the plywood, not nominal (sheet goods run thin). Slide in the ${len(6)} bottom from the rear — no glue, it floats.`,
           ids('bottom'), { drawer: d.index }));
       } else {
         out.push(step(`dr${n}_box`, `Drawer ${n}: groove, then build the box around its bottom`,
-          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.${n === 1 ? preFinish : ''}`,
+          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts — cut to the MEASURED thickness of the plywood, not nominal. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.${n === 1 ? preFinish : ''}`,
           boxIds.concat(ids('bottom')), { drawer: d.index }));
       }
       const railIds = model.parts.filter(p => p.role === 'rail').slice(d.index, d.index + 2).map(p => p.id);
       const gearIds = railIds.concat(d.gearIds || []);
       if (d.runner === 'side_mount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the slides`,
-          `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(16)} pan-heads. A spacer block beats a tape measure here.`,
+          `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(10)} pan-heads (sized for ${len(12)} drawer sides — longer tips poke into the interior). A spacer block beats a tape measure here.`,
           gearIds, { drawer: d.index }));
       } else if (d.runner === 'undermount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the undermount slides`,
@@ -394,11 +459,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     const hasSheet = model.parts.some(p => isSheetMat(p.material));
     if (hasSheet) notes.push('Full sheets are floppy and heavy — break them down on foam on the floor with a track/circular saw before any table-saw work.');
     if (model.parts.some(p => p.material === 'mdf')) notes.push('MDF dust is fine and binder-laden — this build wants real dust extraction, not just a mask.');
-    const narrowRip = model.parts.some(p => {
+    const narrowRips = model.parts.filter(p => {
       const dims = [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
       return dims[1] < 150 && dims[0] > 300 && p.role !== 'pull';
     });
-    if (narrowRip) notes.push(`Several rips finish under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
+    if (narrowRips.length === 1) notes.push(`One rip finishes under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
+    else if (narrowRips.length > 1) notes.push(`${narrowRips.length} rips finish under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
     if (stockPlan && stockPlan.mode === 'rough') notes.push('Rough stock can hide staples and grit — inspect and scrub edges before it touches jointer knives.');
     if (integrity && integrity.antiTip) notes.push('This piece requires the wall anchor before it goes into service — it is in the steps and the BOM.');
     out.push(step('safety', 'Shop safety for this build', notes.join(' '), []));
@@ -450,6 +516,23 @@ var BB = globalThis.BB = globalThis.BB || {};
    * this to a knowledge-table property. */
   const isKnockdown = joint => joint === 'kd_bolt';
   const KD_STEP_TEXT = 'Bolt together — hand-tight, then snug once square.';
+
+  /* Audit M-08: when integrity demands slotted screw holes for a captured
+   * panel (seasonal movement), the demand must reach the step that drives
+   * those screws — not only the Safety tab. */
+  function slottedNote(integrity, partId) {
+    if (!integrity || !integrity.checks) return '';
+    const hit = integrity.checks.find(c =>
+      c.status === 'advisory' && /slot|elongat/i.test(c.explain || '') &&
+      (c.id === 'movement' || (c.id || '').indexOf('move') === 0 ||
+        (c.partIds && c.partIds.includes(partId)) ||
+        (c.explain || '').toLowerCase().includes((partId || '').replace(/_\d+$/, '').replace(/_/g, ' '))));
+    // Broader: any movement advisory that mentions slotting applies to
+    // captured panels in this assembly — append once when we have a part.
+    const slot = integrity.checks.find(c => /slot|elongat/i.test(c.explain || '') && c.status !== 'pass');
+    if (!slot && !hit) return '';
+    return ' Elongate the screw holes across the grain (slot, don’t just drill) so the panel can move with the seasons — or it will split.';
+  }
 
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
@@ -545,16 +628,25 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       drawerSteps(spec, model, out, opts);
+      doorSteps(spec, model, out);
     } else if (t === 'nightstand') {
       out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies. Dry-fit and check square before any glue.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
       out.push(step('s2', 'Connect with back apron and rails', `Join the back apron and the front drawer rails between the side frames with ${frP}.`, ['apron_back_1', ...rails]));
-      if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf', 'Notch the shelf around the legs and fasten it.', ['shelf_1']));
+      if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf',
+        'Notch the shelf around the legs and fasten it.' + slottedNote(integrity, 'shelf_1'),
+        ['shelf_1']));
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
       out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
       out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. ${isKnockdown(spec.joinery.frame) ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
+      const stretchers = model.parts.filter(p => p.role === 'stretcher').map(p => p.id);
+      if (stretchers.length) {
+        out.push(step('s2b', 'Fit the stretchers',
+          `Dry-fit the lower stretchers between the legs with ${frP}, then glue and clamp — they stiffen the base against racking. Check the diagonals before the glue sets.`,
+          stretchers));
+      }
       out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
     }
     // Mandatory anti-tip anchoring: an instruction step, not an aside. A
@@ -609,6 +701,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     'Tape measure', 'Combination square', 'Table saw or circular saw with a guide',
     'Drill/driver', 'Bar or pipe clamps'
   ];
+  /* Canonical tool keys so synonym rows from JOINERY.tools collapse
+   * (audit M-11): "router or table saw" ≡ "table saw or router table", etc. */
+  const TOOL_CANON = [
+    { re: /table saw or router table|router or table saw/i, key: 'Table saw or router table' },
+    { re: /^drill$/i, key: 'Drill/driver' },
+    { re: /^clamps$/i, key: 'Bar or pipe clamps' },
+    { re: /bar or pipe clamps/i, key: 'Bar or pipe clamps' },
+    { re: /drill\/driver/i, key: 'Drill/driver' }
+  ];
+  function canonTool(s) {
+    const t = String(s || '').trim();
+    for (const c of TOOL_CANON) if (c.re.test(t)) return c.key;
+    return cap(t);
+  }
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   function toolList(spec, model, stockPlan) {
     const tools = new Set(BASE_TOOLS);
@@ -623,7 +729,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       tools.add(`${finSched.prep.betweenGrit}-grit pad (between coats)`);
     }
     for (const t of new Set(model.joints.map(j => j.type))) {
-      for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(cap(tool));
+      for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(canonTool(tool));
     }
     if (model.parts.some(p => BB.Geo.cutAngles(p.rot))) tools.add('Miter saw (angled cuts)');
     if (model.parts.some(p => K.WOOD_SPECIES[p.material] && K.WOOD_SPECIES[p.material].sheet)) tools.add('Circular saw + straightedge (sheet breakdown)');
@@ -635,6 +741,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       tools.add('Thickness planer or drum sander (stock bought over plan thickness)');
     }
     if (model.drawers && model.drawers.length) tools.add('Shims + spacers (drawer fitting)');
+    // Figure-8 floated tops need a Forstner for the apron recess (audit M-05).
+    if (model.parts.some(p => p.role === 'top' || p.role === 'seat') &&
+        model.parts.some(p => p.role === 'apron' || p.role === 'rail')) {
+      tools.add('19 mm Forstner bit (figure-8 recesses)');
+    }
+    if (model.doors && model.doors.length) {
+      tools.add('35 mm Forstner bit (cup hinge boring)');
+      tools.add('Hinge boring jig or marking gauge');
+    }
     const fin = K.FINISHES.find(f => f.key === spec.finish);
     if (fin) tools.add(`Rags / applicator (${fin.label.toLowerCase()})`);
     return [...tools];

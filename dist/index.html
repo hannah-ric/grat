@@ -3488,12 +3488,14 @@ body.ph-open .porch::after { display: none; }
     screws: [
       { key: 'wood_8x25', label: '#8 × {25} wood screw', pilot: 2.8, use: 'Drawer fronts from inside the box' },
       { key: 'wood_8x32', label: '#8 × {32} wood screw', pilot: 2.8, use: 'Aprons, cleats, general carcass' },
-      { key: 'wood_8x50', label: '#8 × {50} wood screw', pilot: 3.2, use: 'Legs, rails, structural butt joints' },
-      { key: 'pocket_32', label: '{32} coarse pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} stock' },
-      { key: 'slide_m4', label: 'M4 × {16} pan-head', pilot: 3.0, use: 'Drawer slide mounting' },
+      { key: 'wood_8x50', label: '#8 × {50} wood screw', pilot: 2.8, use: 'Legs, rails, structural butt joints' },
+      { key: 'pocket_32', label: '{32} coarse pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} softwood/sheet stock' },
+      { key: 'slide_m4', label: 'M4 × {10} pan-head', pilot: 3.0, use: 'Drawer slide mounting into {12} box sides' },
       { key: 'top_button', label: 'Tabletop button + #8 × {16}', pilot: 2.8, use: 'Solid tops — lets the panel move' },
-      { key: 'pocket_63', label: '{63} coarse pocket screw', pilot: 0, use: 'Pocket joints in {38} (2×) stock' },
-      { key: 'wood_8x64', label: '#8 × {64} wood screw', pilot: 3.2, use: '{19} stock through into {38} framing' },
+      { key: 'pocket_63', label: '{63} coarse pocket screw', pilot: 0, use: 'Pocket joints in {38} (2×) softwood/sheet stock' },
+      { key: 'pocket_32_fine', label: '{32} fine pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} hardwood' },
+      { key: 'pocket_63_fine', label: '{63} fine pocket screw', pilot: 0, use: 'Pocket joints in {38} (2×) hardwood' },
+      { key: 'wood_8x64', label: '#8 × {64} wood screw', pilot: 2.8, use: '{19} stock through into {38} framing' },
       { key: 'struct_6x90', label: '{6} × {90} structural screw', pilot: 4.0, use: '2× and 4×4 frame joints, workbench bases' }
     ],
     dowels: [
@@ -3654,6 +3656,9 @@ body.ph-open .porch::after { display: none; }
     if (HW) {
       for (const s of Object.values(HW.SLIDES)) out['slide_' + s.key] = s.price;
       for (const p of Object.values(HW.PULLS)) out['pull_' + p.key] = p.price;
+      for (const k of ['euro_cup', 'butt_brass', 'no_mortise']) {
+        if (HW.HINGES[k]) out['hinge_' + k] = HW.HINGES[k].price;
+      }
     }
     return out;
   }
@@ -3668,6 +3673,7 @@ body.ph-open .porch::after { display: none; }
     if (key.startsWith('glue_')) { const g = GLUES.find(x => 'glue_' + x.key === key); if (g) return g.label; }
     if (HW && key.startsWith('slide_')) { const s = HW.SLIDES[key.slice(6)]; if (s) return s.label; }
     if (HW && key.startsWith('pull_')) { const p = HW.PULLS[key.slice(5)]; if (p) return p.label + (p.key === 'none_touch' ? '' : ' (each)'); }
+    if (HW && key.startsWith('hinge_')) { const h = HW.HINGES[key.slice(6)]; if (h) return h.label + ' (each)'; }
     return {
       finish_flat: 'Finish (per project)', antitip_kit: 'Anti-tip wall anchor kit',
       shelf_pin: 'Shelf pin (each)', screw_pack: 'Screw pack (drawer mounting)',
@@ -4226,16 +4232,26 @@ body.ph-open .porch::after { display: none; }
       note: 'Plain steel streaks tannin-rich woods black in the rain.'
     }
   };
+  function hingePick(styleKey, frontStyle) {
+    const front = frontStyle === 'inset' ? 'inset' : 'overlay';
+    let h = HINGES[styleKey];
+    if (h && h.fronts && h.fronts.includes(front)) return h;
+    const live = ['euro_cup', 'butt_brass', 'no_mortise'];
+    for (const k of live) {
+      const c = HINGES[k];
+      if (c && c.fronts.includes(front)) return c;
+    }
+    return front === 'inset' ? HINGES.butt_brass : HINGES.euro_cup;
+  }
   function digestLine() {
-    return 'HARDWARE STYLES (quantities/ratings computed by code): pulls={' +
-      Object.keys(PULLS).join(',') + '} runners per RUN enum; slides sized by load.';
+    return 'HARDWARE STYLES (code owns counts/bores): pulls=PUL hinges=HNG runners=RUN; slides by load; door hinges by height/weight.';
   }
   BB.HW = {
     HINGES, PULLS, PULL_CTC_SERIES, SLIDES, LIFTS, CATCHES, LOCKS,
     SHELF_SUPPORT, TABLE_BED, WALL_HANG, FEET_MISC, TRADITIONAL, GATES,
     panelWeightKg, doorHingeCount, cupBoring, gasStrut, lidStay, powerFactor,
     pullSpec, pullScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
-    digestLine
+    hingePick, digestLine
   };
 })();</script>
 <script>var BB = globalThis.BB = globalThis.BB || {};
@@ -5001,12 +5017,13 @@ body.ph-open .porch::after { display: none; }
       structure: {
         topThickness: 25, legThickness: 70, apronHeight: 90, apronThickness: 20,
         apronInset: 12, shelfCount: 0, shelfThickness: 19, sideThickness: 18,
-        backPanel: true, toeKick: false
+        backPanel: true, toeKick: false, stretchers: false
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
-      hardware: { pull: 'bar_pull' },
+      hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
+      doors: null,
       custom: null
     };
     const t = base.meta.template;
@@ -5169,7 +5186,10 @@ body.ph-open .porch::after { display: none; }
     'structure.apronInset': 'apron inset', 'structure.shelfCount': 'shelf count',
     'structure.shelfThickness': 'shelf thickness', 'structure.sideThickness': 'side thickness',
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
+    'structure.stretchers': 'stretchers',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
+    'hardware.pull': 'pull style', 'hardware.hinge': 'hinge style',
+    'doors.count': 'door count', 'doors.frontStyle': 'door front style',
     'finish': 'finish', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
   };
@@ -5280,10 +5300,13 @@ body.ph-open .porch::after { display: none; }
     {
       const hasKD = ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'kd_bolt') ||
         ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'kd_bolt');
-      if (mentioned(/\b(hinged?|hinges|pivot(?:s|ing)?|fold(?:s|ing|able)?(?:[\s-](?:down|out|up|flat))?)\b/)) {
+      const hasDoors = !!(spec.doors && spec.doors.count);
+      if (mentioned(/\b(fold(?:s|ing|able)?(?:[\s-](?:down|out|up|flat))?|hinged?\s+lids?|lifts?[\s-]?off)\b/)) {
+        fixes.push(hasDoors
+          ? 'the doors swing on hinges, but lids and folding mechanisms aren’t in this plan'
+          : 'nothing hinges, folds, or pivots in this plan — every connection is fixed' + (hasKD ? ' or bolted (kd_bolt)' : ''));
+      } else if (!hasDoors && mentioned(/\b(hinged?|hinges|pivot(?:s|ing)?)\b/)) {
         fixes.push('nothing hinges, folds, or pivots in this plan — every connection is fixed' + (hasKD ? ' or bolted (kd_bolt)' : ''));
-      } else if (!hasKD && mentioned(/\blifts?[\s-]?off\b/)) {
-        fixes.push('the lid/top is permanently fastened — no lift-off connection exists in this plan');
       }
     }
     {
@@ -5540,6 +5563,54 @@ body.ph-open .porch::after { display: none; }
         }
       }
     }
+    if (!raw || !correctedSpec) return notes;
+    const rw = raw.wood || {};
+    const cw = correctedSpec.wood || {};
+    if (rw.species && rw.species !== cw.species) {
+      const asked = K.WOOD_SPECIES[rw.species];
+      if (!asked || asked.sheet) {
+        notes.push(`“${rw.species}” isn’t a solid species this tool builds in — snapped to ${(K.WOOD_SPECIES[cw.species] || {}).label || cw.species}.`);
+      }
+    }
+    if (rw.species && rw.species === cw.species && /top|leg|apron|shelf|side|door/i.test(JSON.stringify(raw._ask || ''))) {
+    }
+    if (raw._speciesPartScoped) {
+      notes.push('Species applies to the whole piece (per-part woods aren’t expressible yet).');
+    }
+    const rst = raw.structure || {}, cst = correctedSpec.structure || {};
+    for (const [key, label] of [
+      ['topThickness', 'top thickness'], ['legThickness', 'leg thickness'],
+      ['apronThickness', 'apron thickness'], ['shelfThickness', 'shelf thickness'],
+      ['sideThickness', 'side thickness']
+    ]) {
+      const a = rst[key], b = cst[key];
+      if (typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) > 0.5) {
+        notes.push(`${label} ${U().fmtLength(a)} isn’t buyable stock — snapped to ${U().fmtLength(b)}.`);
+      }
+    }
+    const lvl = correctedSpec.meta && correctedSpec.meta.level;
+    const rj = raw.joinery || {}, cj = correctedSpec.joinery || {};
+    for (const kind of ['frame', 'case', 'box']) {
+      if (rj[kind] && cj[kind] && rj[kind] !== cj[kind]) {
+        const want = K.JOINERY[rj[kind]], got = K.JOINERY[cj[kind]];
+        notes.push(`${want ? want.label : rj[kind]} isn’t available at ${lvl} — switched to ${got ? got.label : cj[kind]}.`);
+      }
+    }
+    if (raw.drawers && !correctedSpec.drawers && correctedSpec.meta) {
+      const t = correctedSpec.meta.template;
+      if (t !== 'nightstand' && t !== 'cabinet') {
+        notes.push('Drawers only exist on nightstand and cabinet templates — removed here.');
+      }
+    }
+    if (raw.doors && !correctedSpec.doors && correctedSpec.meta && correctedSpec.meta.template !== 'cabinet') {
+      notes.push('Doors only exist on the cabinet template — removed here.');
+    }
+    if (rst.stretchers && !cst.stretchers && correctedSpec.meta) {
+      const t = correctedSpec.meta.template;
+      if (t !== 'table' && t !== 'desk' && t !== 'bench') {
+        notes.push('Stretchers only apply to table, desk, and bench — cleared here.');
+      }
+    }
     return notes;
   }
   function customGrainInfo(p) {
@@ -5636,6 +5707,7 @@ body.ph-open .porch::after { display: none; }
     st.shelfCount = clamp(Math.round(num(st.shelfCount, 0)), 0, 8);
     st.backPanel = !!st.backPanel;
     st.toeKick = template === 'cabinet' ? !!st.toeKick : false;
+    st.stretchers = !!(st.stretchers && (template === 'table' || template === 'desk' || template === 'bench'));
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
     const legCap = Math.floor(Math.min(o.width, o.depth) / 4);
     if (st.legThickness > legCap) {
@@ -5648,6 +5720,10 @@ body.ph-open .porch::after { display: none; }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
     s.hardware = s.hardware && typeof s.hardware === 'object' ? s.hardware : {};
     if (!BB.HW || !BB.HW.PULLS[s.hardware.pull]) s.hardware.pull = 'bar_pull';
+    if (!BB.HW || !BB.HW.HINGES[s.hardware.hinge] ||
+        !['euro_cup', 'butt_brass', 'no_mortise'].includes(s.hardware.hinge)) {
+      s.hardware.hinge = 'euro_cup';
+    }
     if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
       const d = s.drawers;
       d.count = clamp(Math.round(num(d.count, 1)), 1, 4);
@@ -5659,6 +5735,13 @@ body.ph-open .porch::after { display: none; }
       s.drawers = null;
     }
     if (template === 'nightstand' && !s.drawers) s.drawers = { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' };
+    if (s.doors && template === 'cabinet') {
+      const d = s.doors;
+      d.count = clamp(Math.round(num(d.count, 2)), 1, 2);
+      d.frontStyle = d.frontStyle === 'inset' ? 'inset' : 'overlay';
+    } else {
+      s.doors = null;
+    }
     while (st.shelfCount > 0 && BB.Parametric && BB.Parametric.shelfSpacingFor(s) < st.shelfThickness + 20) st.shelfCount--;
     if (template === 'custom') {
       s.custom = correctCustom(s.custom, s.meta.level);
@@ -6154,6 +6237,94 @@ body.ph-open .porch::after { display: none; }
     });
     return { openings, drawers };
   }
+  function buildDoors(spec, zone, parts) {
+    const doors = [];
+    if (!spec.doors || !spec.doors.count) return doors;
+    const count = Math.min(2, Math.max(1, Math.round(spec.doors.count)));
+    const inset = spec.doors.frontStyle !== 'overlay';
+    const frontT = 19;
+    const sp = spec.wood.species;
+    const gap = 2;
+    const openW = zone.clearW;
+    const openH = zone.yTop - zone.yBottom;
+    if (openH < 120 || openW < 150) return doors;
+    const hingeKey = (BB.HW && spec.hardware && BB.HW.HINGES[spec.hardware.hinge])
+      ? spec.hardware.hinge
+      : (inset ? 'butt_brass' : 'euro_cup');
+    const hingeCat = BB.HW ? BB.HW.hingePick(hingeKey, inset ? 'inset' : 'overlay') : null;
+    const pullStyle = (BB.HW && spec.hardware && BB.HW.PULLS[spec.hardware.pull])
+      ? spec.hardware.pull
+      : 'knob_round';
+    for (let i = 0; i < count; i++) {
+      let fw, fh, px;
+      if (count === 1) {
+        fw = inset ? openW - 2 * gap : Math.min(zone.overlayMaxW || openW + 20, openW + 20);
+        px = zone.x || 0;
+      } else {
+        const half = openW / 2;
+        fw = inset ? half - 1.5 * gap : half + Math.min(10, ((zone.overlayMaxW || openW + 20) - openW) / 2);
+        px = (zone.x || 0) + (i === 0 ? -half / 2 : half / 2);
+      }
+      fh = inset ? openH - 2 * gap : openH + Math.min(20, 16);
+      const frontZ = inset ? zone.zFront - frontT / 2 : zone.zFront + frontT / 2;
+      const cy = zone.yBottom + openH / 2;
+      const id = `door_${i + 1}`;
+      const hingeSide = count === 1 ? 'left' : (i === 0 ? 'left' : 'right');
+      parts.push(part(id, `door_${Math.round(fw)}x${Math.round(fh)}`, 'door', count === 1 ? 'Door' : `Door ${i + 1}`,
+        fw, fh, frontT, px, cy, frontZ,
+        { material: sp, group: 'door', explode: { x: hingeSide === 'left' ? -0.8 : 0.8, y: 0, z: 0.6 } }));
+      const doorKg = BB.HW ? BB.HW.panelWeightKg(fw, fh, frontT, sp) : 5;
+      const hCount = BB.HW ? BB.HW.doorHingeCount(fh, doorKg) : 2;
+      const hingeIds = [];
+      for (let hi = 0; hi < hCount; hi++) {
+        const hy = cy - fh / 2 + 80 + (hCount === 1 ? fh / 2 - 80 : (fh - 160) * hi / Math.max(1, hCount - 1));
+        const hx = hingeSide === 'left' ? px - fw / 2 + 15 : px + fw / 2 - 15;
+        const hid = `door_${i + 1}_hinge_${hi + 1}`;
+        parts.push(part(hid, 'hinge', 'hinge', `Door ${i + 1} hinge`,
+          35, 12, 20, hx, hy, frontZ - frontT / 2 - 10,
+          { material: 'hardware', hardware: true, group: 'frame' }));
+        hingeIds.push(hid);
+      }
+      let boringNote = '';
+      let tbMM = 5, cupDia = 35, cupDepth = 13;
+      if (hingeCat && hingeCat.key === 'euro_cup') {
+        const overlayMM = inset ? 0 : Math.max(0, (fw - (count === 1 ? openW : openW / 2)) / 2);
+        const bore = BB.HW.cupBoring(overlayMM, 0);
+        tbMM = bore.tbMM; cupDia = bore.cupDia; cupDepth = bore.cupDepth;
+        boringNote = `${hCount} × 35 mm cups, boring distance ${tbMM} mm, plate setback ${bore.plateSetback} mm`;
+      } else if (hingeCat) {
+        boringNote = `${hCount} × ${hingeCat.label.toLowerCase()}`;
+      }
+      const pSpec = BB.HW ? BB.HW.pullSpec(fw, pullStyle) : { style: 'knob_round', count: 1, ctcMM: 0, holes: 1 };
+      const pullIds = [];
+      if (pSpec.style !== 'none_touch') {
+        const isKnob = /knob|ring/.test(pSpec.style);
+        const pw = isKnob ? 35 : Math.max(60, Math.min(fw - 40, (pSpec.ctcMM || 96) + 14));
+        const ph = isKnob ? 35 : 12;
+        const pd = 22;
+        const pullX = hingeSide === 'left' ? px + fw / 2 - 40 : px - fw / 2 + 40;
+        const pullY = cy;
+        for (let pi = 0; pi < pSpec.count; pi++) {
+          const pid = `door_${i + 1}_pull${pSpec.count > 1 ? '_' + (pi + 1) : ''}`;
+          parts.push(part(pid, 'pull', 'pull', `Door ${i + 1} pull`,
+            pw, ph, pd, pullX, pullY, frontZ + frontT / 2 + pd / 2,
+            { material: 'hardware', group: 'door' }));
+          pullIds.push(pid);
+        }
+      }
+      doors.push({
+        index: i, partId: id, hingeSide, t: frontT,
+        w: fw, h: fh,
+        hinge: {
+          key: hingeCat ? hingeCat.key : hingeKey,
+          label: hingeCat ? hingeCat.label : 'Door hinge',
+          count: hCount, boringNote, tbMM, cupDia, cupDepth
+        },
+        hingeIds, pull: Object.assign({ styleKey: pullStyle }, pSpec), pullIds
+      });
+    }
+    return doors;
+  }
   function tableLike(spec) {
     const o = spec.overall, st = spec.structure;
     const t = spec.meta.template;
@@ -6193,7 +6364,21 @@ body.ph-open .porch::after { display: none; }
     }
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
-    return { parts, joints, openings: [], drawers: [] };
+    if (st.stretchers) {
+      const strH = Math.min(70, Math.max(50, Math.round(st.apronHeight * 0.7)));
+      const strT = st.apronThickness;
+      const strY = Math.max(strH / 2 + 20, Math.round(legH * 0.38));
+      const strLen = frameW - 2 * legT;
+      const strZ = frameD / 2 - strT / 2;
+      [[-strZ, 1], [strZ, 2]].forEach(([z, i]) => {
+        parts.push(part(`stretcher_long_${i}`, 'stretcher_long', 'stretcher', 'Stretcher',
+          strLen, strH, strT, 0, strY, z,
+          { material: sp, explode: { x: 0, y: -0.3, z: Math.sign(z) * 0.6 } }));
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: strY, z } });
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: strY, z } });
+      });
+    }
+    return { parts, joints, openings: [], drawers: [], doors: [] };
   }
   function bookshelf(spec) {
     const o = spec.overall, st = spec.structure;
@@ -6227,7 +6412,7 @@ body.ph-open .porch::after { display: none; }
     joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
-    return { parts, joints, openings: [], drawers: [] };
+    return { parts, joints, openings: [], drawers: [], doors: [] };
   }
   function nightstand(spec) {
     const o = spec.overall, st = spec.structure;
@@ -6279,7 +6464,7 @@ body.ph-open .porch::after { display: none; }
       runnerTargets: ['apron_side_1', 'apron_side_2']
     };
     const bankOut = buildBank(spec, zone, parts, joints, '');
-    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers, doors: [] };
   }
   function cabinet(spec) {
     const o = spec.overall, st = spec.structure;
@@ -6336,7 +6521,18 @@ body.ph-open .porch::after { display: none; }
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -innerW / 2, y, z: 0 } });
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: innerW / 2, y, z: 0 } });
     }
-    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+    const doorZone = {
+      clearW: innerW, x: 0,
+      yBottom: shelfZoneBottom, yTop: shelfZoneTop,
+      zFront: o.depth / 2,
+      overlayMaxW: innerW + Math.min(20, sideT)
+    };
+    if (!spec.drawers) {
+      doorZone.yBottom = base + 19;
+      doorZone.yTop = o.height - topT;
+    }
+    const doors = buildDoors(spec, doorZone, parts);
+    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers, doors };
   }
   function customBuild(spec) {
     const parts = [], joints = [];
@@ -6369,7 +6565,7 @@ body.ph-open .porch::after { display: none; }
         pos: { x: (a.pos.x + b.pos.x) / 2, y: (a.pos.y + b.pos.y) / 2, z: (a.pos.z + b.pos.z) / 2 }
       });
     }
-    return { parts, joints, openings: [], drawers: [] };
+    return { parts, joints, openings: [], drawers: [], doors: [] };
   }
   function build(spec) {
     const t = spec.meta.template;
@@ -6380,6 +6576,7 @@ body.ph-open .porch::after { display: none; }
     else if (t === 'custom') m = customBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
+    m.doors = m.doors || [];
     for (const p of m.parts) {
       for (const k of ['w', 'h', 'd']) p.size[k] = Math.round(p.size[k] * 10) / 10;
       for (const k of ['x', 'y', 'z']) p.pos[k] = Math.round(p.pos[k] * 10) / 10;
@@ -7185,6 +7382,7 @@ body.ph-open .porch::after { display: none; }
       if (!custom) {
         if (hasRole('apron')) mults.push({ label: 'apron frame ties the legs', mult: 1.2 });
         if (hasRole('rail')) mults.push({ label: 'drawer rails triangulate the frame', mult: 1.1 });
+        if (hasRole('stretcher')) mults.push({ label: 'lower stretchers brace the legs', mult: 1.35 });
         if (hasRole('back')) mults.push({ label: 'back panel acts as a shear panel', mult: 1.5 });
         if (spec.joinery.case === 'dado' && hasRole('shelf')) mults.push({ label: 'fixed shelves housed in dados', mult: 1.15 });
       } else {
@@ -7202,6 +7400,7 @@ body.ph-open .porch::after { display: none; }
       if (rack.score < 40) {
         if (CARCASS.includes(t) && !spec.structure.backPanel) fixes.push({ id: 'back', label: 'Add a back panel', patch: { structure: { backPanel: true } } });
         if (CARCASS.includes(t) && spec.joinery.case !== 'dado' && allowed.includes('dado')) fixes.push({ id: 'dados', label: 'House shelves in dados', patch: { joinery: { case: 'dado' } } });
+        if (TABLE_LIKE.includes(t) && !spec.structure.stretchers) fixes.push({ id: 'stretchers', label: 'Add lower stretchers', patch: { structure: { stretchers: true } } });
         if (TABLE_LIKE.includes(t) && spec.joinery.frame !== 'mortise_tenon' && allowed.includes('mortise_tenon')) fixes.push({ id: 'mt', label: 'Mortise & tenon frame', patch: { joinery: { frame: 'mortise_tenon' } } });
         if (TABLE_LIKE.includes(t) && spec.joinery.frame === 'butt_screws') fixes.push({ id: 'pocket', label: 'Pocket-screw the frame', patch: { joinery: { frame: 'pocket_screws' } } });
       }
@@ -7226,7 +7425,7 @@ body.ph-open .porch::after { display: none; }
               const q = other && byId.get(other);
               return q && q.pos.y > 0.15 * l.size.h && q.pos.y < 0.75 * l.size.h;
             }))
-          : parts.some(p => p.role === 'shelf' || p.role === 'rail');
+          : parts.some(p => p.role === 'shelf' || p.role === 'rail' || p.role === 'stretcher');
         const worst = legs.reduce((m, l) => {
           const len = l.size.h * (braced ? 0.6 : 1);
           const minT = Math.min(l.size.w, l.size.d);
@@ -7494,7 +7693,7 @@ body.ph-open .porch::after { display: none; }
     if (usable <= 0) return runMM > 0 ? [runMM / 2] : [];
     let n = Math.max(want || 2, Math.ceil(usable / maxSp) + 1);
     while (n > 2 && usable / (n - 1) < RULES.minSpacingMM) n--;
-    if (usable < RULES.minSpacingMM && n > 2) n = 2;
+    if (n === 2 && usable < RULES.minSpacingMM) n = 1;
     const out = [];
     for (let i = 0; i < n; i++) out.push(Math.round((RULES.edgeMM + (n === 1 ? usable / 2 : usable * i / (n - 1))) * 10) / 10);
     return out;
@@ -7535,20 +7734,34 @@ body.ph-open .porch::after { display: none; }
         if (c >= 4) counterboreMM = c;
       }
     }
+    const intoMat = K.WOOD_SPECIES[into.material];
+    const janka = intoMat && !intoMat.sheet ? (intoMat.janka || 1000) : 700;
+    const rootPilot = 2.8;
+    const pilotMM = Math.round(rootPilot * (janka >= 1000 ? 1 : 0.85) * 10) / 10;
     return {
       len, counterboreMM, thru, into,
       biteMM: Math.round((len - (thruT - counterboreMM)) * 10) / 10,
-      pilotMM: len >= 50 ? 3.2 : 2.8,
+      pilotMM,
       clearanceMM: 4.5,
       spec: `#8 × {${len}} wood screw`,
       housed
     };
   }
+  function pocketCatalog(memberT, intoMaterial) {
+    const long = memberT >= 36;
+    const intoMat = K.WOOD_SPECIES[intoMaterial];
+    const janka = intoMat && !intoMat.sheet ? (intoMat.janka || 1000) : 700;
+    const fine = janka >= 1000;
+    if (long) return fine ? CATALOG.pocket_63_fine : CATALOG.pocket_63;
+    return fine ? CATALOG.pocket_32_fine : CATALOG.pocket;
+  }
   const CATALOG = {
-    butt_screw: { spec: '#8 × {50} wood screw', pilotMM: 3.2 },
+    butt_screw: { spec: '#8 × {50} wood screw', pilotMM: 2.8 },
     case_screw: { spec: '#8 × {32} wood screw', pilotMM: 2.8 },
     pocket: { spec: '{32} coarse pocket screw', pilotMM: 9.5 }, // the jig's 3/8 in stepped bit
     pocket_63: { spec: '{63} coarse pocket screw', pilotMM: 9.5 }, // 2× stock — a 32 cannot join 38 (K.FASTENERS)
+    pocket_32_fine: { spec: '{32} fine pocket screw', pilotMM: 9.5 },
+    pocket_63_fine: { spec: '{63} fine pocket screw', pilotMM: 9.5 },
     front_screw: { spec: '#8 × {25} wood screw', pilotMM: 2.8 },
     figure8: { spec: 'figure-8 fastener + #8 × {16}', pilotMM: 2.8 },
     biscuit: { spec: '#20 biscuit', pilotMM: 0 },
@@ -7578,7 +7791,8 @@ body.ph-open .porch::after { display: none; }
       const pos = positions(runMM, Math.max(2, Math.round(runMM / 300)), 300);
       const c = CATALOG.figure8;
       for (const p of pos) out.fasteners.push({ kind: 'figure8', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-      out.text = `${out.fasteners.length} figure-8 fasteners along the ${b.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — pilot ${drill(c.pilotMM)}, and let the top move.`;
+      out.text = `${out.fasteners.length} figure-8 fasteners along the ${b.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — recess each with a ${len(19)} Forstner ~${len(3)} deep into the apron's top edge, pilot ${drill(c.pilotMM)}, and let the top move.`;
+      out.figure8 = true;
       return out;
     }
     switch (type) {
@@ -7590,9 +7804,9 @@ body.ph-open .porch::after { display: none; }
         for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, clearanceMM: sp.clearanceMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         const spacing = pos.length === 1 ? 'centered on the run'
           : `first ${len(RULES.edgeMM)} from each end${pos.length > 2 ? `, then every ${len(Math.round((runMM - 2 * RULES.edgeMM) / (pos.length - 1)))}` : ''}`;
-        const where = sp.housed ? `centered ${fine(mateT / 2)} from the joint line`
+        const where = sp.housed ? `centered ${len(mateT / 2)} from the joint line`
           : sp.thru === a ? `on the ${a.name.toLowerCase()}'s centerline`
-            : `centered ${fine(minDim(a) / 2)} from the joint line`;
+            : `centered ${len(minDim(a) / 2)} from the joint line`;
         const draw = sp.counterboreMM
           ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, ${drill(sp.clearanceMM)} clearance through the rest of the ${sp.thru.name.toLowerCase()} — the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.`
           : ` Drill ${drill(sp.clearanceMM)} clearance through the ${sp.thru.name.toLowerCase()} and countersink so the head seats flush — the screw must spin free in the near member to draw the joint tight.`;
@@ -7600,7 +7814,7 @@ body.ph-open .porch::after { display: none; }
         break;
       }
       case 'pocket_screws': {
-        const c = memberT >= 36 ? CATALOG.pocket_63 : CATALOG.pocket;
+        const c = pocketCatalog(memberT, b.material);
         const pos = positions(runMM, 2);
         for (const p of pos) out.fasteners.push({ kind: 'pocket', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         out.text = `${pos.length} pocket holes on the hidden face of ${a.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — jig set for ${len(memberT)} stock, ${fmtSpec(c)}s.`;
@@ -7631,7 +7845,7 @@ body.ph-open .porch::after { display: none; }
         const depth = BB.Plans ? BB.Plans.jointAllowance(type, mateT) : Math.min(6, Math.floor(mateT / 3));
         out.dado = { depthMM: depth, widthMM: memberT };
         out.text = type === 'dado'
-          ? `Dado ${len(memberT)} wide × ${len(depth)} deep (⅓ of the ${len(mateT)} stock, capped) — cut to the MEASURED thickness of the shelf, not nominal.`
+          ? `Dado ${len(memberT)} wide × ${len(depth)} deep (⅓ of the ${len(mateT)} stock, capped) — cut to the MEASURED thickness of the ${a.name.toLowerCase()}, not nominal.`
           : type === 'rabbet'
             ? `Rabbet ${len(memberT)} × ${len(depth)} along the mating edge; keep the remaining wall at least half the stock.`
             : `Locking rabbet: ${len(depth)} tongue on the ${a.name.toLowerCase()}, matching ${len(depth)} dado in the ${b.name.toLowerCase()} — sneak up on a hand-press fit.`;
@@ -7778,10 +7992,32 @@ body.ph-open .porch::after { display: none; }
     if (!joints || !joints.length) return '';
     const seen = new Set();
     const bits = [];
+    const figJoints = joints.filter(j => {
+      const lay = layoutForJoint(spec, model, j);
+      return lay && lay.figure8;
+    });
+    if (figJoints.length) {
+      let total = 0;
+      let sample = null;
+      for (const j of figJoints) {
+        const lay = layoutForJoint(spec, model, j);
+        if (!lay) continue;
+        total += lay.fasteners.length;
+        sample = sample || lay;
+        seen.add(j.type);
+      }
+      if (sample && total) {
+        const len = mm => U().fmtLength(mm);
+        const drill = mm => U().fmtDrill(mm);
+        const c = CATALOG.figure8;
+        bits.push(`${total} figure-8 fasteners along the aprons, ${len(RULES.edgeMM)} in from each end — recess each with a ${len(19)} Forstner ~${len(3)} deep into the apron's top edge, pilot ${drill(c.pilotMM)}, and let the top move.`);
+      }
+    }
     for (const j of joints) {
       if (seen.has(j.type)) continue;
       seen.add(j.type);
       const lay = layoutForJoint(spec, model, j);
+      if (lay && lay.figure8) continue;
       if (lay && lay.text) bits.push(lay.text);
       if (bits.length >= 2) break; // steps stay readable
     }
@@ -8157,7 +8393,7 @@ body.ph-open .porch::after { display: none; }
     if (THROUGH_JOINTS.includes(type)) return Math.max(0, Math.min(cap, Math.round(mateT)));
     return Math.max(0, Math.min(cap, Math.floor(mateT / 3)));
   }
-  const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth'];
+  const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'stretcher', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth', 'door'];
   function cutList(spec, model) {
     const byId = new Map(model.parts.map(p => [p.id, p]));
     const ends = {};
@@ -8307,7 +8543,7 @@ body.ph-open .porch::after { display: none; }
         } else {
           items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         }
-        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+        items.push({ kind: 'fastener', label: `M4 × ${len(10)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
       }
       const pull = d.pull || { styleKey: 'bar_pull', style: 'bar_pull', count: 1, ctcMM: 0, holes: 2 };
       const effKey = pull.style || pull.styleKey;
@@ -8331,6 +8567,34 @@ body.ph-open .porch::after { display: none; }
       }
       items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
+    for (const d of (model.doors || [])) {
+      const h = d.hinge || {};
+      const hKey = h.key || 'euro_cup';
+      const hCat = BB.HW && BB.HW.HINGES[hKey];
+      const hPrice = hCat ? hCat.price : 4.5;
+      items.push({
+        kind: 'hardware',
+        label: h.label || (hCat && hCat.label) || 'Door hinge',
+        qty: h.count || 2,
+        detail: `door ${d.index + 1}${h.boringNote ? ' — ' + h.boringNote : ''}`,
+        price: hp('hinge_' + hKey, hPrice) * (h.count || 2)
+      });
+      const pull = d.pull || { style: 'knob_round', count: 1, ctcMM: 0, holes: 1 };
+      const effKey = pull.style || pull.styleKey || 'knob_round';
+      if (effKey !== 'none_touch') {
+        const pStyle = BB.HW && BB.HW.PULLS[effKey];
+        if (pStyle) {
+          const boreDetail = pull.ctcMM
+            ? `${pull.holes} × ${drill(5)} through-bores, ${len(pull.ctcMM)} centers · M4 × ${len(BB.HW.pullScrewLenMM(d.t || 19))}`
+            : `one ${drill(pStyle.boreDia || 5)} bore · M4 × ${len(BB.HW.pullScrewLenMM(d.t || 19))}`;
+          items.push({
+            kind: 'hardware', label: pStyle.label, qty: pull.count || 1,
+            detail: `door ${d.index + 1} — ${boreDetail}`,
+            price: hp('pull_' + pStyle.key, pStyle.price) * (pull.count || 1)
+          });
+        }
+      }
+    }
     if (opts.integrity && opts.integrity.antiTip) {
       items.push({ kind: 'hardware', label: 'Anti-tip wall anchor kit (strap + wall screws) — REQUIRED', qty: 1, detail: 'tall or top-heavy: anchor to a stud before loading', price: hp('antitip_kit', 7) });
     }
@@ -8345,6 +8609,37 @@ body.ph-open .porch::after { display: none; }
   function jointsFor(model, partIds) {
     const set = new Set(partIds);
     return model.joints.filter(j => set.has(j.a) || set.has(j.b));
+  }
+  function doorSteps(spec, model, out) {
+    if (!model.doors || !model.doors.length) return;
+    const len = mm => U().fmtLength(mm);
+    const drill = mm => U().fmtDrill(mm);
+    const pre = model.doors.length
+      ? ' Pre-finish the door faces (both sides) before hanging — once hinged, the inside face is awkward.'
+      : '';
+    model.doors.forEach((d, i) => {
+      const n = d.index + 1;
+      const h = d.hinge || {};
+      const hLabel = (h.label || 'hinge').toLowerCase();
+      const bore = h.boringNote || (h.cupDia
+        ? `Bore ${h.count} × ${drill(h.cupDia)} cups ${len(h.cupDepth || 13)} deep, boring distance ${len(h.tbMM || 5)} from the door edge.`
+        : `Mortise ${h.count} hinges flush and hang true.`);
+      out.push(step(`door${n}_hang`, `Door ${n}: hang the door`,
+        `${bore} Hang on the ${d.hingeSide || 'left'} side with the ${hLabel}s; set an even reveal all around.${i === 0 ? pre : ''}`,
+        [d.partId].concat(d.hingeIds || []), { door: d.index }));
+      const pull = d.pull;
+      if (pull && pull.style && pull.style !== 'none_touch') {
+        const pStyle = BB.HW && BB.HW.PULLS[pull.style];
+        const pLabel = pStyle ? pStyle.label.toLowerCase() : 'pull';
+        const screwLen = BB.HW ? BB.HW.pullScrewLenMM(d.t || 19) : 25;
+        const boreDetail = pull.ctcMM
+          ? `${pull.holes} × ${drill(5)} through-bores at ${len(pull.ctcMM)} centers · M4 × ${len(screwLen)}`
+          : `one centered ${drill((pStyle && pStyle.boreDia) || 5)} bore · M4 × ${len(screwLen)}`;
+        out.push(step(`door${n}_pull`, `Door ${n}: add the ${pLabel}`,
+          `Mount the ${pLabel} from the inside — ${boreDetail}.`,
+          d.pullIds || [], { door: d.index }));
+      }
+    });
   }
   function drawerSteps(spec, model, out, opts) {
     opts = opts || {};
@@ -8363,18 +8658,18 @@ body.ph-open .porch::after { display: none; }
           `Join the sides, box front, and box back with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside). Check the diagonals — square now or fight it forever.${n === 1 ? preFinish : ''}`,
           boxIds, { drawer: d.index }));
         out.push(step(`dr${n}_bottom`, `Drawer ${n}: fit the bottom`,
-          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of the sides and front (the back is relieved). Slide in the ${len(6)} bottom from the rear — no glue, it floats.`,
+          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of the sides and front (the back is relieved) — cut to the MEASURED thickness of the plywood, not nominal (sheet goods run thin). Slide in the ${len(6)} bottom from the rear — no glue, it floats.`,
           ids('bottom'), { drawer: d.index }));
       } else {
         out.push(step(`dr${n}_box`, `Drawer ${n}: groove, then build the box around its bottom`,
-          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.${n === 1 ? preFinish : ''}`,
+          `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts — cut to the MEASURED thickness of the plywood, not nominal. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.${n === 1 ? preFinish : ''}`,
           boxIds.concat(ids('bottom')), { drawer: d.index }));
       }
       const railIds = model.parts.filter(p => p.role === 'rail').slice(d.index, d.index + 2).map(p => p.id);
       const gearIds = railIds.concat(d.gearIds || []);
       if (d.runner === 'side_mount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the slides`,
-          `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(16)} pan-heads. A spacer block beats a tape measure here.`,
+          `Screw the ${len(d.slideLen)} slides level and flush to the opening sides with M4 × ${len(10)} pan-heads (sized for ${len(12)} drawer sides — longer tips poke into the interior). A spacer block beats a tape measure here.`,
           gearIds, { drawer: d.index }));
       } else if (d.runner === 'undermount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the undermount slides`,
@@ -8442,11 +8737,12 @@ body.ph-open .porch::after { display: none; }
     const hasSheet = model.parts.some(p => isSheetMat(p.material));
     if (hasSheet) notes.push('Full sheets are floppy and heavy — break them down on foam on the floor with a track/circular saw before any table-saw work.');
     if (model.parts.some(p => p.material === 'mdf')) notes.push('MDF dust is fine and binder-laden — this build wants real dust extraction, not just a mask.');
-    const narrowRip = model.parts.some(p => {
+    const narrowRips = model.parts.filter(p => {
       const dims = [p.size.w, p.size.h, p.size.d].sort((a, b) => b - a);
       return dims[1] < 150 && dims[0] > 300 && p.role !== 'pull';
     });
-    if (narrowRip) notes.push(`Several rips finish under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
+    if (narrowRips.length === 1) notes.push(`One rip finishes under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
+    else if (narrowRips.length > 1) notes.push(`${narrowRips.length} rips finish under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
     if (stockPlan && stockPlan.mode === 'rough') notes.push('Rough stock can hide staples and grit — inspect and scrub edges before it touches jointer knives.');
     if (integrity && integrity.antiTip) notes.push('This piece requires the wall anchor before it goes into service — it is in the steps and the BOM.');
     out.push(step('safety', 'Shop safety for this build', notes.join(' '), []));
@@ -8482,6 +8778,17 @@ body.ph-open .porch::after { display: none; }
   }
   const isKnockdown = joint => joint === 'kd_bolt';
   const KD_STEP_TEXT = 'Bolt together — hand-tight, then snug once square.';
+  function slottedNote(integrity, partId) {
+    if (!integrity || !integrity.checks) return '';
+    const hit = integrity.checks.find(c =>
+      c.status === 'advisory' && /slot|elongat/i.test(c.explain || '') &&
+      (c.id === 'movement' || (c.id || '').indexOf('move') === 0 ||
+        (c.partIds && c.partIds.includes(partId)) ||
+        (c.explain || '').toLowerCase().includes((partId || '').replace(/_\d+$/, '').replace(/_/g, ' '))));
+    const slot = integrity.checks.find(c => /slot|elongat/i.test(c.explain || '') && c.status !== 'pass');
+    if (!slot && !hit) return '';
+    return ' Elongate the screw holes across the grain (slot, don’t just drill) so the panel can move with the seasons — or it will split.';
+  }
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -8559,16 +8866,25 @@ body.ph-open .porch::after { display: none; }
       if (has('plinth_1')) out.push(step('s4', 'Add the toe kick', `Fit the toe-kick board ${U().fmtLength(75)} back from the front edge.`, ['plinth_1']));
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       drawerSteps(spec, model, out, opts);
+      doorSteps(spec, model, out);
     } else if (t === 'nightstand') {
       out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies. Dry-fit and check square before any glue.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
       out.push(step('s2', 'Connect with back apron and rails', `Join the back apron and the front drawer rails between the side frames with ${frP}.`, ['apron_back_1', ...rails]));
-      if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf', 'Notch the shelf around the legs and fasten it.', ['shelf_1']));
+      if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf',
+        'Notch the shelf around the legs and fasten it.' + slottedNote(integrity, 'shelf_1'),
+        ['shelf_1']));
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
       out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
       out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. ${isKnockdown(spec.joinery.frame) ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
+      const stretchers = model.parts.filter(p => p.role === 'stretcher').map(p => p.id);
+      if (stretchers.length) {
+        out.push(step('s2b', 'Fit the stretchers',
+          `Dry-fit the lower stretchers between the legs with ${frP}, then glue and clamp — they stiffen the base against racking. Check the diagonals before the glue sets.`,
+          stretchers));
+      }
       out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
     }
     if (integrity && integrity.antiTip) {
@@ -8600,6 +8916,18 @@ body.ph-open .porch::after { display: none; }
     'Tape measure', 'Combination square', 'Table saw or circular saw with a guide',
     'Drill/driver', 'Bar or pipe clamps'
   ];
+  const TOOL_CANON = [
+    { re: /table saw or router table|router or table saw/i, key: 'Table saw or router table' },
+    { re: /^drill$/i, key: 'Drill/driver' },
+    { re: /^clamps$/i, key: 'Bar or pipe clamps' },
+    { re: /bar or pipe clamps/i, key: 'Bar or pipe clamps' },
+    { re: /drill\/driver/i, key: 'Drill/driver' }
+  ];
+  function canonTool(s) {
+    const t = String(s || '').trim();
+    for (const c of TOOL_CANON) if (c.re.test(t)) return c.key;
+    return cap(t);
+  }
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   function toolList(spec, model, stockPlan) {
     const tools = new Set(BASE_TOOLS);
@@ -8611,7 +8939,7 @@ body.ph-open .porch::after { display: none; }
       tools.add(`${finSched.prep.betweenGrit}-grit pad (between coats)`);
     }
     for (const t of new Set(model.joints.map(j => j.type))) {
-      for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(cap(tool));
+      for (const tool of (K.JOINERY[t] ? K.JOINERY[t].tools : [])) tools.add(canonTool(tool));
     }
     if (model.parts.some(p => BB.Geo.cutAngles(p.rot))) tools.add('Miter saw (angled cuts)');
     if (model.parts.some(p => K.WOOD_SPECIES[p.material] && K.WOOD_SPECIES[p.material].sheet)) tools.add('Circular saw + straightedge (sheet breakdown)');
@@ -8623,6 +8951,14 @@ body.ph-open .porch::after { display: none; }
       tools.add('Thickness planer or drum sander (stock bought over plan thickness)');
     }
     if (model.drawers && model.drawers.length) tools.add('Shims + spacers (drawer fitting)');
+    if (model.parts.some(p => p.role === 'top' || p.role === 'seat') &&
+        model.parts.some(p => p.role === 'apron' || p.role === 'rail')) {
+      tools.add('19 mm Forstner bit (figure-8 recesses)');
+    }
+    if (model.doors && model.doors.length) {
+      tools.add('35 mm Forstner bit (cup hinge boring)');
+      tools.add('Hinge boring jig or marking gauge');
+    }
     const fin = K.FINISHES.find(f => f.key === spec.finish);
     if (fin) tools.add(`Rags / applicator (${fin.label.toLowerCase()})`);
     return [...tools];
@@ -9284,7 +9620,7 @@ BlueprintBuddyImport.build
       for (const d of model.drawers) {
         const n = d.index + 1;
         if (d.runner === 'side_mount_slides' && d.slideLen) {
-          hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(16)} per side, pilot ${U.fmtDrill(3)}.` });
+          hw.push({ label: 'Side-mount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair, level and flush to the opening front; 4 × M4 × ${dim(10)} per side, pilot ${U.fmtDrill(3)}.` });
         } else if (d.runner === 'undermount_slides' && d.slideLen) {
           hw.push({ label: 'Undermount slides', qty: 1, where: `Drawer ${n} opening`, text: `${dim(d.slideLen)} pair on the opening floor, dead parallel; box = opening − ${dim(27)} wide, bottom recessed ${U.fmtSmall(12.7)}; notch the box back for the hooks.` });
         } else if (d.runner === 'wood_runners') {
@@ -9468,6 +9804,7 @@ BlueprintBuddyImport.build
   const RUN = ['side_mount_slides', 'wood_runners', 'undermount_slides'];
   const PUL = ['bar_pull', 'knob_round', 'knob_turned_wood', 'cup_pull', 'ring_pull',
     'edge_pull', 'flush_recessed', 'appliance_pull', 'leather_pull', 'none_touch'];
+  const HNG = ['euro_cup', 'butt_brass', 'no_mortise'];
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
@@ -9477,7 +9814,8 @@ BlueprintBuddyImport.build
   const S_KEYS = [
     ['t', 'topThickness'], ['l', 'legThickness'], ['a', 'apronHeight'], ['at', 'apronThickness'],
     ['ai', 'apronInset'], ['c', 'shelfCount'], ['st', 'shelfThickness'], ['sd', 'sideThickness'],
-    ['b', 'backPanel'], ['k', 'toeKick']
+    ['b', 'backPanel'], ['k', 'toeKick'],
+    ['x', 'stretchers']
   ];
   function encodePart(p) {
     const r = p.rot || { x: 0, y: 0, z: 0 };
@@ -9511,11 +9849,17 @@ BlueprintBuddyImport.build
     if (spec.hardware && spec.hardware.pull && spec.hardware.pull !== 'bar_pull') {
       w.hp = ix(PUL, spec.hardware.pull, 0);
     }
+    if (spec.hardware && spec.hardware.hinge && spec.hardware.hinge !== 'euro_cup') {
+      w.hh = ix(HNG, spec.hardware.hinge, 0);
+    }
     for (const [k, path] of S_KEYS) {
       const v = spec.structure[path];
       w.s[k] = typeof v === 'boolean' ? (v ? 1 : 0) : v;
     }
     w.d = spec.drawers ? [spec.drawers.count, ix(FRONT, spec.drawers.frontStyle, 0), ix(RUN, spec.drawers.runner, 0)] : 0;
+    if (spec.doors && spec.doors.count) {
+      w.do = [spec.doors.count, ix(FRONT, spec.doors.frontStyle, 1)];
+    }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
       w.p = spec.custom.parts.map(encodePart);
@@ -9548,7 +9892,7 @@ BlueprintBuddyImport.build
     if (!s || typeof s !== 'object') return out;
     for (const [k, path] of S_KEYS) {
       if (s[k] === undefined || s[k] === null) continue;
-      out[path] = (path === 'backPanel' || path === 'toeKick') ? !!s[k] : s[k];
+      out[path] = (path === 'backPanel' || path === 'toeKick' || path === 'stretchers') ? !!s[k] : s[k];
     }
     return out;
   }
@@ -9571,9 +9915,15 @@ BlueprintBuddyImport.build
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
       finish: at(FIN, w.f, 'wipe_poly'),
-      hardware: { pull: at(PUL, w.hp, 'bar_pull') },
+      hardware: {
+        pull: at(PUL, w.hp, 'bar_pull'),
+        hinge: at(HNG, w.hh, 'euro_cup')
+      },
       drawers: Array.isArray(w.d) && w.d.length
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
+        : null,
+      doors: Array.isArray(w.do) && w.do.length
+        ? { count: w.do[0], frontStyle: at(FRONT, w.do[1], 'overlay') }
         : null,
       custom: null
     };
@@ -9612,6 +9962,10 @@ BlueprintBuddyImport.build
     }
     if (w.f !== undefined) patch.finish = at(FIN, w.f, undefined);
     if (w.hp !== undefined) patch.hardware = { pull: at(PUL, w.hp, undefined) };
+    if (w.hh !== undefined) {
+      patch.hardware = patch.hardware || {};
+      patch.hardware.hinge = at(HNG, w.hh, undefined);
+    }
     if (w.d !== undefined) {
       if (!w.d) patch.drawers = null;
       else if (Array.isArray(w.d)) patch.drawers = { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') };
@@ -9620,6 +9974,15 @@ BlueprintBuddyImport.build
         if (w.d.c !== undefined) patch.drawers.count = w.d.c;
         if (w.d.f !== undefined) patch.drawers.frontStyle = at(FRONT, w.d.f, undefined);
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
+      }
+    }
+    if (w.do !== undefined) {
+      if (!w.do) patch.doors = null;
+      else if (Array.isArray(w.do)) patch.doors = { count: w.do[0], frontStyle: at(FRONT, w.do[1], 'overlay') };
+      else if (typeof w.do === 'object') {
+        patch.doors = {};
+        if (w.do.c !== undefined) patch.doors.count = w.do.c;
+        if (w.do.f !== undefined) patch.doors.frontStyle = at(FRONT, w.do.f, undefined);
       }
     }
     const mapConns = (list, max) => list
@@ -9677,15 +10040,16 @@ BlueprintBuddyImport.build
   const estimateTokens = s => Math.ceil(String(s).length / 3.6);
   const SCHEMA_DOC = [
     'WIRE FORMAT — every reply is minified JSON in this compact format (mm integers; enums are 0-based indexes into these lists, documented once here):',
-    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
-    'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
+    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] HNG=[${HNG.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
+    'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"do":[count,FRONT]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
-    '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
-    'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
+    '"hp"/"hh" = pull/hinge STYLE only (PUL/HNG; omit for bar_pull/euro_cup) — counts and bores are computed by the app.',
+    'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) x=stretchers(0/1 on table/desk/bench).',
+    'Cabinet doors on t=5 only: "do":[count,FRONT]|0 (1–2); "do":0 removes. Chairs/beds/wall-mounts are not templates — ask or nearest floor piece + say so in "e".',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
-    'Mechanisms (hinge/lift-off/fold/slide/door) NOT expressible — all JNT are permanent except kd_bolt (tool-removable). For openable asks build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
+    'Lid/lift-off/fold remain NOT expressible (JNT permanent except kd_bolt). Doors use do/hh. For lid/fold asks: nearest fixed design + say so in "e", or ask — never claim lid motion.',
     'Everything must STAND ON THE FLOOR — hanging/wall/ceiling mounting does not exist (airborne parts are force-grounded); for such asks build the nearest floor-standing design and say so in "e", or ask.',
-    'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences, ≤500 chars — complete sentences, disclosures included), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
+    'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences, ≤500 chars — complete sentences, disclosures included), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} do:{c,f} s:{...}. "d":0 removes drawers; "do":0 removes doors. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
   ].join('\n');
   function buildDigest(snapshots, currentSpec) {
     if (!snapshots || !snapshots.length) return '';
@@ -9700,7 +10064,7 @@ BlueprintBuddyImport.build
     return digest;
   }
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, HNG, PRIM, SURF, GRAIN, STK,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };
@@ -9733,7 +10097,7 @@ BlueprintBuddyImport.build
       'All wire dimensions are millimetres. The app pre-normalizes dimension strings in user messages to explicit millimetres before you see them — NEVER convert units yourself.',
       Codec().SCHEMA_DOC,
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
-      'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
+      'Drawers ("d") on nightstand/cabinet; doors ("do") on cabinet; stretchers ("s.x") on table/desk/bench. Prefer known templates; use t=6 only for novel forms.',
       'ASK OR DISCLOSE: if a load-bearing or fit-critical unknown (what piece; boards on hand when building from the user\'s stock; the size of a named object or count — "for 6", a queen mattress; a stated capacity) would change the design, ask ONE question (QUESTION shape), most consequential first; a follow-up turn may ask the next such unknown (inventory after piece) or state the assumption.',
       'If you design without asking, OPEN "e" naming the assumptions you filled in; size to any named object/count and state that size in "e". Never ask styling/finish first; a complete, well-determined request gets ZERO questions.',
       'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
@@ -9868,6 +10232,27 @@ BlueprintBuddyImport.build
     if (/\b(change|different|other|new)\b.*\bwood\b/.test(t) && !Object.values(K.WOOD_SPECIES).some(s => t.includes(s.label.toLowerCase().split(' ').pop()))) {
       return { kind: 'question', question: 'Which way should the wood go?', options: ['Walnut — dark and refined', 'Hard maple — pale and crisp', 'Pine — light and budget-friendly'] };
     }
+    if (/\b(chair|stool|dining chair)\b/.test(t) && !/\b(bench|table|desk)\b/.test(t)) {
+      return {
+        kind: 'question',
+        question: 'Chairs aren’t a template yet — the closest expressible pieces are a bench or a custom composition. Which should I rough out?',
+        options: ['A bench', 'A custom seat on posts', 'Never mind']
+      };
+    }
+    if (/\bbeds?\b(?!\s*side)|headboard|queen mattress|king mattress\b/.test(t) && !creating) {
+      return {
+        kind: 'question',
+        question: 'Beds aren’t a template yet — I can rough a platform-like custom piece or a bedside cabinet. What helps most?',
+        options: ['A custom platform', 'A nightstand', 'A cabinet']
+      };
+    }
+    if (/\b(wall[\s-]?(?:mount|hung|shelf)|hang(?:ing)?\s+(?:on\s+(?:the\s+)?)?wall|floating\s+(?:wall\s+)?shelf|french cleat)\b/.test(t) && !/\bfloor\b/.test(t)) {
+      return {
+        kind: 'question',
+        question: 'Everything this tool builds stands on the floor — wall mounts aren’t expressible. Closest options?',
+        options: ['A floor bookshelf', 'A cabinet against the wall', 'Never mind']
+      };
+    }
     const speciesText = t.replace(/\binstead of\s+[\w\s-]{2,40}(?=\s|$|,|\.|!|;)/g, ' ');
     let negatedSpecies = null;
     const solid = Object.values(K.WOOD_SPECIES).filter(s => !s.sheet);
@@ -9887,7 +10272,12 @@ BlueprintBuddyImport.build
         picked = s; break;
       }
     }
-    if (picked) { set('wood.species', picked.key); notes.push(picked.label); }
+    if (picked) {
+      set('wood.species', picked.key); notes.push(picked.label);
+      if (/\b(the\s+)?(top|legs?|aprons?|shelves?|sides?|doors?)\b/.test(speciesText)) {
+        notes.push('species applies to the whole piece');
+      }
+    }
     if (!patch.wood && /\boak\b/.test(speciesText)) {
       if (negated(speciesText, /\boak\b/)) negatedSpecies = negatedSpecies || 'oak';
       else { set('wood.species', /white\s+oak/.test(speciesText) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
@@ -9951,11 +10341,49 @@ BlueprintBuddyImport.build
         notes.push(count + ' drawer(s)');
       }
       if (canDrawer(landing)) {
-        if (/\boverlay\b/.test(t)) set('drawers.frontStyle', 'overlay');
-        if (/\binset\b/.test(t)) set('drawers.frontStyle', 'inset');
+        if (/\boverlay\b/.test(t) && !/\bdoors?\b/.test(t)) set('drawers.frontStyle', 'overlay');
+        if (/\binset\b/.test(t) && !/\bdoors?\b/.test(t)) set('drawers.frontStyle', 'inset');
         if (/\bwood(en)? runners?\b/.test(t)) { set('drawers.runner', 'wood_runners'); notes.push('wood runners'); }
         if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) { set('drawers.runner', 'side_mount_slides'); notes.push('side-mount slides'); }
         if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
+      }
+    }
+    const canDoors = w => (w || spec.meta.template) === 'cabinet';
+    if (/\b(no|remove|without)\b.*\bdoors?\b/.test(t)) { patch.doors = null; notes.push('no doors'); }
+    else {
+      let doorM = t.match(/(\d+|one|two|a pair of)\s+doors?\b/) || (/\badd (a |another )?doors?\b/.test(t) ? [null, '2'] : null);
+      if (/\bdoors?\b/.test(t) && !doorM && !/\b(no|without|remove)\b/.test(t)) doorM = [null, '2'];
+      if (doorM && !canDoors(landing) && !creating) {
+        if (!Object.keys(patch).length) {
+          return {
+            kind: 'question',
+            question: `Doors need a cabinet carcass — a ${spec.meta.template} can’t take them yet.`,
+            options: ['Make it a cabinet with doors', 'Keep this piece']
+          };
+        }
+        notes.push(`doors skipped — not available on a ${spec.meta.template}`);
+      } else if (doorM && canDoors(landing)) {
+        const raw = String(doorM[1]).toLowerCase();
+        const count = raw === 'a pair of' || raw === 'two' ? 2 : (WORD_NUMS[raw] || parseInt(raw, 10) || 2);
+        set('doors.count', Math.min(2, Math.max(1, count)));
+        if (/\binset\b/.test(t)) set('doors.frontStyle', 'inset');
+        else if (/\boverlay\b/.test(t)) set('doors.frontStyle', 'overlay');
+        else if (!spec.doors) set('doors.frontStyle', 'overlay');
+        notes.push(count === 1 ? '1 door' : '2 doors');
+      }
+    }
+    const canStretch = w => ['table', 'desk', 'bench'].includes(w || spec.meta.template);
+    if (/\bstretchers?\b/.test(t)) {
+      if (/\b(no|remove|without)\b.*\bstretchers?\b/.test(t)) { set('structure.stretchers', false); notes.push('no stretchers'); }
+      else if (canStretch(landing)) { set('structure.stretchers', true); notes.push('stretchers'); }
+      else if (!creating) {
+        if (!Object.keys(patch).length) {
+          return {
+            kind: 'question',
+            question: 'Stretchers brace table, desk, and bench legs — this piece can’t take them.',
+            options: ['Make it a table with stretchers', 'Keep this piece']
+          };
+        }
       }
     }
     if (/push[ -]?to[ -]?open|handleless|no (visible )?(hardware|handles|pulls)/.test(t)) { set('hardware.pull', 'none_touch'); notes.push('push-to-open'); }
@@ -9965,6 +10393,9 @@ BlueprintBuddyImport.build
     else if (/\bleather (strap )?pulls?\b/.test(t)) { set('hardware.pull', 'leather_pull'); notes.push('leather pulls'); }
     else if (/\bring pulls?\b/.test(t)) { set('hardware.pull', 'ring_pull'); notes.push('ring pulls'); }
     else if (/\bbar pulls?\b/.test(t)) { set('hardware.pull', 'bar_pull'); notes.push('bar pulls'); }
+    if (/\bbutt hinges?\b/.test(t)) { set('hardware.hinge', 'butt_brass'); notes.push('butt hinges'); }
+    else if (/\bno[ -]?mortise hinges?\b/.test(t)) { set('hardware.hinge', 'no_mortise'); notes.push('no-mortise hinges'); }
+    else if (/\b(euro|cup|concealed) hinges?\b/.test(t)) { set('hardware.hinge', 'euro_cup'); notes.push('cup hinges'); }
     for (const f of K.FINISHES) {
       const kw = f.key === 'wipe_poly' ? 'poly' : f.label.toLowerCase().split(' ')[0];
       if (t.includes(kw)) { set('finish', f.key); notes.push(f.label); break; }
@@ -15816,10 +16247,17 @@ BlueprintBuddyImport.build
     const card = el('div', 'check-card' + (c.status === 'fail' ? ' fail' : ''));
     const plainLine = c.anchor
       ? c.explain
-      : 'This part would not safely carry its expected load as designed. '
-      + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.');
+      : (c.explain
+        ? c.explain
+        : ('This part would not safely carry its expected load as designed. '
+          + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.')));
+    const fmtVal = (v) => {
+      const m = typeof v === 'string' && v.match(/\b(\d+(?:\.\d+)?)\s*×/);
+      if (m && Number(m[1]) > 1000) return v.replace(m[0], '>1000×');
+      return v;
+    };
     card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
-      (full ? `<div class="check-value">${esc(c.value)}</div>
+      (full ? `<div class="check-value">${esc(fmtVal(c.value))}</div>
         <div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
       `<p class="check-explain">${full ? esc(c.explain) : esc(plainLine)}</p>` +
       (full && c.factors ? `<div class="check-factors">${c.factors.map(f => `<div><span>${esc(f.label)}</span><span>${f.mult ? '× ' + f.mult : '+' + f.pts}</span></div>`).join('')}</div>` : '');

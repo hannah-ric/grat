@@ -10,10 +10,11 @@
  *
  * Three strata, honestly separated:
  *   LIVE — consumed by today's geometry (drawer slides, pulls, shelf pins,
- *          wooden-runner fitting, the outdoor-hardware advisory).
- *   READY — selection rules with no geometry yet (door hinges, lifts,
- *          stays): tested code awaiting the doors/lids workstream. Their
- *          wire enums are deliberately NOT minted until a consumer exists.
+ *          wooden-runner fitting, cabinet-door hinges, the outdoor-hardware
+ *          advisory).
+ *   READY — selection rules with no geometry yet (lids, lifts, stays):
+ *          tested code awaiting the lids workstream. Lid wire enums stay
+ *          unminted until a consumer exists.
  *   REFERENCE — the teaching layer (catches, locks, wall hanging, feet,
  *          and the traditional no-hardware solutions), searchable in the
  *          Shop Reference, several with 3D inspector models.
@@ -30,7 +31,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
-  /* ---------------- §1 Hinges (READY: awaits the doors workstream) ---- */
+  /* ---------------- §1 Hinges (LIVE on cabinet doors; READY for lids) ---- */
   const HINGES = {
     euro_cup: {
       key: 'euro_cup', label: '35 mm concealed cup hinge', price: 4.5,
@@ -618,10 +619,26 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   };
 
+  /* Door hinge STYLE pick: AI proposes a style; code ensures the hinge
+   * accepts the front style (overlay/inset). Unknown or mismatched styles
+   * snap to the honest default for that front. */
+  function hingePick(styleKey, frontStyle) {
+    const front = frontStyle === 'inset' ? 'inset' : 'overlay';
+    let h = HINGES[styleKey];
+    if (h && h.fronts && h.fronts.includes(front)) return h;
+    // Prefer LIVE wire styles first.
+    const live = ['euro_cup', 'butt_brass', 'no_mortise'];
+    for (const k of live) {
+      const c = HINGES[k];
+      if (c && c.fronts.includes(front)) return c;
+    }
+    return front === 'inset' ? HINGES.butt_brass : HINGES.euro_cup;
+  }
+
   /* ---------------- §9 Digest (one generated line, style keys only) --- */
   function digestLine() {
-    return 'HARDWARE STYLES (quantities/ratings computed by code): pulls={' +
-      Object.keys(PULLS).join(',') + '} runners per RUN enum; slides sized by load.';
+    // Keep this short — the system prompt has a hard token ceiling.
+    return 'HARDWARE STYLES (code owns counts/bores): pulls=PUL hinges=HNG runners=RUN; slides by load; door hinges by height/weight.';
   }
 
   BB.HW = {
@@ -629,6 +646,6 @@ var BB = globalThis.BB = globalThis.BB || {};
     SHELF_SUPPORT, TABLE_BED, WALL_HANG, FEET_MISC, TRADITIONAL, GATES,
     panelWeightKg, doorHingeCount, cupBoring, gasStrut, lidStay, powerFactor,
     pullSpec, pullScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
-    digestLine
+    hingePick, digestLine
   };
 })();

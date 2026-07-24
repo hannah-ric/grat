@@ -36,6 +36,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const RUN = ['side_mount_slides', 'wood_runners', 'undermount_slides'];
   const PUL = ['bar_pull', 'knob_round', 'knob_turned_wood', 'cup_pull', 'ring_pull',
     'edge_pull', 'flush_recessed', 'appliance_pull', 'leather_pull', 'none_touch'];
+  // HNG: LIVE cabinet-door hinge styles only (append-only). Lid hinges stay
+  // READY without a wire enum until a lids consumer exists.
+  const HNG = ['euro_cup', 'butt_brass', 'no_mortise'];
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
@@ -48,7 +51,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const S_KEYS = [
     ['t', 'topThickness'], ['l', 'legThickness'], ['a', 'apronHeight'], ['at', 'apronThickness'],
     ['ai', 'apronInset'], ['c', 'shelfCount'], ['st', 'shelfThickness'], ['sd', 'sideThickness'],
-    ['b', 'backPanel'], ['k', 'toeKick']
+    ['b', 'backPanel'], ['k', 'toeKick'],
+    // x=stretchers (table/desk/bench) — append-only; omit for false default
+    ['x', 'stretchers']
   ];
 
   /* ---------------- encode: verbose corrected spec -> wire ---------------- */
@@ -87,11 +92,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (spec.hardware && spec.hardware.pull && spec.hardware.pull !== 'bar_pull') {
       w.hp = ix(PUL, spec.hardware.pull, 0);
     }
+    // Hinge style: only a non-default (non euro_cup) rides the wire.
+    if (spec.hardware && spec.hardware.hinge && spec.hardware.hinge !== 'euro_cup') {
+      w.hh = ix(HNG, spec.hardware.hinge, 0);
+    }
     for (const [k, path] of S_KEYS) {
       const v = spec.structure[path];
       w.s[k] = typeof v === 'boolean' ? (v ? 1 : 0) : v;
     }
     w.d = spec.drawers ? [spec.drawers.count, ix(FRONT, spec.drawers.frontStyle, 0), ix(RUN, spec.drawers.runner, 0)] : 0;
+    // Cabinet doors: "do":[count,FRONT]|0 — omit when absent so legacy
+    // cabinet share codes stay identical.
+    if (spec.doors && spec.doors.count) {
+      w.do = [spec.doors.count, ix(FRONT, spec.doors.frontStyle, 1)];
+    }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
       w.p = spec.custom.parts.map(encodePart);
@@ -126,7 +140,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!s || typeof s !== 'object') return out;
     for (const [k, path] of S_KEYS) {
       if (s[k] === undefined || s[k] === null) continue;
-      out[path] = (path === 'backPanel' || path === 'toeKick') ? !!s[k] : s[k];
+      out[path] = (path === 'backPanel' || path === 'toeKick' || path === 'stretchers') ? !!s[k] : s[k];
     }
     return out;
   }
@@ -149,9 +163,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
       finish: at(FIN, w.f, 'wipe_poly'),
-      hardware: { pull: at(PUL, w.hp, 'bar_pull') },
+      hardware: {
+        pull: at(PUL, w.hp, 'bar_pull'),
+        hinge: at(HNG, w.hh, 'euro_cup')
+      },
       drawers: Array.isArray(w.d) && w.d.length
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
+        : null,
+      doors: Array.isArray(w.do) && w.do.length
+        ? { count: w.do[0], frontStyle: at(FRONT, w.do[1], 'overlay') }
         : null,
       custom: null
     };
@@ -197,6 +217,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (w.f !== undefined) patch.finish = at(FIN, w.f, undefined);
     if (w.hp !== undefined) patch.hardware = { pull: at(PUL, w.hp, undefined) };
+    if (w.hh !== undefined) {
+      patch.hardware = patch.hardware || {};
+      patch.hardware.hinge = at(HNG, w.hh, undefined);
+    }
     if (w.d !== undefined) {
       if (!w.d) patch.drawers = null;
       else if (Array.isArray(w.d)) patch.drawers = { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') };
@@ -205,6 +229,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (w.d.c !== undefined) patch.drawers.count = w.d.c;
         if (w.d.f !== undefined) patch.drawers.frontStyle = at(FRONT, w.d.f, undefined);
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
+      }
+    }
+    if (w.do !== undefined) {
+      if (!w.do) patch.doors = null;
+      else if (Array.isArray(w.do)) patch.doors = { count: w.do[0], frontStyle: at(FRONT, w.do[1], 'overlay') };
+      else if (typeof w.do === 'object') {
+        patch.doors = {};
+        if (w.do.c !== undefined) patch.doors.count = w.do.c;
+        if (w.do.f !== undefined) patch.doors.frontStyle = at(FRONT, w.do.f, undefined);
       }
     }
     /* Custom-grammar diffs stay surgical (A4): "p" and "c" are independent
@@ -287,17 +320,18 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- static schema documentation (sent ONCE, in the system prompt) ---------------- */
   const SCHEMA_DOC = [
     'WIRE FORMAT — every reply is minified JSON in this compact format (mm integers; enums are 0-based indexes into these lists, documented once here):',
-    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
-    'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
+    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] HNG=[${HNG.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
+    'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"do":[count,FRONT]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
-    '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
-    'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
+    '"hp"/"hh" = pull/hinge STYLE only (PUL/HNG; omit for bar_pull/euro_cup) — counts and bores are computed by the app.',
+    'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) x=stretchers(0/1 on table/desk/bench).',
+    'Cabinet doors on t=5 only: "do":[count,FRONT]|0 (1–2); "do":0 removes. Chairs/beds/wall-mounts are not templates — ask or nearest floor piece + say so in "e".',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
-    'Mechanisms (hinge/lift-off/fold/slide/door) NOT expressible — all JNT are permanent except kd_bolt (tool-removable). For openable asks build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
+    'Lid/lift-off/fold remain NOT expressible (JNT permanent except kd_bolt). Doors use do/hh. For lid/fold asks: nearest fixed design + say so in "e", or ask — never claim lid motion.',
     // G10: the floor boundary was undocumented — the model kept proposing
     // hangs and correction silently grounded them into mangled deliveries.
     'Everything must STAND ON THE FLOOR — hanging/wall/ceiling mounting does not exist (airborne parts are force-grounded); for such asks build the nearest floor-standing design and say so in "e", or ask.',
-    'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences, ≤500 chars — complete sentences, disclosures included), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
+    'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences, ≤500 chars — complete sentences, disclosures included), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} do:{c,f} s:{...}. "d":0 removes drawers; "do":0 removes doors. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
   ].join('\n');
 
   /* ---------------- running history digest ----------------
@@ -320,7 +354,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, HNG, PRIM, SURF, GRAIN, STK,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };

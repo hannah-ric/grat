@@ -723,8 +723,10 @@ section('local intent parser');
     // fallback naming what offline CAN build — not the edit question.
     const murph = AI.localModel('a murphy bed with zero hardware', spec);
     eq(murph.kind, 'question', 'req3 offline: still a question');
-    ok(/rough out/.test(murph.question) && /workbench/.test(murph.question) && /cabinet/.test(murph.question),
-      `req3 offline: fallback names the buildable templates — got "${murph.question}"`);
+    // Beds aren't a LIVE template — the capability wall asks the nearest
+    // expressible path (more honest than a generic "rough out" list).
+    ok(/bed/i.test(murph.question) && ( /platform|nightstand|cabinet|custom/i.test(murph.question) || /rough out/.test(murph.question) ),
+      `req3 offline: bed ask gets an honest capability path — got "${murph.question}"`);
     // Edit-shaped no-parse keeps the edit question.
     const fancy = AI.localModel('make it fancier', spec);
     ok(fancy.kind === 'question' && /didn’t catch a change/.test(fancy.question),
@@ -1383,10 +1385,16 @@ section('prompt budget: hard ceiling with measured headroom');
   // A1: mechanism honesty — the wire cannot carry hinges/lids/doors, and the
   // schema doc must SAY so (kd_bolt is the only non-permanent joint) so the
   // model never narrates motion the parts lack.
-  ok(/NOT expressible/.test(Codec.SCHEMA_DOC) && /except kd_bolt/.test(Codec.SCHEMA_DOC),
-    'SCHEMA_DOC states mechanisms are inexpressible (kd_bolt the only non-permanent joint)');
-  ok(/hinge/.test(Codec.SCHEMA_DOC) && /never claim motion/.test(Codec.SCHEMA_DOC),
-    'SCHEMA_DOC names hinge-class mechanisms and forbids claiming motion the parts lack');
+  ok(/doors on t=5|Cabinet doors/i.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC states cabinet doors are expressible');
+  ok(/Lid\/lift-off\/fold remain NOT expressible|NOT expressible/.test(Codec.SCHEMA_DOC) && /kd_bolt/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC states lid/fold mechanisms are inexpressible (kd_bolt the only non-permanent joint)');
+  ok(/never claim lid motion|never claim motion/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC forbids claiming motion the parts lack');
+  ok(/HNG=\[/.test(Codec.SCHEMA_DOC) && Codec.HNG.includes('euro_cup'),
+    'SCHEMA_DOC documents the LIVE hinge enum');
+  ok(/x=stretchers/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC documents stretchers on table-like pieces');
   // The ANSWER shape: pure advice is legal wire, not a validation failure.
   const info = AI.classify({ i: 'Use wipe-on poly.' });
   eq([info.kind, info.text], ['info', 'Use wipe-on poly.'], 'ANSWER replies classify as info');
