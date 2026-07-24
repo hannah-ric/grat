@@ -466,6 +466,13 @@ input[type="range"]:focus-visible { outline: 2px solid var(--focus); outline-off
 .btn:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); border-color: var(--muted); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .55; cursor: default; }
+/* Every other tappable control acknowledges the press itself — hover is
+   gated to fine pointers, so without this a touch user hears nothing until
+   the result arrives. One rule, the CSS statement of Motion.pop's 0.97 dip:
+   .btn keeps its translateY press above; the splitter is a div[role=
+   separator] and no button rests on a positional transform, so nothing that
+   must hold still can move. */
+button:not(.btn):not(:disabled):active { transform: scale(.97); }
 .btn.primary {
   background: var(--accent); border-color: transparent; color: var(--accent-ink);
   box-shadow: var(--shadow);
