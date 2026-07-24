@@ -613,35 +613,42 @@ var BB = globalThis.BB = globalThis.BB || {};
    * before finishing; flammableRags: oil-soaked rags self-heat — the safety
    * step must say so (audit F-S3-3/F-S3-4). */
   const FINISHES = [
-    { key: 'wipe_poly', label: 'Wipe-on polyurethane', coats: 3, recoatHrs: 4, cureDays: 3, sheen: 'satin', prep: { grits: [120, 180], betweenGrit: 320 }, flammableRags: true, blurb: 'Foolproof rag-on protection; sand at 320 between coats.' },
-    { key: 'danish_oil', label: 'Danish oil', coats: 2, recoatHrs: 8, cureDays: 7, sheen: 'natural', prep: { grits: [120, 180, 220], betweenGrit: 320 }, flammableRags: true, blurb: 'In-the-wood look and feel; easiest repair story — just re-oil.' },
-    { key: 'water_poly', label: 'Water-based poly', coats: 3, recoatHrs: 2, dryFast: true, cureDays: 2, sheen: 'clear', prep: { grits: [120, 180, 220], betweenGrit: 320, raiseGrain: true }, blurb: 'Crystal clear, low odor, fast recoat; raises grain — pre-dampen and sand first.' },
-    { key: 'hardwax_oil', label: 'Hardwax oil', coats: 2, recoatHrs: 12, cureDays: 5, sheen: 'matte', prep: { grits: [120, 150, 180] }, flammableRags: true, blurb: 'Modern matte with a velvet hand; buff on, buff off.' },
+    { key: 'wipe_poly', label: 'Wipe-on polyurethane', coats: 3, recoatHrs: 4, cureDays: 3, sheen: 'satin', preview: 'film', prep: { grits: [120, 180], betweenGrit: 320 }, flammableRags: true, blurb: 'Foolproof rag-on protection; sand at 320 between coats.' },
+    { key: 'danish_oil', label: 'Danish oil', coats: 2, recoatHrs: 8, cureDays: 7, sheen: 'natural', preview: 'oil', prep: { grits: [120, 180, 220], betweenGrit: 320 }, flammableRags: true, blurb: 'In-the-wood look and feel; easiest repair story — just re-oil.' },
+    { key: 'water_poly', label: 'Water-based poly', coats: 3, recoatHrs: 2, dryFast: true, cureDays: 2, sheen: 'clear', preview: 'film', prep: { grits: [120, 180, 220], betweenGrit: 320, raiseGrain: true }, blurb: 'Crystal clear, low odor, fast recoat; raises grain — pre-dampen and sand first.' },
+    { key: 'hardwax_oil', label: 'Hardwax oil', coats: 2, recoatHrs: 12, cureDays: 5, sheen: 'matte', preview: 'oil', prep: { grits: [120, 150, 180] }, flammableRags: true, blurb: 'Modern matte with a velvet hand; buff on, buff off.' },
     /* 2026 expansion — FIN wire enum: APPEND ONLY, this exact order.
      * foodContact marks finishes acceptable on cutting surfaces.
      * flammableRags semantics preserved: true = polymerizing (self-heating)
      * oil. Mineral oil is NON-drying — its rags are not self-heating (no
      * false alarm), which is itself useful safety truth. cureDays 0 = never
      * film-cures (renewable in place). */
-    { key: 'mineral_oil', label: 'Mineral oil (food-contact)', coats: 3, recoatHrs: 8, cureDays: 0, sheen: 'natural',
+    { key: 'mineral_oil', label: 'Mineral oil (food-contact)', coats: 3, recoatHrs: 8, cureDays: 0, sheen: 'natural', preview: 'oil',
       prep: { grits: [120, 180, 220] }, foodContact: true,
       blurb: 'Flood, let it drink, wipe dry. Never cures, never fails, never flakes — re-oil cutting surfaces monthly.' },
-    { key: 'board_butter', label: 'Board butter (oil + beeswax)', coats: 2, recoatHrs: 12, cureDays: 0, sheen: 'soft satin',
+    { key: 'board_butter', label: 'Board butter (oil + beeswax)', coats: 2, recoatHrs: 12, cureDays: 0, sheen: 'soft satin', preview: 'oil',
       prep: { grits: [120, 180, 220] }, foodContact: true,
       blurb: 'Mineral oil base, beeswax topcoat buffed warm — water beads instead of soaking. The butcher-block finish.' },
-    { key: 'tung_pure', label: 'Pure tung oil', coats: 5, recoatHrs: 48, cureDays: 21, sheen: 'matte',
+    { key: 'tung_pure', label: 'Pure tung oil', coats: 5, recoatHrs: 48, cureDays: 21, sheen: 'matte', preview: 'oil',
       prep: { grits: [120, 180, 220] }, flammableRags: true, foodContact: true,
       blurb: 'Waterproofing that lives in the wood, not on it. Slow — a real cure takes weeks — but the patience shows.' },
-    { key: 'shellac', label: 'Dewaxed shellac', coats: 3, recoatHrs: 1, cureDays: 1, sheen: 'satin-gloss',
+    { key: 'shellac', label: 'Dewaxed shellac', coats: 3, recoatHrs: 1, cureDays: 1, sheen: 'satin-gloss', preview: 'film',
       prep: { grits: [120, 180, 220], betweenGrit: 320 },
       blurb: 'One-hour recoats and a barrier under anything else. Not for wet or hot surfaces — a coaster ring will find it.' },
-    { key: 'spar_urethane', label: 'Spar urethane (exterior)', coats: 3, recoatHrs: 12, cureDays: 7, sheen: 'gloss',
+    { key: 'spar_urethane', label: 'Spar urethane (exterior)', coats: 3, recoatHrs: 12, cureDays: 7, sheen: 'gloss', preview: 'film',
       prep: { grits: [120, 180], betweenGrit: 320 }, flammableRags: true, exterior: true,
       blurb: 'UV blockers and flex for outdoor pieces — pairs with white oak, cedar, sapele, and teak. Recoat before it ever peels.' },
-    { key: 'paint_system', label: 'Primer + enamel', coats: 3, recoatHrs: 6, cureDays: 14, sheen: 'painted',
+    { key: 'paint_system', label: 'Primer + enamel', coats: 3, recoatHrs: 6, cureDays: 14, sheen: 'painted', preview: 'paint',
       prep: { grits: [120, 180] },
       blurb: 'The poplar, SPF, and MDF path: one primer coat, two enamel. Prime MDF edges twice — they drink the first coat whole.' }
   ];
+
+  /* Display-only finish class for the 3D preview (interaction-system §2).
+   * Never enters cut list, packing, integrity, or goldens — optics only. */
+  function finishPreviewClass(key) {
+    const f = FINISHES.find(x => x.key === key);
+    return (f && f.preview) || 'raw';
+  }
 
   /* Standard slide lengths (mm), used by drawer-box math.
    * 533/610 (21/24 in) appended for deep cases (2026 hardware expansion). */
@@ -867,6 +874,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,
     recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES,
-    hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel
+    hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel,
+    finishPreviewClass
   };
 })();

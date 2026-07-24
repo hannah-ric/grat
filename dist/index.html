@@ -143,6 +143,17 @@
 .plan-preview { display: flex; flex-direction: column; gap: var(--s3); }
 .plan-preview .preview-locked svg { opacity: .55; vertical-align: -2px; }
 .preview-steps { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: .45rem; color: var(--ink-2); }
+.preview-sample {
+  border-left: 3px solid var(--accent, #447e6e); padding: var(--s2) var(--s3);
+  background: color-mix(in srgb, var(--accent, #447e6e) 8%, var(--panel));
+  border-radius: 0 var(--radius-m) var(--radius-m) 0;
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.preview-sample.active { outline: 1px solid color-mix(in srgb, var(--accent, #447e6e) 45%, transparent); }
+.preview-sample h4 { margin: 0; font-size: var(--text-m); }
+.preview-sample > p { margin: 0; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-body); }
+.preview-sample-label { letter-spacing: .04em; text-transform: uppercase; font-size: var(--text-xs, .7rem); color: var(--ink-3, var(--ink-2)); }
+.preview-sample-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .preview-cta { border: 1px solid var(--line-2); border-radius: var(--radius-m); background: var(--paper); padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); align-items: flex-start; }
 .preview-cta p { margin: 0; max-width: 62ch; color: var(--ink-2); font-size: var(--text-s); line-height: var(--leading-body); }
 .preview-email { display: flex; flex-direction: column; gap: var(--s2); }
@@ -3554,29 +3565,33 @@ body.ph-open .porch::after { display: none; }
     return { glue: byKey('pva_interior'), why: 'interior build — long-grain PVA is stronger than the wood' };
   }
   const FINISHES = [
-    { key: 'wipe_poly', label: 'Wipe-on polyurethane', coats: 3, recoatHrs: 4, cureDays: 3, sheen: 'satin', prep: { grits: [120, 180], betweenGrit: 320 }, flammableRags: true, blurb: 'Foolproof rag-on protection; sand at 320 between coats.' },
-    { key: 'danish_oil', label: 'Danish oil', coats: 2, recoatHrs: 8, cureDays: 7, sheen: 'natural', prep: { grits: [120, 180, 220], betweenGrit: 320 }, flammableRags: true, blurb: 'In-the-wood look and feel; easiest repair story — just re-oil.' },
-    { key: 'water_poly', label: 'Water-based poly', coats: 3, recoatHrs: 2, dryFast: true, cureDays: 2, sheen: 'clear', prep: { grits: [120, 180, 220], betweenGrit: 320, raiseGrain: true }, blurb: 'Crystal clear, low odor, fast recoat; raises grain — pre-dampen and sand first.' },
-    { key: 'hardwax_oil', label: 'Hardwax oil', coats: 2, recoatHrs: 12, cureDays: 5, sheen: 'matte', prep: { grits: [120, 150, 180] }, flammableRags: true, blurb: 'Modern matte with a velvet hand; buff on, buff off.' },
-    { key: 'mineral_oil', label: 'Mineral oil (food-contact)', coats: 3, recoatHrs: 8, cureDays: 0, sheen: 'natural',
+    { key: 'wipe_poly', label: 'Wipe-on polyurethane', coats: 3, recoatHrs: 4, cureDays: 3, sheen: 'satin', preview: 'film', prep: { grits: [120, 180], betweenGrit: 320 }, flammableRags: true, blurb: 'Foolproof rag-on protection; sand at 320 between coats.' },
+    { key: 'danish_oil', label: 'Danish oil', coats: 2, recoatHrs: 8, cureDays: 7, sheen: 'natural', preview: 'oil', prep: { grits: [120, 180, 220], betweenGrit: 320 }, flammableRags: true, blurb: 'In-the-wood look and feel; easiest repair story — just re-oil.' },
+    { key: 'water_poly', label: 'Water-based poly', coats: 3, recoatHrs: 2, dryFast: true, cureDays: 2, sheen: 'clear', preview: 'film', prep: { grits: [120, 180, 220], betweenGrit: 320, raiseGrain: true }, blurb: 'Crystal clear, low odor, fast recoat; raises grain — pre-dampen and sand first.' },
+    { key: 'hardwax_oil', label: 'Hardwax oil', coats: 2, recoatHrs: 12, cureDays: 5, sheen: 'matte', preview: 'oil', prep: { grits: [120, 150, 180] }, flammableRags: true, blurb: 'Modern matte with a velvet hand; buff on, buff off.' },
+    { key: 'mineral_oil', label: 'Mineral oil (food-contact)', coats: 3, recoatHrs: 8, cureDays: 0, sheen: 'natural', preview: 'oil',
       prep: { grits: [120, 180, 220] }, foodContact: true,
       blurb: 'Flood, let it drink, wipe dry. Never cures, never fails, never flakes — re-oil cutting surfaces monthly.' },
-    { key: 'board_butter', label: 'Board butter (oil + beeswax)', coats: 2, recoatHrs: 12, cureDays: 0, sheen: 'soft satin',
+    { key: 'board_butter', label: 'Board butter (oil + beeswax)', coats: 2, recoatHrs: 12, cureDays: 0, sheen: 'soft satin', preview: 'oil',
       prep: { grits: [120, 180, 220] }, foodContact: true,
       blurb: 'Mineral oil base, beeswax topcoat buffed warm — water beads instead of soaking. The butcher-block finish.' },
-    { key: 'tung_pure', label: 'Pure tung oil', coats: 5, recoatHrs: 48, cureDays: 21, sheen: 'matte',
+    { key: 'tung_pure', label: 'Pure tung oil', coats: 5, recoatHrs: 48, cureDays: 21, sheen: 'matte', preview: 'oil',
       prep: { grits: [120, 180, 220] }, flammableRags: true, foodContact: true,
       blurb: 'Waterproofing that lives in the wood, not on it. Slow — a real cure takes weeks — but the patience shows.' },
-    { key: 'shellac', label: 'Dewaxed shellac', coats: 3, recoatHrs: 1, cureDays: 1, sheen: 'satin-gloss',
+    { key: 'shellac', label: 'Dewaxed shellac', coats: 3, recoatHrs: 1, cureDays: 1, sheen: 'satin-gloss', preview: 'film',
       prep: { grits: [120, 180, 220], betweenGrit: 320 },
       blurb: 'One-hour recoats and a barrier under anything else. Not for wet or hot surfaces — a coaster ring will find it.' },
-    { key: 'spar_urethane', label: 'Spar urethane (exterior)', coats: 3, recoatHrs: 12, cureDays: 7, sheen: 'gloss',
+    { key: 'spar_urethane', label: 'Spar urethane (exterior)', coats: 3, recoatHrs: 12, cureDays: 7, sheen: 'gloss', preview: 'film',
       prep: { grits: [120, 180], betweenGrit: 320 }, flammableRags: true, exterior: true,
       blurb: 'UV blockers and flex for outdoor pieces — pairs with white oak, cedar, sapele, and teak. Recoat before it ever peels.' },
-    { key: 'paint_system', label: 'Primer + enamel', coats: 3, recoatHrs: 6, cureDays: 14, sheen: 'painted',
+    { key: 'paint_system', label: 'Primer + enamel', coats: 3, recoatHrs: 6, cureDays: 14, sheen: 'painted', preview: 'paint',
       prep: { grits: [120, 180] },
       blurb: 'The poplar, SPF, and MDF path: one primer coat, two enamel. Prime MDF edges twice — they drink the first coat whole.' }
   ];
+  function finishPreviewClass(key) {
+    const f = FINISHES.find(x => x.key === key);
+    return (f && f.preview) || 'raw';
+  }
   const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500, 533, 610];
   const SLIDE_SPACE_MM = 25.4;
   const LUMBER = {
@@ -3727,7 +3742,8 @@ body.ph-open .porch::after { display: none; }
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,
     recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES,
-    hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel
+    hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel,
+    finishPreviewClass
   };
 })();</script>
 <script>var BB = globalThis.BB = globalThis.BB || {};
@@ -5598,8 +5614,10 @@ body.ph-open .porch::after { display: none; }
     }
     if (raw.drawers && !correctedSpec.drawers && correctedSpec.meta) {
       const t = correctedSpec.meta.template;
-      if (t !== 'nightstand' && t !== 'cabinet') {
-        notes.push('Drawers only exist on nightstand and cabinet templates — removed here.');
+      if (!(BB.Parametric && BB.Parametric.supportsDrawers(t))) {
+        notes.push('Drawers only exist on nightstand, cabinet, desk, and table templates — removed here.');
+      } else if (t === 'desk' || t === 'table') {
+        notes.push('That drawer bank wouldn’t leave workable openings under the knee/leg clearance — removed here.');
       }
     }
     if (raw.doors && !correctedSpec.doors && correctedSpec.meta && correctedSpec.meta.template !== 'cabinet') {
@@ -5724,13 +5742,18 @@ body.ph-open .porch::after { display: none; }
         !['euro_cup', 'butt_brass', 'no_mortise'].includes(s.hardware.hinge)) {
       s.hardware.hinge = 'euro_cup';
     }
-    if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
+    const canDraw = BB.Parametric && BB.Parametric.supportsDrawers(template);
+    if (s.drawers && canDraw) {
       const d = s.drawers;
-      d.count = clamp(Math.round(num(d.count, 1)), 1, 4);
+      const maxN = BB.Parametric.maxDrawers(template);
+      d.count = clamp(Math.round(num(d.count, 1)), 1, maxN);
       d.frontStyle = d.frontStyle === 'overlay' ? 'overlay' : 'inset';
       d.runner = ['wood_runners', 'undermount_slides'].includes(d.runner) ? d.runner : 'side_mount_slides';
       if (d.runner !== 'side_mount_slides' && lvl === 'beginner') d.runner = 'side_mount_slides';
-      while (d.count > 1 && BB.Parametric && BB.Parametric.openingHeightFor(s) < 80) d.count--;
+      while (d.count > 1 && BB.Parametric.openingHeightFor(s) < 80) d.count--;
+      if ((template === 'desk' || template === 'table') && BB.Parametric.openingHeightFor(s) < 80) {
+        s.drawers = null;
+      }
     } else {
       s.drawers = null;
     }
@@ -6033,6 +6056,21 @@ body.ph-open .porch::after { display: none; }
   const RAIL_H = 60, RAIL_T = 20;          // drawer rails: 20 mm thick × 60 mm tall
   const DEFAULT_OPENING_H = 130;           // equal-height openings by default
   const MIN_LEG_REVEAL = 120;              // nightstand: legs must show below the bank
+  const DESK_KNEE_CLEARANCE = 380;
+  const TABLE_BANK_CLEARANCE = 100;
+  function supportsDrawers(template) {
+    return template === 'nightstand' || template === 'cabinet' ||
+      template === 'desk' || template === 'table';
+  }
+  function maxDrawers(template) {
+    return (template === 'desk' || template === 'table') ? 2 : 4;
+  }
+  function bankClearanceFor(template) {
+    if (template === 'desk') return DESK_KNEE_CLEARANCE;
+    if (template === 'table') return TABLE_BANK_CLEARANCE;
+    if (template === 'nightstand') return MIN_LEG_REVEAL;
+    return 0;
+  }
   function part(id, defKey, role, name, w, h, d, x, y, z, opts) {
     return Object.assign({
       id, defKey, role, name,
@@ -6070,7 +6108,10 @@ body.ph-open .porch::after { display: none; }
     else if (t === 'cabinet') {
       const base = st.toeKick ? 90 : 0;
       available = (o.height - st.topThickness - base) * 0.6;
+    } else if (t === 'desk' || t === 'table') {
+      available = o.height - st.topThickness - bankClearanceFor(t);
     } else return Infinity;
+    if (available <= (count + 1) * RAIL_H) return 0;
     return bankHeights(available, count).openH;
   }
   function buildBank(spec, zone, parts, joints, prefix) {
@@ -6204,7 +6245,8 @@ body.ph-open .porch::after { display: none; }
       } else if (runner === 'wood_runners') {
         const runW = Math.round((zone.sideInnerX !== undefined ? zone.sideInnerX - op.w / 2 : 0) * 10) / 10 + 19;
         const setback = Math.max(RAIL_T, zone.gearFrontSetback || 0) + 2;
-        const runD = Math.max(80, Math.round(op.interiorDepth - setback - 28));
+        const rearClear = Math.max(28, (zone.gearFrontSetback || 0) + 4);
+        const runD = Math.max(80, Math.round(op.interiorDepth - setback - rearClear));
         const runZ = zone.zFront - setback - runD / 2;
         [[-1, 0], [1, 1]].forEach(([sgn, ti]) => {
           const id = `${prefix}dr${i + 1}_runner_${sgn < 0 ? 'l' : 'r'}`;
@@ -6334,51 +6376,92 @@ body.ph-open .porch::after { display: none; }
     const frameW = o.width - 2 * overhang, frameD = o.depth - 2 * overhang;
     const legH = o.height - topT;
     const sp = spec.wood.species;
+    const withDrawers = !!(spec.drawers && supportsDrawers(t));
     const lx = frameW / 2 - legT / 2, lz = frameD / 2 - legT / 2;
     [[-lx, -lz, 1], [lx, -lz, 2], [-lx, lz, 3], [lx, lz, 4]].forEach(([x, z, i]) => {
       parts.push(part(`leg_${i}`, `leg`, 'leg', 'Leg', legT, legH, legT, x, legH / 2, z,
         { material: sp, explode: { x: Math.sign(x) * 0.35, y: -0.4, z: Math.sign(z) * 0.35 } }));
     });
-    const apY = o.height - topT - st.apronHeight / 2;
-    const apLenLong = frameW - 2 * legT, apLenShort = frameD - 2 * legT;
-    const apZ = frameD / 2 - st.apronInset - st.apronThickness / 2;
-    const apX = frameW / 2 - st.apronInset - st.apronThickness / 2;
-    [[-apZ, 1], [apZ, 2]].forEach(([z, i]) => {
-      parts.push(part(`apron_long_${i}`, 'apron_long', 'apron', 'Long apron', apLenLong, st.apronHeight, st.apronThickness, 0, apY, z,
-        { material: sp, explode: { x: 0, y: 0, z: Math.sign(z) } }));
-    });
-    [[-apX, 1], [apX, 2]].forEach(([x, i]) => {
-      parts.push(part(`apron_short_${i}`, 'apron_short', 'apron', 'Short apron', st.apronThickness, st.apronHeight, apLenShort, x, apY, 0,
-        { material: sp, explode: { x: Math.sign(x), y: 0, z: 0 } }));
-    });
-    parts.push(part('top_1', 'top', 'top', t === 'bench' ? 'Seat' : 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0,
-      { material: sp, explode: { x: 0, y: 1, z: 0 } }));
     const fj = spec.joinery.frame;
-    for (const [z] of [[-apZ], [apZ]]) {
-      joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: apY, z } });
-      joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: apY, z } });
+    let bankOut = { openings: [], drawers: [] };
+    let bankBottom = 0;
+    if (withDrawers) {
+      const available = o.height - topT - bankClearanceFor(t);
+      const { bank } = bankHeights(available, spec.drawers.count);
+      const bankTop = o.height - topT;
+      bankBottom = bankTop - bank;
+      const apT = st.apronThickness;
+      const sideLen = frameD - 2 * legT;
+      const apY = bankTop - bank / 2;
+      [[-1, 1], [1, 2]].forEach(([s, i]) => {
+        parts.push(part(`apron_side_${i}`, 'apron_side', 'apron', 'Side apron', apT, bank, sideLen,
+          s * (frameW / 2 - apT / 2), apY, 0,
+          { material: sp, explode: { x: s, y: 0, z: 0 } }));
+        joints.push({ type: fj, a: `apron_side_${i}`, b: s < 0 ? 'leg_1' : 'leg_2', pos: { x: s * lx, y: apY, z: -lz } });
+        joints.push({ type: fj, a: `apron_side_${i}`, b: s < 0 ? 'leg_3' : 'leg_4', pos: { x: s * lx, y: apY, z: lz } });
+      });
+      parts.push(part('apron_back_1', 'apron_back', 'apron', 'Back apron', frameW - 2 * legT, bank, apT,
+        0, apY, -(frameD / 2 - apT / 2),
+        { material: sp, explode: { x: 0, y: 0, z: -1 } }));
+      joints.push({ type: fj, a: 'apron_back_1', b: 'leg_1', pos: { x: -lx, y: apY, z: -lz } });
+      joints.push({ type: fj, a: 'apron_back_1', b: 'leg_2', pos: { x: lx, y: apY, z: -lz } });
+      parts.push(part('top_1', 'top', 'top', 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0,
+        { material: sp, explode: { x: 0, y: 1, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_1', pos: { x: -(frameW / 2 - apT / 2), y: o.height - topT, z: 0 } });
+      joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_2', pos: { x: frameW / 2 - apT / 2, y: o.height - topT, z: 0 } });
+      const zone = {
+        clearW: frameW - 2 * legT, railLen: frameW - 2 * legT,
+        yTop: bankTop, zFront: frameD / 2,
+        interiorDepth: frameD - apT, available,
+        overlayMaxW: frameW - 2 * legT + Math.min(20, legT), x: 0,
+        railJointTargets: [{ id: 'leg_3', x: -lx }, { id: 'leg_4', x: lx }],
+        sideInnerX: frameW / 2 - apT, gearFrontSetback: legT,
+        runnerTargets: ['apron_side_1', 'apron_side_2']
+      };
+      bankOut = buildBank(spec, zone, parts, joints, '');
+    } else {
+      const apY = o.height - topT - st.apronHeight / 2;
+      const apLenLong = frameW - 2 * legT, apLenShort = frameD - 2 * legT;
+      const apZ = frameD / 2 - st.apronInset - st.apronThickness / 2;
+      const apX = frameW / 2 - st.apronInset - st.apronThickness / 2;
+      [[-apZ, 1], [apZ, 2]].forEach(([z, i]) => {
+        parts.push(part(`apron_long_${i}`, 'apron_long', 'apron', 'Long apron', apLenLong, st.apronHeight, st.apronThickness, 0, apY, z,
+          { material: sp, explode: { x: 0, y: 0, z: Math.sign(z) } }));
+      });
+      [[-apX, 1], [apX, 2]].forEach(([x, i]) => {
+        parts.push(part(`apron_short_${i}`, 'apron_short', 'apron', 'Short apron', st.apronThickness, st.apronHeight, apLenShort, x, apY, 0,
+          { material: sp, explode: { x: Math.sign(x), y: 0, z: 0 } }));
+      });
+      parts.push(part('top_1', 'top', 'top', t === 'bench' ? 'Seat' : 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0,
+        { material: sp, explode: { x: 0, y: 1, z: 0 } }));
+      for (const [z] of [[-apZ], [apZ]]) {
+        joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: apY, z } });
+        joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: apY, z } });
+      }
+      for (const [x] of [[-apX], [apX]]) {
+        joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y: apY, z: -lz } });
+        joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y: apY, z: lz } });
+      }
+      joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
+      joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
     }
-    for (const [x] of [[-apX], [apX]]) {
-      joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y: apY, z: -lz } });
-      joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y: apY, z: lz } });
-    }
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
     if (st.stretchers) {
       const strH = Math.min(70, Math.max(50, Math.round(st.apronHeight * 0.7)));
       const strT = st.apronThickness;
       const strY = Math.max(strH / 2 + 20, Math.round(legH * 0.38));
-      const strLen = frameW - 2 * legT;
-      const strZ = frameD / 2 - strT / 2;
-      [[-strZ, 1], [strZ, 2]].forEach(([z, i]) => {
-        parts.push(part(`stretcher_long_${i}`, 'stretcher_long', 'stretcher', 'Stretcher',
-          strLen, strH, strT, 0, strY, z,
-          { material: sp, explode: { x: 0, y: -0.3, z: Math.sign(z) * 0.6 } }));
-        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: strY, z } });
-        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: strY, z } });
-      });
+      if (!withDrawers || strY + strH / 2 < bankBottom - 15) {
+        const strLen = frameW - 2 * legT;
+        const strZ = frameD / 2 - strT / 2;
+        [[-strZ, 1], [strZ, 2]].forEach(([z, i]) => {
+          parts.push(part(`stretcher_long_${i}`, 'stretcher_long', 'stretcher', 'Stretcher',
+            strLen, strH, strT, 0, strY, z,
+            { material: sp, explode: { x: 0, y: -0.3, z: Math.sign(z) * 0.6 } }));
+          joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: strY, z } });
+          joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: strY, z } });
+        });
+      }
     }
-    return { parts, joints, openings: [], drawers: [], doors: [] };
+    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers, doors: [] };
   }
   function bookshelf(spec) {
     const o = spec.overall, st = spec.structure;
@@ -6583,7 +6666,11 @@ body.ph-open .porch::after { display: none; }
     }
     return m;
   }
-  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
+  BB.Parametric = {
+    build, openingHeightFor, shelfSpacingFor, supportsDrawers, maxDrawers,
+    RAIL_H, RAIL_T, DEFAULT_OPENING_H, DESK_KNEE_CLEARANCE, TABLE_BANK_CLEARANCE,
+    bankHeights
+  };
 })();</script>
 <script>var BB = globalThis.BB = globalThis.BB || {};
 (function () {
@@ -8867,14 +8954,24 @@ body.ph-open .porch::after { display: none; }
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       drawerSteps(spec, model, out, opts);
       doorSteps(spec, model, out);
-    } else if (t === 'nightstand') {
+    } else if (t === 'nightstand' || ((t === 'desk' || t === 'table') && spec.drawers)) {
       out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies. Dry-fit and check square before any glue.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
       out.push(step('s2', 'Connect with back apron and rails', `Join the back apron and the front drawer rails between the side frames with ${frP}.`, ['apron_back_1', ...rails]));
       if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf',
         'Notch the shelf around the legs and fasten it.' + slottedNote(integrity, 'shelf_1'),
         ['shelf_1']));
-      out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
+      const stretchers = model.parts.filter(p => p.role === 'stretcher').map(p => p.id);
+      if (stretchers.length) {
+        out.push(step('s2b', 'Fit the stretchers',
+          `Dry-fit the lower stretchers between the legs with ${frP}, then glue and clamp — they stiffen the base against racking. Check the diagonals before the glue sets.`,
+          stretchers));
+      }
+      out.push(step('s4', 'Attach the top',
+        t === 'nightstand'
+          ? 'Fasten the top with figure-8s so it can move with the seasons.'
+          : 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.',
+        ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
       out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
@@ -10045,7 +10142,7 @@ BlueprintBuddyImport.build
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
     '"hp"/"hh" = pull/hinge STYLE only (PUL/HNG; omit for bar_pull/euro_cup) — counts and bores are computed by the app.',
     'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) x=stretchers(0/1 on table/desk/bench).',
-    'Cabinet doors on t=5 only: "do":[count,FRONT]|0 (1–2); "do":0 removes. Chairs/beds/wall-mounts are not templates — ask or nearest floor piece + say so in "e".',
+    'Drawers ("d") on nightstand/cabinet/desk/table (desk/table cap 2; code keeps knee/leg clearance). Cabinet doors on t=5 only: "do":[count,FRONT]|0 (1–2); "do":0 removes. Chairs/beds/wall-mounts are not templates — ask or nearest floor piece + say so in "e".',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
     'Lid/lift-off/fold remain NOT expressible (JNT permanent except kd_bolt). Doors use do/hh. For lid/fold asks: nearest fixed design + say so in "e", or ask — never claim lid motion.',
     'Everything must STAND ON THE FLOOR — hanging/wall/ceiling mounting does not exist (airborne parts are force-grounded); for such asks build the nearest floor-standing design and say so in "e", or ask.',
@@ -10097,7 +10194,7 @@ BlueprintBuddyImport.build
       'All wire dimensions are millimetres. The app pre-normalizes dimension strings in user messages to explicit millimetres before you see them — NEVER convert units yourself.',
       Codec().SCHEMA_DOC,
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
-      'Drawers ("d") on nightstand/cabinet; doors ("do") on cabinet; stretchers ("s.x") on table/desk/bench. Prefer known templates; use t=6 only for novel forms.',
+      'Drawers ("d") on nightstand/cabinet/desk/table; doors ("do") on cabinet; stretchers ("s.x") on table/desk/bench. Prefer known templates; use t=6 only for novel forms.',
       'ASK OR DISCLOSE: if a load-bearing or fit-critical unknown (what piece; boards on hand when building from the user\'s stock; the size of a named object or count — "for 6", a queen mattress; a stated capacity) would change the design, ask ONE question (QUESTION shape), most consequential first; a follow-up turn may ask the next such unknown (inventory after piece) or state the assumption.',
       'If you design without asking, OPEN "e" naming the assumptions you filled in; size to any named object/count and state that size in "e". Never ask styling/finish first; a complete, well-determined request gets ZERO questions.',
       'REFINEMENTS: EDIT the current spec — send ONLY the changed wire keys; never redesign. STRUCTURAL CRITIQUE: fix ONLY the listed problems and return the corrected FULL spec as {"N":{...}}.',
@@ -10212,7 +10309,17 @@ BlueprintBuddyImport.build
       const clause = src.slice(0, m.index).split(/[,.;:!?()]|\s[—–-]\s/).pop();
       return /(?:^|\s)(?:no|not|never|without|avoid|don'?t|do not|hate)(?:\s+[\w']+){0,2}\s*$/.test(clause);
     };
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
+    const tmplWords = {
+      table: 'table', 'dining table': 'table', 'coffee table': 'table',
+      'console table': 'table', 'sofa table': 'table', 'entry table': 'table',
+      'hall table': 'table', console: 'table',
+      desk: 'desk', 'writing desk': 'desk',
+      bench: 'bench', stool: 'bench', 'counter stool': 'bench', 'bar stool': 'bench',
+      workbench: 'table',
+      bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf',
+      nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand',
+      cabinet: 'cabinet', sideboard: 'cabinet', 'media console': 'cabinet'
+    };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -10232,7 +10339,7 @@ BlueprintBuddyImport.build
     if (/\b(change|different|other|new)\b.*\bwood\b/.test(t) && !Object.values(K.WOOD_SPECIES).some(s => t.includes(s.label.toLowerCase().split(' ').pop()))) {
       return { kind: 'question', question: 'Which way should the wood go?', options: ['Walnut — dark and refined', 'Hard maple — pale and crisp', 'Pine — light and budget-friendly'] };
     }
-    if (/\b(chair|stool|dining chair)\b/.test(t) && !/\b(bench|table|desk)\b/.test(t)) {
+    if (/\b(chair|dining chair)\b/.test(t) && !/\b(bench|table|desk|stool)\b/.test(t)) {
       return {
         kind: 'question',
         question: 'Chairs aren’t a template yet — the closest expressible pieces are a bench or a custom composition. Which should I rough out?',
@@ -10318,7 +10425,9 @@ BlueprintBuddyImport.build
     } else if (/\badd (a |another )?shelf\b/.test(t)) {
       set('structure.shelfCount', spec.structure.shelfCount + 1); notes.push('shelf');
     }
-    const canDrawer = w => ['nightstand', 'cabinet'].includes(w || spec.meta.template);
+    const canDrawer = w => BB.Parametric
+      ? BB.Parametric.supportsDrawers(w || spec.meta.template)
+      : ['nightstand', 'cabinet', 'desk', 'table'].includes(w || spec.meta.template);
     const landing = creating ? wantTemplate : spec.meta.template;
     let dm = null;
     if (/\b(no|remove|without)\b.*\bdrawers?\b/.test(t) && spec.meta.template !== 'nightstand') { patch.drawers = null; notes.push('no drawers'); }
@@ -10329,14 +10438,15 @@ BlueprintBuddyImport.build
         if (!Object.keys(patch).length) {
           return {
             kind: 'question',
-            question: `Drawers need a case with openings — a ${spec.meta.template} can't take them yet, but a nightstand or cabinet can.`,
-            options: ['Make it a nightstand', 'Make it a cabinet']
+            question: `Drawers need a case or apron bank — a ${spec.meta.template} can't take them, but a nightstand, cabinet, desk, or table can.`,
+            options: ['Make it a desk with a drawer', 'Make it a nightstand', 'Make it a cabinet']
           };
         }
         notes.push(`drawers skipped — not available on a ${spec.meta.template}`);
       } else if (dm && canDrawer(landing)) {
-        const count = WORD_NUMS[dm[1]] || parseInt(dm[1], 10) || 1;
-        set('drawers.count', Math.min(4, Math.max(1, count)));
+        const maxN = BB.Parametric ? BB.Parametric.maxDrawers(landing) : 4;
+        const count = Math.min(maxN, Math.max(1, WORD_NUMS[dm[1]] || parseInt(dm[1], 10) || 1));
+        set('drawers.count', count);
         if (!spec.drawers) { set('drawers.frontStyle', 'inset'); set('drawers.runner', 'side_mount_slides'); }
         notes.push(count + ' drawer(s)');
       }
@@ -10401,9 +10511,35 @@ BlueprintBuddyImport.build
       if (t.includes(kw)) { set('finish', f.key); notes.push(f.label); break; }
     }
     if (creating) {
-      if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
-        const row = K.ergoRow('workbench_height');
-        if (row) set('overall.height', Math.round((row.min + row.max) / 2));
+      const mid = key => {
+        const row = K.ergoRow(key);
+        return row ? Math.round((row.min + row.max) / 2) : null;
+      };
+      if (!(patch.overall && patch.overall.height)) {
+        if (tmplWord === 'workbench') {
+          const h = mid('workbench_height'); if (h) set('overall.height', h);
+        } else if (tmplWord === 'coffee table') {
+          const h = mid('coffee_table_height'); if (h) set('overall.height', h);
+        } else if (tmplWord === 'console' || tmplWord === 'console table' || tmplWord === 'sofa table' ||
+                   tmplWord === 'entry table' || tmplWord === 'hall table') {
+          const h = mid('console_height'); if (h) set('overall.height', h);
+          if (!(patch.overall && patch.overall.depth)) {
+            const d = mid('console_depth'); if (d) set('overall.depth', d);
+          }
+        } else if (tmplWord === 'media console') {
+          const h = mid('media_height'); if (h) set('overall.height', h);
+          if (!(patch.overall && patch.overall.depth)) {
+            const d = mid('media_depth'); if (d) set('overall.depth', d);
+          }
+        } else if (tmplWord === 'bar stool') {
+          const h = mid('bar_stool_seat'); if (h) set('overall.height', h);
+          if (!(patch.overall && patch.overall.width)) set('overall.width', 400);
+          if (!(patch.overall && patch.overall.depth)) set('overall.depth', 320);
+        } else if (tmplWord === 'counter stool' || tmplWord === 'stool') {
+          const h = mid('counter_stool_seat'); if (h) set('overall.height', h);
+          if (!(patch.overall && patch.overall.width)) set('overall.width', 400);
+          if (!(patch.overall && patch.overall.depth)) set('overall.depth', 320);
+        }
       }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
@@ -10411,7 +10547,12 @@ BlueprintBuddyImport.build
       merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord : 'New ' + tmplWord;
       merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
-      return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
+      const aliasNote = (tmplWord === 'stool' || tmplWord === 'counter stool' || tmplWord === 'bar stool')
+        ? ' (a backless stool seat on four legs — no chair back yet)'
+        : (tmplWord === 'coffee table' || /console|sofa table|entry table|hall table/.test(tmplWord))
+          ? ` (using the table template at ${tmplWord} proportions)`
+          : (tmplWord === 'media console' ? ' (using the cabinet template at media-console proportions)' : '');
+      return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${aliasNote}${drawerNote} — refine away.` };
     }
     if (!Object.keys(patch).length && negatedSpecies) {
       const alts = ['Walnut', 'Hard maple', 'Cherry', 'White oak']
@@ -10424,8 +10565,8 @@ BlueprintBuddyImport.build
       if (creationShaped) {
         return {
           kind: 'question',
-          question: 'Offline I can rough out a table, desk, bench, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
-          options: ['A walnut nightstand with two drawers', 'A workbench', 'A bookshelf']
+          question: 'Offline I can rough out a table, desk, bench, stool, coffee table, console, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
+          options: ['A walnut nightstand with two drawers', 'A desk with a drawer', 'A coffee table']
         };
       }
       return {
@@ -13228,25 +13369,49 @@ BlueprintBuddyImport.build
       };
     }
     const matPool = new Map();
+    const FINISH_LOOK = {
+      raw:  { roughDelta: 0.08, clearcoat: 0, clearcoatRough: 0.4, metalness: 0.02, sheen: 0, sheenRough: 1 },
+      oil:  { roughDelta: -0.12, clearcoat: 0.15, clearcoatRough: 0.55, metalness: 0.02, sheen: 0.35, sheenRough: 0.6 },
+      film: { roughDelta: -0.22, clearcoat: 0.85, clearcoatRough: 0.22, metalness: 0.04, sheen: 0.1, sheenRough: 0.4 },
+      paint:{ roughDelta: -0.18, clearcoat: 0.35, clearcoatRough: 0.35, metalness: 0.0, sheen: 0, sheenRough: 1, desat: 0.35 }
+    };
     function materialFor(matKey, role, bucket) {
       const sp = BB.K.WOOD_SPECIES[matKey];
       const textured = quality.textured && !!sp;
-      const key = matKey + '|' + role + '|' + bucket + (textured ? '|t' : '');
+      const finClass = (matKey === 'hardware') ? 'raw'
+        : (BB.K.finishPreviewClass && E.spec ? BB.K.finishPreviewClass(E.spec.finish) : 'film');
+      const key = matKey + '|' + role + '|' + bucket + (textured ? '|t' : '') + '|' + finClass;
       if (matPool.has(key)) return matPool.get(key);
       let tone = 0xb98d62, rough = 0.7;
       if (matKey === 'hardware') { tone = 0x46464a; rough = 0.35; }
       else if (sp) { tone = sp.tone; rough = sp.rough; }
+      const look = FINISH_LOOK[finClass] || FINISH_LOOK.raw;
+      rough = Math.max(0.12, Math.min(0.95, rough + (look.roughDelta || 0)));
       const shadeF = ROLE_SHADE[role] || 1;
       const c = textured
         ? new THREE.Color(1, 1, 1).multiplyScalar(0.55 + 0.45 * shadeF)
         : new THREE.Color(tone).multiplyScalar(shadeF);
+      if (look.desat && !textured) c.lerp(new THREE.Color(0xd8d4cc), look.desat);
       const opacity = BUCKETS[bucket] !== undefined ? BUCKETS[bucket] : 1;
-      const m = new THREE.MeshStandardMaterial({
-        color: c, roughness: rough, metalness: matKey === 'hardware' ? 0.6 : 0.02,
-        transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
-      });
+      let m;
+      if (matKey === 'hardware' || typeof THREE.MeshPhysicalMaterial !== 'function') {
+        m = new THREE.MeshStandardMaterial({
+          color: c, roughness: rough, metalness: matKey === 'hardware' ? 0.6 : (look.metalness || 0.02),
+          transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
+        });
+      } else {
+        m = new THREE.MeshPhysicalMaterial({
+          color: c, roughness: rough, metalness: look.metalness || 0.02,
+          clearcoat: look.clearcoat || 0,
+          clearcoatRoughness: look.clearcoatRough || 0.3,
+          sheen: look.sheen || 0,
+          sheenRoughness: look.sheenRough || 1,
+          sheenColor: new THREE.Color(0xfff2dc),
+          transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
+        });
+      }
       if (textured) m.map = BB.Materials.woodTexture(THREE, matKey);
-      m.envMapIntensity = matKey === 'hardware' ? 0.9 : 0.5;
+      m.envMapIntensity = matKey === 'hardware' ? 0.9 : (finClass === 'film' ? 0.75 : 0.5);
       if (bucket === 'selected') {
         if (textured) patchRim(m); // fresnel rim; recolored via the shared uniform
         else { m.emissive = new THREE.Color().copy(rimColor); m.emissiveIntensity = 0.3; }
@@ -15662,10 +15827,43 @@ BlueprintBuddyImport.build
         `Estimated materials: $${state.bomData ? state.bomData.total : (plan ? plan.totalCost.toFixed(2) : '—')} across ${boards} board${boards === 1 ? '' : 's'}/sheet${boards === 1 ? '' : 's'}. ` +
         'The blueprint issues the exact shopping list and per-board cutting diagrams, optimized for waste.'));
     } else {
-      wrap.append(el('h2', '', 'Assembly — in your blueprint'));
-      wrap.append(el('p', 'txt-muted', `${state.steps.length} steps, in dependency order, at your skill level. Step-by-step text, joinery setout, and the shop checklist are issued with the blueprint.`));
+      const sampleIdx = (() => {
+        const prefer = state.steps.findIndex(s => s.joints && s.joints.length &&
+          !/^(mill|sand|finish|safety|antitip)/.test(s.id));
+        return prefer >= 0 ? prefer : 0;
+      })();
+      const sample = state.steps[sampleIdx];
+      wrap.append(el('h2', '', 'Assembly — try a free teaching step'));
+      wrap.append(el('p', 'txt-muted',
+        `${state.steps.length} steps in dependency order. One sample step below is fully open — play it in 3D, inspect the joint. The rest of the shop checklist issues with the blueprint.`));
+      if (sample) {
+        const teach = el('div', 'preview-sample' + (state.playbackIndex === sampleIdx ? ' active' : ''));
+        teach.innerHTML = `<p class="txt-small preview-sample-label">Free sample · step ${sampleIdx + 1} of ${state.steps.length}</p>
+          <h4>${esc(sample.title)}</h4><p>${esc(sample.text)}</p>`;
+        const actions = el('div', 'preview-sample-actions');
+        const play = el('button', 'btn small primary', (BB.Icons ? BB.Icons.svg('play', 13) : '') + '<span>Play in 3D</span>');
+        play.onclick = () => enterPlayback(sampleIdx);
+        actions.append(play);
+        const jointType = sample.joints && sample.joints.length ? sample.joints[0].type : null;
+        if (jointType) {
+          const j0 = sample.joints[0];
+          const inspect = el('button', 'btn small ghost', (BB.Icons ? BB.Icons.svg('ruler', 13) : '') + '<span>Inspect joint</span>');
+          inspect.onclick = () => openJointInspector(jointType,
+            state.model.parts.find(p => p.id === j0.a),
+            state.model.parts.find(p => p.id === j0.b));
+          actions.append(inspect);
+        }
+        teach.append(actions);
+        wrap.append(teach);
+      }
       const ol = el('ol', 'preview-steps');
-      state.steps.forEach(s => ol.append(el('li', '', `<strong>${esc(s.title)}</strong> <span class="preview-locked" aria-label="step text included in the blueprint">${lockGlyph}</span>`)));
+      state.steps.forEach((s, i) => {
+        if (i === sampleIdx) {
+          ol.append(el('li', 'preview-step-open', `<strong>${esc(s.title)}</strong> <span class="txt-small txt-muted">— open above</span>`));
+        } else {
+          ol.append(el('li', '', `<strong>${esc(s.title)}</strong> <span class="preview-locked" aria-label="step text included in the blueprint">${lockGlyph}</span>`));
+        }
+      });
       wrap.append(ol);
     }
     const cta = el('div', 'preview-cta');
@@ -17032,6 +17230,9 @@ BlueprintBuddyImport.build
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
+    const jointOpts = kind => Object.values(K.JOINERY)
+      .filter(j => K.jointAllowed(j.key, s.meta.level, kind) && !j.external)
+      .map(j => [j.key, j.label]);
     if (s.meta.template !== 'custom') {
       body.append(dim('Width', 'overall.width', 250, 2400));
       body.append(dim('Depth', 'overall.depth', 200, 1200));
@@ -17043,9 +17244,45 @@ BlueprintBuddyImport.build
       body.append(paramSlider('Shelf count', s.structure.shelfCount, 0, 8, 1, false,
         v => live({ structure: { shelfCount: v } }), () => done()));
     }
-    if (s.drawers && (s.meta.template === 'nightstand' || s.meta.template === 'cabinet')) {
-      body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
-        v => live({ drawers: { count: v } }), () => done()));
+    if (BB.Parametric && BB.Parametric.supportsDrawers(s.meta.template)) {
+      const maxN = BB.Parametric.maxDrawers(s.meta.template);
+      const minN = s.meta.template === 'nightstand' ? 1 : 0;
+      const cur = s.drawers ? s.drawers.count : 0;
+      body.append(paramSlider('Drawer count', cur, minN, maxN, 1, false, v => {
+        if (v <= 0) live({ drawers: null });
+        else live({
+          drawers: {
+            count: v,
+            frontStyle: (s.drawers && s.drawers.frontStyle) || (s.meta.template === 'cabinet' ? 'overlay' : 'inset'),
+            runner: (s.drawers && s.drawers.runner) || 'side_mount_slides'
+          }
+        });
+      }, () => done()));
+    }
+    if (s.meta.template === 'cabinet') {
+      const doorN = s.doors ? s.doors.count : 0;
+      body.append(paramSlider('Door count', doorN, 0, 2, 1, false, v => {
+        if (v <= 0) live({ doors: null });
+        else live({ doors: { count: v, frontStyle: (s.doors && s.doors.frontStyle) || 'overlay' } });
+      }, () => done()));
+    }
+    if (['table', 'desk', 'bench'].includes(s.meta.template)) {
+      body.append(paramSeg('Stretchers', [['0', 'Off'], ['1', 'On']], s.structure.stretchers ? '1' : '0',
+        v => { merge({ structure: { stretchers: v === '1' } }, 'manual'); renderAdjustBody(); }));
+    }
+    if (s.joinery) {
+      if (jointOpts('frame').length) {
+        body.append(paramSelect('Frame joinery', jointOpts('frame'), s.joinery.frame,
+          v => { merge({ joinery: { frame: v } }, 'manual'); renderAdjustBody(); }));
+      }
+      if (['bookshelf', 'cabinet', 'nightstand'].includes(s.meta.template) && jointOpts('case').length) {
+        body.append(paramSelect('Case joinery', jointOpts('case'), s.joinery.case,
+          v => { merge({ joinery: { case: v } }, 'manual'); renderAdjustBody(); }));
+      }
+      if (s.drawers && jointOpts('box').length) {
+        body.append(paramSelect('Drawer-box joinery', jointOpts('box'), s.joinery.box,
+          v => { merge({ joinery: { box: v } }, 'manual'); renderAdjustBody(); }));
+      }
     }
     body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));

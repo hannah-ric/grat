@@ -47,7 +47,34 @@ section('spec correction');
   eq(wr.drawers.runner, 'side_mount_slides', 'wood runners gated to intermediate+');
 
   const noDr = Spec.correctSpec({ meta: { template: 'table' }, drawers: { count: 2 } });
-  ok(noDr.drawers === null || noDr.drawers === undefined, 'table never carries drawers');
+  ok(noDr.drawers && noDr.drawers.count >= 1, 'table may carry drawers when openings clear');
+  const benchNo = Spec.correctSpec({ meta: { template: 'bench' }, drawers: { count: 2 } });
+  ok(benchNo.drawers === null || benchNo.drawers === undefined, 'bench never carries drawers');
+  const deskDr = Spec.correctSpec({ meta: { template: 'desk' }, drawers: { count: 2 } });
+  ok(deskDr.drawers && deskDr.drawers.count >= 1 && deskDr.drawers.count <= 2, 'desk accepts a capped drawer bank');
+  const deskModel = BB.Parametric.build(deskDr);
+  ok(deskModel.drawers.length === deskDr.drawers.count, 'desk parametric builds the drawer bank');
+  ok(deskModel.parts.some(p => p.role === 'rail'), 'desk drawer bank emits front rails');
+
+  // Template aliases → LIVE templates + ergo (no new TPL enums).
+  {
+    const coffee = AI.localModel('a coffee table in walnut', Spec.correctSpec(Spec.defaultSpec('bench')));
+    eq(coffee.kind, 'new', 'coffee table creates');
+    eq(coffee.kind === 'new' && coffee.spec.meta.template, 'table', 'coffee table → table template');
+    const cht = K.ergoRow('coffee_table_height');
+    ok(coffee.kind === 'new' && coffee.spec.overall.height >= cht.min && coffee.spec.overall.height <= cht.max,
+      'coffee table height from ergo');
+    const stool = AI.localModel('a counter stool', Spec.correctSpec(Spec.defaultSpec('table')));
+    eq(stool.kind === 'new' && stool.spec.meta.template, 'bench', 'counter stool → bench');
+    const ssh = K.ergoRow('counter_stool_seat');
+    ok(stool.kind === 'new' && stool.spec.overall.height >= ssh.min && stool.spec.overall.height <= ssh.max,
+      'counter stool seat height from ergo');
+    const deskAsk = AI.localModel('add a drawer', Spec.correctSpec(Spec.defaultSpec('desk')));
+    ok(deskAsk.kind === 'diff' && deskAsk.patch.drawers && deskAsk.patch.drawers.count >= 1,
+      'offline parser adds a drawer on a desk');
+  }
+  ok(K.finishPreviewClass('wipe_poly') === 'film' && K.finishPreviewClass('danish_oil') === 'oil' &&
+    K.finishPreviewClass('paint_system') === 'paint', 'finish preview classes map oil/film/paint');
 
   // E-04: one correction pass lands every value on its stock table —
   // correctSpec∘correctSpec === correctSpec across templates × sizes. The
@@ -693,12 +720,13 @@ section('local intent parser');
     const legit = AI.localModel('give it 3 shelves', bs);
     eq(legit.kind === 'diff' && legit.patch.structure && legit.patch.structure.shelfCount, 3, 'real shelf-count asks still parse');
 
-    // A mentioned-but-not-created template cannot smuggle drawers onto the
-    // current design (correction would strip them → phantom ack).
+    // A mentioned-but-not-created template cannot smuggle a cabinet creation
+    // from a feature-noun phrase head. Tables may now honestly take drawers.
     const smug = AI.localModel('two drawers like a cabinet has', spec);
-    ok(smug.kind === 'question' || !/drawer/.test((smug.explain || '') + JSON.stringify(smug.patch || {})),
-      'drawers on a table are refused, never acked');
     ok(smug.kind !== 'new', 'a feature-noun phrase head ("two drawers like a cabinet") never creates the cabinet');
+    if (smug.kind === 'diff' && smug.patch && smug.patch.drawers) {
+      ok(BB.Parametric.supportsDrawers(spec.meta.template), 'drawer ack only when the current template supports drawers');
+    }
 
     // A8: the six-word descriptor allowance — reference request 1 verbatim.
     const funky = AI.localModel('a super funky mid century modern bookshelf', spec);
@@ -1395,6 +1423,8 @@ section('prompt budget: hard ceiling with measured headroom');
     'SCHEMA_DOC documents the LIVE hinge enum');
   ok(/x=stretchers/.test(Codec.SCHEMA_DOC),
     'SCHEMA_DOC documents stretchers on table-like pieces');
+  ok(/Drawers.*"d".*desk\/table|desk\/table.*cap 2/i.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC documents desk/table drawer banks');
   // The ANSWER shape: pure advice is legal wire, not a validation failure.
   const info = AI.classify({ i: 'Use wipe-on poly.' });
   eq([info.kind, info.text], ['info', 'Use wipe-on poly.'], 'ANSWER replies classify as info');

@@ -115,7 +115,10 @@ CSS. Reduced motion collapses every animation to a snap, in both worlds.
 bracing option; doors + hinges for cabinets (overlay/inset, euro vs butt;
 BOM + racking credit)~~ **shipped (2026-07)** — `structure.stretchers`,
 cabinet `doors` + LIVE `HNG` hinge styles, hang steps, racking credit;
-finish preview on the 3D material still open.
+~~finish preview on the 3D material~~ **shipped** — oil/film/paint classes
+via `MeshPhysicalMaterial` (display-only); desk/table drawer banks +
+coffee/console/stool aliases; free sample assembly teaching step; rich Adjust
+rail (joinery / stretchers / doors / drawers).
 
 **Tier 3 — untapped use cases** (each needs its own design pass):
 - **Scrap-first design ("shop the offcuts")** — invert the optimizer: enter

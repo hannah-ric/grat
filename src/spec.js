@@ -839,8 +839,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Drawers / doors stripped off wrong templates.
     if (raw.drawers && !correctedSpec.drawers && correctedSpec.meta) {
       const t = correctedSpec.meta.template;
-      if (t !== 'nightstand' && t !== 'cabinet') {
-        notes.push('Drawers only exist on nightstand and cabinet templates — removed here.');
+      if (!(BB.Parametric && BB.Parametric.supportsDrawers(t))) {
+        notes.push('Drawers only exist on nightstand, cabinet, desk, and table templates — removed here.');
+      } else if (t === 'desk' || t === 'table') {
+        notes.push('That drawer bank wouldn’t leave workable openings under the knee/leg clearance — removed here.');
       }
     }
     if (raw.doors && !correctedSpec.doors && correctedSpec.meta && correctedSpec.meta.template !== 'cabinet') {
@@ -1010,10 +1012,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.hardware.hinge = 'euro_cup';
     }
 
-    // Drawers: only templates with openings support them.
-    if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
+    // Drawers: only templates with openings support them. Desk/table cap at 2
+    // and keep seated/leg clearance (Parametric.openingHeightFor).
+    const canDraw = BB.Parametric && BB.Parametric.supportsDrawers(template);
+    if (s.drawers && canDraw) {
       const d = s.drawers;
-      d.count = clamp(Math.round(num(d.count, 1)), 1, 4);
+      const maxN = BB.Parametric.maxDrawers(template);
+      d.count = clamp(Math.round(num(d.count, 1)), 1, maxN);
       d.frontStyle = d.frontStyle === 'overlay' ? 'overlay' : 'inset';
       d.runner = ['wood_runners', 'undermount_slides'].includes(d.runner) ? d.runner : 'side_mount_slides';
       // Fussier running gear is gated past beginner: wood runners need
@@ -1021,7 +1026,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (d.runner !== 'side_mount_slides' && lvl === 'beginner') d.runner = 'side_mount_slides';
       // Reduce count until every opening clears the 80 mm minimum (correction
       // owns geometry; validation only reports what remains).
-      while (d.count > 1 && BB.Parametric && BB.Parametric.openingHeightFor(s) < 80) d.count--;
+      while (d.count > 1 && BB.Parametric.openingHeightFor(s) < 80) d.count--;
+      // Desk/table: if even one drawer won't clear, strip (opt-in only —
+      // nightstand always keeps a bank; cabinet may keep a reduced count).
+      if ((template === 'desk' || template === 'table') && BB.Parametric.openingHeightFor(s) < 80) {
+        s.drawers = null;
+      }
     } else {
       s.drawers = null;
     }

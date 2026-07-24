@@ -629,14 +629,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       out.push(step('s5', 'Attach the top', 'Fasten the top from below.', ['top_1']));
       drawerSteps(spec, model, out, opts);
       doorSteps(spec, model, out);
-    } else if (t === 'nightstand') {
+    } else if (t === 'nightstand' || ((t === 'desk' || t === 'table') && spec.drawers)) {
+      // Nightstand and drawer-bank desks/tables share the wrap-apron + front
+      // rail assembly grammar (parametric tableLike with drawers).
       out.push(step('s1', 'Build the two side frames', `Join the side aprons to the legs with ${frP} — two mirror-image assemblies. Dry-fit and check square before any glue.`, ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'apron_side_1', 'apron_side_2')));
       const rails = model.parts.filter(p => p.role === 'rail').map(p => p.id);
       out.push(step('s2', 'Connect with back apron and rails', `Join the back apron and the front drawer rails between the side frames with ${frP}.`, ['apron_back_1', ...rails]));
       if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf',
         'Notch the shelf around the legs and fasten it.' + slottedNote(integrity, 'shelf_1'),
         ['shelf_1']));
-      out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
+      const stretchers = model.parts.filter(p => p.role === 'stretcher').map(p => p.id);
+      if (stretchers.length) {
+        out.push(step('s2b', 'Fit the stretchers',
+          `Dry-fit the lower stretchers between the legs with ${frP}, then glue and clamp — they stiffen the base against racking. Check the diagonals before the glue sets.`,
+          stretchers));
+      }
+      out.push(step('s4', 'Attach the top',
+        t === 'nightstand'
+          ? 'Fasten the top with figure-8s so it can move with the seasons.'
+          : 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.',
+        ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
       out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
