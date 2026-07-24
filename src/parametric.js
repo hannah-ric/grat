@@ -16,6 +16,27 @@ var BB = globalThis.BB = globalThis.BB || {};
   const RAIL_H = 60, RAIL_T = 20;          // drawer rails: 20 mm thick × 60 mm tall
   const DEFAULT_OPENING_H = 130;           // equal-height openings by default
   const MIN_LEG_REVEAL = 120;              // nightstand: legs must show below the bank
+  // Desk banks leave seated knee room under the case; table banks keep a
+  // modest leg reveal so a coffee/console with drawers still reads as a
+  // standing frame (code-owned — AI only asks for drawers).
+  const DESK_KNEE_CLEARANCE = 380;
+  const TABLE_BANK_CLEARANCE = 100;
+
+  /* Templates that can carry a drawer bank. Desk/table are opt-in (never
+   * defaulted); nightstand always has at least one; cabinet is optional. */
+  function supportsDrawers(template) {
+    return template === 'nightstand' || template === 'cabinet' ||
+      template === 'desk' || template === 'table';
+  }
+  function maxDrawers(template) {
+    return (template === 'desk' || template === 'table') ? 2 : 4;
+  }
+  function bankClearanceFor(template) {
+    if (template === 'desk') return DESK_KNEE_CLEARANCE;
+    if (template === 'table') return TABLE_BANK_CLEARANCE;
+    if (template === 'nightstand') return MIN_LEG_REVEAL;
+    return 0;
+  }
 
   function part(id, defKey, role, name, w, h, d, x, y, z, opts) {
     return Object.assign({
@@ -66,7 +87,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       // (audit F-S2-8).
       const base = st.toeKick ? 90 : 0;
       available = (o.height - st.topThickness - base) * 0.6;
+    } else if (t === 'desk' || t === 'table') {
+      // Must mirror tableLike()'s bank zone when drawers are present.
+      available = o.height - st.topThickness - bankClearanceFor(t);
     } else return Infinity;
+    if (available <= (count + 1) * RAIL_H) return 0;
     return bankHeights(available, count).openH;
   }
 
@@ -251,8 +276,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         // Start behind the front structure (legs on a nightstand, the rail
         // band on a cabinet) and stop short of the rear — the runner spans
         // between the case's own members, exactly as it would in the shop.
+        // When front legs set the setback, rear legs need the same clearance
+        // (desk/table banks with 70 mm legs) or runners overlap leg_1/leg_2.
         const setback = Math.max(RAIL_T, zone.gearFrontSetback || 0) + 2;
-        const runD = Math.max(80, Math.round(op.interiorDepth - setback - 28));
+        const rearClear = Math.max(28, (zone.gearFrontSetback || 0) + 4);
+        const runD = Math.max(80, Math.round(op.interiorDepth - setback - rearClear));
         const runZ = zone.zFront - setback - runD / 2;
         [[-1, 0], [1, 1]].forEach(([sgn, ti]) => {
           const id = `${prefix}dr${i + 1}_runner_${sgn < 0 ? 'l' : 'r'}`;
@@ -405,6 +433,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const frameW = o.width - 2 * overhang, frameD = o.depth - 2 * overhang;
     const legH = o.height - topT;
     const sp = spec.wood.species;
+    const withDrawers = !!(spec.drawers && supportsDrawers(t));
 
     const lx = frameW / 2 - legT / 2, lz = frameD / 2 - legT / 2;
     [[-lx, -lz, 1], [lx, -lz, 2], [-lx, lz, 3], [lx, lz, 4]].forEach(([x, z, i]) => {
@@ -412,54 +441,101 @@ var BB = globalThis.BB = globalThis.BB || {};
         { material: sp, explode: { x: Math.sign(x) * 0.35, y: -0.4, z: Math.sign(z) * 0.35 } }));
     });
 
-    const apY = o.height - topT - st.apronHeight / 2;
-    const apLenLong = frameW - 2 * legT, apLenShort = frameD - 2 * legT;
-    const apZ = frameD / 2 - st.apronInset - st.apronThickness / 2;
-    const apX = frameW / 2 - st.apronInset - st.apronThickness / 2;
-    [[-apZ, 1], [apZ, 2]].forEach(([z, i]) => {
-      parts.push(part(`apron_long_${i}`, 'apron_long', 'apron', 'Long apron', apLenLong, st.apronHeight, st.apronThickness, 0, apY, z,
-        { material: sp, explode: { x: 0, y: 0, z: Math.sign(z) } }));
-    });
-    [[-apX, 1], [apX, 2]].forEach(([x, i]) => {
-      parts.push(part(`apron_short_${i}`, 'apron_short', 'apron', 'Short apron', st.apronThickness, st.apronHeight, apLenShort, x, apY, 0,
-        { material: sp, explode: { x: Math.sign(x), y: 0, z: 0 } }));
-    });
-
-    parts.push(part('top_1', 'top', 'top', t === 'bench' ? 'Seat' : 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0,
-      { material: sp, explode: { x: 0, y: 1, z: 0 } }));
-
-    // Frame joints: each apron end into its leg.
     const fj = spec.joinery.frame;
-    for (const [z] of [[-apZ], [apZ]]) {
-      joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: apY, z } });
-      joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: apY, z } });
+    let bankOut = { openings: [], drawers: [] };
+    let bankBottom = 0;
+
+    if (withDrawers) {
+      // Desk/table drawer bank: nightstand-style wrap under the top. Side +
+      // back aprons match the bank height; front rails become the openings.
+      // Knee/leg clearance is code-owned (openingHeightFor must stay in sync).
+      const available = o.height - topT - bankClearanceFor(t);
+      const { bank } = bankHeights(available, spec.drawers.count);
+      const bankTop = o.height - topT;
+      bankBottom = bankTop - bank;
+      const apT = st.apronThickness;
+      const sideLen = frameD - 2 * legT;
+      const apY = bankTop - bank / 2;
+      [[-1, 1], [1, 2]].forEach(([s, i]) => {
+        parts.push(part(`apron_side_${i}`, 'apron_side', 'apron', 'Side apron', apT, bank, sideLen,
+          s * (frameW / 2 - apT / 2), apY, 0,
+          { material: sp, explode: { x: s, y: 0, z: 0 } }));
+        joints.push({ type: fj, a: `apron_side_${i}`, b: s < 0 ? 'leg_1' : 'leg_2', pos: { x: s * lx, y: apY, z: -lz } });
+        joints.push({ type: fj, a: `apron_side_${i}`, b: s < 0 ? 'leg_3' : 'leg_4', pos: { x: s * lx, y: apY, z: lz } });
+      });
+      parts.push(part('apron_back_1', 'apron_back', 'apron', 'Back apron', frameW - 2 * legT, bank, apT,
+        0, apY, -(frameD / 2 - apT / 2),
+        { material: sp, explode: { x: 0, y: 0, z: -1 } }));
+      joints.push({ type: fj, a: 'apron_back_1', b: 'leg_1', pos: { x: -lx, y: apY, z: -lz } });
+      joints.push({ type: fj, a: 'apron_back_1', b: 'leg_2', pos: { x: lx, y: apY, z: -lz } });
+
+      parts.push(part('top_1', 'top', 'top', 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0,
+        { material: sp, explode: { x: 0, y: 1, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_1', pos: { x: -(frameW / 2 - apT / 2), y: o.height - topT, z: 0 } });
+      joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_side_2', pos: { x: frameW / 2 - apT / 2, y: o.height - topT, z: 0 } });
+
+      const zone = {
+        clearW: frameW - 2 * legT, railLen: frameW - 2 * legT,
+        yTop: bankTop, zFront: frameD / 2,
+        interiorDepth: frameD - apT, available,
+        overlayMaxW: frameW - 2 * legT + Math.min(20, legT), x: 0,
+        railJointTargets: [{ id: 'leg_3', x: -lx }, { id: 'leg_4', x: lx }],
+        sideInnerX: frameW / 2 - apT, gearFrontSetback: legT,
+        runnerTargets: ['apron_side_1', 'apron_side_2']
+      };
+      bankOut = buildBank(spec, zone, parts, joints, '');
+    } else {
+      const apY = o.height - topT - st.apronHeight / 2;
+      const apLenLong = frameW - 2 * legT, apLenShort = frameD - 2 * legT;
+      const apZ = frameD / 2 - st.apronInset - st.apronThickness / 2;
+      const apX = frameW / 2 - st.apronInset - st.apronThickness / 2;
+      [[-apZ, 1], [apZ, 2]].forEach(([z, i]) => {
+        parts.push(part(`apron_long_${i}`, 'apron_long', 'apron', 'Long apron', apLenLong, st.apronHeight, st.apronThickness, 0, apY, z,
+          { material: sp, explode: { x: 0, y: 0, z: Math.sign(z) } }));
+      });
+      [[-apX, 1], [apX, 2]].forEach(([x, i]) => {
+        parts.push(part(`apron_short_${i}`, 'apron_short', 'apron', 'Short apron', st.apronThickness, st.apronHeight, apLenShort, x, apY, 0,
+          { material: sp, explode: { x: Math.sign(x), y: 0, z: 0 } }));
+      });
+
+      parts.push(part('top_1', 'top', 'top', t === 'bench' ? 'Seat' : 'Top', o.width, topT, o.depth, 0, o.height - topT / 2, 0,
+        { material: sp, explode: { x: 0, y: 1, z: 0 } }));
+
+      // Frame joints: each apron end into its leg.
+      for (const [z] of [[-apZ], [apZ]]) {
+        joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: apY, z } });
+        joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: apY, z } });
+      }
+      for (const [x] of [[-apX], [apX]]) {
+        joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y: apY, z: -lz } });
+        joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y: apY, z: lz } });
+      }
+      joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
+      joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
     }
-    for (const [x] of [[-apX], [apX]]) {
-      joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y: apY, z: -lz } });
-      joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y: apY, z: lz } });
-    }
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
 
     // Lower stretchers (Tier 1 LIVE): a pair of long rails between the legs
     // at ~40% of leg height — code-owned thickness/height; AI only flips the
     // structure.stretchers intent. Credits racking and shortens unbraced length.
+    // With a drawer bank, only place them when they clear the bank bottom.
     if (st.stretchers) {
       const strH = Math.min(70, Math.max(50, Math.round(st.apronHeight * 0.7)));
       const strT = st.apronThickness;
       const strY = Math.max(strH / 2 + 20, Math.round(legH * 0.38));
-      const strLen = frameW - 2 * legT;
-      const strZ = frameD / 2 - strT / 2;
-      [[-strZ, 1], [strZ, 2]].forEach(([z, i]) => {
-        parts.push(part(`stretcher_long_${i}`, 'stretcher_long', 'stretcher', 'Stretcher',
-          strLen, strH, strT, 0, strY, z,
-          { material: sp, explode: { x: 0, y: -0.3, z: Math.sign(z) * 0.6 } }));
-        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: strY, z } });
-        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: strY, z } });
-      });
+      if (!withDrawers || strY + strH / 2 < bankBottom - 15) {
+        const strLen = frameW - 2 * legT;
+        const strZ = frameD / 2 - strT / 2;
+        [[-strZ, 1], [strZ, 2]].forEach(([z, i]) => {
+          parts.push(part(`stretcher_long_${i}`, 'stretcher_long', 'stretcher', 'Stretcher',
+            strLen, strH, strT, 0, strY, z,
+            { material: sp, explode: { x: 0, y: -0.3, z: Math.sign(z) * 0.6 } }));
+          joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: strY, z } });
+          joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: strY, z } });
+        });
+      }
     }
 
-    return { parts, joints, openings: [], drawers: [], doors: [] };
+    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers, doors: [] };
   }
 
   function bookshelf(spec) {
@@ -708,5 +784,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     return m;
   }
 
-  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
+  BB.Parametric = {
+    build, openingHeightFor, shelfSpacingFor, supportsDrawers, maxDrawers,
+    RAIL_H, RAIL_T, DEFAULT_OPENING_H, DESK_KNEE_CLEARANCE, TABLE_BANK_CLEARANCE,
+    bankHeights
+  };
 })();

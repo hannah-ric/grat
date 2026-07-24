@@ -1011,12 +1011,17 @@ section('FE-H10/H11 offline parser: negation and drawer honesty');
     'rejection plus request applies the request');
 
   // H-10: drawers on a drawerless template — honest refusal, and the clarify
-  // chips never offer an action the template cannot take.
+  // chips never offer an action the template cannot take. Desk/table now
+  // support drawer banks; bench remains drawerless.
   const table = Spec.correctSpec({ meta: { name: 'T', template: 'table', level: 'beginner', units: 'mm' } });
-  const dr = AI.localModel('add a drawer', table);
-  ok(dr.kind === 'question' && /nightstand|cabinet/i.test(dr.question || ''), 'drawer ask on a table is refused honestly');
-  const fb = AI.localModel('do something nice', table);
-  ok(fb.kind === 'question' && !(fb.options || []).some(o => /drawer/i.test(o)), 'clarify chips drop "Add a drawer" on a table');
+  const drOk = AI.localModel('add a drawer', table);
+  ok(drOk.kind === 'diff' && drOk.patch && drOk.patch.drawers && drOk.patch.drawers.count >= 1,
+    'drawer ask on a table is accepted (table banks are LIVE)');
+  const bench = Spec.correctSpec({ meta: { name: 'B', template: 'bench', level: 'beginner', units: 'mm' } });
+  const dr = AI.localModel('add a drawer', bench);
+  ok(dr.kind === 'question' && /nightstand|cabinet|desk|table/i.test(dr.question || ''), 'drawer ask on a bench is refused honestly');
+  const fb = AI.localModel('do something nice', bench);
+  ok(fb.kind === 'question' && !(fb.options || []).some(o => /drawer/i.test(o)), 'clarify chips drop "Add a drawer" on a bench');
   const fbNs = AI.localModel('do something nice', ns);
   ok((fbNs.options || []).some(o => /drawer/i.test(o)), 'nightstand keeps the drawer chip');
 }

@@ -215,27 +215,52 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Bounded material pool. Textured wood gets the species grain map with a
     // near-white tint (ROLE_SHADE still separates legs/tops/backs); flat mode
-    // keeps the original solid species tones.
+    // keeps the original solid species tones. Finish preview (display-only)
+    // adds one bounded pool dimension — oil/film/paint/raw — never geometry.
     const matPool = new Map();
+    const FINISH_LOOK = {
+      raw:  { roughDelta: 0.08, clearcoat: 0, clearcoatRough: 0.4, metalness: 0.02, sheen: 0, sheenRough: 1 },
+      oil:  { roughDelta: -0.12, clearcoat: 0.15, clearcoatRough: 0.55, metalness: 0.02, sheen: 0.35, sheenRough: 0.6 },
+      film: { roughDelta: -0.22, clearcoat: 0.85, clearcoatRough: 0.22, metalness: 0.04, sheen: 0.1, sheenRough: 0.4 },
+      paint:{ roughDelta: -0.18, clearcoat: 0.35, clearcoatRough: 0.35, metalness: 0.0, sheen: 0, sheenRough: 1, desat: 0.35 }
+    };
     function materialFor(matKey, role, bucket) {
       const sp = BB.K.WOOD_SPECIES[matKey];
       const textured = quality.textured && !!sp;
-      const key = matKey + '|' + role + '|' + bucket + (textured ? '|t' : '');
+      const finClass = (matKey === 'hardware') ? 'raw'
+        : (BB.K.finishPreviewClass && E.spec ? BB.K.finishPreviewClass(E.spec.finish) : 'film');
+      const key = matKey + '|' + role + '|' + bucket + (textured ? '|t' : '') + '|' + finClass;
       if (matPool.has(key)) return matPool.get(key);
       let tone = 0xb98d62, rough = 0.7;
       if (matKey === 'hardware') { tone = 0x46464a; rough = 0.35; }
       else if (sp) { tone = sp.tone; rough = sp.rough; }
+      const look = FINISH_LOOK[finClass] || FINISH_LOOK.raw;
+      rough = Math.max(0.12, Math.min(0.95, rough + (look.roughDelta || 0)));
       const shadeF = ROLE_SHADE[role] || 1;
       const c = textured
         ? new THREE.Color(1, 1, 1).multiplyScalar(0.55 + 0.45 * shadeF)
         : new THREE.Color(tone).multiplyScalar(shadeF);
+      if (look.desat && !textured) c.lerp(new THREE.Color(0xd8d4cc), look.desat);
       const opacity = BUCKETS[bucket] !== undefined ? BUCKETS[bucket] : 1;
-      const m = new THREE.MeshStandardMaterial({
-        color: c, roughness: rough, metalness: matKey === 'hardware' ? 0.6 : 0.02,
-        transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
-      });
+      let m;
+      if (matKey === 'hardware' || typeof THREE.MeshPhysicalMaterial !== 'function') {
+        m = new THREE.MeshStandardMaterial({
+          color: c, roughness: rough, metalness: matKey === 'hardware' ? 0.6 : (look.metalness || 0.02),
+          transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
+        });
+      } else {
+        m = new THREE.MeshPhysicalMaterial({
+          color: c, roughness: rough, metalness: look.metalness || 0.02,
+          clearcoat: look.clearcoat || 0,
+          clearcoatRoughness: look.clearcoatRough || 0.3,
+          sheen: look.sheen || 0,
+          sheenRoughness: look.sheenRough || 1,
+          sheenColor: new THREE.Color(0xfff2dc),
+          transparent: opacity < 1, opacity, depthWrite: opacity > 0.5
+        });
+      }
       if (textured) m.map = BB.Materials.woodTexture(THREE, matKey);
-      m.envMapIntensity = matKey === 'hardware' ? 0.9 : 0.5;
+      m.envMapIntensity = matKey === 'hardware' ? 0.9 : (finClass === 'film' ? 0.75 : 0.5);
       if (bucket === 'selected') {
         if (textured) patchRim(m); // fresnel rim; recolored via the shared uniform
         else { m.emissive = new THREE.Color().copy(rimColor); m.emissiveIntensity = 0.3; }

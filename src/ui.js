@@ -775,10 +775,46 @@ var BB = globalThis.BB = globalThis.BB || {};
         `Estimated materials: $${state.bomData ? state.bomData.total : (plan ? plan.totalCost.toFixed(2) : '—')} across ${boards} board${boards === 1 ? '' : 's'}/sheet${boards === 1 ? '' : 's'}. ` +
         'The blueprint issues the exact shopping list and per-board cutting diagrams, optimized for waste.'));
     } else {
-      wrap.append(el('h2', '', 'Assembly — in your blueprint'));
-      wrap.append(el('p', 'txt-muted', `${state.steps.length} steps, in dependency order, at your skill level. Step-by-step text, joinery setout, and the shop checklist are issued with the blueprint.`));
+      // Free sample teaching loop: one real assembly step (full text + Play +
+      // Inspect) stays free so Design/Plan can teach without issuing a
+      // blueprint. Cut dims and stock stay gated; remaining steps stay locked.
+      const sampleIdx = (() => {
+        const prefer = state.steps.findIndex(s => s.joints && s.joints.length &&
+          !/^(mill|sand|finish|safety|antitip)/.test(s.id));
+        return prefer >= 0 ? prefer : 0;
+      })();
+      const sample = state.steps[sampleIdx];
+      wrap.append(el('h2', '', 'Assembly — try a free teaching step'));
+      wrap.append(el('p', 'txt-muted',
+        `${state.steps.length} steps in dependency order. One sample step below is fully open — play it in 3D, inspect the joint. The rest of the shop checklist issues with the blueprint.`));
+      if (sample) {
+        const teach = el('div', 'preview-sample' + (state.playbackIndex === sampleIdx ? ' active' : ''));
+        teach.innerHTML = `<p class="txt-small preview-sample-label">Free sample · step ${sampleIdx + 1} of ${state.steps.length}</p>
+          <h4>${esc(sample.title)}</h4><p>${esc(sample.text)}</p>`;
+        const actions = el('div', 'preview-sample-actions');
+        const play = el('button', 'btn small primary', (BB.Icons ? BB.Icons.svg('play', 13) : '') + '<span>Play in 3D</span>');
+        play.onclick = () => enterPlayback(sampleIdx);
+        actions.append(play);
+        const jointType = sample.joints && sample.joints.length ? sample.joints[0].type : null;
+        if (jointType) {
+          const j0 = sample.joints[0];
+          const inspect = el('button', 'btn small ghost', (BB.Icons ? BB.Icons.svg('ruler', 13) : '') + '<span>Inspect joint</span>');
+          inspect.onclick = () => openJointInspector(jointType,
+            state.model.parts.find(p => p.id === j0.a),
+            state.model.parts.find(p => p.id === j0.b));
+          actions.append(inspect);
+        }
+        teach.append(actions);
+        wrap.append(teach);
+      }
       const ol = el('ol', 'preview-steps');
-      state.steps.forEach(s => ol.append(el('li', '', `<strong>${esc(s.title)}</strong> <span class="preview-locked" aria-label="step text included in the blueprint">${lockGlyph}</span>`)));
+      state.steps.forEach((s, i) => {
+        if (i === sampleIdx) {
+          ol.append(el('li', 'preview-step-open', `<strong>${esc(s.title)}</strong> <span class="txt-small txt-muted">— open above</span>`));
+        } else {
+          ol.append(el('li', '', `<strong>${esc(s.title)}</strong> <span class="preview-locked" aria-label="step text included in the blueprint">${lockGlyph}</span>`));
+        }
+      });
       wrap.append(ol);
     }
     const cta = el('div', 'preview-cta');
@@ -2402,6 +2438,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
+    const jointOpts = kind => Object.values(K.JOINERY)
+      .filter(j => K.jointAllowed(j.key, s.meta.level, kind) && !j.external)
+      .map(j => [j.key, j.label]);
     if (s.meta.template !== 'custom') {
       body.append(dim('Width', 'overall.width', 250, 2400));
       body.append(dim('Depth', 'overall.depth', 200, 1200));
@@ -2413,9 +2452,47 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(paramSlider('Shelf count', s.structure.shelfCount, 0, 8, 1, false,
         v => live({ structure: { shelfCount: v } }), () => done()));
     }
-    if (s.drawers && (s.meta.template === 'nightstand' || s.meta.template === 'cabinet')) {
-      body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
-        v => live({ drawers: { count: v } }), () => done()));
+    // Drawer bank: nightstand always has ≥1; cabinet/desk/table are opt-in
+    // (0 removes). Caps stay code-owned via Parametric.maxDrawers.
+    if (BB.Parametric && BB.Parametric.supportsDrawers(s.meta.template)) {
+      const maxN = BB.Parametric.maxDrawers(s.meta.template);
+      const minN = s.meta.template === 'nightstand' ? 1 : 0;
+      const cur = s.drawers ? s.drawers.count : 0;
+      body.append(paramSlider('Drawer count', cur, minN, maxN, 1, false, v => {
+        if (v <= 0) live({ drawers: null });
+        else live({
+          drawers: {
+            count: v,
+            frontStyle: (s.drawers && s.drawers.frontStyle) || (s.meta.template === 'cabinet' ? 'overlay' : 'inset'),
+            runner: (s.drawers && s.drawers.runner) || 'side_mount_slides'
+          }
+        });
+      }, () => done()));
+    }
+    if (s.meta.template === 'cabinet') {
+      const doorN = s.doors ? s.doors.count : 0;
+      body.append(paramSlider('Door count', doorN, 0, 2, 1, false, v => {
+        if (v <= 0) live({ doors: null });
+        else live({ doors: { count: v, frontStyle: (s.doors && s.doors.frontStyle) || 'overlay' } });
+      }, () => done()));
+    }
+    if (['table', 'desk', 'bench'].includes(s.meta.template)) {
+      body.append(paramSeg('Stretchers', [['0', 'Off'], ['1', 'On']], s.structure.stretchers ? '1' : '0',
+        v => { merge({ structure: { stretchers: v === '1' } }, 'manual'); renderAdjustBody(); }));
+    }
+    if (s.joinery) {
+      if (jointOpts('frame').length) {
+        body.append(paramSelect('Frame joinery', jointOpts('frame'), s.joinery.frame,
+          v => { merge({ joinery: { frame: v } }, 'manual'); renderAdjustBody(); }));
+      }
+      if (['bookshelf', 'cabinet', 'nightstand'].includes(s.meta.template) && jointOpts('case').length) {
+        body.append(paramSelect('Case joinery', jointOpts('case'), s.joinery.case,
+          v => { merge({ joinery: { case: v } }, 'manual'); renderAdjustBody(); }));
+      }
+      if (s.drawers && jointOpts('box').length) {
+        body.append(paramSelect('Drawer-box joinery', jointOpts('box'), s.joinery.box,
+          v => { merge({ joinery: { box: v } }, 'manual'); renderAdjustBody(); }));
+      }
     }
     body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));

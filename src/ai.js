@@ -68,7 +68,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // the joinery table, audit F-S3-8) — repeating it here cost ~90 tokens
       // per call saying the same thing twice.
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
-      'Drawers ("d") on nightstand/cabinet; doors ("do") on cabinet; stretchers ("s.x") on table/desk/bench. Prefer known templates; use t=6 only for novel forms.',
+      'Drawers ("d") on nightstand/cabinet/desk/table; doors ("do") on cabinet; stretchers ("s.x") on table/desk/bench. Prefer known templates; use t=6 only for novel forms.',
       // G6: ask-vs-guess was ungoverned chance — 2/4 fresh runs of an
       // underdetermined request silently committed complete failing designs.
       // Deliberate token spend; asking is load-bearing for soundness (every
@@ -247,8 +247,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
 
     // New design? Longest template word first: "bedside table" must win
-    // over "table".
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
+    // over "table". Aliases map to LIVE templates + ergo presets — never new
+    // TPL enums (coffee/console/stool stay flexible without schema growth).
+    const tmplWords = {
+      table: 'table', 'dining table': 'table', 'coffee table': 'table',
+      'console table': 'table', 'sofa table': 'table', 'entry table': 'table',
+      'hall table': 'table', console: 'table',
+      desk: 'desk', 'writing desk': 'desk',
+      bench: 'bench', stool: 'bench', 'counter stool': 'bench', 'bar stool': 'bench',
+      workbench: 'table',
+      bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf',
+      nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand',
+      cabinet: 'cabinet', sideboard: 'cabinet', 'media console': 'cabinet'
+    };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -285,8 +296,8 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Capability walls (capability UX audit): chairs/beds/wall mounts aren't
     // LIVE templates — ask the nearest expressible path instead of silently
-    // nearest-fixed-forming.
-    if (/\b(chair|stool|dining chair)\b/.test(t) && !/\b(bench|table|desk)\b/.test(t)) {
+    // nearest-fixed-forming. Stools alias to bench (below); bare chairs ask.
+    if (/\b(chair|dining chair)\b/.test(t) && !/\b(bench|table|desk|stool)\b/.test(t)) {
       return {
         kind: 'question',
         question: 'Chairs aren’t a template yet — the closest expressible pieces are a bench or a custom composition. Which should I rough out?',
@@ -396,7 +407,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     // X-01): the new template when creating, else the CURRENT design — a
     // mentioned-but-not-created template must never smuggle a field that
     // correction will strip (the phantom "2 drawer(s)" ack).
-    const canDrawer = w => ['nightstand', 'cabinet'].includes(w || spec.meta.template);
+    const canDrawer = w => BB.Parametric
+      ? BB.Parametric.supportsDrawers(w || spec.meta.template)
+      : ['nightstand', 'cabinet', 'desk', 'table'].includes(w || spec.meta.template);
     const landing = creating ? wantTemplate : spec.meta.template;
     let dm = null;
     if (/\b(no|remove|without)\b.*\bdrawers?\b/.test(t) && spec.meta.template !== 'nightstand') { patch.drawers = null; notes.push('no drawers'); }
@@ -407,14 +420,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (!Object.keys(patch).length) {
           return {
             kind: 'question',
-            question: `Drawers need a case with openings — a ${spec.meta.template} can't take them yet, but a nightstand or cabinet can.`,
-            options: ['Make it a nightstand', 'Make it a cabinet']
+            question: `Drawers need a case or apron bank — a ${spec.meta.template} can't take them, but a nightstand, cabinet, desk, or table can.`,
+            options: ['Make it a desk with a drawer', 'Make it a nightstand', 'Make it a cabinet']
           };
         }
         notes.push(`drawers skipped — not available on a ${spec.meta.template}`);
       } else if (dm && canDrawer(landing)) {
-        const count = WORD_NUMS[dm[1]] || parseInt(dm[1], 10) || 1;
-        set('drawers.count', Math.min(4, Math.max(1, count)));
+        const maxN = BB.Parametric ? BB.Parametric.maxDrawers(landing) : 4;
+        const count = Math.min(maxN, Math.max(1, WORD_NUMS[dm[1]] || parseInt(dm[1], 10) || 1));
+        set('drawers.count', count);
         if (!spec.drawers) { set('drawers.frontStyle', 'inset'); set('drawers.runner', 'side_mount_slides'); }
         notes.push(count + ' drawer(s)');
       }
@@ -489,11 +503,36 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (creating) {
-      // A workbench is a table at working height: the WORD itself implies the
-      // height, from the ergonomics table (A8) — an explicit height still wins.
-      if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
-        const row = K.ergoRow('workbench_height');
-        if (row) set('overall.height', Math.round((row.min + row.max) / 2));
+      // Alias → ergo presets (code owns the numbers). Explicit dims still win.
+      const mid = key => {
+        const row = K.ergoRow(key);
+        return row ? Math.round((row.min + row.max) / 2) : null;
+      };
+      if (!(patch.overall && patch.overall.height)) {
+        if (tmplWord === 'workbench') {
+          const h = mid('workbench_height'); if (h) set('overall.height', h);
+        } else if (tmplWord === 'coffee table') {
+          const h = mid('coffee_table_height'); if (h) set('overall.height', h);
+        } else if (tmplWord === 'console' || tmplWord === 'console table' || tmplWord === 'sofa table' ||
+                   tmplWord === 'entry table' || tmplWord === 'hall table') {
+          const h = mid('console_height'); if (h) set('overall.height', h);
+          if (!(patch.overall && patch.overall.depth)) {
+            const d = mid('console_depth'); if (d) set('overall.depth', d);
+          }
+        } else if (tmplWord === 'media console') {
+          const h = mid('media_height'); if (h) set('overall.height', h);
+          if (!(patch.overall && patch.overall.depth)) {
+            const d = mid('media_depth'); if (d) set('overall.depth', d);
+          }
+        } else if (tmplWord === 'bar stool') {
+          const h = mid('bar_stool_seat'); if (h) set('overall.height', h);
+          if (!(patch.overall && patch.overall.width)) set('overall.width', 400);
+          if (!(patch.overall && patch.overall.depth)) set('overall.depth', 320);
+        } else if (tmplWord === 'counter stool' || tmplWord === 'stool') {
+          const h = mid('counter_stool_seat'); if (h) set('overall.height', h);
+          if (!(patch.overall && patch.overall.width)) set('overall.width', 400);
+          if (!(patch.overall && patch.overall.depth)) set('overall.depth', 320);
+        }
       }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
@@ -501,7 +540,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord : 'New ' + tmplWord;
       merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
-      return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
+      const aliasNote = (tmplWord === 'stool' || tmplWord === 'counter stool' || tmplWord === 'bar stool')
+        ? ' (a backless stool seat on four legs — no chair back yet)'
+        : (tmplWord === 'coffee table' || /console|sofa table|entry table|hall table/.test(tmplWord))
+          ? ` (using the table template at ${tmplWord} proportions)`
+          : (tmplWord === 'media console' ? ' (using the cabinet template at media-console proportions)' : '');
+      return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${aliasNote}${drawerNote} — refine away.` };
     }
 
     // A rejected species with nothing else asked: say so and ask which wood
@@ -521,8 +565,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (creationShaped) {
         return {
           kind: 'question',
-          question: 'Offline I can rough out a table, desk, bench, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
-          options: ['A walnut nightstand with two drawers', 'A workbench', 'A bookshelf']
+          question: 'Offline I can rough out a table, desk, bench, stool, coffee table, console, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
+          options: ['A walnut nightstand with two drawers', 'A desk with a drawer', 'A coffee table']
         };
       }
       return {
