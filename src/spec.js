@@ -84,12 +84,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       structure: {
         topThickness: 25, legThickness: 70, apronHeight: 90, apronThickness: 20,
         apronInset: 12, shelfCount: 0, shelfThickness: 19, sideThickness: 18,
-        backPanel: true, toeKick: false
+        backPanel: true, toeKick: false, stretchers: false
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
-      hardware: { pull: 'bar_pull' },
+      hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
+      doors: null,
       custom: null
     };
     const t = base.meta.template;
@@ -277,7 +278,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     'structure.apronInset': 'apron inset', 'structure.shelfCount': 'shelf count',
     'structure.shelfThickness': 'shelf thickness', 'structure.sideThickness': 'side thickness',
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
+    'structure.stretchers': 'stretchers',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
+    'hardware.pull': 'pull style', 'hardware.hinge': 'hinge style',
+    'doors.count': 'door count', 'doors.frontStyle': 'door front style',
     'finish': 'finish', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
   };
@@ -428,14 +432,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     // 4. Mechanism words no artifact can contain (kd_bolt is the only
-    // non-permanent joint, so an honest lift-off claim needs one).
+    // non-permanent joint, so an honest lift-off claim needs one). Cabinet
+    // doors ARE live and do swing — hinge claims are honest when doors exist.
     {
       const hasKD = ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'kd_bolt') ||
         ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'kd_bolt');
-      if (mentioned(/\b(hinged?|hinges|pivot(?:s|ing)?|fold(?:s|ing|able)?(?:[\s-](?:down|out|up|flat))?)\b/)) {
+      const hasDoors = !!(spec.doors && spec.doors.count);
+      // Don't match bare "lid" (a glued lid is honest furniture) — only
+      // mechanism claims: hinged lid, fold-*, lift-off.
+      if (mentioned(/\b(fold(?:s|ing|able)?(?:[\s-](?:down|out|up|flat))?|hinged?\s+lids?|lifts?[\s-]?off)\b/)) {
+        fixes.push(hasDoors
+          ? 'the doors swing on hinges, but lids and folding mechanisms aren’t in this plan'
+          : 'nothing hinges, folds, or pivots in this plan — every connection is fixed' + (hasKD ? ' or bolted (kd_bolt)' : ''));
+      } else if (!hasDoors && mentioned(/\b(hinged?|hinges|pivot(?:s|ing)?)\b/)) {
         fixes.push('nothing hinges, folds, or pivots in this plan — every connection is fixed' + (hasKD ? ' or bolted (kd_bolt)' : ''));
-      } else if (!hasKD && mentioned(/\blifts?[\s-]?off\b/)) {
-        fixes.push('the lid/top is permanently fastened — no lift-off connection exists in this plan');
       }
     }
 
@@ -788,6 +798,60 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
       }
     }
+    if (!raw || !correctedSpec) return notes;
+    const rw = raw.wood || {};
+    const cw = correctedSpec.wood || {};
+    // Audit M-20 / M-17: silent species snaps and whole-piece scope.
+    if (rw.species && rw.species !== cw.species) {
+      const asked = K.WOOD_SPECIES[rw.species];
+      if (!asked || asked.sheet) {
+        notes.push(`“${rw.species}” isn’t a solid species this tool builds in — snapped to ${(K.WOOD_SPECIES[cw.species] || {}).label || cw.species}.`);
+      }
+    }
+    if (rw.species && rw.species === cw.species && /top|leg|apron|shelf|side|door/i.test(JSON.stringify(raw._ask || ''))) {
+      /* no-op — ask text not available here */
+    }
+    if (raw._speciesPartScoped) {
+      notes.push('Species applies to the whole piece (per-part woods aren’t expressible yet).');
+    }
+    // Stock thickness snaps (audit disclosure): name when a proposed thickness
+    // landed on a different buyable size.
+    const rst = raw.structure || {}, cst = correctedSpec.structure || {};
+    for (const [key, label] of [
+      ['topThickness', 'top thickness'], ['legThickness', 'leg thickness'],
+      ['apronThickness', 'apron thickness'], ['shelfThickness', 'shelf thickness'],
+      ['sideThickness', 'side thickness']
+    ]) {
+      const a = rst[key], b = cst[key];
+      if (typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) > 0.5) {
+        notes.push(`${label} ${U().fmtLength(a)} isn’t buyable stock — snapped to ${U().fmtLength(b)}.`);
+      }
+    }
+    // Joinery level resets (audit disclosure).
+    const lvl = correctedSpec.meta && correctedSpec.meta.level;
+    const rj = raw.joinery || {}, cj = correctedSpec.joinery || {};
+    for (const kind of ['frame', 'case', 'box']) {
+      if (rj[kind] && cj[kind] && rj[kind] !== cj[kind]) {
+        const want = K.JOINERY[rj[kind]], got = K.JOINERY[cj[kind]];
+        notes.push(`${want ? want.label : rj[kind]} isn’t available at ${lvl} — switched to ${got ? got.label : cj[kind]}.`);
+      }
+    }
+    // Drawers / doors stripped off wrong templates.
+    if (raw.drawers && !correctedSpec.drawers && correctedSpec.meta) {
+      const t = correctedSpec.meta.template;
+      if (t !== 'nightstand' && t !== 'cabinet') {
+        notes.push('Drawers only exist on nightstand and cabinet templates — removed here.');
+      }
+    }
+    if (raw.doors && !correctedSpec.doors && correctedSpec.meta && correctedSpec.meta.template !== 'cabinet') {
+      notes.push('Doors only exist on the cabinet template — removed here.');
+    }
+    if (rst.stretchers && !cst.stretchers && correctedSpec.meta) {
+      const t = correctedSpec.meta.template;
+      if (t !== 'table' && t !== 'desk' && t !== 'bench') {
+        notes.push('Stretchers only apply to table, desk, and bench — cleared here.');
+      }
+    }
     return notes;
   }
 
@@ -916,6 +980,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     st.shelfCount = clamp(Math.round(num(st.shelfCount, 0)), 0, 8);
     st.backPanel = !!st.backPanel;
     st.toeKick = template === 'cabinet' ? !!st.toeKick : false;
+    // Stretchers: table-like only (Tier 1 LIVE).
+    st.stretchers = !!(st.stretchers && (template === 'table' || template === 'desk' || template === 'bench'));
 
     // Geometry sanity: aprons and legs must fit under the top.
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
@@ -935,10 +1001,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
 
-    // Hardware style intent (2026 expansion): the AI proposes a pull STYLE;
-    // code owns every count, size, spacing, and bore (BB.HW).
+    // Hardware style intent (2026 expansion): the AI proposes a pull / hinge
+    // STYLE; code owns every count, size, spacing, and bore (BB.HW).
     s.hardware = s.hardware && typeof s.hardware === 'object' ? s.hardware : {};
     if (!BB.HW || !BB.HW.PULLS[s.hardware.pull]) s.hardware.pull = 'bar_pull';
+    if (!BB.HW || !BB.HW.HINGES[s.hardware.hinge] ||
+        !['euro_cup', 'butt_brass', 'no_mortise'].includes(s.hardware.hinge)) {
+      s.hardware.hinge = 'euro_cup';
+    }
 
     // Drawers: only templates with openings support them.
     if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
@@ -956,6 +1026,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.drawers = null;
     }
     if (template === 'nightstand' && !s.drawers) s.drawers = { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' };
+
+    // Cabinet doors (Tier 1 LIVE): count 1–2, overlay/inset. Other templates
+    // strip doors silently (named in correctionNotes).
+    if (s.doors && template === 'cabinet') {
+      const d = s.doors;
+      d.count = clamp(Math.round(num(d.count, 2)), 1, 2);
+      d.frontStyle = d.frontStyle === 'inset' ? 'inset' : 'overlay';
+    } else {
+      s.doors = null;
+    }
 
     // Reduce shelf count until every shelf clears its neighbors by at least
     // a usable gap — overlapping shelves are rogue geometry, and correction

@@ -523,14 +523,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     screws: [
       { key: 'wood_8x25', label: '#8 × {25} wood screw', pilot: 2.8, use: 'Drawer fronts from inside the box' },
       { key: 'wood_8x32', label: '#8 × {32} wood screw', pilot: 2.8, use: 'Aprons, cleats, general carcass' },
-      { key: 'wood_8x50', label: '#8 × {50} wood screw', pilot: 3.2, use: 'Legs, rails, structural butt joints' },
-      { key: 'pocket_32', label: '{32} coarse pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} stock' },
-      { key: 'slide_m4', label: 'M4 × {16} pan-head', pilot: 3.0, use: 'Drawer slide mounting' },
+      { key: 'wood_8x50', label: '#8 × {50} wood screw', pilot: 2.8, use: 'Legs, rails, structural butt joints' },
+      { key: 'pocket_32', label: '{32} coarse pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} softwood/sheet stock' },
+      { key: 'slide_m4', label: 'M4 × {10} pan-head', pilot: 3.0, use: 'Drawer slide mounting into {12} box sides' },
       { key: 'top_button', label: 'Tabletop button + #8 × {16}', pilot: 2.8, use: 'Solid tops — lets the panel move' },
       /* 2026 expansion: 2× construction. The 32 mm pocket screw physically
        * cannot join 38 mm stock — the long jig setting needs its own screw. */
-      { key: 'pocket_63', label: '{63} coarse pocket screw', pilot: 0, use: 'Pocket joints in {38} (2×) stock' },
-      { key: 'wood_8x64', label: '#8 × {64} wood screw', pilot: 3.2, use: '{19} stock through into {38} framing' },
+      { key: 'pocket_63', label: '{63} coarse pocket screw', pilot: 0, use: 'Pocket joints in {38} (2×) softwood/sheet stock' },
+      { key: 'pocket_32_fine', label: '{32} fine pocket screw', pilot: 0, use: 'Pocket joints in {18} to {20} hardwood' },
+      { key: 'pocket_63_fine', label: '{63} fine pocket screw', pilot: 0, use: 'Pocket joints in {38} (2×) hardwood' },
+      { key: 'wood_8x64', label: '#8 × {64} wood screw', pilot: 2.8, use: '{19} stock through into {38} framing' },
       { key: 'struct_6x90', label: '{6} × {90} structural screw', pilot: 4.0, use: '2× and 4×4 frame joints, workbench bases' }
     ],
     dowels: [
@@ -761,6 +763,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (HW) {
       for (const s of Object.values(HW.SLIDES)) out['slide_' + s.key] = s.price;
       for (const p of Object.values(HW.PULLS)) out['pull_' + p.key] = p.price;
+      for (const k of ['euro_cup', 'butt_brass', 'no_mortise']) {
+        if (HW.HINGES[k]) out['hinge_' + k] = HW.HINGES[k].price;
+      }
     }
     return out;
   }
@@ -776,6 +781,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (key.startsWith('glue_')) { const g = GLUES.find(x => 'glue_' + x.key === key); if (g) return g.label; }
     if (HW && key.startsWith('slide_')) { const s = HW.SLIDES[key.slice(6)]; if (s) return s.label; }
     if (HW && key.startsWith('pull_')) { const p = HW.PULLS[key.slice(5)]; if (p) return p.label + (p.key === 'none_touch' ? '' : ' (each)'); }
+    if (HW && key.startsWith('hinge_')) { const h = HW.HINGES[key.slice(6)]; if (h) return h.label + ' (each)'; }
     return {
       finish_flat: 'Finish (per project)', antitip_kit: 'Anti-tip wall anchor kit',
       shelf_pin: 'Shelf pin (each)', screw_pack: 'Screw pack (drawer mounting)',

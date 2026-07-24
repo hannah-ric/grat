@@ -68,7 +68,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // the joinery table, audit F-S3-8) — repeating it here cost ~90 tokens
       // per call saying the same thing twice.
       'Joint slots: j[0]=frame (legs/aprons/rails), j[1]=case (carcass/shelves), j[2]=box (drawer boxes) — the LEVEL MATRIX below is enforced by code regardless.',
-      'Drawers ("d") exist only on nightstand and cabinet templates. Known templates are fast and single-shot — prefer them whenever the request fits one; use t=6 (custom) only for genuinely novel forms.',
+      'Drawers ("d") on nightstand/cabinet; doors ("do") on cabinet; stretchers ("s.x") on table/desk/bench. Prefer known templates; use t=6 only for novel forms.',
       // G6: ask-vs-guess was ungoverned chance — 2/4 fresh runs of an
       // underdetermined request silently committed complete failing designs.
       // Deliberate token spend; asking is load-bearing for soundness (every
@@ -283,6 +283,31 @@ var BB = globalThis.BB = globalThis.BB || {};
       return { kind: 'question', question: 'Which way should the wood go?', options: ['Walnut — dark and refined', 'Hard maple — pale and crisp', 'Pine — light and budget-friendly'] };
     }
 
+    // Capability walls (capability UX audit): chairs/beds/wall mounts aren't
+    // LIVE templates — ask the nearest expressible path instead of silently
+    // nearest-fixed-forming.
+    if (/\b(chair|stool|dining chair)\b/.test(t) && !/\b(bench|table|desk)\b/.test(t)) {
+      return {
+        kind: 'question',
+        question: 'Chairs aren’t a template yet — the closest expressible pieces are a bench or a custom composition. Which should I rough out?',
+        options: ['A bench', 'A custom seat on posts', 'Never mind']
+      };
+    }
+    if (/\bbeds?\b(?!\s*side)|headboard|queen mattress|king mattress\b/.test(t) && !creating) {
+      return {
+        kind: 'question',
+        question: 'Beds aren’t a template yet — I can rough a platform-like custom piece or a bedside cabinet. What helps most?',
+        options: ['A custom platform', 'A nightstand', 'A cabinet']
+      };
+    }
+    if (/\b(wall[\s-]?(?:mount|hung|shelf)|hang(?:ing)?\s+(?:on\s+(?:the\s+)?)?wall|floating\s+(?:wall\s+)?shelf|french cleat)\b/.test(t) && !/\bfloor\b/.test(t)) {
+      return {
+        kind: 'question',
+        question: 'Everything this tool builds stands on the floor — wall mounts aren’t expressible. Closest options?',
+        options: ['A floor bookshelf', 'A cabinet against the wall', 'Never mind']
+      };
+    }
+
     // Species. Two passes so multi-word labels ("southern yellow pine") beat
     // last-word collisions ("pine"); `aliases` come from the species table.
     // Strip "instead of <species>" so "make it oak instead of walnut" picks oak.
@@ -305,7 +330,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         picked = s; break;
       }
     }
-    if (picked) { set('wood.species', picked.key); notes.push(picked.label); }
+    if (picked) {
+      set('wood.species', picked.key); notes.push(picked.label);
+      if (/\b(the\s+)?(top|legs?|aprons?|shelves?|sides?|doors?)\b/.test(speciesText)) {
+        notes.push('species applies to the whole piece');
+      }
+    }
     if (!patch.wood && /\boak\b/.test(speciesText)) {
       if (negated(speciesText, /\boak\b/)) negatedSpecies = negatedSpecies || 'oak';
       else { set('wood.species', /white\s+oak/.test(speciesText) ? 'white_oak' : 'red_oak'); notes.push('oak'); }
@@ -389,11 +419,53 @@ var BB = globalThis.BB = globalThis.BB || {};
         notes.push(count + ' drawer(s)');
       }
       if (canDrawer(landing)) {
-        if (/\boverlay\b/.test(t)) set('drawers.frontStyle', 'overlay');
-        if (/\binset\b/.test(t)) set('drawers.frontStyle', 'inset');
+        if (/\boverlay\b/.test(t) && !/\bdoors?\b/.test(t)) set('drawers.frontStyle', 'overlay');
+        if (/\binset\b/.test(t) && !/\bdoors?\b/.test(t)) set('drawers.frontStyle', 'inset');
         if (/\bwood(en)? runners?\b/.test(t)) { set('drawers.runner', 'wood_runners'); notes.push('wood runners'); }
         if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) { set('drawers.runner', 'side_mount_slides'); notes.push('side-mount slides'); }
         if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
+      }
+    }
+
+    // Cabinet doors (Tier 1 LIVE).
+    const canDoors = w => (w || spec.meta.template) === 'cabinet';
+    if (/\b(no|remove|without)\b.*\bdoors?\b/.test(t)) { patch.doors = null; notes.push('no doors'); }
+    else {
+      let doorM = t.match(/(\d+|one|two|a pair of)\s+doors?\b/) || (/\badd (a |another )?doors?\b/.test(t) ? [null, '2'] : null);
+      if (/\bdoors?\b/.test(t) && !doorM && !/\b(no|without|remove)\b/.test(t)) doorM = [null, '2'];
+      if (doorM && !canDoors(landing) && !creating) {
+        if (!Object.keys(patch).length) {
+          return {
+            kind: 'question',
+            question: `Doors need a cabinet carcass — a ${spec.meta.template} can’t take them yet.`,
+            options: ['Make it a cabinet with doors', 'Keep this piece']
+          };
+        }
+        notes.push(`doors skipped — not available on a ${spec.meta.template}`);
+      } else if (doorM && canDoors(landing)) {
+        const raw = String(doorM[1]).toLowerCase();
+        const count = raw === 'a pair of' || raw === 'two' ? 2 : (WORD_NUMS[raw] || parseInt(raw, 10) || 2);
+        set('doors.count', Math.min(2, Math.max(1, count)));
+        if (/\binset\b/.test(t)) set('doors.frontStyle', 'inset');
+        else if (/\boverlay\b/.test(t)) set('doors.frontStyle', 'overlay');
+        else if (!spec.doors) set('doors.frontStyle', 'overlay');
+        notes.push(count === 1 ? '1 door' : '2 doors');
+      }
+    }
+
+    // Stretchers on table-like pieces.
+    const canStretch = w => ['table', 'desk', 'bench'].includes(w || spec.meta.template);
+    if (/\bstretchers?\b/.test(t)) {
+      if (/\b(no|remove|without)\b.*\bstretchers?\b/.test(t)) { set('structure.stretchers', false); notes.push('no stretchers'); }
+      else if (canStretch(landing)) { set('structure.stretchers', true); notes.push('stretchers'); }
+      else if (!creating) {
+        if (!Object.keys(patch).length) {
+          return {
+            kind: 'question',
+            question: 'Stretchers brace table, desk, and bench legs — this piece can’t take them.',
+            options: ['Make it a table with stretchers', 'Keep this piece']
+          };
+        }
       }
     }
 
@@ -406,6 +478,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (/\bleather (strap )?pulls?\b/.test(t)) { set('hardware.pull', 'leather_pull'); notes.push('leather pulls'); }
     else if (/\bring pulls?\b/.test(t)) { set('hardware.pull', 'ring_pull'); notes.push('ring pulls'); }
     else if (/\bbar pulls?\b/.test(t)) { set('hardware.pull', 'bar_pull'); notes.push('bar pulls'); }
+    if (/\bbutt hinges?\b/.test(t)) { set('hardware.hinge', 'butt_brass'); notes.push('butt hinges'); }
+    else if (/\bno[ -]?mortise hinges?\b/.test(t)) { set('hardware.hinge', 'no_mortise'); notes.push('no-mortise hinges'); }
+    else if (/\b(euro|cup|concealed) hinges?\b/.test(t)) { set('hardware.hinge', 'euro_cup'); notes.push('cup hinges'); }
 
     // Finish.
     for (const f of K.FINISHES) {

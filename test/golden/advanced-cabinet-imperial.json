@@ -26,7 +26,8 @@
    "shelfThickness": 19,
    "sideThickness": 18,
    "backPanel": true,
-   "toeKick": true
+   "toeKick": true,
+   "stretchers": false
   },
   "joinery": {
    "frame": "mortise_tenon",
@@ -35,13 +36,15 @@
   },
   "finish": "danish_oil",
   "hardware": {
-   "pull": "bar_pull"
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
   },
   "drawers": {
    "count": 2,
    "frontStyle": "overlay",
    "runner": "side_mount_slides"
   },
+  "doors": null,
   "custom": null
  },
  "validation": {
@@ -707,7 +710,7 @@
    },
    {
     "kind": "fastener",
-    "label": "M4 × 5/8 in pan-head screws (pilot 1/8 in)",
+    "label": "M4 × 3/8 in pan-head screws (pilot 1/8 in)",
     "qty": 8,
     "price": 1
    },
@@ -731,7 +734,7 @@
    },
    {
     "kind": "fastener",
-    "label": "M4 × 5/8 in pan-head screws (pilot 1/8 in)",
+    "label": "M4 × 3/8 in pan-head screws (pilot 1/8 in)",
     "qty": 8,
     "price": 1
    },

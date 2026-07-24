@@ -1455,10 +1455,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     // in plain language — the generic load sentence would be wrong for them.
     const plainLine = c.anchor
       ? c.explain
-      : 'This part would not safely carry its expected load as designed. '
-      + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.');
+      : (c.explain
+        ? c.explain
+        : ('This part would not safely carry its expected load as designed. '
+          + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.')));
+    const fmtVal = (v) => {
+      // Audit L-10: absurd margins ("34787.3×") erode credibility — cap them.
+      const m = typeof v === 'string' && v.match(/\b(\d+(?:\.\d+)?)\s*×/);
+      if (m && Number(m[1]) > 1000) return v.replace(m[0], '>1000×');
+      return v;
+    };
     card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
-      (full ? `<div class="check-value">${esc(c.value)}</div>
+      (full ? `<div class="check-value">${esc(fmtVal(c.value))}</div>
         <div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
       `<p class="check-explain">${full ? esc(c.explain) : esc(plainLine)}</p>` +
       (full && c.factors ? `<div class="check-factors">${c.factors.map(f => `<div><span>${esc(f.label)}</span><span>${f.mult ? '× ' + f.mult : '+' + f.pts}</span></div>`).join('')}</div>` : '');

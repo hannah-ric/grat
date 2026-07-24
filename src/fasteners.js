@@ -60,7 +60,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     let n = Math.max(want || 2, Math.ceil(usable / maxSp) + 1);
     // spacing floor: drop fasteners until they are at least minSpacing apart
     while (n > 2 && usable / (n - 1) < RULES.minSpacingMM) n--;
-    if (usable < RULES.minSpacingMM && n > 2) n = 2;
+    // Audit M-21: two fasteners on a short run still violate minSpacing —
+    // collapse to one centered fastener rather than crowd the wood.
+    if (n === 2 && usable < RULES.minSpacingMM) n = 1;
     const out = [];
     for (let i = 0; i < n; i++) out.push(Math.round((RULES.edgeMM + (n === 1 ? usable / 2 : usable * i / (n - 1))) * 10) / 10);
     return out;
@@ -113,10 +115,17 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (c >= 4) counterboreMM = c;
       }
     }
+    // Pilot tracks GAUGE, not length (audit L-12), then scales by the
+    // receiving species' hardness (audit M-03): #8 root ≈ 2.8 mm in hardwood;
+    // softwood (~janka < 1000) opens to ~85% so the screw still bites.
+    const intoMat = K.WOOD_SPECIES[into.material];
+    const janka = intoMat && !intoMat.sheet ? (intoMat.janka || 1000) : 700;
+    const rootPilot = 2.8;
+    const pilotMM = Math.round(rootPilot * (janka >= 1000 ? 1 : 0.85) * 10) / 10;
     return {
       len, counterboreMM, thru, into,
       biteMM: Math.round((len - (thruT - counterboreMM)) * 10) / 10,
-      pilotMM: len >= 50 ? 3.2 : 2.8,
+      pilotMM,
       // The NEAR member gets a shank clearance hole (audit M-04): a #8 shank
       // is ~4.2 mm — the screw must spin free on its side of the joint line
       // or the two parts jack apart instead of drawing tight.
@@ -126,11 +135,24 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
   }
 
+  /* Pocket screw: length by member thickness (FE-H7); thread by receiving
+   * species (audit M-02) — hardwood wants fine, softwood/sheet wants coarse. */
+  function pocketCatalog(memberT, intoMaterial) {
+    const long = memberT >= 36;
+    const intoMat = K.WOOD_SPECIES[intoMaterial];
+    const janka = intoMat && !intoMat.sheet ? (intoMat.janka || 1000) : 700;
+    const fine = janka >= 1000;
+    if (long) return fine ? CATALOG.pocket_63_fine : CATALOG.pocket_63;
+    return fine ? CATALOG.pocket_32_fine : CATALOG.pocket;
+  }
+
   const CATALOG = {
-    butt_screw: { spec: '#8 × {50} wood screw', pilotMM: 3.2 },
+    butt_screw: { spec: '#8 × {50} wood screw', pilotMM: 2.8 },
     case_screw: { spec: '#8 × {32} wood screw', pilotMM: 2.8 },
     pocket: { spec: '{32} coarse pocket screw', pilotMM: 9.5 }, // the jig's 3/8 in stepped bit
     pocket_63: { spec: '{63} coarse pocket screw', pilotMM: 9.5 }, // 2× stock — a 32 cannot join 38 (K.FASTENERS)
+    pocket_32_fine: { spec: '{32} fine pocket screw', pilotMM: 9.5 },
+    pocket_63_fine: { spec: '{63} fine pocket screw', pilotMM: 9.5 },
     front_screw: { spec: '#8 × {25} wood screw', pilotMM: 2.8 },
     figure8: { spec: 'figure-8 fastener + #8 × {16}', pilotMM: 2.8 },
     /* 2026 expansion */
@@ -170,7 +192,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       const pos = positions(runMM, Math.max(2, Math.round(runMM / 300)), 300);
       const c = CATALOG.figure8;
       for (const p of pos) out.fasteners.push({ kind: 'figure8', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
-      out.text = `${out.fasteners.length} figure-8 fasteners along the ${b.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — pilot ${drill(c.pilotMM)}, and let the top move.`;
+      // Audit M-05: the fastener must be recessed into the apron top edge
+      // (Forstner), not sitting proud — name the recess so the step matches
+      // the hardware.
+      out.text = `${out.fasteners.length} figure-8 fasteners along the ${b.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — recess each with a ${len(19)} Forstner ~${len(3)} deep into the apron's top edge, pilot ${drill(c.pilotMM)}, and let the top move.`;
+      out.figure8 = true;
       return out;
     }
 
@@ -183,9 +209,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, clearanceMM: sp.clearanceMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         const spacing = pos.length === 1 ? 'centered on the run'
           : `first ${len(RULES.edgeMM)} from each end${pos.length > 2 ? `, then every ${len(Math.round((runMM - 2 * RULES.edgeMM) / (pos.length - 1)))}` : ''}`;
-        const where = sp.housed ? `centered ${fine(mateT / 2)} from the joint line`
+        // Tape measurements use fmtLength (audit M-01), never decimal inches.
+        const where = sp.housed ? `centered ${len(mateT / 2)} from the joint line`
           : sp.thru === a ? `on the ${a.name.toLowerCase()}'s centerline`
-            : `centered ${fine(minDim(a) / 2)} from the joint line`;
+            : `centered ${len(minDim(a) / 2)} from the joint line`;
         // The full drilling schedule (audit M-04): clearance through the near
         // member (the screw must spin free there to DRAW the joint tight),
         // pilot in the mate, and a countersink so the flat head seats —
@@ -199,7 +226,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       case 'pocket_screws': {
         // 2× (38 mm) stock needs the long jig setting and its own screw —
         // the 32 mm pocket screw physically cannot join it (audit FE-H7).
-        const c = memberT >= 36 ? CATALOG.pocket_63 : CATALOG.pocket;
+        // Thread: fine in hardwood, coarse in softwood/sheet (audit M-02).
+        const c = pocketCatalog(memberT, b.material);
         const pos = positions(runMM, 2);
         for (const p of pos) out.fasteners.push({ kind: 'pocket', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         out.text = `${pos.length} pocket holes on the hidden face of ${a.name.toLowerCase()}, ${len(RULES.edgeMM)} in from each end — jig set for ${len(memberT)} stock, ${fmtSpec(c)}s.`;
@@ -231,7 +259,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const depth = BB.Plans ? BB.Plans.jointAllowance(type, mateT) : Math.min(6, Math.floor(mateT / 3));
         out.dado = { depthMM: depth, widthMM: memberT };
         out.text = type === 'dado'
-          ? `Dado ${len(memberT)} wide × ${len(depth)} deep (⅓ of the ${len(mateT)} stock, capped) — cut to the MEASURED thickness of the shelf, not nominal.`
+          ? `Dado ${len(memberT)} wide × ${len(depth)} deep (⅓ of the ${len(mateT)} stock, capped) — cut to the MEASURED thickness of the ${a.name.toLowerCase()}, not nominal.`
           : type === 'rabbet'
             ? `Rabbet ${len(memberT)} × ${len(depth)} along the mating edge; keep the remaining wall at least half the stock.`
             : `Locking rabbet: ${len(depth)} tongue on the ${a.name.toLowerCase()}, matching ${len(depth)} dado in the ${b.name.toLowerCase()} — sneak up on a hand-press fit.`;
@@ -395,16 +423,40 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
   }
 
-  /* One concise fastening line for an assembly step (first joint of each
-   * distinct type in the step). */
+  /* One concise fastening line for an assembly step. Distinct joint types
+   * each contribute once; figure-8 (and other multi-joint fastener rows)
+   * AGGREGATE across every joint of that type so the step count matches
+   * the BOM (audit M-05 / FE-H6). */
   function stepNote(spec, model, joints) {
     if (!joints || !joints.length) return '';
     const seen = new Set();
     const bits = [];
+    const figJoints = joints.filter(j => {
+      const lay = layoutForJoint(spec, model, j);
+      return lay && lay.figure8;
+    });
+    if (figJoints.length) {
+      let total = 0;
+      let sample = null;
+      for (const j of figJoints) {
+        const lay = layoutForJoint(spec, model, j);
+        if (!lay) continue;
+        total += lay.fasteners.length;
+        sample = sample || lay;
+        seen.add(j.type);
+      }
+      if (sample && total) {
+        const len = mm => U().fmtLength(mm);
+        const drill = mm => U().fmtDrill(mm);
+        const c = CATALOG.figure8;
+        bits.push(`${total} figure-8 fasteners along the aprons, ${len(RULES.edgeMM)} in from each end — recess each with a ${len(19)} Forstner ~${len(3)} deep into the apron's top edge, pilot ${drill(c.pilotMM)}, and let the top move.`);
+      }
+    }
     for (const j of joints) {
       if (seen.has(j.type)) continue;
       seen.add(j.type);
       const lay = layoutForJoint(spec, model, j);
+      if (lay && lay.figure8) continue;
       if (lay && lay.text) bits.push(lay.text);
       if (bits.length >= 2) break; // steps stay readable
     }
