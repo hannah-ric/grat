@@ -111,6 +111,13 @@ CSS. Reduced motion collapses every animation to a snap, in both worlds.
 
 ## Roadmap (designed, not yet built)
 
+> **User-capability audit (2026-07):** challenges, opportunities, and a
+> phased improvement plan across prompt → design → 3D → engineering →
+> integrity → joinery → build plans live in
+> [`docs/ui/capability-ux-audit.md`](docs/ui/capability-ux-audit.md).
+> It sequences DESIGN.md tiers against open audit batches (A/B) and the
+> Living Workshop backlog — start there before picking the next build.
+
 **Tier 1 — shop truth continued:** stretchers as a first-class template
 bracing option; doors + hinges for cabinets (overlay/inset, euro vs butt;
 BOM + racking credit); finish preview on the 3D material.
