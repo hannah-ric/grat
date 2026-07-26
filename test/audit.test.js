@@ -1990,5 +1990,291 @@ section('M-22 budget digest: species $/bd ft + the current design total reach th
   ok(sys.indexOf(line) > marker && marker > 0, 'budget line rides the per-call tail, after the cache-split marker');
 }
 
+/* ================= G10b: the OTHER silent corrections are disclosed too ================= */
+section('G10b correctionNotes names the joint, length, species and feature corrections silently made');
+{
+  const notes = raw => Spec.correctionNotes(raw, Spec.correctSpec(Spec.clone(raw)));
+  const one = (raw, what) => {
+    const n = notes(raw);
+    ok(n.length === 1, `${what} — exactly one note, got ${n.length}: ${JSON.stringify(n)}`);
+    return n[0] || '';
+  };
+
+  // 1. JOINERY GATED BY SKILL LEVEL. correctSpec swaps the joint for the
+  // level default and says nothing; a beginner asking for mortise & tenon
+  // built pocket screws believing they had cut tenons.
+  {
+    const n = one({ meta: { template: 'table', level: 'beginner' }, joinery: { frame: 'mortise_tenon' } }, 'beginner asking for M&T');
+    ok(/Mortise & tenon/.test(n), `the note uses the K label for the joint asked for — got "${n}"`);
+    ok(/Pocket screws/.test(n), `the note names the joint actually applied — got "${n}"`);
+    ok(/beginner/.test(n), `the note names the level that gated it — got "${n}"`);
+    ok(!/mortise_tenon|pocket_screws/.test(n), 'no raw enum keys leak into the note');
+
+    // Every gated slot, at every level that gates it.
+    const box = one({ meta: { template: 'nightstand', level: 'beginner' }, joinery: { box: 'half_blind_dovetail' } }, 'beginner asking for half-blind dovetails');
+    ok(/Half-blind dovetail/.test(box) && /drawer-box joinery/.test(box), `the box slot is named by its human label — got "${box}"`);
+    const mid = one({ meta: { template: 'table', level: 'intermediate' }, joinery: { frame: 'mortise_tenon' } }, 'intermediate asking for M&T');
+    ok(/intermediate/.test(mid) && /Dowel joint/.test(mid), `the intermediate downgrade names its own substitute — got "${mid}"`);
+
+    // A joint that never fits the slot (dado is case-only) is nonsense, not a
+    // level downgrade — correction still swaps it, but this note stays quiet.
+    eq(notes({ meta: { template: 'table', level: 'advanced' }, joinery: { frame: 'dado' } }), [], 'a kind-mismatched joint is not reported as a level downgrade');
+    eq(notes({ meta: { template: 'table', level: 'beginner' }, joinery: { frame: 'not_a_joint' } }), [], 'an unknown joint key is not reported as a level downgrade');
+    // A joint the level DOES allow is kept — nothing to disclose.
+    eq(notes({ meta: { template: 'table', level: 'advanced' }, joinery: { frame: 'mortise_tenon' } }), [], 'an allowed joint earns no note');
+  }
+
+  // 2. DIMENSIONS CLAMPED. The note must name BOTH the number asked for and
+  // the number applied — "the tool ignored you" is the part users never saw.
+  {
+    const w = one({ meta: { template: 'table', level: 'beginner' }, overall: { width: 4000 } }, 'a 4000 mm wide table');
+    ok(/width/.test(w), `the note names the field — got "${w}"`);
+    ok(/4000 mm/.test(w) && /2400 mm/.test(w), `the note names asked AND applied — got "${w}"`);
+    const t = one({ meta: { template: 'table', level: 'beginner' }, structure: { topThickness: 6 } }, 'a 6 mm table top');
+    ok(/top thickness/.test(t) && /6 mm/.test(t) && /12 mm/.test(t), `structure fields are reported the same way — got "${t}"`);
+
+    // The piece's own geometry can refuse an in-range value too: 70 mm legs
+    // are legal stock, but not under a 300 × 250 footprint.
+    const leg = one({ meta: { template: 'table', level: 'beginner' }, overall: { width: 300, depth: 250, height: 700 }, structure: { legThickness: 70 } }, 'legs too fat for the footprint');
+    ok(/leg thickness/.test(leg) && /70 mm/.test(leg) && /60 mm/.test(leg), `a geometric cap names both numbers — got "${leg}"`);
+
+    // Landing on stock is code buying a real board, not a refusal — quiet.
+    eq(notes({ meta: { template: 'table', level: 'beginner' }, structure: { topThickness: 30 } }), [], 'an in-range value that only snaps to stock earns no note');
+    eq(notes({ meta: { template: 'table', level: 'beginner' }, overall: { width: 1200 } }), [], 'an in-range width earns no note');
+
+    // Display boundary: lengths in notes render through BB.Units, once.
+    Units.set({ system: 'imperial', precision: 16, dual: false });
+    const imp = notes({ meta: { template: 'table', level: 'beginner' }, overall: { width: 4000 } })[0] || '';
+    ok(/157 1\/2 in/.test(imp) && /94 1\/2 in/.test(imp), `the clamp note re-renders imperial — got "${imp}"`);
+    ok(!/mm/.test(imp), 'no raw millimetre string escapes the units boundary');
+    Units.set({ system: 'metric', precision: 16, dual: false });
+  }
+
+  // 3. SPECIES SUBSTITUTED. An unstocked name, or sheet goods asked to be the
+  // solid lumber, both snap to the fallback with no word to the user.
+  {
+    const s = one({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'wenge' } }, 'an unstocked species');
+    ok(/wenge/.test(s), `the note names the species asked for — got "${s}"`);
+    ok(/Red Oak/.test(s), `the note names the species actually used — got "${s}"`);
+    const sheet = one({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'baltic_birch' } }, 'sheet goods asked to be solid');
+    ok(/sheet/i.test(sheet) && /Red Oak/.test(sheet), `sheet-as-solid is explained, not just swapped — got "${sheet}"`);
+    eq(notes({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'walnut' } }), [], 'a stocked solid species earns no note');
+  }
+
+  // 3b. SHELF COUNT REFUSED — two mechanisms, two meanings, and a count never
+  // crosses the units boundary.
+  {
+    // (a) the arbitrary product cap.
+    const cap = one({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 12, shelfThickness: 19 } }, 'twelve shelves asked of a tall case');
+    ok(/shelf count/.test(cap) && /12/.test(cap) && /8/.test(cap), `the cap note names asked AND the ceiling — got "${cap}"`);
+
+    // (b) the interesting one: the piece's OWN height cannot space them apart.
+    const fit = one({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 500 }, structure: { shelfCount: 8, shelfThickness: 32 } }, 'eight shelves in a 500 mm case');
+    ok(/8/.test(fit) && /6/.test(fit), `the spacing note names asked AND carried — got "${fit}"`);
+    ok(/height/.test(fit), `the spacing note blames the piece's height, not an arbitrary cap — got "${fit}"`);
+    ok(!/this tool builds|stops at/.test(fit), 'the spacing refusal is not worded as the product cap');
+
+    // Both at once chain honestly: 12 → the tool stops at 8 → the piece fits 6.
+    const both = notes({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 500 }, structure: { shelfCount: 12, shelfThickness: 32 } });
+    eq(both.length, 2, 'a count refused twice earns one note per mechanism');
+    ok(/12/.test(both[0]) && /8/.test(both[0]), `the cap note comes first — got "${both[0]}"`);
+    ok(/8/.test(both[1]) && /6/.test(both[1]), `the spacing note picks up where the cap left off — got "${both[1]}"`);
+
+    // Singular and zero read as English, not as templating.
+    const none = one({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 200 }, structure: { shelfCount: 1, shelfThickness: 32 } }, 'one shelf in a 200 mm case');
+    ok(/1 shelf\b/.test(none) && !/1 shelves/.test(none), `a single shelf is singular — got "${none}"`);
+    ok(/none/.test(none) && !/carries 0/.test(none), `zero shelves reads as "none" — got "${none}"`);
+
+    // A count is not a length: no unit ever appears, in either display system.
+    for (const system of ['metric', 'imperial']) {
+      Units.set({ system, precision: 16, dual: false });
+      const n = notes({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 12, shelfThickness: 19 } })[0] || '';
+      ok(/\(12\)/.test(n) && !/\bmm\b|\bin\b|\/|″/.test(n), `the count is a bare integer in ${system} — got "${n}"`);
+    }
+    Units.set({ system: 'metric', precision: 16, dual: false });
+
+    // Quiet when nothing was refused: a count that fits, and rounding.
+    eq(notes({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 4, shelfThickness: 19 } }), [], 'a shelf count that fits earns no note');
+    eq(notes({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 3.4, shelfThickness: 19 } }), [], 'rounding a fractional count is not a refusal');
+  }
+
+  // 3c. SHEET STOCK SUBSTITUTED. Same rule as the solid species, its own slot.
+  {
+    const s = one({ meta: { template: 'cabinet', level: 'beginner' }, wood: { sheetSpecies: 'marine_ply' } }, 'an unstocked ply');
+    ok(/marine ply/.test(s), `the note names the ply asked for — got "${s}"`);
+    ok(/Baltic Birch Ply/.test(s), `the note names the ply actually used — got "${s}"`);
+    ok(/sheet/i.test(s), `the note makes clear it is the SHEET stock that changed — got "${s}"`);
+    ok(!/the design is built in/.test(s), 'a sheet substitution never claims the solid wood changed');
+    const solidAsSheet = one({ meta: { template: 'cabinet', level: 'beginner' }, wood: { sheetSpecies: 'walnut' } }, 'lumber asked to be sheet stock');
+    ok(/Black Walnut/.test(solidAsSheet) && /solid lumber, not sheet stock/.test(solidAsSheet), `solid-as-sheet is explained — got "${solidAsSheet}"`);
+    eq(notes({ meta: { template: 'cabinet', level: 'beginner' }, wood: { sheetSpecies: 'mdf' } }), [], 'a stocked sheet good earns no note');
+
+    // One refused NAME standing in for both slots is one refusal — a user must
+    // never read it as a single wood being changed twice.
+    const merged = one({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'wenge', sheetSpecies: 'wenge' } }, 'the same unknown name in both slots');
+    ok(/wenge/.test(merged) && /Red Oak/.test(merged) && /Baltic Birch Ply/.test(merged), `the merged note names both replacements — got "${merged}"`);
+    // Two genuinely different asks stay two notes.
+    const two = notes({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'wenge', sheetSpecies: 'marine_ply' } });
+    eq(two.length, 2, 'two different refused names stay two notes');
+
+    // Custom pieces DO cut sheet parts, so the sheet slot is reported there —
+    // unlike structure.*, which a custom composition never reads.
+    const cust = Spec.defaultSpec('custom');
+    cust.wood.sheetSpecies = 'marine_ply';
+    cust.structure.shelfCount = 12;
+    const cn = notes(cust);
+    eq(cn.length, 1, 'a custom piece reports its sheet stock and nothing structural');
+    ok(/sheet/i.test(cn[0] || ''), `the surviving custom note is the sheet one — got "${cn[0]}"`);
+  }
+
+  // 4. FEATURE DROPPED. Drawers on a template with no opening become null.
+  {
+    const d = one({ meta: { template: 'desk', level: 'beginner' }, drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' } }, 'drawers on a desk');
+    ok(/desk/.test(d), `the note names the template that refused them — got "${d}"`);
+    ok(/drawer/i.test(d), `the note names the dropped feature — got "${d}"`);
+    ok(/table/.test(one({ meta: { template: 'table', level: 'beginner' }, drawers: { count: 1 } }, 'drawers on a table')), 'the same holds for a table');
+    // Templates that DO carry drawers keep them — nothing was refused.
+    eq(notes({ meta: { template: 'nightstand', level: 'beginner' }, drawers: { count: 2 } }), [], 'a nightstand keeps its drawers, so earns no note');
+  }
+
+  // 5. NO CORRECTION → NO NOTE. Every shipped default round-trips silent, and
+  // the notes stay unique when several classes fire at once.
+  {
+    for (const t of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom']) {
+      eq(notes(Spec.defaultSpec(t)), [], `the ${t} default is corrected without a single note`);
+    }
+    const all = notes({
+      meta: { template: 'desk', level: 'beginner' }, overall: { width: 4000 },
+      wood: { species: 'wenge' }, joinery: { frame: 'mortise_tenon' }, drawers: { count: 1 }
+    });
+    eq(all.length, 4, 'four independent corrections produce four notes');
+    eq(new Set(all).size, all.length, 'notes are deduplicated');
+
+    // Never throws: the UI calls this with Spec.deepMerge(base, patch), so the
+    // raw spec arrives partial, sectionless, or full of junk values.
+    const good = Spec.correctSpec({ meta: { template: 'table', level: 'beginner' } });
+    for (const junk of [null, undefined, 42, 'x', {}, { meta: null }, { structure: 'no' }, { wood: { species: 5 } },
+      { joinery: { frame: {} } }, { drawers: true }, { overall: { width: NaN } }, { overall: { width: 'wide' } },
+      { structure: { shelfCount: 'many' } }, { structure: { shelfCount: NaN } }, { wood: { sheetSpecies: 5 } }, { wood: { sheetSpecies: '' } }]) {
+      let out = null, threw = false;
+      try { out = Spec.correctionNotes(junk, good); } catch (e) { threw = true; }
+      ok(!threw && Array.isArray(out), `junk raw spec ${JSON.stringify(junk)} returns an array without throwing`);
+    }
+    for (const cor of [null, undefined, 42, {}, { meta: null }]) {
+      let threw = false;
+      try { Spec.correctionNotes({ overall: { width: 4000 }, drawers: { count: 1 } }, cor); } catch (e) { threw = true; }
+      ok(!threw, `a junk corrected spec ${JSON.stringify(cor)} never throws`);
+    }
+    // Pure: neither argument is mutated.
+    const raw = { meta: { template: 'desk', level: 'beginner' }, overall: { width: 4000 }, drawers: { count: 1 } };
+    const before = JSON.stringify(raw);
+    Spec.correctionNotes(raw, Spec.correctSpec(Spec.clone(raw)));
+    eq(JSON.stringify(raw), before, 'correctionNotes never mutates the raw proposal');
+  }
+}
+
+/* ================= B-fixes: every failing check offers a fix that FIXES ================= */
+section('B-fixes stiffer-species and joint-upgrade fixes exist, and applying one lifts the check');
+{
+  const RANK = { fail: 0, advisory: 1, pass: 2 };
+  const integrityOf = raw => {
+    const r = pipeline(raw);
+    return { spec: r.spec, checks: Structural.computeIntegrity(r.spec, r.model, {}).checks };
+  };
+  const chk = (checks, id) => checks.find(c => c.id === id);
+  // Applying a fix = merging its patch through the normal correction pipeline.
+  const applied = (spec, fix, id) => chk(integrityOf(Spec.deepMerge(Spec.clone(spec), fix.patch)).checks, id);
+
+  /* ---- 1. the frozen honest-fail bookshelf: ash shelves sagging under books.
+   * The one-tap vocabulary used to be thickness ONLY; a stiffer species is
+   * the other answer that needs no new geometry. */
+  const ASH = {
+    meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    wood: { species: 'ash', sheetSpecies: 'baltic_birch' },
+    structure: { shelfCount: 4, shelfThickness: 19, sideThickness: 19, backPanel: true, topThickness: 25 },
+    joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' }
+  };
+  const ash = integrityOf(ASH);
+  const ashSag = chk(ash.checks, 'sag:shelf_1');
+  ok(ashSag && ashSag.status === 'fail', 'ash-bookshelf-metric is still an honest FAIL (frozen case)');
+  ok(ashSag && ashSag.fixes.some(f => f.id === 'thick-shelf'), 'the thickness fix is still offered');
+  const wood = ashSag && ashSag.fixes.find(f => f.patch && f.patch.wood && f.patch.wood.species);
+  ok(wood, 'a sagging shelf now also offers a stiffer species — one-tap, no new geometry');
+  // The species is COMPUTED, not named: stiffest solid in the catalog, and
+  // never the one already in the design or a sheet good.
+  const solids = Object.values(K.WOOD_SPECIES).filter(w => !w.sheet);
+  const stiffest = solids.slice().sort((a, b) => b.moe - a.moe)[0];
+  const picked = wood && K.WOOD_SPECIES[wood.patch.wood.species];
+  ok(picked && !picked.sheet, 'the offered species is solid stock — a sheet good is not a solid-wood substitute');
+  ok(picked && picked.key !== 'ash', 'never offers the species the design already uses');
+  eq(picked && picked.key, stiffest.key, 'MOE-driven pick: the stiffest species that lifts the check');
+  ok(picked && picked.moe > K.WOOD_SPECIES.ash.moe, 'the pick is genuinely stiffer than what is in the design');
+  ok(wood && wood.label.toLowerCase().indexOf(picked.label.toLowerCase()) >= 0, 'the label names the species');
+  // THE test: applying it actually moves the check it claims to fix.
+  const ashAfter = applied(ash.spec, wood, 'sag:shelf_1');
+  ok(ashAfter && RANK[ashAfter.status] > RANK[ashSag.status],
+    `the species fix lifts the check it is offered on (${ashSag.status} → ${ashAfter && ashAfter.status})`);
+  ok(ashAfter && ashAfter.status !== 'fail', 'and never leaves the check failing');
+  // 14.9 GPa against 12.0 cannot fully clear a 1.53 ratio — say so, don't pretend.
+  ok(/partial fix/.test(wood.label) === (ashAfter.status !== 'pass'),
+    'a fix that only gets partway says so in the label, exactly like the thickness fix');
+  // The frozen case itself does not move: fixes are additive, verdicts are not.
+  for (const id of ['sag:shelf_1', 'sag:shelf_2', 'sag:shelf_3', 'sag:shelf_4']) {
+    ok(chk(ash.checks, id).status === 'fail', `${id} still fails — adding a fix changed no physics`);
+  }
+  near(chk(ash.checks, 'sag:shelf_1').data.sagMM, 4.407, 0.01, 'the frozen sag number is untouched');
+
+  // No failure, no upsell: a species fix is never offered on a passing check,
+  // and never offered to a design already built from the stiffest stock.
+  const stout = integrityOf(Object.assign({}, ASH, { structure: { shelfCount: 4, shelfThickness: 45, sideThickness: 25, backPanel: true, topThickness: 45 } }));
+  const stoutSag = chk(stout.checks, 'sag:shelf_1');
+  ok(stoutSag && stoutSag.status === 'pass' && stoutSag.fixes.length === 0, 'a passing shelf is offered nothing');
+  const hick = integrityOf(Object.assign({}, ASH, { wood: { species: stiffest.key, sheetSpecies: 'baltic_birch' } }));
+  const hickSag = chk(hick.checks, 'sag:shelf_1');
+  ok(hickSag && !hickSag.fixes.some(f => f.patch && f.patch.wood),
+    'nothing stiffer exists, so nothing is offered — never a fix that would not fix');
+
+  /* ---- 2. joint adequacy: the one path that fails by default had no remedy.
+   * defaultSpec('custom') is a beginner bench whose seat is screwed into the
+   * end grain of two leg panels — 136 kg per joint against 43 kg of capacity. */
+  const cus = integrityOf(Spec.defaultSpec('custom'));
+  const jc = chk(cus.checks, 'joints');
+  ok(jc && jc.status === 'fail', 'the default custom piece still fails joint adequacy honestly');
+  ok(jc && jc.fixes.length > 0, 'a failing joint check now offers a remedy (it used to offer none)');
+  const up = jc && jc.fixes.find(f => f.id === 'upjoint');
+  ok(up, 'the remedy is the upjoint fix, same shape as the template path');
+  const newJoint = up && up.patch.custom.connections.find(c => c.joint !== 'butt_screws');
+  ok(newJoint, 'the custom patch rewrites the connections that carry the load');
+  const lvl = cus.spec.meta.level;
+  ok(newJoint && K.jointsForLevel(lvl).includes(newJoint.joint),
+    `the upgrade respects the ${lvl} level matrix — ${newJoint && newJoint.joint} is buildable at this level`);
+  ok(newJoint && K.JOINERY[newJoint.joint] && !K.JOINERY[newJoint.joint].external,
+    'and it joins two parts, not the building');
+  ok(up && up.label.indexOf(K.JOINERY[newJoint.joint].label.toLowerCase()) > 0, 'the label names the joint');
+  // THE test again: apply it and the check must lift.
+  const jAfter = applied(cus.spec, up, 'joints');
+  ok(jAfter && RANK[jAfter.status] > RANK[jc.status],
+    `the joint fix lifts the check (${jc.status} → ${jAfter && jAfter.status})`);
+  ok(jAfter && jAfter.status !== 'fail', 'and never leaves the joint check failing');
+  // Correction must KEEP the patched joint — a fix silently rewritten by the
+  // pair-kind or level gate would be a downgrade wearing a fix's label.
+  const fixedSpec = Spec.correctSpec(Spec.deepMerge(Spec.clone(cus.spec), up.patch));
+  ok(fixedSpec.custom.connections.every(c => c.joint === newJoint.joint),
+    'the correction pipeline keeps the upgraded joint (kind + level gates satisfied)');
+
+  // A beginner is never handed an advanced joint, whatever the physics wants.
+  const begAllowed = K.jointsForLevel('beginner');
+  for (const lv of ['beginner', 'intermediate', 'advanced']) {
+    const s = Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: lv } });
+    const j = chk(integrityOf(s).checks, 'joints');
+    for (const f of (j ? j.fixes : [])) {
+      const c = f.patch.custom && f.patch.custom.connections.find(x => x.joint !== 'butt_screws');
+      ok(!c || K.jointsForLevel(lv).includes(c.joint), `${lv}: offered joint stays inside the level matrix`);
+      if (lv === 'beginner') ok(!c || begAllowed.includes(c.joint), 'beginner is never handed an advanced joint');
+    }
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

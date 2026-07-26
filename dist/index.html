@@ -138,6 +138,17 @@
 .pricing-facts li::before { content: '✓'; margin-right: .55rem; color: var(--green); font-weight: 700; }
 .pricing-balance { font: 600 var(--text-s) var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
 .spend-confirm { width: min(560px, calc(100vw - 2rem)); }
+.build-fail-confirm { width: min(560px, calc(100vw - 2rem)); }
+.pricing-kicker.verdict-fail { color: var(--brick); }
+.build-fail-list { margin: var(--space-s) 0 0; padding-left: 1.15em; display: grid; gap: 4px; font-size: var(--text-s); }
+.build-fail-list li { line-height: 1.45; }
+.view3d-fallback {
+  position: absolute; inset: 0; margin: auto; width: min(34rem, calc(100% - 2rem)); height: fit-content;
+  display: grid; gap: 6px; padding: var(--space-m); text-align: center;
+  font: 550 var(--text-m) var(--body); color: var(--ink-2);
+}
+.view3d-fallback strong { font-family: var(--display); font-size: var(--text-l); color: var(--ink); }
+.view3d-fallback span { font-size: var(--text-s); color: var(--muted); }
 .spend-actions { display: flex; justify-content: flex-end; gap: var(--space-s); padding: var(--space-s) var(--space-m) 0; }
 .credit-chip { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .plan-preview { display: flex; flex-direction: column; gap: var(--s3); }
@@ -454,6 +465,8 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .ai-badge[data-state="offline"] { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
 .ai-badge[data-state="unconfigured"] .dot { background: var(--brick); }
 .ai-badge[data-state="unconfigured"] { color: var(--brick); border-color: color-mix(in srgb, var(--brick) 40%, transparent); background: var(--brick-soft); }
+.ai-badge[data-state="signedout"] .dot { background: var(--accent); }
+.ai-badge[data-state="signedout"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 @keyframes badgePulse { 50% { opacity: .35; } }
 .ai-badge[data-state="checking"] .dot { animation: badgePulse var(--t-pulse) infinite var(--ease); }
 .ai-badge-bar { display: none; }
@@ -1324,6 +1337,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .check-card.fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
 .check-card .check-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
 .check-card h4 { margin: 0; font-size: var(--text-m); font-weight: 650; }
+.check-card .check-count { display: block; font: 500 var(--text-xs) var(--body); color: var(--muted); margin-top: 2px; }
 .check-card .check-value { font: 600 var(--text-s) var(--mono); font-variant-numeric: tabular-nums; margin-top: var(--s2); }
 .check-card .check-threshold { font: 500 var(--text-s) var(--mono); color: var(--muted); margin-top: 2px; }
 .check-card .check-explain { font-size: var(--text-s); color: var(--ink-2); line-height: 1.5; margin: var(--s2) 0 0; max-width: var(--measure); }
@@ -1444,6 +1458,14 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .bm-progress { font: 650 var(--text-m) var(--mono); color: var(--green); }
 .bm-wake { font: 550 var(--text-s) var(--body); color: var(--muted); }
 .bm-exit { padding: 14px 22px; font-size: var(--text-m); font-weight: 650; }
+.bm-verdict {
+  flex: none; display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+  padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line-2);
+  font: 550 var(--text-m) var(--body); line-height: 1.45;
+}
+.bm-verdict[data-verdict="fail"] { background: var(--brick-soft); color: var(--brick); }
+.bm-verdict[data-verdict="anchor"],
+.bm-verdict[data-verdict="advisory"] { background: var(--amber-soft); color: var(--amber-ink); }
 .bm-columns { flex: 1; display: flex; gap: var(--s3); padding: var(--s3) var(--s4) var(--s5); overflow: auto; overscroll-behavior: contain; }
 .bm-col { flex: 1; min-width: 280px; }
 .bm-col h2 { font-family: var(--display); font-size: var(--text-l); margin: var(--s2) 0 var(--s3); }
@@ -2564,7 +2586,9 @@ body.ph-open .porch::after { display: none; }
             <div class="menu-group-label">Export</div>
             <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
                  means nothing to a thumb (C-14). -->
-            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint">issued</span></button>
+            <!-- The hint is DERIVED (renderExportGate): it said "issued" to
+                 everyone, including anonymous visitors with no account. -->
+            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint" id="exportSheetsHint"></span></button>
             <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
             <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
             <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
@@ -3018,6 +3042,9 @@ body.ph-open .porch::after { display: none; }
       <span class="bm-wake" id="bmWake" title="Screen stays awake while you build"></span>
       <button class="btn bm-exit" id="bmExit">Exit build mode</button>
     </header>
+    <!-- The verdict follows the user to the bench. Filled by renderBuildVerdict();
+         stays hidden on a clean pass so it never becomes wallpaper. -->
+    <div class="bm-verdict" id="bmVerdict" role="status" hidden></div>
     <!-- Wide benches see the full board-by-board + assembly overview. -->
     <div class="bm-columns">
       <section class="bm-col" aria-label="Cuts, board by board">
@@ -5421,6 +5448,24 @@ body.ph-open .porch::after { display: none; }
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const num = (v, fallback) => (typeof v === 'number' && isFinite(v) ? v : fallback);
   const r1 = v => Math.round(v * 10) / 10;
+  const DIM_RULES = {
+    'overall.width': { min: 250, max: 2400, def: 1000 },
+    'overall.depth': { min: 200, max: 1200, def: 500 },
+    'overall.height': { min: 120, max: 2400, def: 750 },
+    'structure.topThickness': { min: 12, max: 45, def: 25, stock: K.SOLID_THICKNESS },
+    'structure.legThickness': { min: 32, max: 100, def: 70, stock: K.POST_THICKNESS },
+    'structure.apronThickness': { min: 15, max: 25, def: 20, stock: [15, 19, 20, 25] },
+    'structure.apronHeight': { min: 60, max: 160, def: 90 },
+    'structure.apronInset': { min: 0, max: 30, def: 12 },
+    'structure.shelfThickness': { min: 12, max: 32, def: 19, stock: K.SOLID_THICKNESS },
+    'structure.sideThickness': { min: 12, max: 25, def: 18, stock: [12, 15, 18, 19, 25] }
+  };
+  function applyDim(path, v) {
+    const r = DIM_RULES[path];
+    const c = clamp(num(v, r.def), r.min, r.max);
+    return r.stock ? snap(c, r.stock) : c;
+  }
+  const SHELF_COUNT = { min: 0, max: 8, def: 0 };
   function customPartSize(p) {
     const d = p.dim;
     switch (p.primitive) {
@@ -5521,6 +5566,80 @@ body.ph-open .porch::after { display: none; }
     return out;
   }
   const GROUND_NOTE_MM = 50; // below this, snapping to the floor is cleanup, not a destroyed premise
+  const DRAWER_TEMPLATES = ['nightstand', 'cabinet'];
+  const at = (o, sec, key) => (o && o[sec] && typeof o[sec] === 'object' ? o[sec][key] : undefined);
+  function dimensionNotes(raw, cor, notes) {
+    const fmt = mm => U().fmtLength(mm);
+    for (const path of Object.keys(DIM_RULES)) {
+      const dot = path.indexOf('.');
+      const sec = path.slice(0, dot), key = path.slice(dot + 1);
+      const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
+      if (want === null || got === null) continue;
+      const r = DIM_RULES[path], label = PATH_LABELS[path] || key;
+      if (want < r.min || want > r.max) {
+        notes.push(`The ${label} asked for (${fmt(want)}) is outside what this tool builds — ${fmt(got)} was used instead.`);
+      } else if (Math.abs(applyDim(path, want) - got) > 0.05) {
+        notes.push(`The ${label} asked for (${fmt(want)}) doesn’t fit the piece’s own dimensions — ${fmt(got)} was used instead.`);
+      }
+    }
+  }
+  function shelfCountNote(raw, cor, notes) {
+    const want = num(at(raw, 'structure', 'shelfCount'), null);
+    const got = num(at(cor, 'structure', 'shelfCount'), null);
+    if (want === null || got === null) return;
+    const asked = Math.round(want), capped = clamp(asked, SHELF_COUNT.min, SHELF_COUNT.max);
+    const shelves = n => n + (n === 1 ? ' shelf' : ' shelves');
+    if (asked !== capped) {
+      notes.push(`The shelf count asked for (${asked}) is outside what this tool builds — it stops at ${capped}.`);
+    }
+    if (capped !== got) {
+      notes.push(`There isn’t room for ${shelves(capped)} at this piece’s height — the design carries ${got === 0 ? 'none' : got}.`);
+    }
+  }
+  function speciesNotes(raw, cor, notes) {
+    const refused = key => {
+      const want = at(raw, 'wood', key), got = at(cor, 'wood', key);
+      if (typeof want !== 'string' || !want || typeof got !== 'string' || want === got) return null;
+      const sp = K.WOOD_SPECIES[want];
+      if (sp && (key === 'species' ? !sp.sheet : !!sp.sheet)) return null;
+      return { want, sp, to: fmtValue('wood.' + key, got) };
+    };
+    const word = w => `“${String(w).replace(/_/g, ' ')}”`;
+    const solid = refused('species'), sheet = refused('sheetSpecies');
+    if (solid && sheet && !solid.sp && !sheet.sp && solid.want === sheet.want) {
+      notes.push(`${word(solid.want)} isn’t in the wood library — the design is built in ${solid.to} with ${sheet.to} sheet stock.`);
+      return;
+    }
+    if (solid) {
+      notes.push(solid.sp
+        ? `${solid.sp.label} is sheet stock, not solid lumber — the design is built in ${solid.to}.`
+        : `${word(solid.want)} isn’t in the wood library — the design is built in ${solid.to}.`);
+    }
+    if (sheet) {
+      notes.push(sheet.sp
+        ? `${sheet.sp.label} is solid lumber, not sheet stock — the sheet parts are cut from ${sheet.to}.`
+        : `${word(sheet.want)} isn’t in the sheet-goods library — the sheet parts are cut from ${sheet.to}.`);
+    }
+  }
+  function joineryNotes(raw, cor, notes) {
+    const lvl = at(cor, 'meta', 'level');
+    const level = K.LEVELS.includes(lvl) ? lvl : 'beginner';
+    for (const kind of ['frame', 'case', 'box']) {
+      const want = at(raw, 'joinery', kind), got = at(cor, 'joinery', kind);
+      if (typeof want !== 'string' || typeof got !== 'string' || want === got) continue;
+      const j = K.JOINERY[want];
+      if (!j || !j.kinds.includes(kind) || K.jointAllowed(want, level, kind)) continue;
+      const art = /^[aeiou]/.test(j.level) ? 'an' : 'a';
+      notes.push(`${j.label} is ${art} ${j.level} joint and this design is set to ${level} — the ${PATH_LABELS['joinery.' + kind]} falls back to ${fmtValue('joinery.' + kind, got)}.`);
+    }
+  }
+  function drawerNote(raw, cor, notes) {
+    const want = raw && raw.drawers;
+    if (!want || typeof want !== 'object' || !cor || cor.drawers) return;
+    const t = at(cor, 'meta', 'template');
+    if (!TEMPLATES.includes(t) || DRAWER_TEMPLATES.includes(t)) return; // dropped for some other reason
+    notes.push(`The ${t} template has no opening for drawers — the drawer bank was dropped.`);
+  }
   function correctionNotes(rawSpec, correctedSpec) {
     const notes = [];
     const raw = migrateSpec(rawSpec);
@@ -5540,7 +5659,16 @@ body.ph-open .porch::after { display: none; }
         }
       }
     }
-    return notes;
+    if (correctedSpec && typeof correctedSpec === 'object') {
+      if (at(correctedSpec, 'meta', 'template') !== 'custom') {
+        dimensionNotes(raw, correctedSpec, notes);
+        shelfCountNote(raw, correctedSpec, notes);
+      }
+      speciesNotes(raw, correctedSpec, notes);
+      joineryNotes(raw, correctedSpec, notes);
+      drawerNote(raw, correctedSpec, notes);
+    }
+    return [...new Set(notes)];
   }
   function customGrainInfo(p) {
     const d = p.dim;
@@ -5619,21 +5747,21 @@ body.ph-open .porch::after { display: none; }
     s.meta.name = String(s.meta.name || 'Untitled').slice(0, 60);
     const o = s.overall, st = s.structure;
     if (template !== 'custom') {
-      o.width = clamp(num(o.width, 1000), 250, 2400);
-      o.depth = clamp(num(o.depth, 500), 200, 1200);
-      o.height = clamp(num(o.height, 750), 120, 2400);
+      o.width = applyDim('overall.width', o.width);
+      o.depth = applyDim('overall.depth', o.depth);
+      o.height = applyDim('overall.height', o.height);
     }
     if (!K.WOOD_SPECIES[s.wood.species] || K.WOOD_SPECIES[s.wood.species].sheet) s.wood.species = 'red_oak';
     const sheetSp = K.WOOD_SPECIES[s.wood.sheetSpecies];
     if (!sheetSp || !sheetSp.sheet) s.wood.sheetSpecies = 'baltic_birch';
-    st.topThickness = snap(clamp(num(st.topThickness, 25), 12, 45), K.SOLID_THICKNESS);
-    st.legThickness = snap(clamp(num(st.legThickness, 70), 32, 100), K.POST_THICKNESS);
-    st.apronThickness = snap(clamp(num(st.apronThickness, 20), 15, 25), [15, 19, 20, 25]);
-    st.apronHeight = clamp(num(st.apronHeight, 90), 60, 160);
-    st.apronInset = clamp(num(st.apronInset, 12), 0, 30);
-    st.shelfThickness = snap(clamp(num(st.shelfThickness, 19), 12, 32), K.SOLID_THICKNESS);
-    st.sideThickness = snap(clamp(num(st.sideThickness, 18), 12, 25), [12, 15, 18, 19, 25]);
-    st.shelfCount = clamp(Math.round(num(st.shelfCount, 0)), 0, 8);
+    st.topThickness = applyDim('structure.topThickness', st.topThickness);
+    st.legThickness = applyDim('structure.legThickness', st.legThickness);
+    st.apronThickness = applyDim('structure.apronThickness', st.apronThickness);
+    st.apronHeight = applyDim('structure.apronHeight', st.apronHeight);
+    st.apronInset = applyDim('structure.apronInset', st.apronInset);
+    st.shelfThickness = applyDim('structure.shelfThickness', st.shelfThickness);
+    st.sideThickness = applyDim('structure.sideThickness', st.sideThickness);
+    st.shelfCount = clamp(Math.round(num(st.shelfCount, SHELF_COUNT.def)), SHELF_COUNT.min, SHELF_COUNT.max);
     st.backPanel = !!st.backPanel;
     st.toeKick = template === 'cabinet' ? !!st.toeKick : false;
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
@@ -6417,6 +6545,33 @@ body.ph-open .porch::after { display: none; }
     const biggest = K.SOLID_THICKNESS[K.SOLID_THICKNESS.length - 1];
     return biggest > h ? { t: biggest, partial: true } : null;
   }
+  const PARTIAL_LIMIT = ' (partial fix — still over the limit)';
+  const PARTIAL_MARGIN = ' (partial fix — still under the margin)';
+  const sagStatus = r => r <= 1 ? 'pass' : r <= 1.5 ? 'advisory' : 'fail';
+  const strStatus = m => m >= 1.25 ? 'pass' : m >= 1 ? 'advisory' : 'fail';
+  const jointStatus = m => m >= 1.5 ? 'pass' : m >= 1 ? 'advisory' : 'fail';
+  const RANK = { fail: 0, advisory: 1, pass: 2 };
+  const better = (a, b) => RANK[a] > RANK[b];
+  const worse = (a, b) => RANK[a] < RANK[b];
+  const solidSpecies = () => Object.values(K.WOOD_SPECIES).filter(w => !w.sheet);
+  const STIFFEST_FIRST = solidSpecies().sort((a, b) => b.moe - a.moe).map(w => w.key);
+  const STRONGEST_FIRST = solidSpecies().sort((a, b) => b.mor - a.mor).map(w => w.key);
+  function solveSpeciesFix(curKey, sagRatio, stress, allow, focus) {
+    const cur = speciesOf(curKey);
+    const finite = stress > 0 && isFinite(stress);
+    const s0 = sagStatus(sagRatio), t0 = strStatus(finite ? allow / stress : Infinity);
+    if ((focus === 'str' ? t0 : s0) === 'pass') return null;
+    for (const key of (focus === 'str' ? STRONGEST_FIRST : STIFFEST_FIRST)) {
+      if (key === curKey) continue; // never offer the species already in the design
+      const c = speciesOf(key);
+      const s1 = sagStatus(sagRatio * (cur.moe / c.moe));
+      const t1 = strStatus(finite ? (c.mor / SAFETY_FACTOR) / stress : Infinity);
+      if (worse(s1, s0) || worse(t1, t0)) continue;
+      if (!better(focus === 'str' ? t1 : s1, focus === 'str' ? t0 : s0)) continue;
+      return { key, label: c.label, partial: (focus === 'str' ? t1 : s1) !== 'pass' };
+    }
+    return null;
+  }
   const U = () => BB.Units;
   const fmtFine = x => U().fmtSmall(x);      // sag / movement / margins: decimal in
   const fmtLen = x => U().fmtLength(x);      // spans / thicknesses: fractional in
@@ -6465,6 +6620,12 @@ body.ph-open .porch::after { display: none; }
     french_cleat:     { rackPts: 3.0, capN: 1500 },
     kd_bolt:          { rackPts: 4.5, capN: 1800 }
   };
+  const JOINT_UPGRADES = [
+    'mortise_tenon', 'dado', 'dowels', 'pocket_screws',
+    'through_dovetail', 'half_lap', 'bridle', 'box_joint', 'loose_tenon',
+    'half_blind_dovetail', 'kd_bolt', 'staked_tenon', 'sliding_dovetail',
+    'cross_lap', 'miter_spline', 'locking_rabbet', 'rabbet'
+  ];
   const I_rect = (b, h) => (b * h * h * h) / 12;
   const DEFL = {
     udlSS:     (w, L, E, I) => (5 * w * Math.pow(L, 4)) / (384 * E * I),
@@ -6771,7 +6932,6 @@ body.ph-open .porch::after { display: none; }
       });
     }
     let worstSagRatio = 0, worstSag = null;
-    const sagStatus = r => r <= 1 ? 'pass' : r <= 1.5 ? 'advisory' : 'fail';
     const strengthCheck = (id, label, M, h, I, preset, fixes, msp) => {
       msp = msp || sp;
       const allow = msp.mor / SAFETY_FACTOR;
@@ -6779,7 +6939,7 @@ body.ph-open .porch::after { display: none; }
       const margin = stress > 0 ? allow / stress : Infinity;
       checks.push({
         id, title: `Strength — ${label}`,
-        status: margin >= 1.25 ? 'pass' : margin >= 1 ? 'advisory' : 'fail',
+        status: strStatus(margin),
         value: `bending stress ${stress.toFixed(1)} MPa · margin ${margin === Infinity ? '∞' : margin.toFixed(1) + '×'}`,
         threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${msp.mor} MPa ÷ safety factor ${SAFETY_FACTOR})`,
         explain: margin >= 1 ? `Comfortably below the breaking stress of ${msp.label} with the standard ×${SAFETY_FACTOR} wood safety factor.`
@@ -6787,17 +6947,28 @@ body.ph-open .porch::after { display: none; }
         fixes: margin < 1.25 ? fixes : []
       });
     };
+    const withSpecies = (base, memberKey, sagRatio, stress, allow, focus) => {
+      if (memberKey !== spec.wood.species) return base;
+      const sol = solveSpeciesFix(spec.wood.species, sagRatio, stress, allow, focus);
+      if (!sol) return base;
+      return base.concat([{
+        id: 'species-' + sol.key,
+        label: `Switch to ${sol.label.toLowerCase()}${sol.partial ? PARTIAL_LIMIT : ''}`,
+        patch: { wood: { species: sol.key } }
+      }]);
+    };
     for (const s of surfaces) {
       const preset = LOAD_PRESETS[s.presetKey];
       const ssp = speciesOf(materialSpeciesKey(s.part, spec));
       const Es = ssp.moe * 1000; // GPa -> MPa
       const fixes = [];
+      let surfKey = materialSpeciesKey(s.part, spec), surfStress = 0, surfAllow = 0;
       const sIsSheet = !!(K.WOOD_SPECIES[s.part.material] && K.WOOD_SPECIES[s.part.material].sheet);
       const thicknessFix = (sagRatio, stress, allow) => {
         if (sIsSheet) return null; // sheet stock tops out — the remedy is structure, not a phantom thickness
         const solved = solveThicknessFix(s.h, sagRatio, stress, allow);
         if (!solved) return null;
-        const suffix = solved.partial ? ' (partial fix — still over the limit)' : '';
+        const suffix = solved.partial ? PARTIAL_LIMIT : '';
         if (!custom) {
           if (s.part.role === 'top' && TABLE_LIKE.includes(t)) return { id: 'thick-top', label: `Thicken top to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { topThickness: solved.t } } };
           if (!s.apron) return { id: 'thick-shelf', label: `Thicken to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { shelfThickness: solved.t } } };
@@ -6806,9 +6977,6 @@ body.ph-open .porch::after { display: none; }
         const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: solved.t } } : p);
         return { id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(solved.t)}${suffix}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } };
       };
-      if (K.WOOD_SPECIES.hard_maple.moe > sp.moe * 1.1 && spec.wood.species !== 'hard_maple') {
-        fixes.push({ id: 'maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } });
-      }
       if (s.apron) {
         const POINT_SHARE = 0.75;
         const cases = loadCasesFor(s.presetKey, s.apron.span, 'ss')
@@ -6820,17 +6988,20 @@ body.ph-open .porch::after { display: none; }
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.apron.span }; }
         const apFixes = [...fixes];
         if (spec.structure.apronHeight < 160) apFixes.unshift({ id: 'tall-apron', label: `Deepen aprons to ${fmtLen(Math.min(160, spec.structure.apronHeight + 30))}`, patch: { structure: { apronHeight: Math.min(160, spec.structure.apronHeight + 30) } } });
+        const apStress = Ia > 0 ? (M * (s.apron.h / 2)) / Ia : Infinity;
+        const apAllow = sp.mor / SAFETY_FACTOR;
         checks.push({
           id: 'sag:apron:' + s.id, title: `Sag — aprons under ${s.label.toLowerCase()}`,
           status: sagStatus(ratio),
           value: `predicted sag ${fmtFine(sag)} over the ${fmtLen(s.apron.span)} apron span`,
           threshold: `≤ ${fmtFine(limit)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
           explain: `The aprons are the beams: each ${fmtLen(s.apron.b)} × ${fmtLen(s.apron.h)} apron carries half the spread load and, worst case, ¾ of the point load (the attached top shares the rest across). Sustained loads include ×${CREEP_FACTOR} creep.`,
-          fixes: ratio > 1 ? apFixes : [],
+          fixes: ratio > 1 ? withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'sag') : [],
           data: { sagMM: sag, limitMM: limit, spanMM: s.apron.span },
           prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(s.apron.span)} mm, half the spread load per apron` }
         });
-        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset, apFixes, sp);
+        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset,
+          withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'str'), sp);
         const rawCases = loadCasesFor(s.presetKey, s.apron.span, 'ss');
         const stripCases = [];
         for (const c of rawCases) {
@@ -6846,19 +7017,22 @@ body.ph-open .porch::after { display: none; }
         const limS = s.strip.span / SAG_LIMIT_RATIO;
         const rS = sagS / limS;
         if (rS > worstSagRatio) { worstSagRatio = rS; worstSag = { id: s.id, sag: sagS, limit: limS, span: s.strip.span }; }
-        const tFixS = thicknessFix(rS, Is > 0 ? (MS * (s.h / 2)) / Is : Infinity, ssp.mor / SAFETY_FACTOR);
+        const stressS = Is > 0 ? (MS * (s.h / 2)) / Is : Infinity;
+        const allowS = ssp.mor / SAFETY_FACTOR;
+        const tFixS = thicknessFix(rS, stressS, allowS);
         if (tFixS) fixes.unshift(tFixS); // top thickness governs the strip, not the aprons
+        surfKey = materialSpeciesKey(s.part, spec); surfStress = stressS; surfAllow = allowS;
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label} between aprons`,
           status: sagStatus(rS),
           value: `predicted sag ${fmtFine(sagS)} across the ${fmtLen(s.strip.span)} between aprons`,
           threshold: `≤ ${fmtFine(limS)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
           explain: `${ssp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}), checked as a ${fmtLen(s.strip.bEff)}-wide strip spanning between the aprons.`,
-          fixes: rS > 1 ? fixes : [],
+          fixes: rS > 1 ? withSpecies(fixes, surfKey, rS, stressS, allowS, 'sag') : [],
           data: { sagMM: sagS, limitMM: limS, spanMM: s.strip.span },
           prov: { rule: `plate strip: span ${Math.round(s.strip.span)} mm between apron faces, effective width min(top, span/2 + 100) = ${Math.round(s.strip.bEff)} mm, I = ${Math.round(Is).toLocaleString()} mm⁴` }
         });
-        strengthCheck('str:' + s.id, s.label, MS, s.h, Is, preset, fixes, ssp);
+        strengthCheck('str:' + s.id, s.label, MS, s.h, Is, preset, withSpecies(fixes, surfKey, rS, stressS, allowS, 'str'), ssp);
       } else {
         const I = I_rect(s.b, s.h);
         const cases = loadCasesFor(s.presetKey, s.span, s.model);
@@ -6867,19 +7041,22 @@ body.ph-open .porch::after { display: none; }
         const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
-        const tFix = thicknessFix(ratio, I > 0 ? (M * (s.h / 2)) / I : Infinity, ssp.mor / SAFETY_FACTOR);
+        const stressB = I > 0 ? (M * (s.h / 2)) / I : Infinity;
+        const allowB = ssp.mor / SAFETY_FACTOR;
+        const tFix = thicknessFix(ratio, stressB, allowB);
         if (tFix) fixes.unshift(tFix);
+        surfKey = materialSpeciesKey(s.part, spec); surfStress = stressB; surfAllow = allowB;
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label}`,
           status: sagStatus(ratio),
           value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}`,
           threshold: `≤ ${fmtFine(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
           explain: `${ssp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}). Stiffness comes from MOE (${ssp.moe} GPa) and thickness cubed.${crept ? ` Sustained load: includes ×${CREEP_FACTOR} creep (Wood Handbook ch. 4).` : ''}`,
-          fixes: ratio > 1 ? fixes : [],
+          fixes: ratio > 1 ? withSpecies(fixes, surfKey, ratio, stressB, allowB, 'sag') : [],
           data: { sagMM: sag, limitMM: limit, spanMM: s.span },
           prov: { rule: `sag = Σ load cases (5wL⁴/384EI and friends${crept ? `, sustained cases ×${CREEP_FACTOR} creep` : ''}) with E = ${ssp.moe} GPa, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, L = ${Math.round(s.span)} mm` }
         });
-        strengthCheck('str:' + s.id, s.label, M, s.h, I, preset, fixes, ssp);
+        strengthCheck('str:' + s.id, s.label, M, s.h, I, preset, withSpecies(fixes, surfKey, ratio, stressB, allowB, 'str'), ssp);
       }
       if (s.over > 0 && s.kind === 'top') {
         const P = LOAD_PRESETS.worktop.kgEdge * GRAV;
@@ -6893,7 +7070,7 @@ body.ph-open .porch::after { display: none; }
           value: `edge deflection ${fmtFine(sagO)} on a ${fmtLen(s.over)} overhang`,
           threshold: `≤ ${fmtFine(limO)} (L/${CANT_LIMIT_RATIO}) under a ${U().fmtPointLoad(LOAD_PRESETS.worktop.kgEdge)} lean`,
           explain: 'Cantilever case: a person leaning at the worst edge position.',
-          fixes: rO > 1 ? fixes : [],
+          fixes: rO > 1 ? withSpecies(fixes, surfKey, rO, surfStress, surfAllow, 'sag') : [],
           data: { sagMM: sagO, limitMM: limO, spanMM: s.over }
         });
       }
@@ -6953,7 +7130,7 @@ body.ph-open .porch::after { display: none; }
         const newParts = spec.custom.parts.map(p => p.id === m.id ? { ...p, dim: { ...p.dim, [key]: tNew } } : p);
         return {
           id: 'deep-' + m.id,
-          label: `Deepen ${m.id} to ${fmtLen(tNew)}${partial ? ' (partial fix — still over the limit)' : ''}`,
+          label: `Deepen ${m.id} to ${fmtLen(tNew)}${partial ? PARTIAL_LIMIT : ''}`,
           patch: { custom: { parts: newParts, connections: spec.custom.connections } }
         };
       };
@@ -7022,9 +7199,10 @@ body.ph-open .porch::after { display: none; }
           if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: m.id, sag, limit, span }; }
           const srcs = [...new Set(rec.from)];
           const mFixes = [];
+          const allowM = msp.mor / SAFETY_FACTOR;
+          const stressM = I > 0 ? (M * (h / 2)) / I : Infinity;
+          const mKey = materialSpeciesKey(m, spec);
           {
-            const allowM = msp.mor / SAFETY_FACTOR;
-            const stressM = I > 0 ? (M * (h / 2)) / I : Infinity;
             if (ratio > 1 || allowM / stressM < 1.25) {
               const mf = deepenFix(m, h, ratio, stressM, allowM);
               if (mf) mFixes.push(mf);
@@ -7036,11 +7214,12 @@ body.ph-open .porch::after { display: none; }
             value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(span)} ${mdl === 'cant' ? 'cantilever' : 'span'}`,
             threshold: `≤ ${fmtFine(limit)} (${mdl === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
             explain: `${m.name} carries the load from ${srcs.join(', ')} — a ${fmtLen(b)} × ${fmtLen(h)} ${msp.label} section spanning ${fmtLen(span)} between its own supports.${crept ? ` Sustained share includes ×${CREEP_FACTOR} creep.` : ''}`,
-            fixes: ratio > 1 ? mFixes : [],
+            fixes: ratio > 1 ? withSpecies(mFixes, mKey, ratio, stressM, allowM, 'sag') : [],
             data: { sagMM: sag, limitMM: limit, spanMM: span },
             prov: { rule: `member beam: tributary load from ${srcs.join('+')}, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, ${mdl === 'cant' ? 'cantilever' : 'span'} ${Math.round(span)} mm` }
           });
-          strengthCheck('str:mbr:' + m.id, `${m.name} (supporting member)`, M, h, I, { label: 'carried' }, mFixes, msp);
+          strengthCheck('str:mbr:' + m.id, `${m.name} (supporting member)`, M, h, I, { label: 'carried' },
+            withSpecies(mFixes, mKey, ratio, stressM, allowM, 'str'), msp);
           const R = mdl === 'cant' ? total : total / 2; // worst end reaction
           memberChecks.push({ part: m, supports: sup, R });
         }
@@ -7254,10 +7433,52 @@ body.ph-open .porch::after { display: none; }
       let weakest = null;
       let surfGroups = 0, coupleRoots = 0; // custom coverage tally (G2 honesty)
       const specParts = custom ? new Map(((spec.custom && spec.custom.parts) || []).map(p => [p.id, p])) : null;
+      const entries = [];
+      const connKey = c => (c.a < c.b ? c.a + '|' + c.b : c.b + '|' + c.a);
+      const isScrewed = j => j === 'butt_screws' || j === 'pocket_screws';
+      const marginUnder = (e, swap) => {
+        let cap = e.combine === 'sum' ? 0 : Infinity;
+        for (const g of e.group) {
+          const nj = swap.get(g.key) || g.joint;
+          const eff = (JOINT_RATING[nj] || JOINT_RATING.butt_screws).capN * (g.eg && isScrewed(nj) ? 0.67 : 1);
+          cap = e.combine === 'sum' ? cap + eff : Math.min(cap, eff);
+        }
+        return (cap * sgF) / e.per;
+      };
+      const STICKS = ['post', 'rail', 'cylinder'];
+      const pairAccepts = (j, a, b) => {
+        const def = K.JOINERY[j];
+        if (!def || def.external) return false; // a french cleat fastens to the building, not to a part
+        const pa = specParts && specParts.get(a), pb = specParts && specParts.get(b);
+        if (!pa || !pb) return false;
+        const aS = STICKS.includes(pa.primitive), bS = STICKS.includes(pb.primitive);
+        const kinds = aS && bS ? ['frame'] : (aS || bS) ? ['frame', 'case'] : ['case', 'panel', 'box'];
+        return def.kinds.some(k => kinds.includes(k));
+      };
+      const swapFor = (e, j) => {
+        const map = new Map();
+        if (e.slot) {
+          if (!K.jointAllowed(j, level, e.slot)) return null;
+          map.set(e.slot, j);
+          return { map, patch: { joinery: { [e.slot]: j } } };
+        }
+        const cap = JOINT_RATING[j].capN;
+        for (const g of e.group) {
+          const eff = (JOINT_RATING[g.joint] || JOINT_RATING.butt_screws).capN * (g.eg && isScrewed(g.joint) ? 0.67 : 1);
+          if (eff >= cap) continue;
+          if (!pairAccepts(j, g.a, g.b)) continue;
+          map.set(g.key, j);
+        }
+        if (!map.size) return null;
+        const conns = ((spec.custom && spec.custom.connections) || []).map(c =>
+          map.has(connKey(c)) ? { ...c, joint: j } : c);
+        return { map, patch: { custom: { parts: (spec.custom && spec.custom.parts) || [], connections: conns } } };
+      };
       for (const s of surfaces) {
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
         let demand = null, apron = false; // G5: apron end reaction overrides N/count
+        const group = []; // the joints this margin is made of (fix re-rating)
         if (custom) {
           const conns = ((spec.custom && spec.custom.connections) || []).filter(c => c.a === s.id || c.b === s.id);
           if (!conns.length) continue;
@@ -7273,15 +7494,16 @@ body.ph-open .porch::after { display: none; }
             if (eg) capC *= 0.67;
             capGroup += capC * sgF;
             if (capC < minCap) { minCap = capC; joint = c.joint; endGrain = !!eg; }
+            group.push({ key: connKey(c), a: c.a, b: c.b, joint: c.joint, eg: !!eg });
           }
           where = s.id;
           if (s.model === 'cant' && s._M > 0) {
             coupleRoots++;
             const T = s._M / (0.67 * s.h);
             const mC = capGroup / T;
-            if (!weakest || mC < weakest.margin) {
-              weakest = { margin: mC, joint, where: `${s.id} cantilever root`, per: T, cap: capGroup, slot: null, endGrain: false, couple: true, h: s.h };
-            }
+            const eC = { margin: mC, joint, where: `${s.id} cantilever root`, per: T, cap: capGroup, slot: null, endGrain: false, couple: true, h: s.h, group, combine: 'sum' };
+            entries.push(eC);
+            if (!weakest || mC < weakest.margin) weakest = eC;
           }
         } else if (TABLE_LIKE.includes(t)) {
           if (s.part.role === 'top') {
@@ -7302,7 +7524,10 @@ body.ph-open .porch::after { display: none; }
         const cap = rating.capN * sgF * (endGrain ? 0.67 : 1);
         const per = demand != null ? demand : N / count;
         const margin = cap / per;
-        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain, apron };
+        if (!custom) group.push({ key: slot, joint, eg: false });
+        const entry = { margin, joint, where, per, cap, slot, endGrain, apron, group, combine: 'min' };
+        entries.push(entry);
+        if (!weakest || margin < weakest.margin) weakest = entry;
       }
       for (const mc of memberChecks) {
         for (const q of mc.supports) {
@@ -7315,19 +7540,34 @@ body.ph-open .porch::after { display: none; }
           const eg = !!(screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa)));
           const cap = rating.capN * sgF * (eg ? 0.67 : 1);
           const margin = cap / mc.R;
-          if (!weakest || margin < weakest.margin) {
-            weakest = { margin, joint: cn.joint, where: `${mc.part.id}–${q.id}`, per: mc.R, cap, slot: null, endGrain: eg };
-          }
+          const entry = { margin, joint: cn.joint, where: `${mc.part.id}–${q.id}`, per: mc.R, cap, slot: null, endGrain: eg,
+            group: [{ key: connKey(cn), a: cn.a, b: cn.b, joint: cn.joint, eg }], combine: 'min' };
+          entries.push(entry);
+          if (!weakest || margin < weakest.margin) weakest = entry;
         }
       }
       if (weakest) {
         const jLabel = k => K.JOINERY[k] ? K.JOINERY[k].label.toLowerCase() : k;
         const fixes = [];
         if (weakest.margin < 1.5) {
-          const stronger = ['mortise_tenon', 'dado', 'dowels', 'pocket_screws'].find(j =>
-            allowed.includes(j) && (JOINT_RATING[j].capN > (JOINT_RATING[weakest.joint] || JOINT_RATING.butt_screws).capN) &&
-            (!weakest.slot || K.jointAllowed(j, level, weakest.slot)));
-          if (stronger && weakest.slot) fixes.push({ id: 'upjoint', label: `Upgrade ${weakest.where} to ${jLabel(stronger)}`, patch: { joinery: { [weakest.slot]: stronger } } });
+          const s0 = jointStatus(weakest.margin);
+          const curCap = (JOINT_RATING[weakest.joint] || JOINT_RATING.butt_screws).capN;
+          for (const j of JOINT_UPGRADES) {
+            if (!allowed.includes(j)) continue;            // the level matrix is never crossed
+            if (!JOINT_RATING[j] || JOINT_RATING[j].capN <= curCap) continue;
+            const swap = swapFor(weakest, j);
+            if (!swap) continue;
+            let worstM = Infinity;
+            for (const e of entries) worstM = Math.min(worstM, marginUnder(e, swap.map));
+            const s1 = jointStatus(worstM);
+            if (!better(s1, s0)) continue;
+            fixes.push({
+              id: 'upjoint',
+              label: `Upgrade ${weakest.where} to ${jLabel(j)}${s1 === 'pass' ? '' : PARTIAL_MARGIN}`,
+              patch: swap.patch
+            });
+            break;
+          }
         }
         const coverage = `${surfGroups} load-surface joint group${surfGroups === 1 ? '' : 's'}` +
           (coupleRoots ? `, ${coupleRoots} cantilever root${coupleRoots === 1 ? '' : 's'}` : '') +
@@ -14620,6 +14860,40 @@ BlueprintBuddyImport.build
     return e;
   };
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const REPORT_CAP = 8;
+  let reportsSent = 0;
+  const reportedOnce = new Set();
+  function reportClientError(kind, err, extra) {
+    try {
+      if (reportsSent >= REPORT_CAP) return;
+      const e = err || {};
+      const message = String((e && (e.message || e.reason)) || e || 'unknown').slice(0, 300);
+      const dedupe = kind + '|' + message;
+      if (reportedOnce.has(dedupe)) return;
+      reportedOnce.add(dedupe);
+      reportsSent++;
+      const body = {
+        kind: kind === 'unhandledrejection' ? 'unhandledrejection' : 'error',
+        message,
+        source: String((extra && extra.source) || kind || '').slice(0, 200),
+        line: (extra && Number(extra.line)) || 0,
+        col: (extra && Number(extra.col)) || 0,
+        stack: String((e && e.stack) || '').slice(0, 2000)
+      };
+      fetch('/api/clientlog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        keepalive: true // survives the unload a fatal error often triggers
+      }).catch(() => { /* reporting is best-effort by definition */ });
+    } catch (e2) { /* a reporter that throws is worse than silence */ }
+  }
+  window.addEventListener('error', ev => {
+    reportClientError('error', ev.error || { message: ev.message }, { source: ev.filename, line: ev.lineno, col: ev.colno });
+  });
+  window.addEventListener('unhandledrejection', ev => {
+    reportClientError('unhandledrejection', ev.reason || { message: 'unhandled rejection' }, {});
+  });
   const state = {
     spec: null, model: null, report: null,
     cut: [], bomData: { items: [], total: 0 }, steps: [],
@@ -14880,6 +15154,29 @@ BlueprintBuddyImport.build
   }
   function signedIn() { return !!Store.auth().user; }
   function anonGated() { return billingConfigured(Store.auth()) && !signedIn(); }
+  let ownershipProbe = 0;
+  async function probeOwnership() {
+    if (!billingConfigured(Store.auth()) || !signedIn() || !state.spec) return;
+    if (designCredited()) return;                 // already known to be ours
+    const seq = ++ownershipProbe;                 // a later design wins the race
+    const key = materialKey(state.spec);
+    try {
+      const code = Codec.toShareCode(state.spec);
+      const r = await fetch('/api/blueprint?owned=' + encodeURIComponent(code), { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (seq !== ownershipProbe || !data || !data.owned) return;
+      if (materialKey(state.spec) !== key) return;
+      state.blueprint = {
+        id: data.id,
+        windowEndsAt: data.windowEndsAt,
+        revision: data.revision,
+        issuedKeys: [key]
+      };
+      scheduleAutosave();  // the record rides the project from here on
+      renderAll();         // locks lift, the export hint flips to "issued"
+    } catch (e) { /* offline or no route: keep whatever we already knew */ }
+  }
   function canonicalJSON(value) {
     if (Array.isArray(value)) return '[' + value.map(canonicalJSON).join(',') + ']';
     if (value && typeof value === 'object') {
@@ -14898,11 +15195,22 @@ BlueprintBuddyImport.build
     if (bp.issuedKeys && bp.issuedKeys.includes(materialKey(state.spec))) return true;
     return !!(bp.windowEndsAt && Date.now() < bp.windowEndsAt);
   }
-  function planLocked() {
-    if (!billingConfigured(Store.auth())) return false;
-    if (!state.cut.length) return false;
-    return !designCredited();
+  function entitlementState() {
+    const a = Store.auth();
+    const configured = billingConfigured(a);
+    const signedIn = !!a.user;
+    const balance = BB.Billing.credits();          // number, or null when unknown
+    const designIssued = designCredited();
+    const hasPlan = state.cut.length > 0;
+    const nextAction = !configured || designIssued ? 'none'
+      : !signedIn ? 'signin'
+        : (balance === null || balance > 0) ? 'issue' : 'buy';
+    return {
+      configured, signedIn, balance, designIssued, hasPlan, nextAction,
+      planLocked: configured && hasPlan && !designIssued
+    };
   }
+  function planLocked() { return entitlementState().planLocked; }
   function promptSignIn(message) {
     const m = chatMsg('bot', `<div class="bubble">${esc(message || 'Sign in free to design with AI — your first blueprint credit is included.')}</div>`);
     const row = el('div', 'answer-row');
@@ -14987,7 +15295,7 @@ BlueprintBuddyImport.build
       scheduleAutosave();
       const spent = data.charged ? ' One credit was used.' : data.cached ? ' This exact design was already issued — no credit was used.' : ' Refinement included — no credit was used.';
       botSay(`Blueprint ${data.id} issued (rev ${data.revision}).${spent} The sheet set, all exports, and Build mode are unlocked for this design; re-download free anytime from Export.`, []);
-      if (opts.then === 'build') enterBuildMode();
+      if (opts.then === 'build') enterBuildMode({ acknowledged: true });
       else if (opts.then && opts.then.export) doExport(opts.then.export);
       else window.open('/api/blueprint?id=' + encodeURIComponent(data.id) + '&format=sheets', '_blank', 'noopener');
     } catch (e) {
@@ -15268,11 +15576,19 @@ BlueprintBuddyImport.build
       });
       cta.append(form);
     } else {
-      const balance = BB.Billing.credits();
-      cta.innerHTML = `<p>One credit issues this design as a complete blueprint — sheet set, exact cut list, stock plan, joinery setout, assembly, every export, and the shop companion. Refine it free for ${BB.Billing.WINDOW_DAYS} days; re-download forever.${balance !== null ? ` You have ${balance} credit${balance === 1 ? '' : 's'}.` : ''}</p>`;
-      const b = el('button', 'btn primary', 'Issue blueprint — 1 credit');
-      b.onclick = () => issueBlueprint({});
-      cta.append(b);
+      const ent = entitlementState();
+      const balance = ent.balance;
+      const haveLine = balance !== null ? ` You have ${balance} credit${balance === 1 ? '' : 's'}.` : '';
+      cta.innerHTML = `<p>One credit issues this design as a complete blueprint — sheet set, exact cut list, stock plan, joinery setout, assembly, every export, and the shop companion. Refine it free for ${BB.Billing.WINDOW_DAYS} days; re-download forever.${haveLine}</p>`;
+      if (ent.nextAction === 'buy') {
+        const buy = el('button', 'btn primary', 'Get a credit');
+        buy.onclick = () => BB.Billing.open();
+        cta.append(buy);
+      } else {
+        const b = el('button', 'btn primary', 'Issue blueprint — 1 credit');
+        b.onclick = () => issueBlueprint({});
+        cta.append(b);
+      }
       const more = el('button', 'btn ghost small', 'About credits');
       more.onclick = () => BB.Billing.open();
       cta.append(more);
@@ -15300,10 +15616,12 @@ BlueprintBuddyImport.build
           : 'This design passes the required strength checks.';
     const money = v => '$' + Math.round(v);
     const int = v => String(Math.round(v));
+    const bomTotal = state.bomData && state.bomData.items.length ? state.bomData.total
+      : (plan ? plan.totalCost : null);
     const cards = [
       { label: 'Parts to cut', value: int(partCount), count: partCount, fmt: int, go: 'cut', aria: 'Open the cut list' },
       { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : int(boards), count: plan && plan.errors.length ? null : boards, fmt: int, go: 'stock', aria: 'Open the buying plan' },
-      { label: 'Estimated cost', value: plan ? money(plan.totalCost) : '—', count: plan ? plan.totalCost : null, fmt: money, go: 'stock', aria: 'Open buying and pricing' },
+      { label: 'Estimated cost', value: bomTotal != null ? money(bomTotal) : '—', count: bomTotal, fmt: money, go: 'stock', aria: 'Open buying and pricing — boards, hardware, and finish' },
       { label: 'Safety', value: verdict === 'anchor' ? 'ANCHOR REQUIRED' : verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
     ];
     const grid = el('div', 'overview-grid');
@@ -15763,8 +16081,9 @@ BlueprintBuddyImport.build
             : 'This design does not yet pass the required strength checks — fix it before you build.'}</span>`;
     root.append(summary);
     if (once) Motion.settle(summary.querySelector('.stamp'));
-    for (const c of integ.checks.filter(x => x.status === 'fail' || x.anchor)) {
-      const card = checkCard(c, { full: !beginner });
+    const surfaced = integ.checks.filter(x => x.status === 'fail' || x.anchor || x.status === 'advisory');
+    for (const g of groupChecks(surfaced)) {
+      const card = checkCard(g.check, { full: !beginner, count: g.count, subjects: g.subjects });
       root.append(card);
       if (once) Motion.reveal(card);
     }
@@ -15774,7 +16093,7 @@ BlueprintBuddyImport.build
     details.open = !beginner;
     root.append(details);
     const target = details;
-    target.append(el('p', 'lede', `${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory — exact numbers, thresholds, and the design basis.`));
+    target.append(el('p', 'lede', `All ${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory — the ones above in full, the passing ones too, plus exact thresholds and the design basis.`));
     const climate = el('div', 'climate-row');
     const sel = document.createElement('select');
     sel.setAttribute('aria-label', 'Indoor climate for seasonal movement');
@@ -15811,16 +16130,48 @@ BlueprintBuddyImport.build
     for (const c of integ.checks) target.append(checkCard(c, { full: true }));
     target.append(el('p', 'integrity-disclaimer', esc(K.DESIGN_BASIS)));
   }
+  function groupChecks(checks) {
+    const out = [], byKey = new Map();
+    for (const c of checks) {
+      const key = [c.status, c.value, c.threshold, c.explain, (c.fixes || []).map(f => f.label).join('|')].join(' ');
+      const hit = byKey.get(key);
+      if (hit) { hit.count++; hit.subjects.push(c.title); continue; }
+      const entry = { check: c, count: 1, subjects: [c.title] };
+      byKey.set(key, entry);
+      out.push(entry);
+    }
+    return out;
+  }
+  function groupTitle(subjects) {
+    if (subjects.length < 2) return subjects[0] || '';
+    const m = subjects.map(s => /^(.*?)(\d+)\s*$/.exec(s));
+    if (m.every(Boolean) && new Set(m.map(x => x[1])).size === 1) {
+      const nums = m.map(x => Number(x[2])).sort((a, b) => a - b);
+      const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+      if (contiguous) return `${m[0][1]}${nums[0]}–${nums[nums.length - 1]}`;
+    }
+    return `${subjects[0]} (and ${subjects.length - 1} more)`;
+  }
+  function checkSubject(title) {
+    const t = String(title || '');
+    const dash = t.indexOf('—');
+    const tail = dash >= 0 ? t.slice(dash + 1).trim() : '';
+    if (tail) return tail.charAt(0).toUpperCase() + tail.slice(1);
+    return t ? 'This part' : 'This part';
+  }
   function checkCard(c, opts) {
     const full = !opts || opts.full !== false;
+    const count = (opts && opts.count) || 1;
+    const title = count > 1 ? groupTitle(opts.subjects) : c.title;
     const card = el('div', 'check-card' + (c.status === 'fail' ? ' fail' : ''));
+    const subject = checkSubject(title);
     const plainLine = c.anchor
       ? c.explain
-      : 'This part would not safely carry its expected load as designed. '
-      + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.');
-    card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
-      (full ? `<div class="check-value">${esc(c.value)}</div>
-        <div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
+      : `${subject} would not safely carry the load this design is checked against.`
+      + (c.fixes && c.fixes.length ? ' Any fix below solves it, or ask the chat for a different approach.' : ' Ask the chat for a different approach.');
+    card.innerHTML = `<div class="check-head"><h4>${esc(title)}${count > 1 ? `<span class="check-count">${count} parts, same result</span>` : ''}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
+      `<div class="check-value">${esc(c.value)}</div>` +
+      (full ? `<div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
       `<p class="check-explain">${full ? esc(c.explain) : esc(plainLine)}</p>` +
       (full && c.factors ? `<div class="check-factors">${c.factors.map(f => `<div><span>${esc(f.label)}</span><span>${f.mult ? '× ' + f.mult : '+' + f.pts}</span></div>`).join('')}</div>` : '');
     if (c.fixes && c.fixes.length) {
@@ -16071,20 +16422,24 @@ BlueprintBuddyImport.build
   }
   function setAIState(mode, detail) {
     const label = mode === 'online' ? 'AI online'
-      : mode === 'offline' ? 'Offline · basic edits'
-        : mode === 'unconfigured' ? 'AI not configured'
-          : 'AI · checking…';
+      : mode === 'signedout' ? 'Sign in to design with AI'
+        : mode === 'offline' ? 'Offline · basic edits'
+          : mode === 'unconfigured' ? 'AI not configured'
+            : 'AI · checking…';
     const barLabel = mode === 'online' ? 'Online'
-      : mode === 'offline' ? 'Offline'
-        : mode === 'unconfigured' ? 'AI not configured'
-          : '…';
+      : mode === 'signedout' ? 'Sign in for AI'
+        : mode === 'offline' ? 'Offline'
+          : mode === 'unconfigured' ? 'AI not configured'
+            : '…';
     const title = detail || (mode === 'online'
       ? 'Connected to the design service — full natural-language design and photo input.'
-      : mode === 'offline'
-        ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
-        : mode === 'unconfigured'
-          ? 'The server has no AI key configured — a deploy issue, not your connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser.'
-          : 'Checking the design service…');
+      : mode === 'signedout'
+        ? 'The design service is running — sign in free to design with AI. Plain-language edits (sizes, wood, drawers) work right now through the built-in parser.'
+        : mode === 'offline'
+          ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
+          : mode === 'unconfigured'
+            ? 'The server has no AI key configured — a deploy issue, not your connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser.'
+            : 'Checking the design service…');
     const badge = $('aiBadge');
     if (badge) {
       badge.dataset.state = mode;
@@ -16109,6 +16464,10 @@ BlueprintBuddyImport.build
     try {
       const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       if (r.status === 400) { setAIState('online'); return; }               // proxy present, key configured
+      if (r.status === 401) {                                               // proxy present and healthy — we are signed out
+        setAIState(claudeHost ? 'online' : 'signedout');
+        return;
+      }
       if (r.status === 503) {                                               // proxy present, no key (L-14)
         setAIState(claudeHost ? 'online' : 'unconfigured');
         return;
@@ -16202,7 +16561,7 @@ BlueprintBuddyImport.build
   }
   function correctionNotesFor(reply, baseSpec, appliedSpec) {
     if (reply.kind === 'new') return Spec.correctionNotes(reply.spec, appliedSpec);
-    if (reply.kind === 'diff' && reply.patch && reply.patch.custom) {
+    if (reply.kind === 'diff' && reply.patch) {
       return Spec.correctionNotes(Spec.deepMerge(baseSpec, reply.patch), appliedSpec);
     }
     return null;
@@ -17096,8 +17455,10 @@ BlueprintBuddyImport.build
     const ok = commit(res.spec, 'import', ['imported from ' + (sourceLabel || 'share code')]);
     if (!ok) return { error: 'That design decoded but won’t build.' };
     state.engine.frame();
-    botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+    const integLine = Spec.integrityLine(state.integrity && state.integrity.summary, {});
+    botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.${integLine}`, []);
     offerPlanCta(); // an imported design gets the same explicit next step (C-03)
+    probeOwnership(); // an imported design may be one this account already issued
     return { ok: true };
   }
   function importShare() {
@@ -17236,7 +17597,56 @@ BlueprintBuddyImport.build
     if (state.buildMode && document.visibilityState === 'visible') requestWakeLock();
   });
   const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
-  function enterBuildMode() {
+  function failingChecks() {
+    const checks = (state.integrity && state.integrity.checks) || [];
+    return checks.filter(c => c.status === 'fail');
+  }
+  function confirmBuildDespiteFail() {
+    const fails = failingChecks();
+    if (!fails.length) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const d = document.createElement('dialog');
+      d.className = 'pricing-dialog build-fail-confirm';
+      d.setAttribute('aria-labelledby', 'buildFailTitle');
+      const items = fails.slice(0, 6).map(c =>
+        `<li><strong>${esc(c.title)}</strong>${c.value ? ` — ${esc(c.value)}` : ''}</li>`).join('');
+      const more = fails.length > 6 ? `<li>…and ${fails.length - 6} more in the Safety tab.</li>` : '';
+      d.innerHTML = `<div class="pricing-shell">
+        <header class="pricing-head">
+          <span class="pricing-kicker verdict-fail">Does not pass</span>
+          <h2 id="buildFailTitle">This design fails ${fails.length} structural check${fails.length === 1 ? '' : 's'}</h2>
+          <p>Build mode is the shop companion — cutting diagrams and a checklist for the bench.
+          As designed, this piece would not safely carry the load it is checked against.</p>
+          <ul class="build-fail-list">${items}${more}</ul>
+          <p>The Safety tab has the numbers and one-tap fixes for each.</p>
+        </header>
+        <div class="spend-actions">
+          <button class="btn primary" data-build-fix>Show me the fixes</button>
+          <button class="btn" data-build-anyway>Build anyway</button>
+        </div>
+      </div>`;
+      document.body.append(d);
+      const done = value => { try { d.close(); } catch (e) { /* already closed */ } d.remove(); resolve(value); };
+      d.addEventListener('click', event => {
+        if (event.target === d || event.target.closest('[data-build-fix]')) {
+          done(false);
+          setMode('plan'); selectTab('integrity'); focusPanelHeading();
+        }
+        if (event.target.closest('[data-build-anyway]')) done(true);
+      });
+      d.addEventListener('cancel', () => done(false));
+      d.showModal();
+      const fix = d.querySelector('[data-build-fix]');
+      if (fix) fix.focus(); // the safe path takes the focus, not the override
+    });
+  }
+  function enterBuildMode(opts) {
+    const needsAsking = !(opts && opts.acknowledged)
+      && state.integrity && state.integrity.summary && state.integrity.summary.verdict === 'fail';
+    if (needsAsking) {
+      confirmBuildDespiteFail().then(go => { if (go) enterBuildMode({ acknowledged: true }); });
+      return;
+    }
     if (planLocked()) { issueBlueprint({ then: 'build' }); return; }
     if (!state.project) { state.project = { id: Store.newId(), progress: { cuts: {}, steps: {} } }; scheduleAutosave(); }
     state.buildMode = true;
@@ -17244,10 +17654,27 @@ BlueprintBuddyImport.build
     state.bmTask = Number.isInteger(savedTask) ? savedTask : null;
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
+    renderBuildVerdict();
     renderBuildChecklists();
     trapFocus($('buildMode')); // keyboard users land on the shop surface
     requestWakeLock();
     renderReadiness(); // Build takes aria-current in the mode nav
+  }
+  function renderBuildVerdict() {
+    const box = $('bmVerdict');
+    if (!box) return;
+    const sum = state.integrity && state.integrity.summary;
+    const verdict = sum && sum.verdict;
+    if (!verdict || verdict === 'pass') { box.hidden = true; box.textContent = ''; return; }
+    const fails = failingChecks();
+    const copy = verdict === 'fail'
+      ? { stamp: 'does not pass', text: `This design fails ${fails.length} structural check${fails.length === 1 ? '' : 's'} — ${fails.slice(0, 2).map(c => c.title).join(', ')}${fails.length > 2 ? ', and more' : ''}. You are building it as it stands.` }
+      : verdict === 'anchor'
+        ? { stamp: 'anchor required', text: 'This piece tips when loaded or opened: the wall anchor in your parts list is mandatory, not optional. Fit it before you load a shelf or drawer.' }
+        : { stamp: 'advisory', text: 'This design passes its strength checks with notes worth reading — see Safety in Plan mode.' };
+    box.hidden = false;
+    box.dataset.verdict = verdict;
+    box.innerHTML = `<span class="stamp ${esc(verdict)}">${esc(copy.stamp)}</span><span>${esc(copy.text)}</span>`;
   }
   function exitBuildMode() {
     if (!state.buildMode) return;
@@ -17617,10 +18044,22 @@ BlueprintBuddyImport.build
       }
     };
   }
+  function renderExportGate() {
+    const hint = $('exportSheetsHint');
+    if (!hint) return;
+    const ent = entitlementState();
+    hint.textContent = !ent.configured ? 'sheets'
+      : ent.designIssued ? 'issued'
+        : ent.nextAction === 'signin' ? 'sign in'
+          : ent.nextAction === 'buy' ? 'needs a credit'
+            : '1 credit';
+  }
   function renderReadiness() {
     if (!state.integrity) return;
+    renderExportGate();
     const states = modeStates();
-    const buildLocked = planLocked();
+    const ent = entitlementState();
+    const buildLocked = ent.planLocked;
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
     $('buildModeBtn').classList.toggle('build-quiet', !state.hasDesign || buildLocked);
@@ -17632,7 +18071,11 @@ BlueprintBuddyImport.build
       const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
       if (current) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
-      const aria = m === 'build' && buildLocked ? s.aria + ' — included with this design’s blueprint' : s.aria;
+      const gateSuffix = m !== 'build' || !buildLocked ? ''
+        : ent.nextAction === 'signin' ? ' — sign in free, then issue this design’s blueprint to unlock'
+          : ent.nextAction === 'buy' ? ' — unlocked by this design’s blueprint; you have no credits yet'
+            : ' — unlocked by issuing this design’s blueprint (1 credit)';
+      const aria = s.aria + gateSuffix;
       b.setAttribute('aria-label', aria);
       b.title = aria;
     }
@@ -17812,7 +18255,7 @@ BlueprintBuddyImport.build
     renderHistory();
     if (state.selected) openInspectorById(state.selected);
     if (adjustRailOpen()) renderAdjustBody();
-    if (state.buildMode) { $('bmName').textContent = state.spec.meta.name; renderBuildChecklists(); }
+    if (state.buildMode) { $('bmName').textContent = state.spec.meta.name; renderBuildVerdict(); renderBuildChecklists(); }
   }
   function applyIcons() {
     const icon = BB.Icons.svg;
@@ -17838,10 +18281,40 @@ BlueprintBuddyImport.build
     if ($('buildModeLock')) $('buildModeLock').innerHTML = icon('lock', 12);
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
   }
+  function nullEngine() {
+    const answers = {
+      getIsolated: () => null,
+      inPlayback: () => false,
+      stats: () => ({ geometries: 0, textures: 0, meshes: 0, materials: 0 }),
+      cameraPose: () => ({ theta: 0, phi: 0, dist: 0, minDist: 0 }),
+      renderNow: () => null
+    };
+    const noop = () => undefined;
+    return new Proxy({ unavailable: true }, {
+      get(target, prop) {
+        if (prop === 'unavailable') return true;
+        return Object.prototype.hasOwnProperty.call(answers, prop) ? answers[prop] : noop;
+      }
+    });
+  }
+  function markViewportUnavailable() {
+    document.body.dataset.view3d = 'unavailable';
+    const stage = $('stage');
+    if (stage && !$('view3dFallback')) {
+      const note = el('div', 'view3d-fallback');
+      note.id = 'view3dFallback';
+      note.setAttribute('role', 'status');
+      note.innerHTML = '<strong>3D preview isn’t available in this browser.</strong>' +
+        '<span>Your plans, cut list, and safety report below are unaffected — they never needed it.</span>';
+      stage.append(note);
+    }
+    const canvas = $('view3d');
+    if (canvas) canvas.hidden = true;
+  }
   async function boot() {
     applyIcons();
     const canvas = $('view3d');
-    state.engine = BB.Engine.create(canvas, {
+    const engineOpts = {
       reducedMotion: reduceMq.matches,
       onPick(part, info) {
         if (!part) {
@@ -17872,7 +18345,14 @@ BlueprintBuddyImport.build
             `the dot you tapped sits ${jointWhere(joint.pos, state.model.bounds)}.`
         });
       }
-    });
+    };
+    try {
+      state.engine = BB.Engine.create(canvas, engineOpts);
+    } catch (e) {
+      state.engine = nullEngine();
+      markViewportUnavailable();
+      reportClientError('engine', e);
+    }
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
     mobileAdvisoryMq.addEventListener('change', () => {
       renderAdvisories(state.report);
@@ -17932,6 +18412,7 @@ BlueprintBuddyImport.build
       projectCount = idx.length;
       if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
+    probeOwnership();
     if (!opened) {
       const firstRun = fo => {
         const welcome = () => {
@@ -17943,7 +18424,7 @@ BlueprintBuddyImport.build
           if (!(fo && fo.suppressOverture) && BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
             seenOverture: !!state.prefs4.seenOverture,
             reduced: reduceMq.matches,
-            webgl: !!state.engine,
+            webgl: !!state.engine && !state.engine.unavailable,
             skeletonGone: !$('bootSkeleton')
           })) {
             played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
@@ -18080,7 +18561,7 @@ BlueprintBuddyImport.build
       BB.JointView.setCutaway(on);
     };
     $('diagRerun').onclick = runDiagnostics;
-    $('buildModeBtn').onclick = enterBuildMode;
+    $('buildModeBtn').onclick = () => enterBuildMode();
     $('bmExit').onclick = exitBuildMode;
     $('bmTaskPrev').onclick = () => bmTaskGo(-1);
     $('bmTaskNext').onclick = () => bmTaskGo(1);

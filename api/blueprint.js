@@ -29,6 +29,8 @@
  *     -> 500 render_failed (refunded:true when a charge had landed)
  *   GET  /api/blueprint?list=1              -> { designs: [...] , balance }
  *   GET  /api/blueprint?id=…&format=sheets|csv|svg|json   (owner only, free forever)
+ *   GET  /api/blueprint?owned=BB4:…         -> { owned:true, id, revision, windowEndsAt } | { owned:false }
+ *                                              (pure read: no charge, no ledger entry, no write)
  *   GET  /api/blueprint?share=BB4:…         -> public read-only preview page (free, never charges)
  *
  * KV keys (all roots reserved in api/store.js):
@@ -189,6 +191,38 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      /* ---- ownership probe: is this design already paid for? ----
+       * The client knew a design was issued only in memory (state.blueprint),
+       * so a reload — or opening the same design on a second device — re-locked
+       * a blueprint its owner had already bought (audit G-02). The server has
+       * always known: issuance writes bb:{uid}:bphash:{chargeHash}. Re-run the
+       * SAME evaluation the POST path runs, arrive at the same charge hash, and
+       * READ. Nothing on this route charges, mints a ledger entry, renders an
+       * artifact, or writes a key — it shares no helper with issuance beyond
+       * evaluate/chargeHash, both pure. */
+      if (url.searchParams.has('owned')) {
+        let raw = null;
+        try {
+          const decoded = Pipeline.decodeShareCode(url.searchParams.get('owned'));
+          raw = decoded && (decoded.spec || (decoded.meta ? decoded : null));
+        } catch (e) { raw = null; }
+        if (!raw) return sendJSON(res, 400, { error: 'bad_code' });
+        let evaluated;
+        try { evaluated = Pipeline.evaluate(raw); }
+        catch (e) { return sendJSON(res, 400, { error: 'bad_code' }); }
+        // A design that doesn't validate can never have been issued (issuance
+        // validates first), so this is an honest "no", not an error.
+        if (evaluated.report.errors.length) return sendJSON(res, 200, { owned: false });
+        const boundTo = await kv.get(hashKey(uid, Pipeline.chargeHash(evaluated.spec)));
+        const record = boundTo ? await readJSON(kv, designKey(uid, String(boundTo)), null) : null;
+        if (!record) return sendJSON(res, 200, { owned: false });
+        return sendJSON(res, 200, {
+          owned: true,
+          id: record.id,
+          revision: record.revision,
+          windowEndsAt: record.windowEndsAt
+        });
+      }
       if (url.searchParams.get('list')) {
         const [index, credits] = await Promise.all([readJSON(kv, designIndexKey(uid), []), Credits.state(uid, { ip })]);
         return sendJSON(res, 200, { designs: index, balance: credits.balance });

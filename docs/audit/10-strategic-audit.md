@@ -8,7 +8,9 @@
 2. **Browser drives** — `dist/index.html` in headless Chromium at 1440×900 and 390×844: arrival, Adjust, all five Plan tabs, share-code import of a known-failing design, playback, Build mode, species swaps, WebGL disabled, `localStorage` throwing, hostile share codes.
 3. **Production-shape drives** — a mock origin serving the real `/api/auth`, `/api/billing`, `/api/chat`, `/api/store`, `/api/blueprint` contracts across the four entitlement states a real visitor can occupy.
 
-Every quoted string is verbatim from a probe or the rendered DOM. **No source was changed.**
+Every quoted string is verbatim from a probe or the rendered DOM. **The audit pass itself changed no source.**
+
+> **Status:** Phases 0–2 of §5 have since been implemented on this branch. The findings below are preserved exactly as written at audit time so the record stays honest; **[§7 Implementation status](#7-implementation-status)** is the delta — what is fixed, what changed shape on contact with the code, and what remains.
 
 **Supersedes** the two working documents from this pass (live user-journey audit, coverage-gap audit), which are folded in here in full.
 **Relation to prior work:** [`AUDIT_REPORT.md`](../../AUDIT_REPORT.md) and [`docs/ui/capability-ux-audit.md`](../ui/capability-ux-audit.md) mapped this territory by reading the code. Findings marked **NEW** are not in either.
@@ -271,4 +273,44 @@ Phase 4  Depth + verification     ← largest, least urgent; no user is blocked
 
 ---
 
-*Probes executed against `dist/index.html` built from commit `7cc8572`. Baseline suites green before and after; no source changed.*
+## 7. Implementation status
+
+Phases 0–2 are implemented on this branch. Every item below was verified by running the product, not by reading the diff.
+
+### Fixed
+
+| ID | What shipped |
+|----|--------------|
+| **F-01** | `BB.Engine.create` is guarded and boot continues. A `Proxy`-based stand-in engine absorbs **any** method call, so a call added later can never resurrect the crash; the handful of methods whose return value callers consume (`getIsolated`, `inPlayback`, `stats`, `cameraPose`, `renderNow`) answer explicitly. The viewport says *"3D preview isn't available in this browser — your plans below are unaffected"*. Locked by `test/nowebgl.playwright.js` (15 assertions) against a browser launched `--disable-webgl`. |
+| **G-01** | `probeAI` maps `401 → signedout`, a new badge state reading **"Sign in to design with AI"** with accent styling — the service is up, so it is an invitation, not a fault. Previously every signed-out visitor on a healthy deploy was told *"Offline · basic edits"*. |
+| **G-02** | New `GET /api/blueprint?owned=BB4:…` — a pure read (decode → evaluate → `chargeHash` → `bphash` lookup) that cannot charge. The client probes after the on-screen design settles and adopts the server's answer. A paid design no longer re-locks on reload or on a second device. |
+| **G-03 / G-04 / G-07** | One `entitlementState()` — `{ configured, signedIn, balance, designIssued, hasPlan, planLocked, nextAction }` — and every gate, lock glyph, tooltip, menu hint, and CTA now renders from it. The export hint is derived (`issued` / `sign in` / `needs a credit` / `1 credit`); the Build tooltip says how to unlock instead of claiming the feature is "included" beside a padlock; a zero balance offers **Get a credit**, not an issue the server answers with 402. |
+| **G-05** | Overview's "Estimated cost" now shows the BOM total, matching Buy. The boards-only subtotal keeps its own honest label, "Purchasable stock total". |
+| **G-06** | `test/gating.playwright.js` (37 assertions) drives all four entitlement states, each in its own context and mock origin so `billingConfigured()` cannot leak between them. |
+| **H-01** | A `fail` verdict gates Build behind an interstitial naming the failing checks, with **Show me the fixes** focused and **Build anyway** as the deliberate override; a verdict banner then stands at the bench for the whole build. Locked in `smoke.playwright.js`. |
+| **H-02 / H-03 / H-08 / H-09** | `correctionNotes()` grew from one branch to six, reporting joinery downgraded by level, dimensions clamped (naming **both** the asked-for and the applied value), species substituted (solid *and* sheet), shelf counts refused, and drawer banks dropped. `correctSpec` and the notes now read one shared `DIM_RULES` table, so they cannot drift. `ui.js` requests notes on **every** diff — previously only on `new` replies and custom patches, which is why an ordinary refinement stayed silent. |
+| **H-04** | Import calls the existing `Spec.integrityLine`, so a shared design that fails says so in chat instead of only *"revalidated"*. |
+| **H-05 / H-06** | Advisories surface above the fold (the summary promised "notes worth reading below" and there were none); the measured value renders at every level; identical checks group into one card ("Sag — Shelf 1–4 · 4 parts, same result"); the beginner line names the part instead of repeating one anonymous paragraph. |
+| **H-07** | Sag/strength failures offer a computed stiffer-species fix beside the thickness one, and joint-adequacy failures — which offered nothing at all — now offer a level-legal joint upgrade. |
+| **V-02** | `api/clientlog.js` + `window.onerror` / `unhandledrejection`. Allowlisted fields only, hard-truncated, per-page-load cap, `keepalive`, always `204`. |
+
+### Changed shape on contact with the code
+
+- **H-06 vs the beginner-jargon rule.** Using each check's own `explain` for beginners leaked creep/ΔMC into the first layer, which smoke rightly forbids. Specificity now comes from the part-named subject plus the always-visible measured value; the engine's prose stays one fold down.
+- **H-07 partial fixes.** The brief said never offer a fix that doesn't fully clear the check. The codebase already had an honest precedent (`Deepen … (partial fix — still over the limit)`), so the species fix follows it: on the frozen ash bookshelf it reads *"Switch to hickory (partial fix — still over the limit)"* rather than being suppressed.
+- **Sheet species on custom pieces.** Custom compositions genuinely cut sheet parts, so the sheet-species note fires there even though the dimension notes do not.
+- **`enterBuildMode` stays synchronous.** Making it `async` broke every caller that acts on the DOM on the next line — including the diagnostics entry point the smoke suite drives. Only the failing-verdict path defers, re-entering through the same door once answered.
+
+### Verification
+
+`unit 1256 · audit 625 · golden 6/6 · battery 50 · server 225 · credits 112 · smoke 291 · porch 81 · gating 37 · nowebgl 15 · handcalc 16/16`, **0 failures**, `test/golden/` untouched.
+
+Two notes for the record: `test/handcalc.js` reports **16/16**, not the 14/14 stated in `CLAUDE.md` — verified identical at `HEAD`, so that is stale documentation, not a change. And `test/smoke.playwright.js` gained assertions for the Build gate; its other Build entries pass `{ acknowledged: true }`, since those blocks test checklists and the pager, not the safety gate.
+
+### Still open
+
+Phases 3–5 are untouched: expressibility (X-01…X-08, including the possessive-blocks-creation bug and the level-that-does-nothing), depth (D-01…D-09), and the rest of verification (V-01 browser CI, V-03…V-11). The two new browser suites are runnable via `npm run test:gating` and `npm run test:nowebgl` but **CI still opens no browser** — V-01 remains the highest-value verification gap, and it now guards more than it did.
+
+---
+
+*Audit probes executed against `dist/index.html` built from commit `7cc8572`; no source changed by the audit itself. Phases 0–2 implemented and verified on this branch as recorded in §7.*

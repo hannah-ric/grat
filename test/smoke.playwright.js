@@ -686,8 +686,21 @@ const clickMoreCtl = async sel => {
   ok(idxLen >= 1, `projects index persisted (${idxLen} project[s])`);
 
   // Build mode: checklists grouped by board, progress, wake-lock fallback silent.
+  // The nightstand on the bench here FAILS its open-drawer tipping check
+  // (F2057), and a failing verdict now gates the shop companion (audit H-01):
+  // Build is not handed to someone holding a saw without saying so first.
   await page.evaluate(() => __bb.enterBuildMode());
+  await page.waitForSelector('dialog.build-fail-confirm', { timeout: 5000 });
+  ok(await page.evaluate(() => !__bb.state.buildMode),
+    'a failing design does not open Build until it is acknowledged');
+  ok(await page.evaluate(() => /Tipping/.test(document.querySelector('dialog.build-fail-confirm').textContent)),
+    'the interstitial names the failing check');
+  await page.click('[data-build-anyway]');
   await page.waitForSelector('.bm-check');
+  ok(await page.evaluate(() => {
+    const v = document.getElementById('bmVerdict');
+    return !!v && !v.hidden && /does not pass/i.test(v.textContent);
+  }), 'the verdict banner stands at the bench for the whole build');
   const bm = await page.evaluate(() => ({
     boards: document.querySelectorAll('#bmCuts .bm-board').length,
     checks: document.querySelectorAll('.bm-check').length
@@ -795,7 +808,7 @@ const clickMoreCtl = async sel => {
   // Build progress stays truthful across a re-pack: zombie keys pruned,
   // percentage counts only live checklist items.
   const prog = await page.evaluate(() => {
-    __bb.enterBuildMode();
+    __bb.enterBuildMode({ acknowledged: true });
     document.querySelector('.bm-check').click();
     __bb.state.project.progress.cuts['b:9:9:Zombie leg:9999'] = true; // orphan from an "older layout"
     __bb.exitBuildMode();
@@ -864,7 +877,7 @@ const clickMoreCtl = async sel => {
     'second Escape closes the drawer and lifts inert');
 
   // In build mode, Escape unwinds playback before build mode itself.
-  await page.evaluate(() => { __bb.enterBuildMode(); __bb.enterBmPlayback(0); });
+  await page.evaluate(() => { __bb.enterBuildMode({ acknowledged: true }); __bb.enterBmPlayback(0); });
   await page.keyboard.press('Escape');
   ok(await page.evaluate(() => __bb.state.buildMode && !__bb.state.bmPlayback), 'Escape exits playback, build mode survives');
   await page.keyboard.press('Escape');
@@ -873,7 +886,7 @@ const clickMoreCtl = async sel => {
   /* ================= Phase C: shop companion ================= */
 
   // Build mode carries the per-board cutting diagram to the saw.
-  await page.evaluate(() => __bb.enterBuildMode());
+  await page.evaluate(() => __bb.enterBuildMode({ acknowledged: true }));
   await page.waitForSelector('#bmCuts .bm-diagram svg');
   const bmDiag = await page.evaluate(() => ({
     diagrams: document.querySelectorAll('#bmCuts .bm-diagram svg').length,
@@ -887,7 +900,7 @@ const clickMoreCtl = async sel => {
     const sp = __bb.state.spec.wood.species;
     __bb.state.prefs4.stockMode[sp] = 'rough';
     __bb.recompute();
-    __bb.exitBuildMode(); __bb.enterBuildMode();
+    __bb.exitBuildMode(); __bb.enterBuildMode({ acknowledged: true });
     const pieces = __bb.state.cut.filter(r => r.stock !== 'sheet').reduce((n, r) => n + r.qty, 0);
     const roughGroup = [...document.querySelectorAll('#bmCuts .bm-board')]
       .find(g => g.textContent.includes('rough stock'));
@@ -1285,7 +1298,7 @@ const clickMoreCtl = async sel => {
     && getComputedStyle(document.querySelector('.tabs')).display !== 'none'),
     'Plan mode brings the sub-tabs back');
   const modeBuild = await page.evaluate(() => {
-    __bb.enterBuildMode();
+    __bb.enterBuildMode({ acknowledged: true });
     const current = document.getElementById('buildModeBtn').getAttribute('aria-current') === 'page';
     document.querySelector('.bm-check[aria-pressed="false"]').click();
     __bb.exitBuildMode();
@@ -1389,7 +1402,7 @@ const clickMoreCtl = async sel => {
 
   // Phone Build mode: one board or step at a time — big diagram on a
   // legibility floor, 56px controls, Next/swipe pager, honest install nudge.
-  await page.evaluate(() => __bb.enterBuildMode());
+  await page.evaluate(() => __bb.enterBuildMode({ acknowledged: true }));
   await page.waitForSelector('.bm-task');
   const pagerShape = await page.evaluate(() => ({
     columnsHidden: getComputedStyle(document.querySelector('.bm-columns')).display === 'none',
@@ -1429,7 +1442,7 @@ const clickMoreCtl = async sel => {
     return (async () => {
       __bb.state.prefs4.installNudged = false;
       const el = document.getElementById('bmPager');
-      __bb.exitBuildMode(); __bb.enterBuildMode(); // re-derive pager on fresh progress
+      __bb.exitBuildMode(); __bb.enterBuildMode({ acknowledged: true }); // re-derive pager on fresh progress
       const btn = document.querySelector('#bmPager .bm-check[aria-pressed="false"]');
       if (!btn) return { clicked: false };
       btn.click();
@@ -1915,7 +1928,7 @@ const clickMoreCtl = async sel => {
   await page.click('#tab-integrity');
   await page.waitForTimeout(300);
   await page.screenshot({ path: SHOTS + '/19-integrity-dark.png' });
-  await page.evaluate(() => __bb.enterBuildMode());
+  await page.evaluate(() => __bb.enterBuildMode({ acknowledged: true }));
   await page.waitForTimeout(300);
   await page.screenshot({ path: SHOTS + '/20-buildmode-dark.png' });
   await page.evaluate(() => __bb.exitBuildMode());

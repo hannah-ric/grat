@@ -178,6 +178,21 @@
 .pricing-facts li::before { content: '✓'; margin-right: .55rem; color: var(--green); font-weight: 700; }
 .pricing-balance { font: 600 var(--text-s) var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
 .spend-confirm { width: min(560px, calc(100vw - 2rem)); }
+/* The build-despite-fail interstitial borrows the pricing-dialog shell and
+   its narrow width, but never the .spend-confirm class — that one names the
+   billing dialog, and nothing is spent here. */
+.build-fail-confirm { width: min(560px, calc(100vw - 2rem)); }
+.pricing-kicker.verdict-fail { color: var(--brick); }
+.build-fail-list { margin: var(--space-s) 0 0; padding-left: 1.15em; display: grid; gap: 4px; font-size: var(--text-s); }
+.build-fail-list li { line-height: 1.45; }
+/* Viewport fallback: no WebGL context. Plans are unaffected and say so. */
+.view3d-fallback {
+  position: absolute; inset: 0; margin: auto; width: min(34rem, calc(100% - 2rem)); height: fit-content;
+  display: grid; gap: 6px; padding: var(--space-m); text-align: center;
+  font: 550 var(--text-m) var(--body); color: var(--ink-2);
+}
+.view3d-fallback strong { font-family: var(--display); font-size: var(--text-l); color: var(--ink); }
+.view3d-fallback span { font-size: var(--text-s); color: var(--muted); }
 .spend-actions { display: flex; justify-content: flex-end; gap: var(--space-s); padding: var(--space-s) var(--space-m) 0; }
 .credit-chip { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
@@ -558,6 +573,11 @@ body[data-mode="plan"] .viewport-wrap { flex: 0 1 calc(var(--vp-split) * 1%); }
 .ai-badge[data-state="offline"] { color: var(--amber-ink); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
 .ai-badge[data-state="unconfigured"] .dot { background: var(--brick); }
 .ai-badge[data-state="unconfigured"] { color: var(--brick); border-color: color-mix(in srgb, var(--brick) 40%, transparent); background: var(--brick-soft); }
+/* Signed out on a healthy deploy: an invitation, not a fault. The service is
+   up — the only missing thing is a free account — so this wears the accent,
+   never the amber/brick that mean "something is wrong". */
+.ai-badge[data-state="signedout"] .dot { background: var(--accent); }
+.ai-badge[data-state="signedout"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 @keyframes badgePulse { 50% { opacity: .35; } }
 .ai-badge[data-state="checking"] .dot { animation: badgePulse var(--t-pulse) infinite var(--ease); }
 /* phones: the chat sheet hides this badge when collapsed — mirror it in the bar */
@@ -1640,6 +1660,9 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .check-card.fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
 .check-card .check-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
 .check-card h4 { margin: 0; font-size: var(--text-m); font-weight: 650; }
+/* "4 parts, same result" — grouped identical checks say how many they stand
+   for, so collapsing never hides the scale of the problem. */
+.check-card .check-count { display: block; font: 500 var(--text-xs) var(--body); color: var(--muted); margin-top: 2px; }
 .check-card .check-value { font: 600 var(--text-s) var(--mono); font-variant-numeric: tabular-nums; margin-top: var(--s2); }
 .check-card .check-threshold { font: 500 var(--text-s) var(--mono); color: var(--muted); margin-top: 2px; }
 .check-card .check-explain { font-size: var(--text-s); color: var(--ink-2); line-height: 1.5; margin: var(--s2) 0 0; max-width: var(--measure); }
@@ -1783,6 +1806,17 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .bm-progress { font: 650 var(--text-m) var(--mono); color: var(--green); }
 .bm-wake { font: 550 var(--text-s) var(--body); color: var(--muted); }
 .bm-exit { padding: 14px 22px; font-size: var(--text-m); font-weight: 650; }
+/* The verdict at the bench. Sits directly under the header so it is read
+   before any cut, and carries its meaning in the stamp TEXT — colour is the
+   second signal, never the only one (verdict-capsule rule). */
+.bm-verdict {
+  flex: none; display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+  padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line-2);
+  font: 550 var(--text-m) var(--body); line-height: 1.45;
+}
+.bm-verdict[data-verdict="fail"] { background: var(--brick-soft); color: var(--brick); }
+.bm-verdict[data-verdict="anchor"],
+.bm-verdict[data-verdict="advisory"] { background: var(--amber-soft); color: var(--amber-ink); }
 .bm-columns { flex: 1; display: flex; gap: var(--s3); padding: var(--s3) var(--s4) var(--s5); overflow: auto; overscroll-behavior: contain; }
 .bm-col { flex: 1; min-width: 280px; }
 .bm-col h2 { font-family: var(--display); font-size: var(--text-l); margin: var(--s2) 0 var(--s3); }

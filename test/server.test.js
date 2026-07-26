@@ -830,6 +830,186 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- clientlog: the browser half of the error log (V-02) ---------------- */
+  section('clientlog: a browser crash becomes one structured line — privacy-capped, burst-capped, never a failure surface (V-02)');
+  {
+    cleanEnv(); // no AUTH_SECRET, no KV, no anything — a crash must report regardless
+    const clientlog = require('../api/clientlog.js');
+    /* Drive the handler with console.error captured, exactly like the E-08
+     * section: api/_log.js writes its one line to stderr. */
+    const post = async (body, ip) => {
+      const lines = [];
+      const realErr = console.error;
+      console.error = (...a) => { lines.push(a.map(String).join(' ')); };
+      const res = fakeRes();
+      try { await clientlog(fakeReq('/api/clientlog', { method: 'POST', headers: ip ? { 'x-real-ip': ip } : {}, body }), res); }
+      finally { console.error = realErr; }
+      return { res, logged: lines.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean) };
+    };
+
+    // (a) One report in, exactly one structured line out, in the _log.js shape.
+    let r = await post({
+      kind: 'error', message: 'boot failed: WebGL context lost',
+      source: 'https://app.example.com/index.html', line: 4210, col: 17,
+      stack: 'Error: boot failed\n at boot (index.html:4210:17)'
+    }, '198.51.100.10');
+    eq(r.res.statusCode, 204, 'a report is accepted with 204');
+    eq(r.res.body, '', 'the 204 carries no body');
+    eq(r.logged.length, 1, 'exactly one structured line per report');
+    const line = r.logged[0];
+    eq(line.scope, 'client', 'scope names the client half of the product');
+    eq(line.event, 'error', 'event is the crash kind');
+    ok(typeof line.ts === 'string' && 'detail' in line, 'the line carries ts + scope + event + detail (the _log.js shape)');
+    const detail = JSON.parse(line.detail);
+    eq(detail.message, 'boot failed: WebGL context lost', 'the message survives');
+    eq(detail.line, 4210, 'line rides along as a number');
+    eq(detail.col, 17, 'col rides along as a number');
+    ok(/boot \(index/.test(detail.stack), 'the stack survives');
+
+    // (b) kind is an enum of two, normalised server-side.
+    r = await post({ kind: 'unhandledrejection', message: 'storage chain gave up' }, '198.51.100.11');
+    eq(r.logged[0].event, 'unhandledrejection', 'the rejection kind is preserved');
+    r = await post({ kind: 'something-else', message: 'x' }, '198.51.100.11');
+    eq(r.logged[0].event, 'error', 'any other kind normalises to error');
+
+    // (c) PRIVACY: the envelope is an allowlist, and every field is capped.
+    r = await post({
+      kind: 'error', message: 'm'.repeat(1000), stack: 's'.repeat(5000), source: 'u'.repeat(1000),
+      spec: { meta: { name: 'Walnut dining table for Hana' } }, shareCode: 'BB4:AAAA', cookie: 'bb_sess=secret'
+    }, '198.51.100.12');
+    const d = JSON.parse(r.logged[0].detail);
+    eq(d.message.length, 300, 'message truncates at 300 chars');
+    eq(d.stack.length, 2000, 'stack truncates at 2000 chars');
+    eq(d.source.length, 200, 'other fields truncate at 200 chars');
+    eq(Object.keys(d).sort(), ['col', 'line', 'message', 'source', 'stack'], 'the detail is an allowlist — nothing else survives');
+    ok(!/Walnut dining table|BB4:|bb_sess/.test(r.logged[0].detail), 'design content and credentials in the body never reach the log');
+
+    // (d) Wrong method is the only non-204 this endpoint can produce.
+    const wrong = fakeRes();
+    await clientlog(fakeReq('/api/clientlog'), wrong);
+    eq(wrong.statusCode, 405, 'GET → 405');
+    eq(wrong.headers.allow, 'POST', 'with an Allow header');
+
+    // (e) A body it cannot use is accepted and dropped — never an error back.
+    r = await post('{not json', '198.51.100.13');
+    eq(r.res.statusCode, 204, 'an unparseable body is still 204');
+    eq(r.logged.length, 0, 'and logs nothing');
+    r = await post(JSON.stringify({ kind: 'error', message: 'x'.repeat(20000) }), '198.51.100.13');
+    eq(r.res.statusCode, 204, 'an oversized body is still 204');
+    eq(r.logged.length, 0, 'and logs nothing');
+    r = await post({ kind: 'error' }, '198.51.100.13');
+    eq(r.res.statusCode, 204, 'an empty envelope is still 204');
+    eq(r.logged.length, 0, 'an envelope with nothing to say is accepted, not written');
+
+    // (f) A crash-looping tab cannot flood the log — and is never told so.
+    const loopIp = '198.51.100.99';
+    const statuses = new Set();
+    let written = 0;
+    for (let i = 0; i < 60; i++) {
+      const x = await post({ kind: 'error', message: 'crash loop #' + i }, loopIp);
+      statuses.add(x.res.statusCode);
+      written += x.logged.length;
+    }
+    eq([...statuses], [204], 'every request in a crash loop still answers 204 — the reporter never becomes a failure surface');
+    ok(written > 0 && written < 60, `a crash loop stops being logged (${written}/60 lines written)`);
+    eq(written, clientlog.BURST_MAX, 'the cap is exactly the per-IP burst budget');
+    eq((await post({ kind: 'error', message: 'still looping' }, loopIp)).logged.length, 0,
+      'once over the cap, further reports are accepted and dropped');
+
+    // (g) The whole section ran on an unconfigured deployment.
+    ok(!process.env.AUTH_SECRET && !process.env.BB_KV_FILE, 'all of the above ran with no session secret and no storage configured');
+    cleanEnv();
+  }
+
+  /* ---------------- blueprint: the ownership probe (G-02) ---------------- */
+  section('blueprint: the ownership probe answers “already paid for?” as a pure read — it can never charge (G-02)');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const blueprint = require('../api/blueprint.js');
+    const Credits = require('../api/_credits.js');
+    const Pipeline = require('../api/_pipeline.js');
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    const cookie = uid => ({ cookie: S.sessionCookieFor({ uid, name: 'T', provider: 'dev' }, fakeReq('/')).split(';')[0] });
+
+    const SPEC = { meta: { name: 'Probe Table', template: 'table', level: 'beginner', units: 'mm' }, overall: { width: 1200, depth: 700, height: 750 } };
+    // The client always holds a share code for its CURRENT (corrected) spec —
+    // that is exactly what the probe takes.
+    const shareCode = spec => Pipeline.load().Codec.toShareCode(Pipeline.evaluate(spec).spec);
+    const probe = async (uid, code) => {
+      const res = fakeRes();
+      await blueprint(fakeReq('/api/blueprint?owned=' + encodeURIComponent(code), uid ? { headers: cookie(uid) } : {}), res);
+      return res;
+    };
+    const uid = 'dev:probe1';
+    const code = shareCode(SPEC);
+
+    // Anonymous probes are refused like every other authed route on this file.
+    let res = await probe(null, code);
+    eq(res.statusCode, 401, 'no session → 401');
+    eq(json(res).error, 'auth_required', 'with a branchable code');
+
+    // Never issued → an honest no, and the signup credit is untouched.
+    res = await probe(uid, code);
+    eq(res.statusCode, 200, 'a probe for an unissued design is a clean 200');
+    eq(json(res), { owned: false }, 'unknown charge hash → { owned:false }');
+    eq((await Credits.state(uid)).balance, 1, 'the probe did not spend the signup credit');
+
+    // Issue it for real — issuance is the only thing here that costs anything.
+    const issued = fakeRes();
+    await blueprint(fakeReq('/api/blueprint', { method: 'POST', headers: cookie(uid), body: { spec: SPEC } }), issued);
+    eq(issued.statusCode, 200, 'setup: issuance succeeds');
+    const design = json(issued);
+    ok(design.charged === true, 'setup: issuance is what charges the credit');
+    const balanceAfterIssue = (await Credits.state(uid)).balance;
+    const ledgerAfterIssue = (await Credits.ledgerFor(uid)).length;
+
+    // The probe now recognises the design, and returns the record the client
+    // needs to unlock it on a fresh device.
+    res = await probe(uid, code);
+    eq(res.statusCode, 200, 'an issued design probes 200');
+    eq(json(res), { owned: true, id: design.id, revision: design.revision, windowEndsAt: design.windowEndsAt },
+      'owned:true carries exactly id + revision + windowEndsAt from the design record');
+
+    // THE assertion: probing is free, forever, however many times.
+    for (let i = 0; i < 5; i++) await probe(uid, code);
+    eq((await Credits.state(uid)).balance, balanceAfterIssue, 'repeated probes never move the credit balance');
+    eq((await Credits.ledgerFor(uid)).length, ledgerAfterIssue, 'repeated probes never append a ledger entry');
+    eq((await Credits.ledgerFor(uid)).filter(e => e.type === 'charge').length, 1, 'the only charge on the ledger is the one issuance');
+
+    // Ownership is owner-scoped, exactly like artifact download.
+    res = await probe('dev:probe2', code);
+    eq(json(res), { owned: false }, 'a stranger owns nothing, even with the same share code');
+    eq((await Credits.state('dev:probe2')).balance, 1, 'and their balance is untouched too');
+
+    // Material identity is the charge hash: a resize is a different design, a
+    // rename is not (meta.name / meta.units are display-only).
+    const refined = JSON.parse(JSON.stringify(SPEC)); refined.overall.width = 1400;
+    res = await probe(uid, shareCode(refined));
+    eq(json(res), { owned: false }, 'a materially different spec is a different design → owned:false');
+    const renamed = JSON.parse(JSON.stringify(SPEC)); renamed.meta.name = 'Renamed Table';
+    res = await probe(uid, shareCode(renamed));
+    ok(json(res).owned === true && json(res).id === design.id, 'a rename still probes as owned (name is display-only)');
+
+    // Junk in is a clean 400 — never a 500, never a charge.
+    res = await probe(uid, 'BB4:notacode');
+    eq(res.statusCode, 400, 'an undecodable code → 400');
+    eq(json(res).error, 'bad_code', 'with a branchable code');
+    res = await probe(uid, '');
+    eq(res.statusCode, 400, 'an empty probe → 400, not a 500');
+    eq((await Credits.state(uid)).balance, balanceAfterIssue, 'malformed probes never touch the balance either');
+
+    // Unconfigured storage degrades like the rest of the route.
+    const kvFile = process.env.BB_KV_FILE;
+    delete process.env.BB_KV_FILE;
+    res = await probe(uid, code);
+    eq(res.statusCode, 503, 'no storage configured → 503, never a crash');
+    process.env.BB_KV_FILE = kvFile;
+
+    drop();
+    cleanEnv();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exitCode = 1;
 })().catch(e => { console.error('server tests crashed:', e); process.exitCode = 1; });

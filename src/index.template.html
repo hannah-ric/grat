@@ -363,7 +363,9 @@
             <div class="menu-group-label">Export</div>
             <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
                  means nothing to a thumb (C-14). -->
-            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint">issued</span></button>
+            <!-- The hint is DERIVED (renderExportGate): it said "issued" to
+                 everyone, including anonymous visitors with no account. -->
+            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint" id="exportSheetsHint"></span></button>
             <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
             <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
             <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
@@ -817,6 +819,9 @@
       <span class="bm-wake" id="bmWake" title="Screen stays awake while you build"></span>
       <button class="btn bm-exit" id="bmExit">Exit build mode</button>
     </header>
+    <!-- The verdict follows the user to the bench. Filled by renderBuildVerdict();
+         stays hidden on a clean pass so it never becomes wallpaper. -->
+    <div class="bm-verdict" id="bmVerdict" role="status" hidden></div>
     <!-- Wide benches see the full board-by-board + assembly overview. -->
     <div class="bm-columns">
       <section class="bm-col" aria-label="Cuts, board by board">

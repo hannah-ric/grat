@@ -620,6 +620,40 @@ var BB = globalThis.BB = globalThis.BB || {};
   const num = (v, fallback) => (typeof v === 'number' && isFinite(v) ? v : fallback);
   const r1 = v => Math.round(v * 10) / 10;
 
+  /* ---------------- clamped-length table ----------------
+   * One source for every length bound correction owns: correctSpec applies
+   * it, correctionNotes (G10) reads it back to name what it refused. `stock`
+   * is the board table the clamped value lands on — landing on stock is code
+   * buying a real board, not a refusal, so notes stay quiet about it; a value
+   * outside [min, max] was genuinely refused and gets said out loud.
+   * (shelfCount is a count, not a length — it keeps its own rule below, and
+   * never crosses the units boundary.)
+   */
+  const DIM_RULES = {
+    'overall.width': { min: 250, max: 2400, def: 1000 },
+    'overall.depth': { min: 200, max: 1200, def: 500 },
+    'overall.height': { min: 120, max: 2400, def: 750 },
+    'structure.topThickness': { min: 12, max: 45, def: 25, stock: K.SOLID_THICKNESS },
+    // Legs snap to the SAME post-stock table custom posts use (values below
+    // the 32 mm clamp floor can never win the nearest-match) — one table,
+    // not a hand-copied twin that drifts.
+    'structure.legThickness': { min: 32, max: 100, def: 70, stock: K.POST_THICKNESS },
+    'structure.apronThickness': { min: 15, max: 25, def: 20, stock: [15, 19, 20, 25] },
+    'structure.apronHeight': { min: 60, max: 160, def: 90 },
+    'structure.apronInset': { min: 0, max: 30, def: 12 },
+    'structure.shelfThickness': { min: 12, max: 32, def: 19, stock: K.SOLID_THICKNESS },
+    'structure.sideThickness': { min: 12, max: 25, def: 18, stock: [12, 15, 18, 19, 25] }
+  };
+  function applyDim(path, v) {
+    const r = DIM_RULES[path];
+    const c = clamp(num(v, r.def), r.min, r.max);
+    return r.stock ? snap(c, r.stock) : c;
+  }
+  /* Shelves are counted, not measured — same single-source deal, no snap and
+   * no units boundary. Correction clamps to this range, THEN decrements until
+   * the shelves clear each other; the two are separate refusals. */
+  const SHELF_COUNT = { min: 0, max: 8, def: 0 };
+
   /* ---------------- custom (novel) grammar ----------------
    * Primitive default orientations before rotation (the AI thinks in these,
    * code maps to 3D):
@@ -757,18 +791,128 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- correction notes (G10) ----------------
-   * Pure, user-facing record of the silent geometric fixes correction
-   * applied: compare the RAW proposal with the delivered spec and name what
-   * neither the user nor the model would otherwise learn. First class:
-   * custom grounding — correctCustom translates an airborne composition
-   * onto the floor with no disclosure (ref1: a "ceiling-suspended" desk
-   * delivered 610 mm lower, its ack still selling the hang, because
-   * grounding runs before the audit so geom_floats can never fire). Returns
-   * display-ready strings; [] when nothing notable happened. The raw spec
-   * is pre-correction — parts may lack dim/pos/rot — so it is sanitized
-   * (never mutated) with the same rules correction itself uses. Consumed by
-   * the ack pipeline and refinement-round context (P-UI wave). */
+   * Pure, user-facing record of the silent fixes correction applied: compare
+   * the RAW proposal with the delivered spec and name what neither the user
+   * nor the model would otherwise learn. First class: custom grounding —
+   * correctCustom translates an airborne composition onto the floor with no
+   * disclosure (ref1: a "ceiling-suspended" desk delivered 610 mm lower, its
+   * ack still selling the hang, because grounding runs before the audit so
+   * geom_floats can never fire). Then the four silent substitutions the same
+   * pass makes on every template: a joint the skill level won't allow, a
+   * length outside what the tool (or the piece) can take, a species that
+   * isn't stocked solid lumber, and a drawer bank on a template with no
+   * opening for one. Returns display-ready strings; [] when nothing notable
+   * happened. The raw spec is pre-correction — parts may lack dim/pos/rot —
+   * so it is sanitized (never mutated) with the same rules correction itself
+   * uses. Consumed by the ack pipeline and refinement-round context (P-UI
+   * wave). */
   const GROUND_NOTE_MM = 50; // below this, snapping to the floor is cleanup, not a destroyed premise
+  const DRAWER_TEMPLATES = ['nightstand', 'cabinet'];
+  /* Read a section field off a spec that may be partial, junk, or absent —
+   * correctionNotes runs on Spec.deepMerge(base, patch) output and must never
+   * throw on the chat commit path. */
+  const at = (o, sec, key) => (o && o[sec] && typeof o[sec] === 'object' ? o[sec][key] : undefined);
+
+  /* Lengths correction refused. Outside the rule's range = refused outright;
+   * inside it but still delivered different = capped by the piece's own
+   * geometry (legs against the footprint, apron under the top). A value that
+   * only moved to land on stock is not a refusal — code buying the nearest
+   * real board is the deal — so it stays quiet. */
+  function dimensionNotes(raw, cor, notes) {
+    const fmt = mm => U().fmtLength(mm);
+    for (const path of Object.keys(DIM_RULES)) {
+      const dot = path.indexOf('.');
+      const sec = path.slice(0, dot), key = path.slice(dot + 1);
+      const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
+      if (want === null || got === null) continue;
+      const r = DIM_RULES[path], label = PATH_LABELS[path] || key;
+      if (want < r.min || want > r.max) {
+        notes.push(`The ${label} asked for (${fmt(want)}) is outside what this tool builds — ${fmt(got)} was used instead.`);
+      } else if (Math.abs(applyDim(path, want) - got) > 0.05) {
+        notes.push(`The ${label} asked for (${fmt(want)}) doesn’t fit the piece’s own dimensions — ${fmt(got)} was used instead.`);
+      }
+    }
+  }
+
+  /* The shelf count correction refused — two refusals with two different
+   * meanings, so they are two different sentences. The range clamp is an
+   * arbitrary product cap ("more than this tool builds"); the decrement loop
+   * is the user's OWN piece running out of height to space shelves apart, and
+   * that is the one they can act on. Rounding a fractional count is not a
+   * refusal. A count is not a length: the bare integer IS the truth, so this
+   * is the one note family with no units boundary to cross. */
+  function shelfCountNote(raw, cor, notes) {
+    const want = num(at(raw, 'structure', 'shelfCount'), null);
+    const got = num(at(cor, 'structure', 'shelfCount'), null);
+    if (want === null || got === null) return;
+    const asked = Math.round(want), capped = clamp(asked, SHELF_COUNT.min, SHELF_COUNT.max);
+    const shelves = n => n + (n === 1 ? ' shelf' : ' shelves');
+    if (asked !== capped) {
+      notes.push(`The shelf count asked for (${asked}) is outside what this tool builds — it stops at ${capped}.`);
+    }
+    // Whatever survived the cap is what the piece's own height then judged.
+    if (capped !== got) {
+      notes.push(`There isn’t room for ${shelves(capped)} at this piece’s height — the design carries ${got === 0 ? 'none' : got}.`);
+    }
+  }
+
+  /* Species snapped to a fallback, in either stock slot: a name the library
+   * has never heard of, or stock asked to be the material it isn't (sheet
+   * goods as the solid wood, lumber as the sheet stock). One refused name
+   * standing in for BOTH slots is one refusal, not a wood changing twice —
+   * it merges into a single sentence. */
+  function speciesNotes(raw, cor, notes) {
+    const refused = key => {
+      const want = at(raw, 'wood', key), got = at(cor, 'wood', key);
+      if (typeof want !== 'string' || !want || typeof got !== 'string' || want === got) return null;
+      const sp = K.WOOD_SPECIES[want];
+      // A species already right for its own slot is one correction kept.
+      if (sp && (key === 'species' ? !sp.sheet : !!sp.sheet)) return null;
+      return { want, sp, to: fmtValue('wood.' + key, got) };
+    };
+    const word = w => `“${String(w).replace(/_/g, ' ')}”`;
+    const solid = refused('species'), sheet = refused('sheetSpecies');
+    if (solid && sheet && !solid.sp && !sheet.sp && solid.want === sheet.want) {
+      notes.push(`${word(solid.want)} isn’t in the wood library — the design is built in ${solid.to} with ${sheet.to} sheet stock.`);
+      return;
+    }
+    if (solid) {
+      notes.push(solid.sp
+        ? `${solid.sp.label} is sheet stock, not solid lumber — the design is built in ${solid.to}.`
+        : `${word(solid.want)} isn’t in the wood library — the design is built in ${solid.to}.`);
+    }
+    if (sheet) {
+      notes.push(sheet.sp
+        ? `${sheet.sp.label} is solid lumber, not sheet stock — the sheet parts are cut from ${sheet.to}.`
+        : `${word(sheet.want)} isn’t in the sheet-goods library — the sheet parts are cut from ${sheet.to}.`);
+    }
+  }
+
+  /* Joints the level matrix gated out. Only the LEVEL gate is reported: a
+   * joint that never fits the slot (a dado in a frame) or a key the codec
+   * never minted was nonsense, not a downgrade. */
+  function joineryNotes(raw, cor, notes) {
+    const lvl = at(cor, 'meta', 'level');
+    const level = K.LEVELS.includes(lvl) ? lvl : 'beginner';
+    for (const kind of ['frame', 'case', 'box']) {
+      const want = at(raw, 'joinery', kind), got = at(cor, 'joinery', kind);
+      if (typeof want !== 'string' || typeof got !== 'string' || want === got) continue;
+      const j = K.JOINERY[want];
+      if (!j || !j.kinds.includes(kind) || K.jointAllowed(want, level, kind)) continue;
+      const art = /^[aeiou]/.test(j.level) ? 'an' : 'a';
+      notes.push(`${j.label} is ${art} ${j.level} joint and this design is set to ${level} — the ${PATH_LABELS['joinery.' + kind]} falls back to ${fmtValue('joinery.' + kind, got)}.`);
+    }
+  }
+
+  /* A drawer bank asked of a template that has no opening to put one in. */
+  function drawerNote(raw, cor, notes) {
+    const want = raw && raw.drawers;
+    if (!want || typeof want !== 'object' || !cor || cor.drawers) return;
+    const t = at(cor, 'meta', 'template');
+    if (!TEMPLATES.includes(t) || DRAWER_TEMPLATES.includes(t)) return; // dropped for some other reason
+    notes.push(`The ${t} template has no opening for drawers — the drawer bank was dropped.`);
+  }
+
   function correctionNotes(rawSpec, correctedSpec) {
     const notes = [];
     const raw = migrateSpec(rawSpec);
@@ -788,7 +932,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
       }
     }
-    return notes;
+    if (correctedSpec && typeof correctedSpec === 'object') {
+      // A custom piece derives its overall from the composition's own extents
+      // and never reads structure.*, so neither number was ever the user's to
+      // lose — reporting them there would be noise, not disclosure. (Both
+      // wood slots DO reach custom parts, so species notes are not gated.)
+      if (at(correctedSpec, 'meta', 'template') !== 'custom') {
+        dimensionNotes(raw, correctedSpec, notes);
+        shelfCountNote(raw, correctedSpec, notes);
+      }
+      speciesNotes(raw, correctedSpec, notes);
+      joineryNotes(raw, correctedSpec, notes);
+      drawerNote(raw, correctedSpec, notes);
+    }
+    return [...new Set(notes)];
   }
 
   /* World grain axis + grain-run length for a custom part (audit F-S2-7).
@@ -891,9 +1048,9 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     const o = s.overall, st = s.structure;
     if (template !== 'custom') {
-      o.width = clamp(num(o.width, 1000), 250, 2400);
-      o.depth = clamp(num(o.depth, 500), 200, 1200);
-      o.height = clamp(num(o.height, 750), 120, 2400);
+      o.width = applyDim('overall.width', o.width);
+      o.depth = applyDim('overall.depth', o.depth);
+      o.height = applyDim('overall.height', o.height);
     }
 
     if (!K.WOOD_SPECIES[s.wood.species] || K.WOOD_SPECIES[s.wood.species].sheet) s.wood.species = 'red_oak';
@@ -903,17 +1060,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sheetSp = K.WOOD_SPECIES[s.wood.sheetSpecies];
     if (!sheetSp || !sheetSp.sheet) s.wood.sheetSpecies = 'baltic_birch';
 
-    st.topThickness = snap(clamp(num(st.topThickness, 25), 12, 45), K.SOLID_THICKNESS);
-    // Legs snap to the SAME post-stock table custom posts use (values below
-    // the 32 mm clamp floor can never win the nearest-match) — one table,
-    // not a hand-copied twin that drifts.
-    st.legThickness = snap(clamp(num(st.legThickness, 70), 32, 100), K.POST_THICKNESS);
-    st.apronThickness = snap(clamp(num(st.apronThickness, 20), 15, 25), [15, 19, 20, 25]);
-    st.apronHeight = clamp(num(st.apronHeight, 90), 60, 160);
-    st.apronInset = clamp(num(st.apronInset, 12), 0, 30);
-    st.shelfThickness = snap(clamp(num(st.shelfThickness, 19), 12, 32), K.SOLID_THICKNESS);
-    st.sideThickness = snap(clamp(num(st.sideThickness, 18), 12, 25), [12, 15, 18, 19, 25]);
-    st.shelfCount = clamp(Math.round(num(st.shelfCount, 0)), 0, 8);
+    st.topThickness = applyDim('structure.topThickness', st.topThickness);
+    st.legThickness = applyDim('structure.legThickness', st.legThickness);
+    st.apronThickness = applyDim('structure.apronThickness', st.apronThickness);
+    st.apronHeight = applyDim('structure.apronHeight', st.apronHeight);
+    st.apronInset = applyDim('structure.apronInset', st.apronInset);
+    st.shelfThickness = applyDim('structure.shelfThickness', st.shelfThickness);
+    st.sideThickness = applyDim('structure.sideThickness', st.sideThickness);
+    st.shelfCount = clamp(Math.round(num(st.shelfCount, SHELF_COUNT.def)), SHELF_COUNT.min, SHELF_COUNT.max);
     st.backPanel = !!st.backPanel;
     st.toeKick = template === 'cabinet' ? !!st.toeKick : false;
 
