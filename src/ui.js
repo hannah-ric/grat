@@ -2537,9 +2537,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
 
     if (s.meta.template !== 'custom') {
-      body.append(dim('Width', 'overall.width', 250, 2400));
-      body.append(dim('Depth', 'overall.depth', 200, 1200));
-      body.append(dim('Height', 'overall.height', 120, 2400));
+      body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
+      body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
+      body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
     } else {
       body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
@@ -2593,6 +2593,39 @@ var BB = globalThis.BB = globalThis.BB || {};
    * Anonymous visitors get it opened automatically (chat is behind sign-in,
    * and "small edits work" is the anonymous tier's promise). */
   function adjustRailOpen() { return !$('adjustRail').hidden; }
+  /* Which joinery slots a template is actually BUILT with. Derived by
+   * building every template with a distinct sentinel joint per slot and
+   * reading back which types reached the model (parametric.js decides this):
+   * frame drives legs/aprons/rails, case drives carcass and shelves, box
+   * drives drawer boxes. Offering a slot a piece never uses would be a
+   * control that quietly does nothing. Novel pieces carry a joint per
+   * connection instead, so they are steered through chat. */
+  const JOINERY_SLOTS = {
+    table: ['frame'], desk: ['frame'], bench: ['frame'],
+    bookshelf: ['case'],
+    nightstand: ['frame', 'case', 'box'],
+    cabinet: ['frame', 'case', 'box'],
+    custom: []
+  };
+  const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
+
+  /* Thickness knobs worth a control: exactly the ones the structural engine's
+   * own one-tap fixes reach for. A user who can see a FAIL should be able to
+   * steer out of it without going through chat — which, on a configured
+   * origin, is behind sign-in. */
+  const THICKNESS_KNOBS = [
+    { path: 'structure.topThickness', label: 'Top thickness', when: s => s.meta.template !== 'bookshelf' },
+    { path: 'structure.shelfThickness', label: 'Shelf thickness', when: s => (s.structure.shelfCount || 0) > 0 },
+    { path: 'structure.legThickness', label: 'Leg thickness', when: s => JOINERY_SLOTS[s.meta.template] && JOINERY_SLOTS[s.meta.template].includes('frame') }
+  ];
+
+  /* Bounds come from the ONE table correctSpec clamps against, so a slider can
+   * never offer a value the pipeline silently refuses. */
+  function dimBounds(path, fallbackMin, fallbackMax) {
+    const r = Spec.DIM_RULES && Spec.DIM_RULES[path];
+    return r ? [r.min, r.max] : [fallbackMin, fallbackMax];
+  }
+
   function renderAdjustBody() {
     const body = $('adjustBody');
     if (!body) return;
@@ -2607,9 +2640,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         () => done());
     };
     if (s.meta.template !== 'custom') {
-      body.append(dim('Width', 'overall.width', 250, 2400));
-      body.append(dim('Depth', 'overall.depth', 200, 1200));
-      body.append(dim('Height', 'overall.height', 120, 2400));
+      body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
+      body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
+      body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
+      // Thicknesses were chat-only, and chat is behind sign-in on a
+      // configured origin — so the knobs the integrity fixes themselves reach
+      // for were unreachable to exactly the people who needed them.
+      for (const k of THICKNESS_KNOBS) {
+        if (!k.when(s)) continue;
+        body.append(dim(k.label, k.path, ...dimBounds(k.path, 12, 100)));
+      }
     } else {
       body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: dimensions are refined through the chat — code re-validates the whole structure on every change.</span>'));
     }
@@ -2625,8 +2665,61 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));
     body.append(paramSelect('Finish', K.FINISHES.map(f => [f.key, f.label]), s.finish,
       v => { merge({ finish: v }, 'manual'); renderAdjustBody(); }));
+    // Joinery was reachable only through chat, so on a configured origin a
+    // signed-out user could not change a joint at all — and the skill level
+    // silently refused any joint above it (audit X-03/JR-1). Each slot lists
+    // only joints that are legal for that slot AND for this skill level, so
+    // the control cannot propose something correctSpec will overrule.
+    const allowed = K.jointsForLevel(s.meta.level);
+    for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
+      const opts = Object.values(K.JOINERY)
+        .filter(j => j.kinds.includes(slot) && allowed.includes(j.key))
+        .map(j => [j.key, j.label]);
+      if (opts.length < 2) continue; // a list of one is not a choice
+      body.append(paramSelect(SLOT_LABEL[slot], opts, s.joinery[slot],
+        v => { merge({ joinery: { [slot]: v } }, 'manual'); renderAdjustBody(); }));
+    }
     body.append(paramSeg('Skill level', [['beginner', 'Beginner'], ['intermediate', 'Intermediate'], ['advanced', 'Advanced']], s.meta.level,
-      v => { merge({ meta: { level: v } }, 'manual'); renderAdjustBody(); }));
+      v => { const from = s.meta.level; merge({ meta: { level: v } }, 'manual'); offerLevelJoinery(from, v); renderAdjustBody(); }));
+  }
+
+  /* Skill level was a ceiling and never a floor: setting "advanced" left a
+   * design on the beginner pocket screws it started with, so declaring
+   * yourself advanced changed nothing at all (audit X-02). Raising the level
+   * now OFFERS the joints it just unlocked, as tappable chips — the level
+   * still only ever gates, and the user still chooses. Code owns the joint;
+   * this proposes intent, exactly like the chat does. */
+  function offerLevelJoinery(from, to) {
+    const RANK = ['beginner', 'intermediate', 'advanced'];
+    if (RANK.indexOf(to) <= RANK.indexOf(from)) return; // lowering is a snap-down; correctionNotes already reports it
+    const s = state.spec;
+    const nowAllowed = K.jointsForLevel(to);
+    const wasAllowed = K.jointsForLevel(from);
+    const offers = [];
+    for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
+      const current = K.JOINERY[s.joinery[slot]];
+      // The strongest newly-unlocked joint valid for this slot, and only when
+      // it genuinely beats what the design already uses.
+      const best = Object.values(K.JOINERY)
+        .filter(j => j.kinds.includes(slot) && nowAllowed.includes(j.key) && !wasAllowed.includes(j.key))
+        .filter(j => !current || j.strength > current.strength)
+        .sort((a, b) => b.strength - a.strength)[0];
+      if (best) offers.push({ slot, joint: best });
+    }
+    if (!offers.length) return;
+    const m = chatMsg('bot', `<div class="bubble">${esc(RANK.indexOf(to) === 2 ? 'Advanced' : 'Intermediate')} unlocks stronger joinery. Want it on this piece?</div>`);
+    const row = el('div', 'answer-row');
+    for (const o of offers) {
+      const b = el('button', 'btn small', esc(`${SLOT_LABEL[o.slot]}: ${o.joint.label}`));
+      b.onclick = () => {
+        if (merge({ joinery: { [o.slot]: o.joint.key } }, 'manual', [`${SLOT_LABEL[o.slot].toLowerCase()} → ${o.joint.label}`])) {
+          b.disabled = true;
+          renderAdjustBody();
+        }
+      };
+      row.append(b);
+    }
+    m.append(row);
   }
   function setAdjustRail(open) {
     const rail = $('adjustRail');

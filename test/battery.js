@@ -209,6 +209,141 @@ const summarize = (name, r, ig, extra) => {
     ok(reply.patch && Math.abs(reply.patch.overall.depth - 550) < 0.1, '550 mm stays 550 mm', reply.patch && reply.patch.overall);
   }
 
+  /* ---------- offline parser: the possessive, the two fallbacks, the workbench,
+   * the discarded noun (audit X-01 / X-04 / X-06 / X-08) ----------
+   * AI chat sits behind sign-in, so for anonymous visitors, static hosts, and
+   * offline sessions this parser IS the product's designer. Its edges are a
+   * first impression, and these fixtures are the lock on them. */
+  {
+    const table = Spec.correctSpec({ meta: { name: 'Seed Table', template: 'table', level: 'beginner', units: 'in' } });
+    const rows = [];
+    const say = (text, spec) => {
+      const r = AI.localModel(text, spec || table, {});
+      rows.push({
+        text, kind: r.kind,
+        detail: r.kind === 'new' ? `${r.spec.meta.template} “${r.spec.meta.name}” / ${r.spec.wood.species}`
+          : r.kind === 'question' ? r.question
+            : JSON.stringify(r.patch)
+      });
+      return r;
+    };
+    const EDIT_ASK = /didn’t catch a change/;
+
+    /* X-01 — a possessive attached to a ROOM, a PERSON, or a PURPOSE describes
+     * the piece being asked for; it never points back at the bench. All three
+     * of these dead-ended before, and the nightstand was the worst: it turned
+     * the CURRENT TABLE walnut instead of building a nightstand. */
+    const office = say('a desk for my office');
+    ok(office.kind === 'new' && office.spec.meta.template === 'desk',
+      '"a desk for my office" builds a desk', office.kind === 'new' ? office.spec.meta.template : office);
+    ok(office.kind === 'new' && /office/i.test(office.spec.meta.name), 'and the user\'s own words name it', office.kind === 'new' && office.spec.meta.name);
+    const bedroom = say('walnut nightstand for my bedroom');
+    ok(bedroom.kind === 'new' && bedroom.spec.meta.template === 'nightstand' && bedroom.spec.wood.species === 'walnut',
+      '"walnut nightstand for my bedroom" builds a walnut NIGHTSTAND — never a walnut table',
+      bedroom.kind === 'new' ? bedroom.spec.meta.template : bedroom.kind);
+    const kids = say('bookshelf for my kids room');
+    ok(kids.kind === 'new' && kids.spec.meta.template === 'bookshelf',
+      '"bookshelf for my kids room" builds a bookshelf', kids.kind === 'new' ? kids.spec.meta.template : kids.kind);
+    for (const p of ["my daughter's desk", 'my daughter’s desk']) {
+      const d = say(p);
+      ok(d.kind === 'new' && d.spec.meta.template === 'desk',
+        `a possessive PERSON still names a new piece (${p})`, d.kind === 'new' ? d.spec.meta.template : d.kind);
+    }
+    // The guard this replaced still catches every genuine back-reference — and
+    // it never could swallow these: they carry no template noun to build from.
+    const taller = say('make it taller');
+    ok(taller.kind === 'diff' && taller.patch.overall && taller.patch.overall.height > table.overall.height,
+      '"make it taller" stays a refinement of the piece on the bench', taller.kind);
+    const walnut = say('make it walnut');
+    ok(walnut.kind === 'diff' && walnut.patch.wood.species === 'walnut' && !walnut.patch.meta,
+      '"make it walnut" stays a refinement, template untouched', walnut.patch);
+    const thisOne = say('this one in walnut');
+    ok(thisOne.kind === 'diff' && thisOne.patch.wood.species === 'walnut',
+      '"this one in walnut" stays a refinement', thisOne.kind);
+    const thisNs = say('this nightstand in walnut');
+    ok(thisNs.kind === 'diff', 'a demonstrative on a PIECE noun is still a back-reference, never a build', thisNs.kind);
+
+    /* X-04 — a first-turn design intent must never receive the edit-phrased
+     * answer. Every unmatched ask that reads like a piece routes to the honest
+     * capability list, with the nearest expressible option as a chip. */
+    const outOfScope = {};
+    for (const ask of ['bed frame', 'floating wall shelf', 'something for my entryway', 'a chair', 'a stool']) {
+      const r = outOfScope[ask] = say(ask);
+      ok(r.kind === 'question' && !EDIT_ASK.test(r.question), `"${ask}" never gets the edit-phrased answer`, r.question);
+      ok(r.kind === 'question' && /rough out/.test(r.question), `"${ask}" gets the honest capability list`, r.question);
+      // Every chip must be a phrase this parser can actually build — an
+      // option that does not create is the same broken promise as the copy.
+      for (const chip of r.options || []) {
+        ok(AI.localModel(chip, table, {}).kind === 'new', `"${ask}" chip "${chip}" really builds`, AI.localModel(chip, table, {}).kind);
+      }
+    }
+    ok(/beds are outside/i.test(outOfScope['bed frame'].question),
+      'beds are named as outside what it builds — no nearest substitute is invented', outOfScope['bed frame'].question);
+    ok(!(outOfScope['bed frame'].options || []).some(o => /\bbed\b/i.test(o)), 'and no chip offers a bed', outOfScope['bed frame'].options);
+    ok((outOfScope['floating wall shelf'].options || [])[0] === 'A bookshelf',
+      'a wall shelf offers the bookshelf it does build', outOfScope['floating wall shelf'].options);
+    ok(/\bbench\b/i.test((outOfScope['a chair'].options || [])[0]),
+      'a chair offers the bench — the seating it does build', outOfScope['a chair'].options);
+    const edit = say('make it fancier');
+    ok(edit.kind === 'question' && EDIT_ASK.test(edit.question),
+      'a genuine edit attempt that did not parse keeps the edit-phrased answer', edit.question);
+
+    /* X-06 — "workbench" is served, not advertised. The word buys the height
+     * and nothing else: correction caps a top at 45 mm, so a laminated bench
+     * top is not on the menu and no copy may imply it is. */
+    const wb = say('workbench');
+    ok(wb.kind === 'new' && wb.spec.meta.template === 'table', 'a workbench ask is still served — with the table it can genuinely build', wb.kind);
+    const ergoWb = K.ergoRow('workbench_height');
+    ok(wb.kind === 'new' && wb.spec.overall.height >= ergoWb.min && wb.spec.overall.height <= ergoWb.max,
+      'at working height, from the ergonomics table', wb.kind === 'new' && wb.spec.overall.height);
+    ok(/work table/.test(wb.explain) && /not a laminated/.test(wb.explain),
+      'the ack says plainly what it is and what it is not', wb.explain);
+    ok(!/out a workbench/.test(wb.explain), 'the ack never calls the result a workbench', wb.explain);
+    const capability = outOfScope['a chair'].question;
+    ok(!/(?:^|[\s,])workbench(?:[\s,.]|$)/.test(capability.replace('at workbench height', '')),
+      'the capability list never names a workbench as a piece it produces', capability);
+    ok(/work table at workbench height/.test(capability), 'it names the honest thing instead', capability);
+    for (const ask of ['bed frame', 'a chair', 'workbench 1200mm wide', 'something for my entryway']) {
+      const r = AI.localModel(ask, table, {});
+      ok(!(r.options || []).some(o => /workbench/i.test(o)), `no chip offers "a workbench" (${ask})`, r.options);
+    }
+    const wr = pipeline(wb.spec);
+    const wig = integ(wr);
+    summarize('offline X-06: "workbench" → the work table it can genuinely make', wr, wig, { explain: wb.explain, name: wr.spec.meta.name });
+    ok(wr.report.errors.length === 0, 'the served work table builds clean', wr.report.errors);
+
+    /* X-08 — a refinement that NAMES the piece renames it. "dining table 8
+     * feet long" resized the seed table correctly and left it "Seed Table". */
+    const dining = say('dining table 8 feet long');
+    ok(dining.kind === 'diff' && dining.patch.overall && Math.abs(dining.patch.overall.width - 2438.4) < 0.1,
+      '"8 feet long" still patches width', dining.patch);
+    ok(dining.kind === 'diff' && dining.patch.meta && /dining table/i.test(dining.patch.meta.name),
+      'and the noun the user typed becomes the name', dining.patch.meta);
+    ok(dining.kind === 'diff' && !/\d+\s*mm\b/i.test(dining.patch.meta.name),
+      'the name keeps the user\'s words, never the pre-normalized mm token (X-09)', dining.patch.meta);
+    const renamed = AI.apply(dining, table);
+    ok(/dining/i.test(renamed.spec.meta.name), 'the rename survives correction end to end', renamed.spec.meta.name);
+    ok(/renamed/.test(dining.explain), 'the rename is acked, never silent', dining.explain);
+    const bsSpec = Spec.correctSpec({ meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'in' } });
+    const mention = say('make the bookshelf about 1524mm tall', bsSpec);
+    ok(mention.kind === 'diff' && !(mention.patch.meta && mention.patch.meta.name),
+      'an EDIT that merely mentions the piece never renames it', mention.patch);
+
+    /* Regression-locked guards that must survive all of the above. */
+    const noAsh = say('no ash please', Spec.correctSpec({ meta: { template: 'nightstand', level: 'intermediate', units: 'in' } }));
+    ok(noAsh.kind === 'question' && /not\s+(white\s+)?ash/i.test(noAsh.question) && !(noAsh.patch && noAsh.patch.wood),
+      'the negation guard still asks which wood — it never switches TO ash', noAsh);
+    const smug = say('two drawers like a cabinet has');
+    ok(smug.kind !== 'new', 'drawer smuggling still never creates the cabinet', smug.kind);
+    const hero = say('A walnut nightstand with two drawers');
+    ok(hero.kind === 'new' && hero.spec.meta.template === 'nightstand' && hero.spec.drawers.count === 2,
+      'the hero placeholder still builds its 2-drawer walnut nightstand', hero.kind);
+
+    out.cases.push({ name: 'offline parser edges (X-01/04/06/08)', rows });
+    console.log('\n■ offline parser edges (X-01/04/06/08):');
+    for (const r of rows) console.log(`   ${JSON.stringify(r.text)} → ${r.kind}: ${r.detail}`);
+  }
+
   /* ---------- adversarial: code must enforce, not the model's manners ---------- */
   {
     // 1. Wire reply tries to smuggle advanced joints into a beginner design.

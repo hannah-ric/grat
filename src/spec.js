@@ -54,8 +54,21 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   /* ---------------- defaults ---------------- */
-  /* Minimal valid composition for the custom template: a slab seat on two
-   * rotated panel legs. Real designs come from the AI or a share code. */
+  /* Minimal valid composition for the custom template: a knock-down slab seat
+   * on two rotated panel legs. Real designs come from the AI or a share code.
+   *
+   * The joint is a knockdown bolt, and that is a structural decision, not a
+   * style one (audit X-05). A seat is the heaviest duty in the load table
+   * (BIFMA X5.4, 136 kg per seat) and this composition hands the whole of it
+   * to exactly two connections — ~1334 N each. At the default `beginner`
+   * level the legal joints are butt screws (500 N), pocket screws (700 N),
+   * biscuits (600 N) and the KD bolt (1800 N); the three wooden ones are
+   * further derated ×0.67 because the leg lands inside the slab's end-grain
+   * zone. Only the bolt carries the load with the 1.5× margin the joint check
+   * demands (1.70×), so only the bolt is an honest default — and it is how a
+   * demountable slab bench is genuinely built (barrel nut + connector bolt).
+   * Do not "simplify" this back to screws: the piece would ship a FAIL, which
+   * is exactly the defect X-05 recorded. Change the piece before the physics. */
   function defaultCustom() {
     return {
       parts: [
@@ -64,8 +77,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         { id: 'p3', role: 'leg_panel', primitive: 'panel', dim: { l: 350, w: 430, t: 38 }, pos: { x: 475, y: 215, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
       ],
       connections: [
-        { a: 'p2', b: 'p1', joint: 'butt_screws' },
-        { a: 'p3', b: 'p1', joint: 'butt_screws' }
+        { a: 'p2', b: 'p1', joint: 'kd_bolt' },
+        { a: 'p3', b: 'p1', joint: 'kd_bolt' }
       ]
     };
   }
@@ -1458,6 +1471,12 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
+    /* Read-only clamp tables. Exported so every surface that offers a
+     * dimension (the Adjust rail's sliders, the inspector) reads the SAME
+     * bounds correction enforces — a control that offers a value the pipeline
+     * silently clamps is the silent-correction defect all over again. Shape is
+     * `{ min, max, def, stock? }` keyed by dotted spec path; never mutate. */
+    DIM_RULES, SHELF_COUNT,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck, integrityLine,
     correctSpec, correctionNotes, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
     customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom

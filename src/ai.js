@@ -216,6 +216,73 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   const WORD_NUMS = { one: 1, a: 1, an: 1, two: 2, three: 3, four: 4 };
 
+  /* The user's OWN words name the piece (audit X-09) — never the mm token
+   * unit pre-normalization writes into the parsed text. One rule, shared by
+   * the two paths that set a name: a creation, and a refinement that names
+   * the piece already on the bench (audit X-08). */
+  function pieceName(phrasing, tmplWord) {
+    const raw = String(phrasing || '').trim();
+    const nm = raw.length < 40
+      ? (raw.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord)
+      : 'New ' + tmplWord;
+    return nm.charAt(0).toUpperCase() + nm.slice(1);
+  }
+
+  /* Back-reference (audit X-01): the words that point at THE PIECE ALREADY ON
+   * THE BENCH — and nothing else. "it", "its" and "mine" can only mean the
+   * current design; "this"/"that" and "my" point at it only when they are
+   * attached to the piece itself ("this nightstand", "my table", "that one").
+   * A possessive attached to a ROOM, a PERSON, or a PURPOSE — "a desk for my
+   * office", "my daughter's desk", "a bookshelf for my kids' room" — is
+   * describing the piece being asked for, so it must never disqualify a
+   * creation. The old blanket /\b(it|its|this|that|my|mine)\b/ made
+   * possessive phrasing — how most people describe furniture — unable to
+   * build anything at all.
+   * It still catches every genuine back-reference: "make it taller", "this
+   * one in walnut", "make my table wider" all match, and the first two carry
+   * no template noun to create from in the first place. */
+  const PIECE_NOUN = '(?:tables?|desks?|benches|bench|workbench(?:es)?|bookshel(?:f|ves)|bookcases?|shel(?:f|ves)|nightstands?|cabinets?|sideboards?|consoles?|pieces?|designs?|builds?|projects?|things?|one)';
+  const BACK_REF = new RegExp(
+    '\\b(?:it|its|mine)\\b' +
+    '|\\b(?:this|that|these|those)\\s+' + PIECE_NOUN + '\\b' +
+    '|\\bmy\\s+(?:own\\s+|current\\s+|existing\\s+)?' + PIECE_NOUN + '\\b');
+
+  /* The one honest capability sentence, in one place (audit X-04/X-06). It
+   * names only what the geometry actually produces: "workbench" buys a work
+   * TABLE at workbench height — the laminated top and the vise are not built,
+   * so the list must never offer "a workbench" as a thing that comes out. */
+  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, or drawers) and I’ll build it to standard proportions.';
+  const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A bookshelf', 'A desk in white oak'];
+
+  /* Pieces people genuinely ask for that this tool does not build. Each row is
+   * what it matched, the plain sentence that says so, and the nearest thing
+   * the geometry CAN make — offered as the first chip, never as a claim. A
+   * row with no nearest option says plainly that there isn't one. */
+  const OUT_OF_SCOPE = [
+    [/\bbeds?\b|\bbed[\s-]?frames?\b|\bheadboards?\b|\bbunks?\b|\bmurphy\b|\bcribs?\b|\bmattress(?:es)?\b/,
+      'Beds are outside what I build — nothing here is sized to carry a mattress.', null],
+    [/\bchairs?\b|\bstools?\b|\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\bseating\b/,
+      'Chairs and stools are outside what I build; a bench is the seating I can make.', 'A bench in white oak'],
+    // Only a WALL-HUNG shelf is out of scope — a bare "shelves" is ordinary
+    // bookshelf vocabulary and must keep its edit answer ("more shelves").
+    [/\b(?:floating|wall|hanging|wall[\s-]?mounted)\b[\w\s'’-]{0,20}?\bshel(?:f|ves)\b/,
+      'Wall-hung and floating shelves are past what I build — everything I make stands on its own legs.', 'A bookshelf'],
+    [/\bdressers?\b|\barmoires?\b|\bwardrobes?\b|\bcredenzas?\b|\bhutch(?:es)?\b|\bvanit(?:y|ies)\b/,
+      'A dresser-sized case is the cabinet template here — same carcass, same drawer bank.', 'A cabinet with three drawers'],
+    [/\bdoors?\b|\blids?\b/,
+      'Doors and lids are past what I build yet — open cases and drawers are what I can draw.', null]
+  ];
+  /* An unnamed want is still a design intent ("something for my entryway"),
+   * so it belongs on the capability list. The want has to point at a place or
+   * a purpose — "do something nice" and "add something to the top" are edit
+   * asks, not pieces. */
+  const VAGUE_WANT = /\b(?:something|anything|a piece|furniture)\s+(?:for|that)\b/;
+  function capabilityAsk(t) {
+    const row = OUT_OF_SCOPE.find(([rx]) => rx.test(t));
+    const chips = row && row[2] ? [row[2], ...CAN_BUILD_CHIPS.filter(c => c !== row[2])] : CAN_BUILD_CHIPS.slice();
+    return { kind: 'question', question: (row ? row[1] + ' ' : '') + CAN_BUILD, options: chips.slice(0, 3) };
+  }
+
   function localModel(text, spec, lmOpts) {
     // The user's own phrasing survives for NAMES (audit X-09): length
     // pre-normalization ("about 5 feet tall" → "about 1524mm tall") exists
@@ -260,9 +327,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // super funky mid century modern bookshelf" is five, A8), never refers
     // back to the current piece, and is not negated ("not a nightstand").
     const bdMatch = tmplWord &&
-      new RegExp('^((?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,6}?)' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').exec(t.trim());
+      new RegExp('^((?:(?:an?|the)\\s+)?(?:[\\w\'’-]+\\s+){0,6}?)' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').exec(t.trim());
+    const backRef = BACK_REF.test(t); // points at the piece on the bench (X-01)
     const bareDescription = !!bdMatch &&
-      !/\b(it|its|this|that|my|mine)\b/.test(t) &&
+      !backRef &&
       !negated(t, rxWord(tmplWord)) &&
       // Feature nouns before the template word mean the phrase's head is the
       // FEATURE, not the piece ("two drawers like a cabinet has") — never a
@@ -416,16 +484,26 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (creating) {
       // A workbench is a table at working height: the WORD itself implies the
       // height, from the ergonomics table (A8) — an explicit height still wins.
+      let benchHeight = false;
       if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
         const row = K.ergoRow('workbench_height');
-        if (row) set('overall.height', Math.round((row.min + row.max) / 2));
+        if (row) { set('overall.height', Math.round((row.min + row.max) / 2)); benchHeight = true; }
       }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
-      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord : 'New ' + tmplWord;
-      merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
+      merged.meta.name = pieceName(phrasing, tmplWord);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
+      // X-06: the word buys the HEIGHT and nothing else. The top thickness
+      // ceiling lives in correction, and it is nowhere near a laminated bench
+      // top — so the ack names the piece for what it is rather than letting
+      // "workbench" imply a slab and a vise the geometry cannot make.
+      if (tmplWord === 'workbench') {
+        return {
+          kind: 'new', spec: merged,
+          explain: `Roughed out a work table${benchHeight ? ' at workbench height' : ' at the height you asked for'}${drawerNote} — a sturdy table, not a laminated bench top with a vise, which is past what I can build. Refine away.`
+        };
+      }
       return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }
 
@@ -438,24 +516,36 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     if (!Object.keys(patch).length) {
-      // A8: a creation-shaped request (no back-reference to the current
-      // piece) that didn't parse gets a creation-phrased answer naming what
-      // the offline parser CAN rough out — not the edit-phrased question.
-      const creationShaped = !/\b(it|its|this|that|my|mine)\b/.test(t) &&
-        (/\b(build|make|design|create)\b/.test(t) || /^(?:an?|the)\b/.test(t.trim()) || !!tmplWord);
-      if (creationShaped) {
-        return {
-          kind: 'question',
-          question: 'Offline I can rough out a table, desk, bench, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
-          options: ['A walnut nightstand with two drawers', 'A workbench', 'A bookshelf']
-        };
-      }
+      // A8/X-04: anything that reads like a PIECE gets the capability list —
+      // a furniture noun (buildable or not), a creation verb, a leading
+      // article, or an unnamed want pointed at a place. A first-turn design
+      // intent must never receive the edit-phrased answer, which is what
+      // "bed frame", "floating wall shelf", and "something for my entryway"
+      // used to get. The edit question stays for genuine edit attempts: a
+      // back-reference to the piece on the bench, or no piece at all.
+      const pieceShaped = !backRef &&
+        (!!tmplWord || OUT_OF_SCOPE.some(([rx]) => rx.test(t)) || VAGUE_WANT.test(t) ||
+          /\b(build|make|design|create)\b/.test(t) || /^(?:an?|the)\b/.test(t.trim()));
+      if (pieceShaped) return capabilityAsk(t);
       return {
         kind: 'question',
         question: 'I didn’t catch a change I can make there. Try a dimension, species, joinery level, drawers, or finish — what should move?',
         options: ['Make it walnut', `Lower it by ${BB.Units.fmtLength(spec.meta.units === 'mm' ? 50 : 50.8)}`,
           canDrawer(null) ? 'Add a drawer' : 'Make it wider']
       };
+    }
+    // X-08: a refinement that NAMES the piece renames it — "dining table 8
+    // feet long" resized the seed table correctly and left it called "Seed
+    // Table". Scoped to a noun-phrase mention of the piece ALREADY on the
+    // bench with no edit verb ("make the bookshelf taller" is an edit, not a
+    // name), and only alongside a real change: a bare noun with nothing to
+    // apply is an ask, and it belongs on the capability list above.
+    if (tmplWord && bdMatch && !backRef && wantTemplate === spec.meta.template &&
+      !negated(t, rxWord(tmplWord)) && phrasing.trim().length < 40 &&
+      !/\b(make|build|design|create|change|set|turn|give|add|use|switch|lower|raise|shorten|widen|keep)\b/.test(t) &&
+      !/\bthe\b/.test(bdMatch[1] || '')) {
+      const nm = pieceName(phrasing, tmplWord);
+      if (nm && nm !== ((spec.meta && spec.meta.name) || '')) { set('meta.name', nm); notes.push(`renamed “${nm}”`); }
     }
     return { kind: 'diff', patch, explain: 'Adjusted ' + (notes.filter(Boolean).slice(0, 4).join(', ') || 'the design') + '.' };
   }

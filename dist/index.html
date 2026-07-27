@@ -5014,8 +5014,8 @@ body.ph-open .porch::after { display: none; }
         { id: 'p3', role: 'leg_panel', primitive: 'panel', dim: { l: 350, w: 430, t: 38 }, pos: { x: 475, y: 215, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
       ],
       connections: [
-        { a: 'p2', b: 'p1', joint: 'butt_screws' },
-        { a: 'p3', b: 'p1', joint: 'butt_screws' }
+        { a: 'p2', b: 'p1', joint: 'kd_bolt' },
+        { a: 'p3', b: 'p1', joint: 'kd_bolt' }
       ]
     };
   }
@@ -6066,6 +6066,7 @@ body.ph-open .porch::after { display: none; }
   }
   BB.Spec = {
     TEMPLATES, PRIMITIVES, SURFACES, SPEC_VERSION, migrations, migrateSpec,
+    DIM_RULES, SHELF_COUNT,
     defaultSpec, defaultCustom, clone, deepMerge, diffSpecs, describeDiff, reconcileAck, integrityLine,
     correctSpec, correctionNotes, validate, auditModel, AUDIT, fmtValue, PATH_LABELS,
     customPartSize, customExtents, customGrainInfo, endGrainBearing, scaleCustom
@@ -10070,6 +10071,38 @@ BlueprintBuddyImport.build
     return v == null ? null : Math.round(v * 10) / 10;
   }
   const WORD_NUMS = { one: 1, a: 1, an: 1, two: 2, three: 3, four: 4 };
+  function pieceName(phrasing, tmplWord) {
+    const raw = String(phrasing || '').trim();
+    const nm = raw.length < 40
+      ? (raw.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord)
+      : 'New ' + tmplWord;
+    return nm.charAt(0).toUpperCase() + nm.slice(1);
+  }
+  const PIECE_NOUN = '(?:tables?|desks?|benches|bench|workbench(?:es)?|bookshel(?:f|ves)|bookcases?|shel(?:f|ves)|nightstands?|cabinets?|sideboards?|consoles?|pieces?|designs?|builds?|projects?|things?|one)';
+  const BACK_REF = new RegExp(
+    '\\b(?:it|its|mine)\\b' +
+    '|\\b(?:this|that|these|those)\\s+' + PIECE_NOUN + '\\b' +
+    '|\\bmy\\s+(?:own\\s+|current\\s+|existing\\s+)?' + PIECE_NOUN + '\\b');
+  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, or drawers) and I’ll build it to standard proportions.';
+  const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A bookshelf', 'A desk in white oak'];
+  const OUT_OF_SCOPE = [
+    [/\bbeds?\b|\bbed[\s-]?frames?\b|\bheadboards?\b|\bbunks?\b|\bmurphy\b|\bcribs?\b|\bmattress(?:es)?\b/,
+      'Beds are outside what I build — nothing here is sized to carry a mattress.', null],
+    [/\bchairs?\b|\bstools?\b|\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\bseating\b/,
+      'Chairs and stools are outside what I build; a bench is the seating I can make.', 'A bench in white oak'],
+    [/\b(?:floating|wall|hanging|wall[\s-]?mounted)\b[\w\s'’-]{0,20}?\bshel(?:f|ves)\b/,
+      'Wall-hung and floating shelves are past what I build — everything I make stands on its own legs.', 'A bookshelf'],
+    [/\bdressers?\b|\barmoires?\b|\bwardrobes?\b|\bcredenzas?\b|\bhutch(?:es)?\b|\bvanit(?:y|ies)\b/,
+      'A dresser-sized case is the cabinet template here — same carcass, same drawer bank.', 'A cabinet with three drawers'],
+    [/\bdoors?\b|\blids?\b/,
+      'Doors and lids are past what I build yet — open cases and drawers are what I can draw.', null]
+  ];
+  const VAGUE_WANT = /\b(?:something|anything|a piece|furniture)\s+(?:for|that)\b/;
+  function capabilityAsk(t) {
+    const row = OUT_OF_SCOPE.find(([rx]) => rx.test(t));
+    const chips = row && row[2] ? [row[2], ...CAN_BUILD_CHIPS.filter(c => c !== row[2])] : CAN_BUILD_CHIPS.slice();
+    return { kind: 'question', question: (row ? row[1] + ' ' : '') + CAN_BUILD, options: chips.slice(0, 3) };
+  }
   function localModel(text, spec, lmOpts) {
     const phrasing = (lmOpts && lmOpts.phrasing) || String(text || '');
     text = BB.Units.normalizeLengthText(text); // idempotent; direct callers get the same guarantee as chat
@@ -10094,9 +10127,10 @@ BlueprintBuddyImport.build
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
     }
     const bdMatch = tmplWord &&
-      new RegExp('^((?:(?:an?|the)\\s+)?(?:[\\w\'-]+\\s+){0,6}?)' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').exec(t.trim());
+      new RegExp('^((?:(?:an?|the)\\s+)?(?:[\\w\'’-]+\\s+){0,6}?)' + tmplWord.replace(/[\s-]+/g, '[\\s-]+') + 's?\\b').exec(t.trim());
+    const backRef = BACK_REF.test(t); // points at the piece on the bench (X-01)
     const bareDescription = !!bdMatch &&
-      !/\b(it|its|this|that|my|mine)\b/.test(t) &&
+      !backRef &&
       !negated(t, rxWord(tmplWord)) &&
       !/\b(drawers?|shel(?:f|ves)|doors?)\b/.test(bdMatch[1] || '');
     const differentPiece = wantTemplate !== spec.meta.template ||
@@ -10210,16 +10244,22 @@ BlueprintBuddyImport.build
       if (t.includes(kw)) { set('finish', f.key); notes.push(f.label); break; }
     }
     if (creating) {
+      let benchHeight = false;
       if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
         const row = K.ergoRow('workbench_height');
-        if (row) set('overall.height', Math.round((row.min + row.max) / 2));
+        if (row) { set('overall.height', Math.round((row.min + row.max) / 2)); benchHeight = true; }
       }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
-      merged.meta.name = phrasing.length < 40 ? phrasing.replace(/^\s*(please\s+)?(build|make|design|create)\s*(me\s+)?(a|an)?\s*/i, '').replace(/\.$/, '').trim() || tmplWord : 'New ' + tmplWord;
-      merged.meta.name = merged.meta.name.charAt(0).toUpperCase() + merged.meta.name.slice(1);
+      merged.meta.name = pieceName(phrasing, tmplWord);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
+      if (tmplWord === 'workbench') {
+        return {
+          kind: 'new', spec: merged,
+          explain: `Roughed out a work table${benchHeight ? ' at workbench height' : ' at the height you asked for'}${drawerNote} — a sturdy table, not a laminated bench top with a vise, which is past what I can build. Refine away.`
+        };
+      }
       return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }
     if (!Object.keys(patch).length && negatedSpecies) {
@@ -10228,21 +10268,23 @@ BlueprintBuddyImport.build
       return { kind: 'question', question: `Understood — not ${negatedSpecies.toLowerCase()}. Which wood should it be instead?`, options: alts };
     }
     if (!Object.keys(patch).length) {
-      const creationShaped = !/\b(it|its|this|that|my|mine)\b/.test(t) &&
-        (/\b(build|make|design|create)\b/.test(t) || /^(?:an?|the)\b/.test(t.trim()) || !!tmplWord);
-      if (creationShaped) {
-        return {
-          kind: 'question',
-          question: 'Offline I can rough out a table, desk, bench, workbench, bookshelf, nightstand, or cabinet — name one (plus wood, size, or drawers) and I’ll build it to standard proportions.',
-          options: ['A walnut nightstand with two drawers', 'A workbench', 'A bookshelf']
-        };
-      }
+      const pieceShaped = !backRef &&
+        (!!tmplWord || OUT_OF_SCOPE.some(([rx]) => rx.test(t)) || VAGUE_WANT.test(t) ||
+          /\b(build|make|design|create)\b/.test(t) || /^(?:an?|the)\b/.test(t.trim()));
+      if (pieceShaped) return capabilityAsk(t);
       return {
         kind: 'question',
         question: 'I didn’t catch a change I can make there. Try a dimension, species, joinery level, drawers, or finish — what should move?',
         options: ['Make it walnut', `Lower it by ${BB.Units.fmtLength(spec.meta.units === 'mm' ? 50 : 50.8)}`,
           canDrawer(null) ? 'Add a drawer' : 'Make it wider']
       };
+    }
+    if (tmplWord && bdMatch && !backRef && wantTemplate === spec.meta.template &&
+      !negated(t, rxWord(tmplWord)) && phrasing.trim().length < 40 &&
+      !/\b(make|build|design|create|change|set|turn|give|add|use|switch|lower|raise|shorten|widen|keep)\b/.test(t) &&
+      !/\bthe\b/.test(bdMatch[1] || '')) {
+      const nm = pieceName(phrasing, tmplWord);
+      if (nm && nm !== ((spec.meta && spec.meta.name) || '')) { set('meta.name', nm); notes.push(`renamed “${nm}”`); }
     }
     return { kind: 'diff', patch, explain: 'Adjusted ' + (notes.filter(Boolean).slice(0, 4).join(', ') || 'the design') + '.' };
   }
@@ -16895,9 +16937,9 @@ BlueprintBuddyImport.build
         () => done());
     };
     if (s.meta.template !== 'custom') {
-      body.append(dim('Width', 'overall.width', 250, 2400));
-      body.append(dim('Depth', 'overall.depth', 200, 1200));
-      body.append(dim('Height', 'overall.height', 120, 2400));
+      body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
+      body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
+      body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
     } else {
       body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
@@ -16940,6 +16982,23 @@ BlueprintBuddyImport.build
     $('inspector').inert = true;
   }
   function adjustRailOpen() { return !$('adjustRail').hidden; }
+  const JOINERY_SLOTS = {
+    table: ['frame'], desk: ['frame'], bench: ['frame'],
+    bookshelf: ['case'],
+    nightstand: ['frame', 'case', 'box'],
+    cabinet: ['frame', 'case', 'box'],
+    custom: []
+  };
+  const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
+  const THICKNESS_KNOBS = [
+    { path: 'structure.topThickness', label: 'Top thickness', when: s => s.meta.template !== 'bookshelf' },
+    { path: 'structure.shelfThickness', label: 'Shelf thickness', when: s => (s.structure.shelfCount || 0) > 0 },
+    { path: 'structure.legThickness', label: 'Leg thickness', when: s => JOINERY_SLOTS[s.meta.template] && JOINERY_SLOTS[s.meta.template].includes('frame') }
+  ];
+  function dimBounds(path, fallbackMin, fallbackMax) {
+    const r = Spec.DIM_RULES && Spec.DIM_RULES[path];
+    return r ? [r.min, r.max] : [fallbackMin, fallbackMax];
+  }
   function renderAdjustBody() {
     const body = $('adjustBody');
     if (!body) return;
@@ -16954,9 +17013,13 @@ BlueprintBuddyImport.build
         () => done());
     };
     if (s.meta.template !== 'custom') {
-      body.append(dim('Width', 'overall.width', 250, 2400));
-      body.append(dim('Depth', 'overall.depth', 200, 1200));
-      body.append(dim('Height', 'overall.height', 120, 2400));
+      body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
+      body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
+      body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
+      for (const k of THICKNESS_KNOBS) {
+        if (!k.when(s)) continue;
+        body.append(dim(k.label, k.path, ...dimBounds(k.path, 12, 100)));
+      }
     } else {
       body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: dimensions are refined through the chat — code re-validates the whole structure on every change.</span>'));
     }
@@ -16972,8 +17035,47 @@ BlueprintBuddyImport.build
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));
     body.append(paramSelect('Finish', K.FINISHES.map(f => [f.key, f.label]), s.finish,
       v => { merge({ finish: v }, 'manual'); renderAdjustBody(); }));
+    const allowed = K.jointsForLevel(s.meta.level);
+    for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
+      const opts = Object.values(K.JOINERY)
+        .filter(j => j.kinds.includes(slot) && allowed.includes(j.key))
+        .map(j => [j.key, j.label]);
+      if (opts.length < 2) continue; // a list of one is not a choice
+      body.append(paramSelect(SLOT_LABEL[slot], opts, s.joinery[slot],
+        v => { merge({ joinery: { [slot]: v } }, 'manual'); renderAdjustBody(); }));
+    }
     body.append(paramSeg('Skill level', [['beginner', 'Beginner'], ['intermediate', 'Intermediate'], ['advanced', 'Advanced']], s.meta.level,
-      v => { merge({ meta: { level: v } }, 'manual'); renderAdjustBody(); }));
+      v => { const from = s.meta.level; merge({ meta: { level: v } }, 'manual'); offerLevelJoinery(from, v); renderAdjustBody(); }));
+  }
+  function offerLevelJoinery(from, to) {
+    const RANK = ['beginner', 'intermediate', 'advanced'];
+    if (RANK.indexOf(to) <= RANK.indexOf(from)) return; // lowering is a snap-down; correctionNotes already reports it
+    const s = state.spec;
+    const nowAllowed = K.jointsForLevel(to);
+    const wasAllowed = K.jointsForLevel(from);
+    const offers = [];
+    for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
+      const current = K.JOINERY[s.joinery[slot]];
+      const best = Object.values(K.JOINERY)
+        .filter(j => j.kinds.includes(slot) && nowAllowed.includes(j.key) && !wasAllowed.includes(j.key))
+        .filter(j => !current || j.strength > current.strength)
+        .sort((a, b) => b.strength - a.strength)[0];
+      if (best) offers.push({ slot, joint: best });
+    }
+    if (!offers.length) return;
+    const m = chatMsg('bot', `<div class="bubble">${esc(RANK.indexOf(to) === 2 ? 'Advanced' : 'Intermediate')} unlocks stronger joinery. Want it on this piece?</div>`);
+    const row = el('div', 'answer-row');
+    for (const o of offers) {
+      const b = el('button', 'btn small', esc(`${SLOT_LABEL[o.slot]}: ${o.joint.label}`));
+      b.onclick = () => {
+        if (merge({ joinery: { [o.slot]: o.joint.key } }, 'manual', [`${SLOT_LABEL[o.slot].toLowerCase()} → ${o.joint.label}`])) {
+          b.disabled = true;
+          renderAdjustBody();
+        }
+      };
+      row.append(b);
+    }
+    m.append(row);
   }
   function setAdjustRail(open) {
     const rail = $('adjustRail');

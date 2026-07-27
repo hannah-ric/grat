@@ -1819,7 +1819,11 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
   // Custom path: the unconditional " Dry-fit before glue." suffix (ref4's
   // live bed rails: "…with knockdown bolts. Dry-fit before glue.").
   const cu = Spec.correctSpec(Spec.defaultSpec('custom'));
+  // A deliberately MIXED graph — one bolted connection, one glued-and-screwed
+  // one — so both wordings are exercised in a single assembly. (The shipped
+  // default is bolted throughout since X-05, hence the explicit second joint.)
   cu.custom.connections[0].joint = 'kd_bolt';
+  cu.custom.connections[1].joint = 'butt_screws';
   const cuModel = Parametric.build(cu);
   const cSteps = Plans.assembly(cu, cuModel, null, {});
   const kdStep = cSteps.find(s => /knockdown bolts/.test(s.text));
@@ -2235,12 +2239,23 @@ section('B-fixes stiffer-species and joint-upgrade fixes exist, and applying one
   ok(hickSag && !hickSag.fixes.some(f => f.patch && f.patch.wood),
     'nothing stiffer exists, so nothing is offered — never a fix that would not fix');
 
-  /* ---- 2. joint adequacy: the one path that fails by default had no remedy.
-   * defaultSpec('custom') is a beginner bench whose seat is screwed into the
-   * end grain of two leg panels — 136 kg per joint against 43 kg of capacity. */
-  const cus = integrityOf(Spec.defaultSpec('custom'));
+  /* ---- 2. joint adequacy: the path that fails had no remedy.
+   * A beginner slab bench whose seat is screwed into the end grain of two leg
+   * panels — 136 kg per joint against 43 kg of capacity. This WAS
+   * defaultSpec('custom') verbatim; X-05 repaired the shipped default onto
+   * knockdown bolts, so the fixture now spells its failing joints out rather
+   * than depending on the product default staying broken. */
+  const screwedBench = () => Spec.deepMerge(Spec.defaultSpec('custom'), {
+    custom: {
+      connections: [
+        { a: 'p2', b: 'p1', joint: 'butt_screws' },
+        { a: 'p3', b: 'p1', joint: 'butt_screws' }
+      ]
+    }
+  });
+  const cus = integrityOf(screwedBench());
   const jc = chk(cus.checks, 'joints');
-  ok(jc && jc.status === 'fail', 'the default custom piece still fails joint adequacy honestly');
+  ok(jc && jc.status === 'fail', 'an end-grain screwed slab bench still fails joint adequacy honestly');
   ok(jc && jc.fixes.length > 0, 'a failing joint check now offers a remedy (it used to offer none)');
   const up = jc && jc.fixes.find(f => f.id === 'upjoint');
   ok(up, 'the remedy is the upjoint fix, same shape as the template path');
@@ -2266,7 +2281,7 @@ section('B-fixes stiffer-species and joint-upgrade fixes exist, and applying one
   // A beginner is never handed an advanced joint, whatever the physics wants.
   const begAllowed = K.jointsForLevel('beginner');
   for (const lv of ['beginner', 'intermediate', 'advanced']) {
-    const s = Spec.deepMerge(Spec.defaultSpec('custom'), { meta: { level: lv } });
+    const s = Spec.deepMerge(screwedBench(), { meta: { level: lv } });
     const j = chk(integrityOf(s).checks, 'joints');
     for (const f of (j ? j.fixes : [])) {
       const c = f.patch.custom && f.patch.custom.connections.find(x => x.joint !== 'butt_screws');
@@ -2274,6 +2289,110 @@ section('B-fixes stiffer-species and joint-upgrade fixes exist, and applying one
       if (lv === 'beginner') ok(!c || begAllowed.includes(c.joint), 'beginner is never handed an advanced joint');
     }
   }
+}
+
+/* ================= X-05: the default custom piece is buildable, not a FAIL ================= */
+section('X-05 defaultSpec("custom") ships a sound piece, not a structural FAIL');
+{
+  /* The novel-geometry on-ramp used to hand every curious user a design that
+   * failed on arrival: a slab seat screwed into the end grain of two panel
+   * legs, 136 kg of BIFMA X5.4 seating load per joint against 43 kg of
+   * derated capacity. This section is the regression lock — the default must
+   * validate clean AND never present a failing verdict again. */
+  const raw = Spec.defaultSpec('custom');
+  const r = pipeline(raw);
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  const chk = id => ig.checks.find(c => c.id === id);
+
+  // ---- 1. it is still a novel composition, not a template in disguise ----
+  eq(r.spec.meta.template, 'custom', 'the default custom spec is on the custom template');
+  ok(r.spec.custom && r.spec.custom.parts.length >= 2,
+    `a composition of primitives — got ${r.spec.custom && r.spec.custom.parts.length} parts`);
+  ok(r.spec.custom.connections.length >= 1, 'with an explicit connection graph');
+  ok(r.spec.custom.parts.every(p => Spec.PRIMITIVES.includes(p.primitive)),
+    'every part is one of the grammar primitives');
+  ok(r.spec.custom.parts.some(p => p.rot && (p.rot.x || p.rot.y || p.rot.z)),
+    'and the graph exercises rotation — the thing templates cannot express');
+
+  // ---- 2. validation is clean ----
+  eq(r.report.errors.map(e => e.id), [], 'the default custom piece validates with zero errors');
+
+  // ---- 3. THE lock: it must never present a failing verdict ----
+  ok(ig.summary.verdict !== 'fail',
+    `the default custom piece is never presented failing — verdict ${ig.summary.verdict}`);
+  ok(ig.checks.every(c => c.status !== 'fail'),
+    `no individual check fails — ${ig.checks.filter(c => c.status === 'fail').map(c => `${c.id}: ${c.value}`).join('; ') || 'none'}`);
+  const joints = chk('joints');
+  ok(joints, 'joint adequacy is actually checked on the default (never skipped into silence)');
+  eq(joints && joints.status, 'pass', 'joint adequacy PASSES — the X-05 failure is gone');
+  ok(joints && joints.fixes.length === 0, 'a passing joint check is offered no remedy');
+
+  // ---- 4. it passes on the physics, not by dodging the load ----
+  // The seat is still tagged `seating`, so it is still weighed under the
+  // heaviest preset in the table. A future edit that quietly retags the
+  // surface to buy a pass must break here, not slip through.
+  const seat = r.spec.custom.parts.find(p => p.surface === 'seating');
+  ok(seat, 'the load surface is still declared, and still seating duty');
+  const surf = ig.surfaces.find(s => s.id === seat.id);
+  ok(surf && surf.presetKey === 'seating' && !surf.assumed,
+    `the seat is checked under the seating preset, declared not assumed — got ${surf && surf.presetKey}`);
+  ok(!ig.antiTip, 'and it stands on its own: no mandatory wall anchor');
+
+  // ---- 5. the joint is level-legal and survives correction unchanged ----
+  const level = r.spec.meta.level;
+  eq(level, 'beginner', 'the default level is still beginner');
+  const allowed = K.jointsForLevel(level);
+  for (const cn of r.spec.custom.connections) {
+    ok(allowed.includes(cn.joint), `${cn.a}→${cn.b}: ${cn.joint} is legal at ${level}`);
+    ok(K.JOINERY[cn.joint] && !K.JOINERY[cn.joint].external,
+      `${cn.a}→${cn.b}: ${cn.joint} joins two parts, never the building`);
+  }
+  // Correction must KEEP what defaultCustom set — a joint silently rewritten
+  // by the pair-kind or level gate would mean the default is a lie about
+  // itself, and the piece the user gets is not the piece the code declared.
+  eq(r.spec.custom.connections.map(c => c.joint), raw.custom.connections.map(c => c.joint),
+    'correction keeps the declared joints (pair-kind and level gates satisfied)');
+  const twice = Spec.correctSpec(Spec.clone(r.spec));
+  eq(twice.custom.connections, r.spec.custom.connections, 'and correction is idempotent on it');
+
+  // ---- 6. corrected, grounded, centred ----
+  near(r.spec.custom.parts.reduce((lo, p) => {
+    const size = Spec.customPartSize(p);
+    return Math.min(lo, ...BB.Geo.obbCorners(BB.Geo.partOBB({ size, pos: p.pos, rot: p.rot })).map(c => c[1]));
+  }, Infinity), 0, 0.05, 'the piece sits on the floor plane');
+  const ext = Spec.customExtents(r.spec.custom.parts);
+  near(r.spec.overall.width, ext.w, 0.05, 'overall width is the derived extent');
+  near(r.spec.overall.height, ext.h, 0.05, 'overall height is the derived extent');
+
+  // ---- 7. the derived layer produces a real, buildable plan ----
+  const cut = Plans.cutList(r.spec, r.model);
+  ok(cut.length >= 2, `the cut list has real parts — ${cut.length} lines`);
+  ok(cut.every(c => c.qty > 0 && c.L > 0 && c.W > 0 && c.T > 0), 'every cut-list line has positive quantity and dimensions');
+  const stock = Packing.planStock(r.spec, r.model, cut, {});
+  const bom = Plans.bom(r.spec, r.model, { integrity: ig, stock });
+  ok(bom.items.length > 0 && bom.total > 0, 'the BOM prices out');
+  ok(!bom.items.some(i => /anchor/i.test(i.label)), 'no wall anchor is bought for a piece that does not need one');
+  const steps = Plans.assembly(r.spec, r.model, ig, { stockPlan: stock });
+  ok(steps.length >= 4, `assembly has real steps — ${steps.length}`);
+  const partNames = cut.map(c => c.name.toLowerCase());
+  const key = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
+  const connKeys = new Set(r.spec.custom.connections.map(c => key(c.a, c.b)));
+  const joinSteps = steps.filter(s => (s.partIds || []).length === 2 && connKeys.has(key(s.partIds[0], s.partIds[1])));
+  eq(joinSteps.length, r.spec.custom.connections.length,
+    'every declared connection gets its own assembly step');
+  ok(joinSteps.every(s => partNames.some(n => (s.text || '').toLowerCase().includes(n))),
+    'each join step names the parts it joins');
+  const jointLabel = K.JOINERY[r.spec.custom.connections[0].joint].label.toLowerCase();
+  ok(joinSteps.some(s => (s.text || '').toLowerCase().includes(jointLabel) ||
+      (s.text || '').toLowerCase().includes(K.JOINERY[r.spec.custom.connections[0].joint].plural.toLowerCase())),
+    `the join steps teach the joint the spec declares (${jointLabel})`);
+
+  // ---- 8. the same piece survives a share-code round trip ----
+  const back = Spec.correctSpec(Codec.decode(Codec.encode(r.spec)));
+  eq(back.custom.connections.map(c => c.joint), r.spec.custom.connections.map(c => c.joint),
+    'the wire codec round-trips the default joints');
+  const igBack = Structural.computeIntegrity(back, Parametric.build(back), {});
+  ok(igBack.summary.verdict !== 'fail', 'and the round-tripped piece still never fails');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

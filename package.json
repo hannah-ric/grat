@@ -18,6 +18,7 @@
     "test:porch": "node build.js && node test/porch.playwright.js",
     "test:gating": "node build.js && node test/gating.playwright.js",
     "test:nowebgl": "node build.js && node test/nowebgl.playwright.js",
+    "test:adjust": "node build.js && node test/adjust.playwright.js",
     "test:cloud": "node build.js && node test/cloud.playwright.js",
     "verify": "node --env-file-if-exists=/vercel/share/.env.project scripts/verify-production.js"
   },

@@ -10,7 +10,7 @@
 
 Every quoted string is verbatim from a probe or the rendered DOM. **The audit pass itself changed no source.**
 
-> **Status:** Phases 0–2 of §5 have since been implemented on this branch. The findings below are preserved exactly as written at audit time so the record stays honest; **[§7 Implementation status](#7-implementation-status)** is the delta — what is fixed, what changed shape on contact with the code, and what remains.
+> **Status:** Phases 0–3 of §5 and **V-01** have since been implemented on this branch. The findings below are preserved exactly as written at audit time so the record stays honest; **[§7 Implementation status](#7-implementation-status)** is the delta — what is fixed, what changed shape on contact with the code, and what remains.
 
 **Supersedes** the two working documents from this pass (live user-journey audit, coverage-gap audit), which are folded in here in full.
 **Relation to prior work:** [`AUDIT_REPORT.md`](../../AUDIT_REPORT.md) and [`docs/ui/capability-ux-audit.md`](../ui/capability-ux-audit.md) mapped this territory by reading the code. Findings marked **NEW** are not in either.
@@ -111,7 +111,7 @@ The largest cluster, and one architectural fact: **the only channel for "what ha
 |----|-----|---------|----------|
 | **X-01** | **P0** | **The possessive "my" blocks piece creation.** `ai.js:265` disqualifies a bare noun-phrase creation on `\b(it\|its\|this\|that\|my\|mine)\b`. *"a desk for my office"* → *"I didn't catch a change I can make there."*, while *"a desk for **the** office"* builds a desk. *"walnut nightstand for my bedroom"* returns `kind:"diff"` — it turns the **current table walnut** instead. Possessives are how people describe furniture. | **NEW** |
 | X-02 | P1 | **Skill level is a ceiling, never a floor.** `advanced` yields byte-identical joinery, steps, and word counts to `beginner` at template defaults (`pocket_screws / butt_screws / pocket_screws` at all three levels). `K.jointsForLevel` only gates. Declaring yourself advanced changes nothing. | **NEW** |
-| X-03 | P1 | **The entire non-chat control surface is five knobs.** The Adjust rail renders exactly Width, Depth, Height, Species (19 options), Finish. Joinery, skill level, shelf count, drawer count, and every thickness are chat-only — and chat is behind sign-in on a configured origin. | DOM query |
+| X-03 | P1 | **Joinery and every thickness are chat-only** — and chat is behind sign-in on a configured origin, so a signed-out user cannot change a joint at all. On the seed table the Adjust rail renders just five controls (Width, Depth, Height, Species, Finish). **Correction, made during implementation:** the original wording — "the entire non-chat control surface is five knobs" — was measured on a table and overstated the general case. Shelf count, drawer count, and skill level *are* already in the rail, but conditionally: shelf count only for bookshelf/cabinet (or an existing shelf), drawer count only for nightstand/cabinet. Five is the table's number, not the product's. The joinery and thickness half of the finding stands as written. | DOM query |
 | X-04 | P1 | **Two fallbacks, and the wrong one fires for real furniture.** Out-of-scope asks split between an honest capability list and a generic *"I didn't catch a change I can make there."* The generic one answers **"bed frame"**, **"floating wall shelf"**, **"something for my entryway"**. Mechanism (`ai.js:444`): `creationShaped` needs no possessive **and** (a creation verb **or** a leading article **or** a template word). | **NEW** |
 | X-05 | P1 | **The default custom piece ships a structural FAIL with zero fixes.** `defaultSpec('custom')` → `verdict: 'fail'` on joint adequacy (*"136 kg per joint vs 43 kg capacity"*), and the check's `fixes` array is **empty** — the one path that fails by default is the one with no one-tap remedy. | **NEW** |
 | X-06 | P2 | **"Workbench" is advertised but not delivered.** The capability list names it and offers *"A workbench"* as a chip; it maps to `table` with `topThickness: 25`, `legThickness: 70` at 910 mm. That is a table at bench height. | **NEW** |
@@ -307,9 +307,39 @@ Phases 0–2 are implemented on this branch. Every item below was verified by ru
 
 Two notes for the record: `test/handcalc.js` reports **16/16**, not the 14/14 stated in `CLAUDE.md` — verified identical at `HEAD`, so that is stale documentation, not a change. And `test/smoke.playwright.js` gained assertions for the Build gate; its other Build entries pass `{ acknowledged: true }`, since those blocks test checklists and the pager, not the safety gate.
 
+## 8. Phase 3 + V-01 status
+
+### Fixed
+
+| ID | What shipped |
+|----|--------------|
+| **V-01** | `ci.yml` gains a second `browser` job — the first job is byte-identical, keeping its zero-install property. It runs all six browser suites as a real gate, caching npm and the Chromium download keyed on the *resolved* Playwright version. It carries a **coverage guard**: a `test:*` script whose command names a `.playwright.js` file must either have its own step or be listed in `SKIPPED` with a reason, and the workflow may not name a script that no longer exists. Verified in both directions locally — it passes on the real tree and correctly fails on a deliberately unwired suite. `timeout-minutes: 25`, sized from measured local wall-clock. |
+| **X-01** | The creation guard now matches genuine **back-references** only: bare `it/its/mine`, or `this/that/these/those` + a piece noun, or `my` + a *piece* noun. A possessive attached to a room, person, or purpose no longer blocks a build. *"a desk for my office"* builds a desk; *"walnut nightstand for my bedroom"* builds a nightstand instead of turning the current table walnut. |
+| **X-02** | Raising the skill level now **offers** the joints it unlocks, as tappable chips. The level still only ever gates — code owns the joint, the chip proposes intent, exactly like chat. Lowering the level pushes nothing and still snaps illegal joints back (now with a correction note). |
+| **X-03** | The Adjust rail gains joinery slot selects — filtered to joints legal for that slot *and* that skill level — plus top / shelf / leg thickness. Slots are shown only for templates that actually build with them (derived by building each template with a distinct sentinel joint per slot). Bounds are read from the exported `Spec.DIM_RULES`, the same table `correctSpec` clamps against, and the two surfaces that previously hardcoded those numbers now read it too. |
+| **X-04** | One honest fallback. Out-of-scope asks get a specific reason and the nearest expressible option as a chip — *"Beds are outside what I build — nothing here is sized to carry a mattress"*, *"Chairs and stools are outside what I build; a bench is the seating I can make"*. The edit-phrased answer is reserved for genuine edit attempts. Every chip the capability list offers is fed back through the parser in the battery and must build. |
+| **X-05** | `defaultSpec('custom')` ships **`advisory`**, not `fail`. The two connections moved from end-grain butt screws to a knockdown bolt — the only beginner-legal joint that carries a BIFMA seating load through two connections, and the same remedy the engine's own fix offers. Joint adequacy now passes at 1.70× against the 1.5× gate. |
+| **X-06** | The parser stops promising a workbench. "Workbench" survives only as a *height* (*"a table — a work table at workbench height included"*), the `"A workbench"` chip is gone, and the ack states the boundary: *"a sturdy table, not a laminated bench top with a vise, which is past what I can build."* The 45 mm `topThickness` ceiling makes a real bench top inexpressible, so this is resolved as copy honesty rather than a geometry claim. |
+| **X-08** | A refinement that names the piece renames it: *"dining table 8 feet long"* → *"Adjusted width 96 in, renamed 'Dining table 8 feet long'."* |
+
+### Found while implementing — not in the original audit
+
+- **`test/cloud.playwright.js` had a failing assertion at `HEAD`**, and had for some time: it asserted every KV key starts with `bb:{uid}:`, but the signup-grant counter `bb:ipgrant:{hashed ip}` is *documented* as living outside every per-uid keyspace. Rewritten as an allowlist — any key that is neither per-uid nor a known shared root now fails, which is **stricter** than the prefix test it replaces, not weaker.
+- **The same suite leaked its server.** `chromium.launch()` and the boot timeout both sat outside the `try`, so `server.kill()` was skipped on those paths. Locally that is a stray process; in CI a leaked child holds the step's stdout pipe and the step hangs until its timeout. Cleanup now runs on every path.
+- **The golden corpus was coupled to a mutable product default.** `custom-bench-metric` was defined as `Spec.defaultSpec('custom')`, so repairing that default (X-05) would have silently rewritten a *frozen* fixture. The composition is now spelled out inline — screwed, end-grain, honestly failing, exactly as frozen. All six goldens remain byte-identical.
+- **`CLAUDE.md`'s "handcalc must stay 14/14" is stale** — the worksheet is 16/16, verified identical at `HEAD`.
+
+### Correction to this audit
+
+X-03 originally read *"the entire non-chat control surface is five knobs."* That was measured on a table. Shelf count, drawer count, and skill level were already in the rail, conditionally. The finding is corrected in place in §3.4; the joinery-and-thickness half stood.
+
+### Verification
+
+`unit 1256 · audit 659 · golden 6/6 · battery 20 cases/110 · server 225 · credits 112 · handcalc 16/16 · smoke 291 · porch 81 · gating 37 · nowebgl 15 · adjust 21 · cloud 11` — **0 failures**, `test/golden/` untouched. Smoke was run three times to check for flakiness now that CI gates on it.
+
 ### Still open
 
-Phases 3–5 are untouched: expressibility (X-01…X-08, including the possessive-blocks-creation bug and the level-that-does-nothing), depth (D-01…D-09), and the rest of verification (V-01 browser CI, V-03…V-11). The two new browser suites are runnable via `npm run test:gating` and `npm run test:nowebgl` but **CI still opens no browser** — V-01 remains the highest-value verification gap, and it now guards more than it did.
+Phases 4–5: plan depth (D-01…D-09 — frame templates at a third of casework density, custom step titles, the two `fine()` → `drill()` call sites) and the rest of verification (V-03 migration corpus, V-04 export structure, V-05 XSS lock, V-06 service worker, V-07 a11y tooling, V-08…V-11). X-07 (doors, stretchers, desk drawers, chairs, beds) remains a geometry workstream, not a copy fix.
 
 ---
 
