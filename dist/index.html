@@ -34,7 +34,10 @@
   --panel-3: #D8CDB6;    /* deepest inset / rule fills */
   --ink: #241813;        /* primary text — deep espresso-black */
   --ink-2: #593837;      /* espresso (brand) — secondary text + structure */
-  --muted: #877063;      /* warm brown-grey */
+  --muted: #735F54;      /* warm brown-grey — darkened from #877063 so it clears
+                            WCAG AA 4.5:1 on every surface it is used on; the old
+                            value was 3.5:1 on --panel-2 and 3.9:1 on --paper.
+                            Locked by test/a11y.playwright.js. */
   --muted-2: #6F5B4C;    /* contrast-safe muted — holds AA (≥4.5:1) at small sizes on paper/panel */
   --line: color-mix(in oklab, #593837 24%, transparent);   /* crisper hairline */
   --line-2: color-mix(in oklab, #593837 44%, transparent); /* strong divider */
@@ -214,7 +217,7 @@
 }
 :root[data-theme="light"] {
   --paper: #F1EBDD; --panel: #FBF8F1; --panel-2: #E7DFCD; --panel-3: #D8CDB6;
-  --ink: #241813; --ink-2: #593837; --muted: #877063; --muted-2: #6F5B4C;
+  --ink: #241813; --ink-2: #593837; --muted: #735F54; --muted-2: #6F5B4C;
   --line: color-mix(in oklab, #593837 24%, transparent); --line-2: color-mix(in oklab, #593837 44%, transparent);
   --structure: #4A2E2A; --structure-2: #35201D; --structure-ink: #F3EADF;
   --accent: #942911; --accent-ink: #FCF4EC; --accent-soft: #F2DED5; --accent-line: color-mix(in oklab, #942911 34%, transparent);
@@ -889,7 +892,7 @@ table.data tbody tr:hover { background: var(--panel-2); }
 .step-num::before { content: counter(step); }
 .step-item.active .step-num { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .step-body { flex: 1; min-width: 0; }
-.step-body h4 { margin: 2px 0 4px; font-size: var(--text-m); font-weight: 650; }
+.step-body :is(h3, h4) { margin: 2px 0 4px; font-size: var(--text-m); font-weight: 650; }
 .step-body p { margin: 0; color: var(--ink-2); font-size: var(--text-s); line-height: 1.5; max-width: var(--measure); }
 .step-body .why-joint { margin-top: var(--s2); }
 .step-play { flex: none; align-self: center; }
@@ -1154,7 +1157,10 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
   .menu { max-height: calc(100dvh - 76px - var(--sheet-peek)); }
   .panel { padding: var(--s3); }
   .topbar { flex-wrap: nowrap; gap: var(--s1); padding: 6px var(--s2); min-height: 48px; }
-  .brand-name { display: none; }
+  .brand-name {
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
   .brand-short { display: inline-block; }
   .brand-button { padding: 9px; margin: -9px -9px -9px -8px; }
   .design-name { width: auto; flex: 8 1 96px; min-width: 96px; }
@@ -1203,7 +1209,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 @media print {
   :root, :root[data-theme] {
     --paper: #fff; --panel: #fff; --panel-2: #E7DFCD; --panel-3: #D8CDB6;
-    --ink: #241813; --ink-2: #593837; --muted: #877063; --muted-2: #6F5B4C;
+    --ink: #241813; --ink-2: #593837; --muted: #735F54; --muted-2: #6F5B4C;
     --line: color-mix(in oklab, #593837 24%, transparent); --line-2: color-mix(in oklab, #593837 44%, transparent);
     --accent: #942911; --accent-soft: #F2DED5;
     --amber: #9D8420; --amber-ink: #5E4E0C;
@@ -1336,7 +1342,7 @@ code.inline { font-family: var(--mono); font-size: var(--text-s); background: va
 .check-card { border: 1px solid var(--line); border-radius: var(--radius-m); padding: var(--s3); margin-bottom: var(--s2); background: var(--paper); }
 .check-card.fail { border-color: color-mix(in srgb, var(--brick) 45%, transparent); background: var(--brick-soft); }
 .check-card .check-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
-.check-card h4 { margin: 0; font-size: var(--text-m); font-weight: 650; }
+.check-card :is(h3, h4) { margin: 0; font-size: var(--text-m); font-weight: 650; }
 .check-card .check-count { display: block; font: 500 var(--text-xs) var(--body); color: var(--muted); margin-top: 2px; }
 .check-card .check-value { font: 600 var(--text-s) var(--mono); font-variant-numeric: tabular-nums; margin-top: var(--s2); }
 .check-card .check-threshold { font: 500 var(--text-s) var(--mono); color: var(--muted); margin-top: 2px; }
@@ -1684,7 +1690,7 @@ body.bm-playback .playback-bar { display: none !important; }
 .counter { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .porch { display: block; }
 .porch[hidden] { display: none; }
-.panel h3.kicker {
+.panel :is(h2, h3).kicker {
   font: 600 var(--text-s)/1.35 var(--body);
   letter-spacing: var(--track-label); text-transform: uppercase;
   color: var(--muted-2); margin: 0; text-wrap: balance;
@@ -2281,7 +2287,9 @@ body.ph-open .porch::after { display: none; }
      (crawlable, JS-off readable); porch.js removes it pre-boot for
      returning/share-link/?app arrivals. Figures are injected at runtime from
      the live pipeline — a number hardcoded here is a founding-rule violation. -->
-<section id="porch" class="porch" data-beat="mast" aria-label="Blueprint Buddy — how it works">
+<!-- role="main": while the porch is up the studio's own <main> is off the
+     page, so without this the landing document has no main landmark at all. -->
+<section id="porch" class="porch" role="main" data-beat="mast" aria-label="Blueprint Buddy — how it works">
   <div class="ph-stage" aria-hidden="true"><canvas id="porchCanvas"></canvas></div>
   <div class="ph-flow">
 
@@ -2567,40 +2575,60 @@ body.ph-open .porch::after { display: none; }
     </div>
     <div class="topbar-group">
       <div class="menu-wrap">
-        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More</button>
-        <div id="moreMenu" class="menu" role="menu" inert>
+        <!-- A DISCLOSURE trigger, not a menu button: aria-expanded +
+             aria-controls, and deliberately NO aria-haspopup. aria-haspopup's
+             value names the ROLE of what opens, and its only legal values are
+             menu / listbox / tree / grid / dialog ("true" being defined as a
+             synonym for "menu"). What opens here is a role="group" — see
+             below — which no value can honestly describe, so promising any of
+             them would announce a widget that is not there. -->
+        <button id="moreBtn" class="btn" aria-expanded="false" aria-controls="moreMenu">More</button>
+        <!-- NOT role="menu": this is a disclosure panel. Alongside its buttons
+             it carries settings groups (units, precision, theme, render) whose
+             controls are not menu items, and it implements no roving-focus
+             menu keyboard contract. Claiming the role promised a widget that
+             does not exist and failed aria-required-children; plain buttons in
+             a labelled group are what it actually is. -->
+        <div id="moreMenu" class="menu" role="group" aria-label="More" inert>
           <!-- ≤560px folds the topbar redo away; touch has no Ctrl+Shift+Z,
                so redo stays reachable here (P1-1). -->
-          <button role="menuitem" id="menuRedoBtn" class="menu-redo-item"><span>Redo</span><span class="hint">last undone change</span></button>
-          <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
-          <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
-          <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
-          <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
-          <button role="menuitem" id="faqBtn"><span>FAQ</span><span class="hint">about the studio</span></button>
-          <button role="menuitem" id="porchReplayBtn"><span>See the intro again</span><span class="hint">landing tour</span></button>
+          <button id="menuRedoBtn" class="menu-redo-item"><span>Redo</span><span class="hint">last undone change</span></button>
+          <button id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
+          <button id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
+          <button id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
+          <button id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <button id="faqBtn"><span>FAQ</span><span class="hint">about the studio</span></button>
+          <button id="porchReplayBtn"><span>See the intro again</span><span class="hint">landing tour</span></button>
           <!-- ≤560px folds the topbar Share CTA away; this entry keeps share
                codes AND import reachable on phones (X-05). -->
-          <button role="menuitem" id="menuShareBtn" class="menu-share-item" aria-haspopup="dialog"><span>Share / Import</span><span class="hint">codes &amp; links</span></button>
-          <div class="menu-sep"></div>
-          <div class="menu-group" id="moreExportGroup">
-            <div class="menu-group-label">Export</div>
+          <button id="menuShareBtn" class="menu-share-item" aria-haspopup="dialog"><span>Share / Import</span><span class="hint">codes &amp; links</span></button>
+          <div class="menu-sep" aria-hidden="true"></div>
+          <div class="menu-group" id="moreExportGroup" role="group" aria-label="Export">
+            <div class="menu-group-label" aria-hidden="true">Export</div>
             <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
                  means nothing to a thumb (C-14). -->
             <!-- The hint is DERIVED (renderExportGate): it said "issued" to
                  everyone, including anonymous visitors with no account. -->
-            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint" id="exportSheetsHint"></span></button>
-            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
-            <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
-            <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
-            <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
-            <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
-            <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
-            <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
-            <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
+            <button data-export="sheets"><span>Blueprint sheet set</span><span class="hint" id="exportSheetsHint"></span></button>
+            <button data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
+            <button data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
+            <button data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+            <button data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+            <button data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
+            <button data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+            <button data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
+            <button data-export="help"><span>Import &amp; integration help</span></button>
           </div>
-          <div class="menu-sep" id="accountSep" hidden></div>
-          <div id="accountArea" hidden></div>
-          <div class="menu-sep"></div>
+          <div class="menu-sep" id="accountSep" aria-hidden="true" hidden></div>
+          <div id="accountArea" role="group" aria-label="Account" hidden></div>
+          <div class="menu-sep" aria-hidden="true"></div>
+          <!-- The rows below are layout, not structure: each one is visually
+               labelled by its .menu-row-label and each control inside already
+               carries its own role="group" with a real name ("Display units",
+               "Color theme", "Render quality"). They briefly wore role="group"
+               to satisfy the enclosing menu's required-children rule; that menu
+               is a group now, so the wrapper roles are gone rather than left
+               announcing a name none of them earned. -->
           <div class="menu-row">
             <span class="menu-row-label">Units</span>
             <div class="seg units-seg" role="group" aria-label="Display units">
@@ -2776,7 +2804,10 @@ body.ph-open .porch::after { display: none; }
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">Fit</button>
             <span class="vt-sep" aria-hidden="true"></span>
             <div class="menu-wrap">
-              <button class="btn small ghost" id="viewBtn" aria-haspopup="true" aria-expanded="false">View</button>
+              <!-- Disclosure, same as #moreBtn: what opens is a role="group"
+                   of camera/explode/render controls, which aria-haspopup has
+                   no legal value for. aria-expanded + aria-controls instead. -->
+              <button class="btn small ghost" id="viewBtn" aria-expanded="false" aria-controls="viewMenu">View</button>
               <div class="menu view-menu" id="viewMenu" role="group" aria-label="View controls" inert>
                 <div class="menu-row">
                   <span class="menu-row-label">Camera</span>
@@ -2801,7 +2832,7 @@ body.ph-open .porch::after { display: none; }
                     <button id="vpRenderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
                   </div>
                 </div>
-                <div class="menu-sep"></div>
+                <div class="menu-sep" aria-hidden="true"></div>
                 <button class="menu-help" id="vpHelpBtn" aria-haspopup="dialog" aria-expanded="false">Keyboard &amp; pointer help</button>
               </div>
             </div>
@@ -2865,7 +2896,7 @@ body.ph-open .porch::after { display: none; }
   </main>
 
   <div class="drawer-backdrop" id="historyBackdrop" hidden></div>
-  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyTitle" aria-hidden="true" inert>
+  <div class="drawer-panel" id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyTitle" aria-hidden="true" inert>
     <div class="drawer-head">
       <h2 id="historyTitle">Revisions</h2>
       <button class="btn small" id="compareBtn" disabled>Compare</button>
@@ -2873,7 +2904,7 @@ body.ph-open .porch::after { display: none; }
     </div>
     <div class="drawer-body" id="historyList"></div>
     <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
-  </aside>
+  </div>
 
   <div class="scrim" inert id="galleryScrim" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
     <div class="modal">
@@ -5066,10 +5097,12 @@ body.ph-open .porch::after { display: none; }
   }
   function clone(o) { return o === undefined ? undefined : JSON.parse(JSON.stringify(o)); }
   function isObj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+  const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
   function deepMerge(base, patch) {
     const out = clone(base) || {};
     (function walk(dst, src) {
       for (const k of Object.keys(src)) {
+        if (UNSAFE_KEYS.includes(k)) continue;
         const v = src[k];
         if (v === null) { dst[k] = null; continue; }
         if (isObj(v)) {
@@ -7807,8 +7840,7 @@ body.ph-open .porch::after { display: none; }
     const memberT = minDim(a);            // inserted / attached member
     const mateT = minDim(b);              // the part it lands in
     const type = joint.type;
-    const out = { joint, type, a, b, runMM, fasteners: [], text: '' };
-    const fine = mm => U().fmtSmall(mm);
+    const out = { joint, type, effective: type, hardware: false, a, b, runMM, fasteners: [], text: '' };
     const len = mm => U().fmtLength(mm);
     const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     const isTopAttach = (a.role === 'top' || a.role === 'seat') &&
@@ -7816,6 +7848,8 @@ body.ph-open .porch::after { display: none; }
       ['apron', 'side', 'rail'].includes(b.role) &&
       contactPaths(a, b).axis === 1;
     if (isTopAttach) {
+      out.effective = 'figure8';
+      out.hardware = true;
       const pos = positions(runMM, Math.max(2, Math.round(runMM / 300)), 300);
       const c = CATALOG.figure8;
       for (const p of pos) out.fasteners.push({ kind: 'figure8', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
@@ -7831,9 +7865,9 @@ body.ph-open .porch::after { display: none; }
         for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, clearanceMM: sp.clearanceMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         const spacing = pos.length === 1 ? 'centered on the run'
           : `first ${len(RULES.edgeMM)} from each end${pos.length > 2 ? `, then every ${len(Math.round((runMM - 2 * RULES.edgeMM) / (pos.length - 1)))}` : ''}`;
-        const where = sp.housed ? `centered ${fine(mateT / 2)} from the joint line`
+        const where = sp.housed ? `centered ${len(mateT / 2)} from the joint line`
           : sp.thru === a ? `on the ${a.name.toLowerCase()}'s centerline`
-            : `centered ${fine(minDim(a) / 2)} from the joint line`;
+            : `centered ${len(minDim(a) / 2)} from the joint line`;
         const draw = sp.counterboreMM
           ? ` Counterbore ${len(10)} Ø × ${len(sp.counterboreMM)} deep first, ${drill(sp.clearanceMM)} clearance through the rest of the ${sp.thru.name.toLowerCase()} — the thread bites ${len(sp.biteMM)} into the ${sp.into.name.toLowerCase()}.`
           : ` Drill ${drill(sp.clearanceMM)} clearance through the ${sp.thru.name.toLowerCase()} and countersink so the head seats flush — the screw must spin free in the near member to draw the joint tight.`;
@@ -8015,18 +8049,73 @@ body.ph-open .porch::after { display: none; }
       text: `Set ${clamps} bar clamps at ~${U().fmtLength(225)} centers, alternating over and under, cauls across the ends — check flat with a straightedge before the glue tacks.`
     };
   }
-  function stepNote(spec, model, joints) {
-    if (!joints || !joints.length) return '';
-    const seen = new Set();
-    const bits = [];
-    for (const j of joints) {
-      if (seen.has(j.type)) continue;
-      seen.add(j.type);
+  function frameClampSchedule(rails) {
+    const clamps = Math.max(1, Math.round(rails) || 1);
+    return {
+      clamps,
+      text: `Set ${clamps} bar clamp${clamps === 1 ? '' : 's'} — one in line with each apron, so the pressure runs through the shoulders instead of bending the legs — with a caul under every jaw, light first, then home.`
+    };
+  }
+  function fasteningLabel(key) {
+    if (K.JOINERY[key]) return K.JOINERY[key].label;
+    const hw = (K.FASTENERS.hardware || []).find(h => h.key === key);
+    if (!hw) return key;
+    const label = U().fmtTemplate(hw.label);
+    return /[s)]$/.test(label) ? label : label + 's';
+  }
+  function stepJoints(spec, model, joints) {
+    const out = [];
+    const byKey = new Map();
+    const nameOf = id => {
+      const p = model.parts.find(x => x.id === id);
+      return p ? p.name : id;
+    };
+    for (const j of (joints || [])) {
       const lay = layoutForJoint(spec, model, j);
-      if (lay && lay.text) bits.push(lay.text);
-      if (bits.length >= 2) break; // steps stay readable
+      if (!lay || !lay.text) continue;
+      const effective = lay.effective || lay.type;
+      const key = effective + '|' + lay.text;
+      const pair = nameOf(j.a) + '|' + nameOf(j.b);
+      if (byKey.has(key)) {
+        const prev = byKey.get(key);
+        prev.count++;
+        if (prev._pair !== pair) prev.samePair = false;
+        continue;
+      }
+      const d = {
+        type: j.type,
+        effective,
+        hardware: !!lay.hardware,
+        label: fasteningLabel(effective),
+        a: j.a, b: j.b,
+        text: lay.text,
+        count: 1, samePair: true, _pair: pair
+      };
+      byKey.set(key, d);
+      out.push(d);
     }
-    return bits.join(' ');
+    for (const d of out) delete d._pair;
+    return out;
+  }
+  function stepNote(spec, model, joints) {
+    const infos = stepJoints(spec, model, joints);
+    if (!infos.length) return '';
+    const nameOf = id => {
+      const p = model.parts.find(x => x.id === id);
+      return p ? p.name.toLowerCase() : id;
+    };
+    if (infos.length === 1) {
+      const d = infos[0];
+      if (d.count < 2) return d.text;
+      const how = d.count === 2 ? 'both' : 'all ' + d.count;
+      return d.text + (d.samePair
+        ? ` The same setout at ${how} ${nameOf(d.a)}-to-${nameOf(d.b)} joints.`
+        : ` The same setout at ${how} of them in this step.`);
+    }
+    const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
+    return infos
+      .map(d => `${cap1(nameOf(d.a))} to ${nameOf(d.b)}${d.count > 1 ? ` (× ${d.count})` : ''}: ${d.text}`)
+      .join(' ');
   }
   function detailRows(spec, model) {
     const rows = new Map();
@@ -8058,7 +8147,10 @@ body.ph-open .porch::after { display: none; }
     }
     return [...totals.values()];
   }
-  BB.Fasteners = { RULES, CHISELS, DOWEL_DIAMETERS, layoutForJoint, stepNote, detailRows, countFor, jointRun, positions, glueupSchedule };
+  BB.Fasteners = {
+    RULES, CHISELS, DOWEL_DIAMETERS, layoutForJoint, stepJoints, stepNote, fasteningLabel,
+    detailRows, countFor, jointRun, positions, glueupSchedule, frameClampSchedule
+  };
 })();</script>
 <script>var BB = globalThis.BB = globalThis.BB || {};
 (function () {
@@ -8507,7 +8599,7 @@ body.ph-open .porch::after { display: none; }
         }
       }
     }
-    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const len = mm => U().fmtLength(mm);
     const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     const hp = (key, fallback) => K.hardwarePrice(opts.prices, key, fallback);
     const engineCounts = BB.Fasteners ? BB.Fasteners.countFor(spec, model) : [];
@@ -8619,7 +8711,7 @@ body.ph-open .porch::after { display: none; }
           gearIds, { drawer: d.index }));
       } else if (d.runner === 'undermount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the undermount slides`,
-          `Screw the ${len(d.slideLen)} undermount slides to the case floor of the opening, dead parallel and flush to the front edge. The box was built to the slide — INSIDE width = opening − ${len(42)} (the locking devices register on the box interior), depth exactly ${len(d.slideLen)}, bottom recessed ${fine(12.7)} — so notch the box back for the hooks and press the locking clips on under the front corners.`,
+          `Screw the ${len(d.slideLen)} undermount slides to the case floor of the opening, dead parallel and flush to the front edge. The box was built to the slide — INSIDE width = opening − ${len(42)} (the locking devices register on the box interior), depth exactly ${len(d.slideLen)}, bottom recessed ${len(12.7)} — so notch the box back for the hooks and press the locking clips on under the front corners.`,
           gearIds, { drawer: d.index }));
       } else {
         const sp = K.WOOD_SPECIES[spec.wood.species];
@@ -8633,7 +8725,7 @@ body.ph-open .porch::after { display: none; }
       const frontScrews = `screw it from inside the box with #8 × ${len(25)} screws — ${drill(4.5)} clearance holes through the box front, pilot ${drill(2.8)} into the false front, so it draws up tight`;
       out.push(step(`dr${n}_front`, `Drawer ${n}: attach the front`,
         d.frontStyle === 'inset'
-          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then ${frontScrews}.`
+          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${len(2)} reveal all around, then ${frontScrews}.`
           : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and ${frontScrews}.`,
         ids('front'), { drawer: d.index }));
       const pull = d.pull || { styleKey: 'bar_pull', style: 'bar_pull', count: 1, ctcMM: 0 };
@@ -8644,15 +8736,15 @@ body.ph-open .porch::after { display: none; }
         ? ` (The front is too narrow for ${pReq.label.toLowerCase()}s — a ${pRow.label.toLowerCase()} is fitted instead.)` : '';
       let pullText;
       if (pEff === 'none_touch') {
-        pullText = `No pull on this front: fit the magnetic touch latch behind it, striker on the box — press to pop open. It needs ${fine(2)} to ${fine(3)} of travel in the reveal.`;
+        pullText = `No pull on this front: fit the magnetic touch latch behind it, striker on the box — press to pop open. It needs ${len(2)} to ${len(3)} of travel in the reveal.`;
       } else if (pull.holes === 0) {
         pullText = pEff === 'edge_pull'
           ? `Screw the edge pull to the front’s TOP EDGE, centered — pre-drill every hole, this is end grain and it splits without pilots.${pSub}`
           : `Rout the flush-pull mortise with the maker’s template, centered on the front — freehand walls show through the finish forever.${pSub}`;
       } else if (pull.ctcMM) {
-        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). Bore through BOTH the false front and the box front behind it: the M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} screws drive from inside the box and cross both.${pSub}`;
+        pullText = `Bore ${pull.holes} × ${drill(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). Bore through BOTH the false front and the box front behind it: the M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} screws drive from inside the box and cross both.${pSub}`;
       } else {
-        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : `, M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} from inside — through the box front too`}. Every front in the stack shares one centerline.${pSub}`;
+        pullText = `Bore one ${drill((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : `, M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} from inside — through the box front too`}. Every front in the stack shares one centerline.${pSub}`;
       }
       out.push(step(`dr${n}_pull`, `Drawer ${n}: ${pEff === 'none_touch' ? 'fit the touch latch' : 'add the pull'}`,
         pullText, ids('pull'), { drawer: d.index }));
@@ -8723,6 +8815,60 @@ body.ph-open .porch::after { display: none; }
   }
   const isKnockdown = joint => joint === 'kd_bolt';
   const KD_STEP_TEXT = 'Bolt together — hand-tight, then snug once square.';
+  function frameSteps(spec, model, out, opts, ctx) {
+    const frP = ctx.frP, ids = ctx.ids;
+    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const st = spec.structure;
+    const kd = isKnockdown(spec.joinery.frame);
+    const legIds = ids('leg_1', 'leg_2', 'leg_3', 'leg_4');
+    const shortIds = ids('apron_short_1', 'apron_short_2');
+    const longIds = ids('apron_long_1', 'apron_long_2');
+    const roleOf = id => { const p = model.parts.find(x => x.id === id); return p ? p.role : ''; };
+    const nJoints = model.joints.filter(j => roleOf(j.b) === 'leg').length;
+    const rec = K.recommendGlue(spec);
+    const glue = rec && rec.glue;
+    const clamps = n => (BB.Fasteners && BB.Fasteners.frameClampSchedule
+      ? BB.Fasteners.frameClampSchedule(n).text
+      : 'Clamp in line with each apron, with a caul under every jaw.');
+    const nClamps = n => (BB.Fasteners && BB.Fasteners.frameClampSchedule
+      ? BB.Fasteners.frameClampSchedule(n).clamps : n);
+    out.push(step('layout', 'Mark the legs before you cut a joint',
+      `Stand the ${legIds.length} legs in the positions they will finish in and mark the tops with a cabinetmaker's triangle — best faces outward, sapwood and wild grain turned where nobody looks. All ${nJoints} frame joints land on a leg, so lay them out from ONE reference face and edge per leg: the aprons sit ${st.apronInset > 0 ? `${len(st.apronInset)} back from the outside leg face` : 'flush with the outside leg face'}, their top edges level with the leg tops and ${len(st.apronHeight)} of shoulder below that. Cut all ${nJoints} joints off that single setup — a layout error here is not one mistake, it is the same mistake ${nJoints} times over, and nothing downstream pulls a mis-marked base back into square. Pencil each part's cut-list name onto a face that finishes hidden.`,
+      legIds));
+    out.push(step('s1', 'Build the two end frames',
+      `Join a short apron between each leg pair with ${frP}. ${kd ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'} ` +
+      (kd
+        ? `Two mirror-image assemblies — build them against each other, not just against a square, or the base finishes wider at one end than the other. Bring the bolts up in stages, alternating ends, and re-measure the diagonals after every turn: a bolted frame walks out of square if you take one side home first.`
+        : `Two mirror-image assemblies, and the base goes together in two stages for a reason worth knowing — ${glue.label} gives ${glue.openMin} minutes of open time and the whole base is ${nJoints} joints, more than anyone spreads, seats, and clamps before the glue starts to grab. ${clamps(shortIds.length)} Measure both diagonals across each frame and make them equal, then sight along the clamp bars for wind — on a bench you have checked flat, not on the shop floor, because a frame with a twist in it will rock the finished piece however true the top is. ${glue.clampMin} minutes in the clamps.`),
+      legIds.concat(shortIds)));
+    out.push(step('s2', 'Join the frames',
+      `Connect the end frames with the long aprons using ${frP}. ${kd ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking. ` +
+      (kd
+        ? `Stand both end frames up and let the long aprons find their bores before anything is driven home — a knockdown base is only as square as the last bolt you tightened. Check the diagonals across the leg tops corner to corner: equal, or a shoulder is not seated. Then sight across the four leg tops from one end; they have to lie in one plane, because the top telegraphs any twist you leave in the base.`
+        : `${nClamps(longIds.length)} bar clamps again, one in line with each long apron. Check the diagonals across the top of the base corner to corner — equal, or it is a parallelogram, and flattening the top will never hide that. Then sight across the four leg tops from one end: they have to lie in one plane, because the top telegraphs any twist you leave in the base. ${glue.clampMin} minutes in the clamps, and don't move it while it sets.`),
+      longIds));
+    const standCheck = ` Then set the base on the flattest floor you have and press each corner in turn. A base that rocks gets ONE foot trimmed — take the shaving off whichever foot is proud, with the base loaded on the opposite corner. Never shim it.`;
+    out.push(step('base_check', kd ? 'Snug the base and stand it up' : 'Out of the clamps, then let it cure',
+      (kd
+        ? `Nothing in this base is glued, which is the entire point of a knockdown frame — so it is finished when the bolts are. Go round once more with the key, and plan to go round again after the first heating season: a knockdown frame nobody re-snugs will rack.`
+        : `The clamps come off at ${glue.clampMin} minutes, but ${glue.label} is not at full strength for ${glue.cureHrs} hours — until then don't stand on the base, plane it, or hang a top off it. Pare the squeeze-out while it is still rubbery: a chisel or a card scraper lifts it away clean, where a wet rag drives it into the pores and it ghosts through the finish forever.`) + standCheck,
+      legIds.concat(shortIds, longIds)));
+    const top = model.parts.find(p => p.id === 'top_1');
+    const topName = top ? top.name.toLowerCase() : 'top';
+    const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    const topKey = top && K.WOOD_SPECIES[top.material] ? top.material : spec.wood.species;
+    const topSp = K.WOOD_SPECIES[topKey];
+    const crossW = top ? Math.min(top.size.w, top.size.d) : 0;
+    const moves = !!(topSp && !topSp.sheet && crossW > 0);
+    const mv = moves ? K.movementMM(crossW, topKey, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    out.push(step('s3', `Attach the ${topName}`,
+      `Center the ${topName} and fasten it from below with figure-8s or buttons — never glue a solid ${topName} to its base. ` +
+      (moves
+        ? `This one travels about ${fine(mv)} across its ${len(crossW)} width between a dry winter and a damp summer (${topSp.label.toLowerCase()}, ${climate} indoor swing) and effectively nothing along its length, so every fastener has to hold it DOWN while letting it slide ACROSS the grain: set each figure-8 with its long axis running across the ${topName}'s grain so it can swivel, or cut the buttons' tongues to ride in a kerf running the same way. `
+        : `Hold it down without pinning it: a ${topName} that cannot move is one that splits. `) +
+      `Snug, not crushed — a fastener torqued solid is a glued top with extra steps, and the crack turns up two winters later. Check the overhang is even on all four sides before you drill anything.`,
+      ['top_1']));
+  }
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -8771,15 +8917,27 @@ body.ph-open .porch::after { display: none; }
       out.push(step('mill', 'Mill and label every part',
         'Cut all parts to the dimensions in the cut list (angles included), then label each one in pencil.',
         model.parts.map(p => p.id)));
+      const glueRec = K.recommendGlue(spec);
+      const gl = glueRec && glueRec.glue;
       conns.forEach((c, i) => {
         const a = byId.get(c.a), b = byId.get(c.b);
         if (!a || !b) return;
         const j = K.JOINERY[c.joint];
         const ang = BB.Geo.cutAngles(a.rot) || BB.Geo.cutAngles(b.rot);
-        out.push(step('c' + (i + 1), `Join ${a.name.toLowerCase()} to ${b.name.toLowerCase()}`,
-          `Fix ${a.name.toLowerCase()} (${c.a}) to ${b.name.toLowerCase()} (${c.b}) with ${j ? (j.plural || j.label.toLowerCase()) : c.joint}.` +
+        const an = a.name.toLowerCase(), bn = b.name.toLowerCase();
+        const kd = isKnockdown(c.joint);
+        const first = i === 0, last = i === conns.length - 1;
+        const openingLine = first
+          ? ` And before you fix anything: stand the WHOLE piece up loose, every connection dry — a novel composition has no proven template behind it, so that trial run is the only evidence the parts meet where the drawing says they do.`
+          : ` Connection ${i + 1} of ${conns.length}, working up from the ground so each joint rests on one already made.`;
+        const closingLine = kd
+          ? ` Work round the bolts in sequence instead of taking one home first — a frame pulled up on one side drags itself out of square${last ? ', and with the last one snug the piece should stand without a rock' : ''}.`
+          : ` Clamp ACROSS the joint line so the pressure closes the faces, with a caul under each jaw to keep the marks off a show face, and check ${an} square to ${bn} in both planes before the glue tacks — ${gl ? `${gl.label} gives you ${gl.openMin} minutes` : 'you have minutes, not hours'}. ${gl ? `Leave it clamped ${gl.clampMin} minutes, and keep load off the piece for ${gl.cureHrs} hours.` : ''}${last ? ' This closes the piece: stand it and press each corner while the glue is still green — it should not rock.' : ''}`;
+        out.push(step('c' + (i + 1), `Join ${an} (${c.a}) to ${bn} (${c.b})`,
+          `Fix ${an} (${c.a}) to ${bn} (${c.b}) with ${j ? (j.plural || j.label.toLowerCase()) : c.joint}.` +
           (ang ? ` Angled joint: ${BB.Geo.angleText(ang)} — cut per the cut list before assembly.` : '') +
-          (isKnockdown(c.joint) ? ' ' + KD_STEP_TEXT : ' Dry-fit before glue.'),
+          (kd ? ' ' + KD_STEP_TEXT : ' Dry-fit before glue.') +
+          openingLine + closingLine,
           [c.a, c.b]));
       });
     } else if (t === 'bookshelf') {
@@ -8808,9 +8966,7 @@ body.ph-open .porch::after { display: none; }
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
-      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
-      out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. ${isKnockdown(spec.joinery.frame) ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
-      out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
+      frameSteps(spec, model, out, opts, { frP, ids });
     }
     if (integrity && integrity.antiTip) {
       out.push(step('antitip', 'Anchor to the wall (required)',
@@ -8822,16 +8978,22 @@ body.ph-open .porch::after { display: none; }
     finishingStep(spec, out);
     const seenJoints = new Set();
     const jKey = j => `${j.type}|${j.a}|${j.b}`;
+    const MAKES_NO_JOINT = /^(mill|sand|finish|safety|antitip)/;
+    const claimed = new Map();
     for (const s of out) {
+      if (MAKES_NO_JOINT.test(s.id)) { s.joints = []; continue; }
       const ids = new Set(s.partIds || []);
       const mine = model.joints.filter(j => ids.has(j.a) && !seenJoints.has(jKey(j)));
       for (const j of mine) seenJoints.add(jKey(j));
+      claimed.set(s.id, mine);
       s.joints = mine.slice(0, 8);
     }
-    if (BB.Fasteners) {
+    if (BB.Fasteners && BB.Fasteners.stepJoints) {
       for (const s of out) {
-        if (!s.joints || !s.joints.length || /^(mill|sand|finish|safety|antitip)/.test(s.id)) continue;
-        const note = BB.Fasteners.stepNote(spec, model, s.joints);
+        const mine = claimed.get(s.id);
+        if (!mine || !mine.length) continue;
+        s.jointInfo = BB.Fasteners.stepJoints(spec, model, mine);
+        const note = BB.Fasteners.stepNote(spec, model, mine);
         if (note) s.text += ' — ' + note;
       }
     }
@@ -9413,7 +9575,12 @@ ${nodes}
 `;
   }
   function toRuby(spec, model) {
-    const rb = s => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const rb = s => String(s)
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/#/g, '\\#')
+      .replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t')
+      .replace(/[\u0000-\u001f\u007f]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
     const name = rb(spec.meta.name);
     const MM_IN = 25.4;
     const defs = new Map(); // defKey -> {var, label, w,d,h, role, color, cyl, instances}
@@ -14987,7 +15154,7 @@ BlueprintBuddyImport.build
     fx = fx || {};
     const wrap = el('div', 'ledger');
     const head = el('div', 'ledger-head');
-    head.append(el('h3', 'kicker', esc(title)));
+    head.append(el('h2', 'kicker', esc(title)));
     if (sums && sums.length) {
       const strip = el('span', 'ledger-sum counter');
       sums.forEach((s, i) => {
@@ -15399,35 +15566,29 @@ BlueprintBuddyImport.build
         ${balanceChip}`;
       area.append(row);
       const billingBtn = el('button', '', '<span>Buy credits</span><span class="hint">one credit = one blueprint</span>');
-      billingBtn.setAttribute('role', 'menuitem');
       billingBtn.onclick = () => BB.Billing.open();
       area.append(billingBtn);
       if (a.billing && a.billing.plan === 'pro') {
         const manageBtn = el('button', '', '<span>Manage subscription</span><span class="hint">legacy Pro plan</span>');
-        manageBtn.setAttribute('role', 'menuitem');
         manageBtn.onclick = () => BB.Billing.manage();
         area.append(manageBtn);
       }
       const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
-      out.setAttribute('role', 'menuitem');
       out.onclick = () => { window.location.href = Store.logoutUrl; };
       area.append(out);
     } else {
       for (const p of a.providers) {
         const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">free credit + sync</span>`);
-        b.setAttribute('role', 'menuitem');
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
       }
       if (a.passwordAuth) {
         const em = el('button', '', '<span>Sign in with email</span><span class="hint">free credit + sync</span>');
-        em.setAttribute('role', 'menuitem');
         em.onclick = () => { location.hash = '#signin'; };
         area.append(em);
       }
       if (configured) {
         const plans = el('button', '', '<span>Credits &amp; pricing</span><span class="hint">one credit = one blueprint</span>');
-        plans.setAttribute('role', 'menuitem');
         plans.onclick = () => BB.Billing.open();
         area.append(plans);
       }
@@ -15526,8 +15687,14 @@ BlueprintBuddyImport.build
       if (box) syncScrollableTable(box);
     }
   });
+  function scrollBox() {
+    const box = el('div', 'table-scroll');
+    box.tabIndex = 0;
+    return box;
+  }
   function wireScrollableTables(root) {
     root.querySelectorAll('.table-scroll').forEach(box => {
+      if (!box.hasAttribute('tabindex')) box.tabIndex = 0;
       syncScrollableTable(box);
       if (!box.dataset.scrollObserved) {
         box.dataset.scrollObserved = '1';
@@ -15569,7 +15736,7 @@ BlueprintBuddyImport.build
       wrap.append(el('h2', '', 'Cut list — in your blueprint'));
       const partCount = state.cut.reduce((s, r) => s + r.qty, 0);
       wrap.append(el('p', 'txt-muted', `${state.cut.length} distinct parts, ${partCount} pieces total, joinery allowances included. Exact dimensions are issued with the blueprint.`));
-      const box = el('div', 'table-scroll');
+      const box = scrollBox();
       const rows = state.cut.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.qty}</td><td class="num preview-locked" aria-label="dimension included in the blueprint">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td></tr>`).join('');
       box.innerHTML = `<table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th></tr></thead><tbody>${rows}</tbody></table>`;
       wrap.append(box);
@@ -15681,7 +15848,7 @@ BlueprintBuddyImport.build
       b.onclick = () => selectTab(c.go);
       grid.append(b);
     }
-    root.append(el('h3', '', 'Overview'));
+    root.append(el('h2', '', 'Overview'));
     const checks = state.integrity.checks;
     const plate = el('div', 'spec-plate overview-verdict');
     plate.innerHTML = `<span class="kicker">Structural verdict</span>
@@ -15838,7 +16005,7 @@ BlueprintBuddyImport.build
       if (cascade) { Motion.auto(list); list.dataset.cascaded = '1'; }
       return;
     }
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     const rows = state.cut.map((r, i) => `<tr data-motion="cascade">
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
@@ -15882,7 +16049,7 @@ BlueprintBuddyImport.build
       err.style.position = 'static';
       root.append(err);
     }
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     const shopRows = plan.shopping.map(s => `<tr data-motion="cascade"><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
     scroll.innerHTML = `<table class="data"><thead><tr><th scope="col">Buy</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Cost</th></tr></thead><tbody data-motion-group>${shopRows || '<tr><td colspan="4" class="txt-muted">Nothing to buy — no parts.</td></tr>'}</tbody></table>`;
     root.append(scroll);
@@ -15992,7 +16159,7 @@ BlueprintBuddyImport.build
     compareBtn.onclick = openSpecies;
     root.append(compareBtn);
     root.append(el('div', '', '&nbsp;'));
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     const rows = state.bomData.items.map(i => `<tr data-motion="cascade">
       <td><span class="kind-tag">${esc(i.kind)}</span></td>
       <td class="mv">${esc(i.label)}</td><td class="num">${i.qty}</td>
@@ -16037,6 +16204,10 @@ BlueprintBuddyImport.build
     $('jointExplode').value = 0;
     $('jointCutaway').setAttribute('aria-pressed', 'false');
   }
+  function jointLabel(type) {
+    const j = K.JOINERY[type];
+    return j ? j.label.toLowerCase() : String(type || '').replace(/_/g, ' ');
+  }
   function whyJointHTML(type) {
     const j = K.JOINERY[type];
     if (!j) return '';
@@ -16075,17 +16246,26 @@ BlueprintBuddyImport.build
       item.dataset.motion = 'cascade';
       const num = el('div', 'step-num');
       const body = el('div', 'step-body');
-      const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
-      body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
-        (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
-      if (jointType) {
-        const j0 = s.joints[0];
-        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) + '<span>Inspect joint in 3D</span>');
+      const info = (s.jointInfo && s.jointInfo.length) ? s.jointInfo
+        : (s.joints || []).map(j => ({ type: j.type, effective: j.type, hardware: false, a: j.a, b: j.b }));
+      const seen = new Set();
+      const distinct = info.filter(d => {
+        const k = d.effective || d.type;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      body.innerHTML = `<h3>${esc(s.title)}</h3><p>${esc(s.text)}</p>` +
+        distinct.filter(d => !d.hardware).map(d => `<div>${whyJointHTML(d.type)}</div>`).join('');
+      for (const d of distinct) {
+        if (d.hardware) continue; // hardware is described in the step, not in the joinery library
+        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) +
+          `<span>Inspect ${distinct.filter(x => !x.hardware).length > 1 ? esc(jointLabel(d.type)) + ' ' : ''}joint in 3D</span>`);
         inspect.onclick = e => {
           e.stopPropagation();
-          openJointInspector(jointType,
-            state.model.parts.find(p => p.id === j0.a),
-            state.model.parts.find(p => p.id === j0.b));
+          openJointInspector(d.type,
+            state.model.parts.find(p => p.id === d.a),
+            state.model.parts.find(p => p.id === d.b));
         };
         body.append(inspect);
       }
@@ -16111,7 +16291,7 @@ BlueprintBuddyImport.build
     const integ = state.integrity;
     const overall = integ.summary.verdict; // engine rollup (audit M-18): fail > anchor > advisory > pass
     const beginner = state.spec.meta.level === 'beginner';
-    root.append(el('h3', '', 'Safety'));
+    root.append(el('h2', '', 'Safety'));
     const summary = el('div', 'integrity-summary');
     summary.innerHTML = `<span class="stamp ${overall}">${overall === 'anchor' ? 'anchor required' : overall}</span>
       <span class="integrity-plain">${overall === 'pass'
@@ -16175,7 +16355,7 @@ BlueprintBuddyImport.build
   function groupChecks(checks) {
     const out = [], byKey = new Map();
     for (const c of checks) {
-      const key = [c.status, c.value, c.threshold, c.explain, (c.fixes || []).map(f => f.label).join('|')].join(' ');
+      const key = [c.status, c.value, c.threshold, c.explain, (c.fixes || []).map(f => f.label).join('|')].join('\u0000');
       const hit = byKey.get(key);
       if (hit) { hit.count++; hit.subjects.push(c.title); continue; }
       const entry = { check: c, count: 1, subjects: [c.title] };
@@ -16211,7 +16391,7 @@ BlueprintBuddyImport.build
       ? c.explain
       : `${subject} would not safely carry the load this design is checked against.`
       + (c.fixes && c.fixes.length ? ' Any fix below solves it, or ask the chat for a different approach.' : ' Ask the chat for a different approach.');
-    card.innerHTML = `<div class="check-head"><h4>${esc(title)}${count > 1 ? `<span class="check-count">${count} parts, same result</span>` : ''}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
+    card.innerHTML = `<div class="check-head"><h3>${esc(title)}${count > 1 ? `<span class="check-count">${count} parts, same result</span>` : ''}</h3><span class="stamp ${c.status}">${c.status}</span></div>` +
       `<div class="check-value">${esc(c.value)}</div>` +
       (full ? `<div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
       `<p class="check-explain">${full ? esc(c.explain) : esc(plainLine)}</p>` +
@@ -16272,7 +16452,7 @@ BlueprintBuddyImport.build
   }
   function renderReference(root) {
     syncReferenceTabForQuery();
-    root.append(el('h3', '', 'Shop reference'));
+    root.append(el('h2', '', 'Shop reference'));
     const search = el('input', 'ref-search');
     search.type = 'search';
     search.placeholder = 'Search species, joints, screws, finishes…';
@@ -16336,7 +16516,7 @@ BlueprintBuddyImport.build
     body.textContent = '';
     const q = state.refQuery.trim().toLowerCase();
     const hit = (...xs) => referenceHit(q, ...xs);
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     let rows = '', head = '';
     if (state.refTab === 'wood') {
       head = '<th>Species</th><th class="num">Janka</th><th class="num">MOE GPa</th><th class="num">MOR MPa</th><th class="num">SG</th><th class="num">Move ct/1%MC</th><th class="num">Cost</th><th>Character</th>';
@@ -16354,7 +16534,7 @@ BlueprintBuddyImport.build
         <td>${esc(r.appliesTo.join(', '))}</td>
         <td class="txt-small txt-muted">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
-      head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
+      head = '<th>Joint</th><th><span class="sr-only">3D view</span></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
         <td><strong>${esc(j.label)}</strong></td>
         <td><button type="button" class="btn small ghost joint-demo" data-joint="${esc(j.key)}" title="See this joint in 3D">${BB.Icons.svg('ruler', 13)} 3D</button></td>
@@ -16365,7 +16545,7 @@ BlueprintBuddyImport.build
         <td class="txt-small txt-muted">${esc(j.failure)}</td>
         <td class="txt-small txt-muted">${esc(j.tools.join(', '))}</td></tr>`).join('');
     } else if (state.refTab === 'hardware') {
-      head = '<th>Hardware</th><th></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
+      head = '<th>Hardware</th><th><span class="sr-only">3D view</span></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
       const HW = BB.HW;
       const view3d = { euro_cup: 'hw_cup_hinge', drop_leaf: 'hw_rule_joint', rule_joint_ref: 'hw_rule_joint', pivot_pin_hinge: 'hw_pivot_pin', tambour: 'hw_tambour', sawtooth_supports: 'hw_sawtooth', sawtooth: 'hw_sawtooth', undermount_45: 'hw_undermount' };
       const groups = [
@@ -17266,7 +17446,7 @@ BlueprintBuddyImport.build
       t.restoreTo.focus();
       if (document.activeElement !== t.restoreTo) {
         const wrap = t.restoreTo.closest('.menu-wrap');
-        const btn = wrap && wrap.querySelector('[aria-haspopup="menu"]');
+        const btn = wrap && wrap.querySelector(':scope > [aria-expanded][aria-controls]');
         if (btn) btn.focus();
       }
     }
@@ -17628,7 +17808,7 @@ BlueprintBuddyImport.build
     const bestCost = best(c => c.cost), bestMove = best(c => c.movementMM), bestWeight = best(c => c.weightKg);
     const maxSag = Math.max(...cols.map(c => c.sagMargin || 0));
     const cell = (v, isBest, suffix) => `<td class="num${isBest ? ' species-best' : ''}">${v}${suffix || ''}</td>`;
-    wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
+    wrap.innerHTML = `<table class="data"><thead><tr><th><span class="sr-only">Property</span></th>${cols.map(c =>
       `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody data-motion-group>
       <tr data-motion="cascade"><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
       <tr data-motion="cascade"><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
@@ -18704,7 +18884,8 @@ BlueprintBuddyImport.build
       document.addEventListener('click', e => {
         if (!m.contains(e.target) && e.target !== b) closeMenu(btnId, m);
       });
-      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length);
+      const items = () => [...m.querySelectorAll(FOCUSABLE)].filter(x => x.getClientRects().length);
+      const ARROW_OWNER = 'select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"])';
       b.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
@@ -18714,6 +18895,7 @@ BlueprintBuddyImport.build
         }
       });
       m.addEventListener('keydown', e => {
+        if (e.target.matches && e.target.matches(ARROW_OWNER)) return;
         const list = items();
         if (!list.length) return;
         const i = list.indexOf(document.activeElement);
@@ -18726,7 +18908,7 @@ BlueprintBuddyImport.build
     };
     const moreMenu = bindMenu('moreBtn', 'moreMenu');
     const viewMenu = bindMenu('viewBtn', 'viewMenu');
-    moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
+    moreMenu.querySelectorAll(':scope > button, .menu-group button').forEach(b => {
       b.addEventListener('click', () => {
         closeMenu('moreBtn', moreMenu);
         if (b.dataset.export) { doExport(b.dataset.export); return; }

@@ -1,0 +1,18 @@
+{
+  "why": "A frozen share code carrying the 2026-expansion enum indexes — a sheet species (\"ms\": hardwood_ply, index 21) and metric display units. The optional \"ms\" key only rides the wire when it departs from the Baltic default, so this fixture is the one that proves the optional-key path still decodes.",
+  "version": 4,
+  "kind": "share",
+  "shareCode": "BB4:eyJ2Ijo0LCJuIjoiTWV0cmljIEJvb2tzaGVsZiIsInQiOjMsImwiOjIsInUiOjAsIm8iOls5MDAsMzAwLDE4MDBdLCJtIjo1LCJzIjp7InQiOjI1LCJsIjo3MCwiYSI6OTAsImF0IjoyMCwiYWkiOjEyLCJjIjo0LCJzdCI6MjUsInNkIjoxOCwiYiI6MSwiayI6MH0sImoiOlsxLDMsMV0sImYiOjEsIm1zIjoyMSwiZCI6MH0",
+  "expect": {
+    "template": "bookshelf",
+    "name": "Metric Bookshelf",
+    "species": "ash",
+    "sheetSpecies": "hardwood_ply",
+    "units": "mm",
+    "drawers": null,
+    "shelfCount": 4,
+    "finish": "danish_oil",
+    "overall": { "width": 900, "depth": 300, "height": 1800 },
+    "minParts": 6
+  }
+}

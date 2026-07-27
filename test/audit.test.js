@@ -2395,5 +2395,382 @@ section('X-05 defaultSpec("custom") ships a sound piece, not a structural FAIL')
   ok(igBack.summary.verdict !== 'fail', 'and the round-tripped piece still never fails');
 }
 
+/* ================= D-01…D-05 (2026-07 strategic audit §3.5): plan depth =================
+ * Sections for test/audit.test.js. Uses the file's existing helpers:
+ * section(name), ok(cond,msg), eq(a,b,msg), near(a,b,tol,msg), pipeline(raw),
+ * and the destructured { Spec, Parametric, Plans, K, Structural, Packing, Fasteners, Units }.
+ * Every section restores metric display before it exits, like G10 does.
+ */
+
+/* ================= D-01: frame templates carry casework depth ================= */
+section('D-01 table / desk / bench plans are built, not sketched');
+{
+  // Build steps only — milling, glue-ups, thicknessing, safety, sanding and
+  // finishing are shared scaffolding and were never the finding.
+  const NON_BUILD = /^(mill|sand|finish|safety|glueup|lam|thickness|antitip)/;
+  const wordCount = s => (s || '').trim().split(/\s+/).filter(Boolean).length;
+  const planFor = (template, level, units) => {
+    Units.set({ system: units, precision: 16, dual: false });
+    const raw = Spec.defaultSpec(template);
+    raw.meta.level = level;
+    const r = pipeline(raw);
+    const ig = Structural.computeIntegrity(r.spec, r.model, {});
+    const cut = Plans.cutList(r.spec, r.model);
+    const stock = Packing.planStock(r.spec, r.model, cut, {});
+    const steps = Plans.assembly(r.spec, r.model, ig, { stockPlan: stock });
+    const build = steps.filter(s => !NON_BUILD.test(s.id));
+    return { r, steps, build, words: build.reduce((n, s) => n + wordCount(s.text), 0) };
+  };
+
+  const FRAME = ['table', 'desk', 'bench'];
+  const CASEWORK = ['bookshelf', 'nightstand', 'cabinet'];
+  for (const units of ['metric', 'imperial']) {
+    for (const level of ['beginner', 'intermediate', 'advanced']) {
+      const frame = FRAME.map(t => planFor(t, level, units));
+      const casework = CASEWORK.map(t => planFor(t, level, units));
+      const thinnestFrame = Math.min(...frame.map(p => p.words));
+      const densestCasework = Math.max(...casework.map(p => p.words));
+      // The audit's exit criterion: frame word count within 2× of casework.
+      // Before the fix this ratio was 943/151 = 6.2×.
+      ok(densestCasework / thinnestFrame <= 2,
+        `${units}/${level}: frame plans within 2× of casework — ${thinnestFrame} vs ${densestCasework} words (${(densestCasework / thinnestFrame).toFixed(2)}×)`);
+      // Steps, not just words: a frame base is layout, two glue-ups, a cure
+      // check, and the top — five, against the three the audit measured.
+      for (const p of frame) {
+        ok(p.build.length >= 5,
+          `${units}/${level}/${p.r.spec.meta.template}: ${p.build.length} build steps (was 3)`);
+      }
+    }
+  }
+
+  // The content the audit named as missing, checked by substance not length.
+  const t = planFor('table', 'intermediate', 'metric');
+  const byId = id => t.steps.find(s => s.id === id);
+  const glue = K.recommendGlue(t.r.spec).glue;
+  ok(byId('layout'), 'a frame base gets a leg-layout step before any joint is cut');
+  ok(byId('base_check'), 'a frame base gets an out-of-the-clamps / cure step');
+  ok(byId('s1') && byId('s2') && byId('s3'), 'the three original step ids survive (end frames, join, top)');
+
+  // Clamp order and clamp count, from the joinery layer — never hand-typed.
+  const clampText = Fasteners.frameClampSchedule(2).text;
+  ok(/one in line with each apron/i.test(clampText), 'the frame clamp rule is stated by the schedule, not the step');
+  ok(byId('s1').text.includes(clampText), 's1 carries the frame clamp schedule verbatim from BB.Fasteners');
+  ok(byId('s1').text.includes(String(Fasteners.frameClampSchedule(2).clamps)),
+    's1 states the computed clamp count');
+  ok(Fasteners.frameClampSchedule(1).clamps === 1 && Fasteners.frameClampSchedule(4).clamps === 4,
+    'frame clamps scale with rails, not with a 225 mm panel spacing (that is glueupSchedule)');
+
+  // Diagonals and winding, on a checked surface.
+  ok(/diagonals/i.test(byId('s1').text) && /diagonals/i.test(byId('s2').text),
+    'both base glue-ups demand a diagonal check');
+  ok(/wind|twist/i.test(byId('s1').text) && /one plane|twist/i.test(byId('s2').text),
+    'both base glue-ups demand a check for wind/twist');
+  ok(/flat|bench you have checked/i.test(byId('s1').text), 'the frames are checked on a known-flat surface');
+
+  // WHY two stages — read out of K.GLUES, so changing the glue changes the
+  // reasoning. Nothing here is a literal in plans.js.
+  ok(byId('s1').text.includes(String(glue.openMin)) && /open time/i.test(byId('s1').text),
+    `the two-stage reason cites the glue's own open time (${glue.openMin} min)`);
+  ok(byId('s1').text.includes(glue.label), 's1 names the glue the BOM buys, not "glue"');
+  ok(byId('s1').text.includes(String(glue.clampMin)) && byId('s2').text.includes(String(glue.clampMin)),
+    'both glue-ups state when the clamps come off (clampMin)');
+  ok(byId('base_check').text.includes(String(glue.cureHrs)) && /full strength/i.test(byId('base_check').text),
+    'the cure step states when the piece can be loaded (cureHrs)');
+  // A different glue must move those numbers — proof they are read, not typed.
+  const oily = pipeline(Spec.deepMerge(Spec.defaultSpec('table'), { meta: { units: 'mm' }, wood: { species: 'teak' } }));
+  const oilyGlue = K.recommendGlue(oily.spec).glue;
+  const oilySteps = Plans.assembly(oily.spec, oily.model, null, {});
+  ok(oilyGlue.key !== glue.key, 'an oily species selects a different glue');
+  ok(oilySteps.find(s => s.id === 's1').text.includes(String(oilyGlue.openMin)) &&
+     oilySteps.find(s => s.id === 's1').text.includes(oilyGlue.label),
+    `the two-stage reasoning follows the glue (${oilyGlue.label}, ${oilyGlue.openMin} min open)`);
+
+  // The top: how it is held and WHICH WAY it moves, from K.movementMM — the
+  // same function the integrity engine's movement check uses.
+  const top = t.r.model.parts.find(p => p.id === 'top_1');
+  const crossW = Math.min(top.size.w, top.size.d);
+  const mv = K.movementMM(crossW, t.r.spec.wood.species, 'tangential', K.CLIMATE_DMC.temperate);
+  Units.set({ system: 'metric', precision: 16, dual: false });
+  ok(byId('s3').text.includes(Units.fmtSmall(mv)),
+    `the top step states the computed seasonal travel (${Units.fmtSmall(mv)})`);
+  ok(byId('s3').text.includes(Units.fmtLength(crossW)), 'and the width it travels across');
+  ok(/across the grain|ACROSS the grain/.test(byId('s3').text) && /along its length/i.test(byId('s3').text),
+    'the top step names the direction of movement, not just its size');
+  ok(/never glue a solid top/i.test(byId('s3').text), 'the top is still never glued down');
+  // Climate reaches the frame top exactly as it reaches the drawer runners.
+  const humid = Plans.assembly(t.r.spec, t.r.model, null, { climate: 'humid' }).find(s => s.id === 's3');
+  const humidMv = K.movementMM(crossW, t.r.spec.wood.species, 'tangential', K.CLIMATE_DMC.humid);
+  ok(humid.text.includes(Units.fmtSmall(humidMv)) && humidMv > mv,
+    'a humid climate moves the number the top step prints');
+
+  // Knockdown frames say nothing about glue, clamps, or cure — G12 extended
+  // to every step the deeper plan added.
+  const kd = pipeline(Spec.deepMerge(Spec.defaultSpec('table'), { meta: { units: 'mm' }, joinery: { frame: 'kd_bolt' } }));
+  const kdSteps = Plans.assembly(kd.spec, kd.model, null, {});
+  const kdBuild = kdSteps.filter(s => !NON_BUILD.test(s.id));
+  // G12, extended to every step the deeper plan added: a step that MAKES a
+  // knockdown joint may not instruct glue or clamps.
+  ok(kdBuild.filter(s => (s.joints || []).some(j => j.type === 'kd_bolt'))
+    .every(s => !/glue|clamp/i.test(s.text)),
+    'no step that makes a knockdown joint mentions glue or clamps');
+  // …and the cure step has no glue schedule to give: nothing is glued.
+  const kdCure = kdSteps.find(s => s.id === 'base_check');
+  ok(kdCure && !/minutes in the clamps|full strength|squeeze-out/i.test(kdCure.text),
+    'a knockdown base gets no clamp-off / cure schedule — there is no glue in it');
+  ok(kdCure && /re-snug|bolts/i.test(kdCure.text),
+    'it gets the knockdown truth instead: bolts get re-snugged after the first season');
+  ok(kdBuild.reduce((n, s) => n + wordCount(s.text), 0) > 400,
+    'the knockdown frame plan is deep too, not just the glued one');
+  Units.set({ system: 'metric', precision: 16, dual: false });
+}
+
+/* ================= D-02: custom connection steps are told apart ================= */
+section('D-02 every custom connection step names its own parts');
+{
+  const cu = pipeline(Spec.defaultSpec('custom'));
+  const steps = Plans.assembly(cu.spec, cu.model, null, {});
+  const conn = steps.filter(s => /^c\d+$/.test(s.id));
+  eq(conn.length, cu.spec.custom.connections.length, 'one step per declared connection');
+  eq(new Set(conn.map(s => s.title)).size, conn.length,
+    `connection step titles are unique — got ${JSON.stringify(conn.map(s => s.title))}`);
+  for (const s of conn) {
+    ok(s.partIds.every(id => s.title.includes(id)),
+      `the title identifies which parts it joins — "${s.title}"`);
+  }
+  // The body reached casework density: dry run, clamp/bolt order, square
+  // check, and the joint's own setout (which the "mill" step used to eat).
+  const words = s => (s.text || '').trim().split(/\s+/).filter(Boolean).length;
+  ok(conn.every(s => words(s) >= 60),
+    `every connection step is a real instruction — ${conn.map(words).join(', ')} words (was ~15)`);
+  ok(/stand the WHOLE piece up loose/i.test(conn[0].text),
+    'the first connection demands a whole-piece dry run — a novel piece has no template behind it');
+  ok(conn.every(s => (s.joints || []).length > 0),
+    'every connection step owns its joints (the mill step no longer swallows them)');
+  ok(conn.every(s => (s.jointInfo || []).length > 0 && s.text.includes(s.jointInfo[0].text)),
+    'every connection step carries the joint setout from the fastener engine');
+  ok(steps.find(s => s.id === 'mill').joints.length === 0,
+    'the "mill and label" step claims no joints — it makes none');
+
+  // Glued connections carry the glue window; bolted ones carry none (G12).
+  const glued = Spec.correctSpec(Spec.defaultSpec('custom'));
+  glued.custom.connections.forEach(c => { c.joint = 'butt_screws'; });
+  const gModel = Parametric.build(glued);
+  const gConn = Plans.assembly(glued, gModel, null, {}).filter(s => /^c\d+$/.test(s.id));
+  const gGlue = K.recommendGlue(glued).glue;
+  ok(gConn.every(s => /clamp ACROSS the joint line/i.test(s.text)),
+    'glued connections state the clamp direction');
+  ok(gConn.every(s => s.text.includes(String(gGlue.openMin)) && s.text.includes(String(gGlue.clampMin)) && s.text.includes(String(gGlue.cureHrs))),
+    'glued connections carry the glue open / clamp / cure window from K.GLUES');
+  ok(gConn.every(s => /square/i.test(s.text)), 'glued connections demand a square check');
+  ok(gConn[gConn.length - 1].text !== gConn[0].text, 'the first and last connection steps do not read identically');
+}
+
+/* ================= D-03: a step teaches the fastening it actually makes ================= */
+section('D-03 step.jointInfo carries the EFFECTIVE fastening, not the nominal joint');
+{
+  ok(typeof Fasteners.stepJoints === 'function', 'BB.Fasteners.stepJoints exists');
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const steps = Plans.assembly(ns.spec, ns.model, null, {});
+  const s4 = steps.find(s => s.id === 's4');
+  // The bug, verbatim: the text says figure-8s, the joint records say butt
+  // screws, and "Why this joint?" reads the joint records.
+  ok(s4.joints.length && s4.joints.every(j => j.type === 'butt_screws'),
+    'the nominal joint record is unchanged (step.joints is untouched)');
+  ok(s4.jointInfo && s4.jointInfo.length === 1, 'the top step describes exactly one fastening');
+  const d = s4.jointInfo[0];
+  eq(d.type, 'butt_screws', 'jointInfo keeps the nominal joinery key');
+  eq(d.effective, 'figure8', 'jointInfo names what the plan actually specifies');
+  eq(d.hardware, true, 'and flags it as hardware, not joinery');
+  eq(d.label, 'Figure-8 fasteners', 'with a display label the UI can render as-is');
+  eq(d.a, 'top_1', 'descriptor carries the attached part');
+  ok(ns.model.parts.some(p => p.id === d.b), 'descriptor carries a real mate part');
+  ok(/figure-8/i.test(d.text) && s4.text.includes(d.text), 'the setout line is the step\'s own');
+  ok(!K.JOINERY[d.effective], 'an effective hardware key is deliberately not a JOINERY key');
+
+  // The same override on a frame template's top.
+  const tb = pipeline({ meta: { name: 'T', template: 'table', level: 'beginner', units: 'mm' } });
+  const ts3 = Plans.assembly(tb.spec, tb.model, null, {}).find(s => s.id === 's3');
+  ok(ts3.jointInfo.every(x => x.effective === 'figure8' && x.hardware),
+    'a table top floats on figure-8s in the metadata too');
+
+  // Where there is NO override, effective === type and hardware is false —
+  // the descriptor must not invent a divergence.
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 4, backPanel: true }
+  });
+  const bsSteps = Plans.assembly(bs.spec, bs.model, null, {});
+  for (const s of bsSteps) {
+    for (const x of (s.jointInfo || [])) {
+      if (x.hardware) continue;
+      eq(x.effective, x.type, `${s.id}: an un-overridden joint reports itself`);
+      eq(x.label, K.JOINERY[x.type].label, `${s.id}: joinery labels come from K.JOINERY`);
+    }
+  }
+  // Bookshelf tops are CAPTURED between the sides — no figure-8 anywhere
+  // (the FE-H1 rule, now visible in the metadata).
+  ok(!bsSteps.some(s => (s.jointInfo || []).some(x => x.effective === 'figure8')),
+    'a captured bookshelf top is fixed casework — no phantom figure-8s in jointInfo');
+}
+
+/* ================= D-04: every distinct fastening a step makes is described ================= */
+section('D-04 multi-joint steps describe every fastening, grouped with a count');
+{
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const s2 = Plans.assembly(ns.spec, ns.model, null, {}).find(s => s.id === 's2');
+  // The finding: s2 carries 6 joints and printed the back apron's setout only.
+  ok(s2.joints.length >= 6, `the rail step still carries all its joints (${s2.joints.length})`);
+  ok(/back apron/i.test(s2.text), 'the back apron setout is there (it always was)');
+  ok(/drawer rail/i.test(s2.text), 'and the front drawer rails are described too (they were not)');
+  ok(s2.jointInfo.length >= 3, `every distinct fastening gets a descriptor (${s2.jointInfo.length})`);
+  ok(s2.jointInfo.every(d => s2.text.includes(d.text)),
+    'every descriptor\'s setout line reaches the step text');
+  // Grouped, not repeated: identical fastenings collapse with a count, the
+  // way the cut list groups identical parts.
+  ok(s2.jointInfo.every(d => d.count >= 1) && s2.jointInfo.reduce((n, d) => n + d.count, 0) >= s2.joints.length,
+    'the descriptor counts account for every joint in the step');
+  const seenText = new Set();
+  ok(s2.jointInfo.every(d => (seenText.has(d.text) ? false : (seenText.add(d.text), true))),
+    'no setout line is printed twice in one step');
+
+  // Cabinet toe kick: two butt-screwed joints into DIFFERENT mates. Deduping
+  // by joint type printed one and hid the other.
+  const cab = pipeline({
+    meta: { name: 'Cab', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 800, depth: 450, height: 900 },
+    structure: { toeKick: true, backPanel: true, shelfCount: 1 },
+    drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }
+  });
+  const cs = Plans.assembly(cab.spec, cab.model, null, {});
+  const kick = cs.find(s => s.id === 's4');
+  if (kick && kick.joints.length > 1) {
+    ok(kick.jointInfo.length >= 2, 'the toe-kick step describes both of its fastenings');
+    ok(new Set(kick.jointInfo.map(x => x.b)).size >= 2, 'and they land in different mates');
+  }
+  // The carcass glue-up fastens four different members — all four described.
+  const cs1 = cs.find(s => s.id === 's1');
+  ok(cs1.jointInfo.length >= 2 && cs1.jointInfo.some(x => x.type === 'butt_screws' || x.type === 'pocket_screws'),
+    `the carcass step describes more than one fastening (${cs1.jointInfo.length})`);
+
+  // The count is derived from the step's FULL joint list, so it can never
+  // understate the bench work even where step.joints is capped at 8.
+  for (const s of cs) {
+    ok((s.joints || []).length <= 8, `${s.id}: step.joints stays capped at 8 (unchanged contract)`);
+    if (s.jointInfo) {
+      ok(s.jointInfo.reduce((n, d) => n + d.count, 0) >= s.joints.length,
+        `${s.id}: descriptor counts cover at least the capped joint list`);
+    }
+  }
+  // And no joint is claimed by two steps — FE-H6 still holds through all this.
+  const claimed = new Set();
+  let dup = false;
+  for (const s of cs) for (const j of (s.joints || [])) {
+    const k = `${j.type}|${j.a}|${j.b}`;
+    if (claimed.has(k)) dup = true;
+    claimed.add(k);
+  }
+  ok(!dup, 'no joint is claimed by two steps');
+}
+
+/* ================= D-05: the drill / length / small rule, locked ================= */
+section('D-05 bores are bit sizes, gaps are fractions, decimals are for tolerance only');
+{
+  Units.set({ system: 'imperial', precision: 16, dual: false });
+  // The two verbatim regressions from the audit.
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'in' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const nsSteps = Plans.assembly(ns.spec, ns.model, null, {});
+  const pull = nsSteps.find(s => s.id === 'dr1_pull');
+  ok(!/0\.2 in/.test(pull.text), `the pull bore is no longer "0.2 in" — got "${pull.text.slice(0, 90)}"`);
+  ok(pull.text.includes(Units.fmtDrill(5)), `the pull bore is a real bit size (${Units.fmtDrill(5)})`);
+  const front = nsSteps.find(s => s.id === 'dr1_front');
+  ok(!/0\.08 in/.test(front.text), 'the inset reveal is no longer "0.08 in"');
+  ok(front.text.includes(Units.fmtLength(2)), `a reveal is a shim gap in fractions (${Units.fmtLength(2)})`);
+  // The step and the BOM must quote the same bore — they disagreed before.
+  const bom = Plans.bom(ns.spec, ns.model, {});
+  const pullRow = bom.items.find(i => i.kind === 'hardware' && /pull|knob/i.test(i.label));
+  if (pullRow && /bore/i.test(pullRow.detail)) {
+    ok(pullRow.detail.includes(Units.fmtDrill(5)) === pull.text.includes(Units.fmtDrill(5)),
+      'the pull bore reads identically in the step and the BOM');
+  }
+  // Touch latch travel is a gap you set, not a drill size.
+  const touch = pipeline({
+    meta: { name: 'Touch', template: 'nightstand', level: 'advanced', units: 'in' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides', pull: 'none_touch' }
+  });
+  const tSteps = Plans.assembly(touch.spec, touch.model, null, {});
+  const tPull = tSteps.find(s => /_pull$/.test(s.id));
+  if (tPull && /travel/i.test(tPull.text)) {
+    ok(!/\d+\.\d+ in/.test(tPull.text), `latch travel carries no decimal inch — got "${tPull.text}"`);
+  }
+
+  /* The lock. Every string the plan layer emits, across every template and
+   * level, in imperial: a decimal inch is legal ONLY where the value really
+   * is a tolerance or a computed movement (units.js's fmtSmall domain). A
+   * bore, a reveal, a setback, or a screw position appearing as "0.19 in"
+   * fails here — which is what let D-05 through the first M-01 pass. */
+  // Deliberately narrow: "clearance" alone is NOT a licence, because a
+  // clearance HOLE is a drill callout. Only the genuinely-decimal domain.
+  const TOLERANCE_CONTEXT = /(per side|of vertical clearance|travels about|seasonal movement|\bsag\b|\bkerf\b)/i;
+  const offenders = [];
+  for (const template of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom']) {
+    for (const level of ['beginner', 'intermediate', 'advanced']) {
+      const raw = Spec.defaultSpec(template);
+      raw.meta.level = level;
+      raw.meta.units = 'in';
+      if (raw.drawers) {
+        raw.drawers = {
+          count: 2,
+          frontStyle: level === 'beginner' ? 'inset' : 'overlay',
+          runner: level === 'advanced' ? 'undermount_slides' : (level === 'intermediate' ? 'wood_runners' : 'side_mount_slides')
+        };
+      }
+      const r = pipeline(raw);
+      const ig = Structural.computeIntegrity(r.spec, r.model, {});
+      const cut = Plans.cutList(r.spec, r.model);
+      const stock = Packing.planStock(r.spec, r.model, cut, {});
+      const b = Plans.bom(r.spec, r.model, { integrity: ig, stock });
+      const steps = Plans.assembly(r.spec, r.model, ig, { stockPlan: stock });
+      let all = '';
+      for (const s of steps) all += ' ' + s.text;
+      for (const i of b.items) all += ' ' + i.label + ' ' + (i.detail || '');
+      for (const row of Fasteners.detailRows(r.spec, r.model)) all += ' ' + row.text;
+      for (const row of cut) all += ' ' + row.name + ' ' + (row.note || '');
+      // Sentence-scoped so a neighbouring sentence's wording can never
+      // launder a bad callout.
+      for (const sentence of all.split(/[.;]\s+/)) {
+        if (!/\b\d+\.\d+ in\b/.test(sentence)) continue;
+        if (!TOLERANCE_CONTEXT.test(sentence)) {
+          offenders.push(`${template}/${level}: "${sentence.trim().slice(0, 100)}"`);
+        }
+      }
+    }
+  }
+  ok(offenders.length === 0,
+    `no decimal inch outside the tolerance/movement domain — offenders: ${offenders.slice(0, 4).join(' | ')}`);
+
+  // And positively: the fastener engine's own callouts are bit sizes and its
+  // positions are fractions.
+  const tb = pipeline({ meta: { name: 'T', template: 'bookshelf', level: 'beginner', units: 'in' },
+    overall: { width: 800, depth: 280, height: 1100 }, structure: { shelfCount: 2, backPanel: true } });
+  const lay = Fasteners.layoutForJoint(tb.spec, tb.model, tb.model.joints.find(j => j.type === 'butt_screws'));
+  ok(/Pilot \d+\/\d+ in/.test(lay.text), `pilots are fractional bit sizes — got "${lay.text}"`);
+  ok(!/centered \d+\.\d+ in/.test(lay.text), 'screw positions are fractions, not decimal inches');
+
+  Units.set({ system: 'metric', precision: 16, dual: false });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

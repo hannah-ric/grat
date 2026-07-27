@@ -13,14 +13,19 @@ Blueprint Buddy — an AI-guided parametric furniture design studio and workshop
 ## Commands
 
 ```
-npm install --ignore-scripts   # only needed for the smoke test (Playwright is the sole devDependency)
-npm run build                  # node build.js → dist/index.html (single file)
+npm install --ignore-scripts   # only needed for the browser suites (Playwright + axe-core are the only devDependencies)
+npm run build                  # node build.js → dist/index.html (single file) + dist/robots.txt + dist/sw.js
 npm run dev                    # build + serve on $PORT (default 3000) + watch-rebuild + /api/chat proxy
 npm test                       # unit + audit + golden + battery + server + credits suites (plain node, no browser, no install)
 npm run test:smoke             # build + drive the real app in headless Chromium
 npm run test:porch             # build + drive the landing (porch) in headless Chromium: gate matrix, scrub, calculator, overture, reduced-motion parity
+npm run test:gating            # the four entitlement states against a configured mock origin
+npm run test:nowebgl           # the app with the GPU taken away (--disable-webgl)
+npm run test:adjust            # the Adjust rail: joinery slots, thickness knobs, skill level
+npm run test:print             # 1:1 template fidelity measured against the real page box
+npm run test:a11y              # axe-core sweep + the project's own a11y commitments (needs axe-core installed)
 npm run test:cloud             # accounts end-to-end: dev login → cloud autosave → reload restore (serve.js + Chromium)
-npm run test:handcalc          # hand-arithmetic vs engine verification worksheet (must stay 14/14)
+npm run test:handcalc          # hand-arithmetic vs engine verification worksheet (16/16 — every section must agree)
 npm run test:battery           # live behavior battery (boundary/contradictory/adversarial fixtures) — asserting, part of npm test
 npm run test:server            # api/ handlers: sessions, OAuth flows, document store — part of npm test
 ```
@@ -28,6 +33,8 @@ npm run test:server            # api/ handlers: sessions, OAuth flows, document 
 - Run one suite directly: `node test/unit.test.js`, `node test/audit.test.js`, `node test/golden.test.js`. There is no per-test filter — suites are plain Node scripts organized in `section(...)` blocks and run in a few seconds.
 - Refreeze golden fixtures **only after an intended behavior change**: `node test/golden.test.js --update`, then review the git diff of `test/golden/` before committing.
 - After changing `src/`: `npm run build && npm test`; also run the smoke test for UI-visible changes.
+- **CI runs two jobs.** `test` is the zero-install plain-Node core plus a `dist/`-is-in-sync check (everything the build emits is committed and must match a fresh build). `browser` installs Playwright and runs *every* `test/*.playwright.js` suite as a real gate. It carries a coverage guard in both directions: a `test:*` script driving a `.playwright.js` file must have its own step or be listed in `SKIPPED` with a reason, and a suite file on disk must be reachable from a script or listed in `MANUAL` (manual instruments only — `test/diy-audit.playwright.js` today, same standing as `test/benchmark-shaker.js`).
+- **Service worker:** `build.js` emits `dist/sw.js` from `src/sw.js`, controlled by `BB_SW` — `on` (default), `off` (emit nothing, delete a stale one), or `tombstone` (emit `src/sw-kill.js`, which unregisters itself and clears its caches). Network-first for navigations so a stale worker can never pin an old app; `/api/*` and `/b/:code` are never cached.
 - Local AI: `cp .env.example .env` and set `ANTHROPIC_API_KEY` (`serve.js` reads `.env` itself). Without a key the app degrades to its built-in offline parser — everything else still works.
 
 ## Architecture
@@ -75,7 +82,8 @@ The 2026 audit (`docs/audit/`, start at `00-final-report.md`) established the re
 
 - `test/audit.test.js` must stay green — one section per findings-register entry, written failing-test-first.
 - Six reference designs are frozen with complete outputs in `test/golden/`; behavior changes diff against them (0.05 mm tolerance) instead of re-litigating correctness. Refreeze deliberately with `--update` and review the diff.
-- `test/handcalc.js` computes every physics number twice — explicit hand arithmetic vs the engine — and must stay 14/14.
+- `test/handcalc.js` computes every physics number twice — explicit hand arithmetic vs the engine — and every section must agree (16/16 today; the number is however many sections the worksheet holds, and it only ever goes up).
+- `test/fixtures/legacy/` is the migration corpus: 11 saved designs and share codes from versionless Phase 1 to current. A saved design must never fail to open, so a new `specVersion` migration needs a fixture — `unit.test.js` fails if the corpus does not cover every registered migration.
 - `test/benchmark-shaker.js` (run manually, not part of `npm test`) diffs the generated nightstand cut list line by line against the published Shaker plan canon; every divergence is classified OURS-BETTER / EQUIVALENT / TRADITIONAL (`docs/audit/06-benchmark-shaker-nightstand.md`).
 - `ash-bookshelf-metric` is a frozen *honest-fail* case (19 mm shelves sag under books + creep); don't "fix" it.
 

@@ -10,7 +10,7 @@
 
 Every quoted string is verbatim from a probe or the rendered DOM. **The audit pass itself changed no source.**
 
-> **Status:** Phases 0–3 of §5 and **V-01** have since been implemented on this branch. The findings below are preserved exactly as written at audit time so the record stays honest; **[§7 Implementation status](#7-implementation-status)** is the delta — what is fixed, what changed shape on contact with the code, and what remains.
+> **Status:** Phases 0–4 of §5 have since been implemented on this branch. The findings below are preserved exactly as written at audit time so the record stays honest; **[§7](#7-implementation-status)**, **[§8](#8-phase-3--v-01-status)** and **[§9](#9-phase-4-status--depth-and-verification)** are the delta — what is fixed, what changed shape on contact with the code, and what remains.
 
 **Supersedes** the two working documents from this pass (live user-journey audit, coverage-gap audit), which are folded in here in full.
 **Relation to prior work:** [`AUDIT_REPORT.md`](../../AUDIT_REPORT.md) and [`docs/ui/capability-ux-audit.md`](../ui/capability-ux-audit.md) mapped this territory by reading the code. Findings marked **NEW** are not in either.
@@ -343,4 +343,54 @@ Phases 4–5: plan depth (D-01…D-09 — frame templates at a third of casework
 
 ---
 
-*Audit probes executed against `dist/index.html` built from commit `7cc8572`; no source changed by the audit itself. Phases 0–2 implemented and verified on this branch as recorded in §7.*
+## 9. Phase 4 status — depth and verification
+
+### Fixed
+
+| ID | What shipped |
+|----|--------------|
+| **D-01** | Frame templates were a sketch beside casework. Table / desk / bench go from **6 steps · 326 words to 8 steps · 930 words**: a stock-layout step that assigns the boards before a cut is made, a base flatness check (diagonals across the base, then sighting the four leg tops in one plane), clamp counts and cauls named per glue-up, seasonal-movement instruction at the top attachment computed from the species and the climate swing, and a dry-fit demanded before any glue. The exit criterion was casework-to-frame word ratio within 2×: **3.67× → 1.60×**. |
+| **D-02** | Every custom-composition step names its own parts instead of "connect the parts": 205 → 428 words over the same 6 steps. Locked by an audit section that fails on any step whose text does not name the parts its `partIds` list. |
+| **D-03** | `step.jointInfo` carries the **effective** fastening, not the nominal joint. A step whose joint was downgraded by skill level (or substituted by correction) used to print the joint the spec asked for while the fastener engine drilled the joint it actually got; the plan and the drilling instructions could disagree with each other on the same page. |
+| **D-04** | A step that introduces several distinct fastenings now explains **each** of them, grouped with a count — *"The same setout at all 4 long apron-to-leg joints."* The old code deduplicated by joint type and stopped at two, so a nightstand step carrying six joints described one. Grouping carries `samePair`, so nothing claims "all N x-to-y joints" when the joints do not in fact run between the same two parts. |
+| **D-05** | `fine()` → `drill()` at the two `plans.js` call sites, and the reveal at `:342` to `len()`. The rule — bores are bit sizes, gaps are fractions, decimals are for tolerance and computed movement only — is now regression-locked across **every** emitter rather than at the two sites that regressed, so it cannot come back a third time in a different file. |
+| **V-03** | `test/fixtures/legacy/` — 11 saved designs and share codes spanning versionless Phase-1 through current, including three that omit fields later migrations add. Two sections: one asserts the corpus covers **every** registered migration (a new migration with no fixture fails), the other opens all 11 and validates the result. The promise in `CLAUDE.md` — *"a saved design must never fail to open"* — had nothing executing it. |
+| **V-04** | `test/lib/format-check.js`: real structural validation for each export — XML well-formedness with tag balance for COLLADA, GLB magic/version/chunk-length arithmetic against the actual byte length plus JSON-chunk parse, CSV field-count agreement, Ruby balance. Applied across three shapes of design. **And the validators are themselves tested**: a section feeds each one deliberately corrupt input and fails if it passes, because a lock that cannot fail is not a lock. |
+| **V-05** | A hostile design name — `<img src=x onerror=alert(1)>` and friends — is carried byte-identical by the codec and escaped by every renderer: the studio, the sheet set, and the public share page. Two real vulnerabilities were found doing this and are recorded below. |
+| **V-06** | `src/sw.js` (186 lines), emitted as a `dist/` sibling by `build.js` under `BB_SW` (`on` default / `off` / `tombstone` → `src/sw-kill.js`, a worker that unregisters itself and clears its caches). Network-first for navigations with the cache as fallback, so a stale worker can never pin an old app; cache name is `bb-shell-<sha256(html)[0:12]>`, so a new build is a new cache. `/api/*` and `/b/:code` are never touched — a cached entitlement answer or a cached share page is exactly the bug the credits pivot cannot afford. |
+| **V-07** | `test/a11y.playwright.js` — 180 assertions. axe-core swept across the states the app really has (three modes, five plan sub-tabs, a **failing**-verdict design, six modal surfaces, both themes, mobile, the porch, forced-colors, reduced-motion), plus hand-rolled checks for the four commitments no generic ruleset knows: token-level contrast pairs, verdict capsules carrying text and not colour alone, the forced-colors opt-out register, and reduced-motion content parity. Every exclusion is declared in a register the axe options are **built from**, so an undeclared exclusion cannot exist. First run: **48 failures**, dominated by one token — `--muted` failed AA on all four light surfaces while `brand-system.md` §8 claimed every pair passed. |
+| **V-10** | `test/print.playwright.js` (34) measures the 1:1 templates against the real page box in a browser. It found a silent, self-certifying defect: 240 mm template strips in a 179.9 mm printable column — **clipped, not scaled**, while the 100 mm scale-check bar beside them still measured correct, so the artifact certified its own accuracy while being wrong. `api/_sheets.js` now derives the strip width from the narrowest paper it can land on (A4 portrait, 210 mm) less margins and printer slack, and declares `@page { size: letter }`. Shipped separately as `06f721b`. |
+
+### Two vulnerabilities, found while implementing V-05
+
+Both were reproduced end to end before being touched, and both are fixed at the single choke point rather than at the call site that exposed them.
+
+- **Prototype pollution through `POST /api/blueprint`.** `deepMerge` walked whatever keys its input had. `JSON.parse` creates a real own `__proto__` property, the endpoint accepts a raw `body.spec`, and `api/_pipeline.js` keeps its `vm` context warm between requests — so one poisoned merge outlived the request that caused it and reached the **next user's** plan. The codec path was never exposed (decode emits a fixed key set), which is exactly why it went unnoticed. `deepMerge` now skips `__proto__` / `constructor` / `prototype`.
+- **Remote code execution through a shared design name (SketchUp `.rb` export).** The Ruby escaper handled `\` and `"` only. The design name rides a share code between users byte-identical and is emitted inside real quoted strings — including `model.start_operation("Import <name>", true)`. Two ways out: a newline ended the statement, putting an uncommented `system` call on its own line; and `#{…}` interpolates, so `#{system(...)}` ran the moment the script did. The file's own header tells the reader to paste it into SketchUp's Ruby Console. Escaping now covers `#`, newlines, tabs and every control character.
+
+### Found while implementing — not in the original audit
+
+- **Dropping `role="menu"` unwired every export in the product.** `#moreMenu` claimed `role="menu"` while containing settings groups that are not menu items and implementing no roving-focus contract; it failed `aria-required-children`, so the roles came off. But **three** pieces of `ui.js` found their targets with `[role="menuitem"]` selectors, and all three silently matched nothing: the click binding that is the *only* wiring for `[data-export]` (sheet set, print, SVG, CSV, JSON, GLB, `.rb`, `.dae` — all visible, all enabled, all inert), the arrow-key navigation, and the close-the-panel-on-pick behaviour. A fourth, `releaseFocus`'s `[aria-haspopup="menu"]` fallback, dropped focus to `<body>` every time a dialog opened from the panel was closed. All four are selected by structure now, and each has a test that fails if the wiring goes away again: smoke **presses** an export entry and watches the export layer get called, rather than asserting the button exists.
+- **The V-01 coverage guard registered scripts, not files.** `test/diy-audit.playwright.js` had no npm script, so it was invisible to the guard — 944 lines driving a `#exportMenu` the shell redesign deleted. The guard now enumerates `test/*.playwright.js` on disk as well; a suite file must be reachable from a script or declared in a `MANUAL` register with a reason (its standing is the one `CLAUDE.md` already gives `test/benchmark-shaker.js`).
+- **`aria-haspopup` has no value that means "group".** Its legal values name a role — menu / listbox / tree / grid / dialog, with `true` defined as a synonym for menu — and axe validates that the attribute is *well-formed*, never that the thing it names has that role. Both shell popups are disclosures now (`aria-expanded` + `aria-controls`, no `aria-haspopup`), and the suite checks the trigger and its target agree **in both directions**, so "no `aria-haspopup`" cannot become the loophole.
+- **Three menu rows were labelled "Units and precision" regardless of contents** (Theme and Render included), and `#precisionRow` carried `role="group"` twice. Introduced while satisfying the menu's required-children rule; removed with the rule that required them, since each row is already named visually and each control inside already carries its own labelled group.
+- **Two source files were classified as binary by grep.** A literal `NUL` used as a map-key separator in `ui.js` (and two in the a11y suite) made ripgrep skip both files entirely — in a repo whose entire workflow is grep-driven. Written as `\u0000` escapes now: identical strings, plain-ASCII files.
+
+### Changed shape on contact with the code
+
+- **Two agent-reported failures were mis-specified assertions, not product bugs**, and were reproduced before being reported as such: `!/ onerror=/i.test(doc)` matched the correctly **escaped** `&lt;img src=x onerror=alert(1)&gt;`, and an SVG element count of 4 where 7 is right (root + 3 positioning wrappers + 3 elevations).
+- **Two smoke assertions encoded markup this phase deliberately changed**, and were rewritten to test the contract rather than the old shape: panel headings moved `h3` → `h2` (heading-order), so the ledger check reads `:is(h2, h3).kicker`; and `.brand-name` is visually clipped rather than `display: none` on phones, because `display: none` removed the document's only `<h1>` from the accessibility tree in every mobile state. The new assertion — occupies no header width **and** still carries its text as the `<h1>` — fails if either half regresses, where the old one would pass again the moment somebody reintroduced the defect.
+
+### Verification
+
+`unit 1741 · audit 788 · golden 6/6 · battery 20 cases/110 · server 225 · credits 112 · handcalc 16/16 · smoke 293 · porch 81 · gating 37 · nowebgl 15 · adjust 21 · print 34 · a11y 180 · cloud 11` — **0 failures**.
+
+`test/golden/` took its one deliberate refreeze: 2 files, 4 lines — the `layout` and `base_check` step IDs D-01 adds to the two frame fixtures. The corpus stores step **IDs**, not step text, which is why 600 words of new instruction moved nothing else. The a11y suite was run three times on a frozen build for flakiness: identical results each time.
+
+### Still open
+
+X-07 (doors, stretchers, desk drawers, chairs, beds) remains a geometry workstream. D-06…D-09 (joint teaching in the 3D view), V-08, V-09 and V-11 are unstarted. The service worker ships but is not yet exercised by a browser suite — `BB_SW=off` is the escape hatch until it is.
+
+---
+
+*Audit probes executed against `dist/index.html` built from commit `7cc8572`; no source changed by the audit itself. Phases 0–4 implemented and verified on this branch as recorded in §7, §8 and §9.*

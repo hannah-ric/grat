@@ -1,0 +1,17 @@
+{
+  "why": "A real BB4: share code, frozen. Share codes are the one artifact Blueprint Buddy hands between users and cannot re-issue, so a frozen code is also the lock on the append-only enum tables in codec.js: reorder SPC/JNT/FIN/RUN and this fixture decodes into a different piece of furniture.",
+  "version": 4,
+  "kind": "share",
+  "shareCode": "BB4:eyJ2Ijo0LCJuIjoiSGVpcmxvb20gTmlnaHRzdGFuZCIsInQiOjQsImwiOjEsInUiOjEsIm8iOls1MDgsNDA2LjQsNjA5LjZdLCJtIjozLCJzIjp7InQiOjIwLCJsIjo0NSwiYSI6ODAsImF0IjoyMCwiYWkiOjEyLCJjIjowLCJzdCI6MTksInNkIjoxOCwiYiI6MSwiayI6MH0sImoiOlsyLDMsNV0sImYiOjMsImQiOlsyLDAsMF19",
+  "expect": {
+    "template": "nightstand",
+    "name": "Heirloom Nightstand",
+    "species": "walnut",
+    "units": "in",
+    "drawers": 2,
+    "finish": "hardwax_oil",
+    "joinery": { "frame": "dowels", "case": "dado", "box": "locking_rabbet" },
+    "overall": { "width": 508, "depth": 406.4, "height": 609.6 },
+    "minParts": 8
+  }
+}

@@ -151,8 +151,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     const memberT = minDim(a);            // inserted / attached member
     const mateT = minDim(b);              // the part it lands in
     const type = joint.type;
-    const out = { joint, type, a, b, runMM, fasteners: [], text: '' };
-    const fine = mm => U().fmtSmall(mm);
+    /* `type` is the NOMINAL joinery the model recorded; `effective` is what
+     * this plan actually specifies. They diverge wherever a layout rule
+     * overrides the nominal joint with hardware (the floating top below), and
+     * every consumer that teaches a joint must read `effective`, not `type`
+     * (audit D-03: the nightstand top step said figure-8s while the joint
+     * records said butt screws, so "Why this joint?" taught the wrong one). */
+    const out = { joint, type, effective: type, hardware: false, a, b, runMM, fasteners: [], text: '' };
+    /* The display rule for this whole file, and for plans.js (audit M-01 +
+     * D-05): a HOLE DIAMETER goes through fmtDrill (a size in a bit index);
+     * a MEASURED GAP OR POSITION goes through fmtLength (fractions you can
+     * set with a rule or a shim); fmtSmall is for sag, kerf, and tolerance
+     * only. There is deliberately no `fine` helper in scope here — a decimal
+     * inch has no place in a setout line. */
     const len = mm => U().fmtLength(mm);
     const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
 
@@ -167,6 +178,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     if (isTopAttach) {
       // Solid tops are floated: figure-8s roughly every 300 mm of run.
+      // The nominal joint is overridden here — say so, so nothing downstream
+      // teaches the joint the plan does not make (audit D-03).
+      out.effective = 'figure8';
+      out.hardware = true;
       const pos = positions(runMM, Math.max(2, Math.round(runMM / 300)), 300);
       const c = CATALOG.figure8;
       for (const p of pos) out.fasteners.push({ kind: 'figure8', spec: fmtSpec(c), pilotMM: c.pilotMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
@@ -183,9 +198,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         for (const p of pos) out.fasteners.push({ kind: 'screw', spec: specTxt, pilotMM: sp.pilotMM, clearanceMM: sp.clearanceMM, counterboreMM: sp.counterboreMM, alongMM: p, edgeMM: Math.min(p, runMM - p) });
         const spacing = pos.length === 1 ? 'centered on the run'
           : `first ${len(RULES.edgeMM)} from each end${pos.length > 2 ? `, then every ${len(Math.round((runMM - 2 * RULES.edgeMM) / (pos.length - 1)))}` : ''}`;
-        const where = sp.housed ? `centered ${fine(mateT / 2)} from the joint line`
+        // A screw position is a MEASURED distance you set with a rule, not a
+        // tolerance — it renders through fmtLength (fractions in imperial),
+        // never fmtSmall's decimal inches (audit D-05 rule).
+        const where = sp.housed ? `centered ${len(mateT / 2)} from the joint line`
           : sp.thru === a ? `on the ${a.name.toLowerCase()}'s centerline`
-            : `centered ${fine(minDim(a) / 2)} from the joint line`;
+            : `centered ${len(minDim(a) / 2)} from the joint line`;
         // The full drilling schedule (audit M-04): clearance through the near
         // member (the screw must spin free there to DRAW the joint tight),
         // pilot in the mate, and a countersink so the flat head seats —
@@ -395,20 +413,108 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
   }
 
-  /* One concise fastening line for an assembly step (first joint of each
-   * distinct type in the step). */
-  function stepNote(spec, model, joints) {
-    if (!joints || !joints.length) return '';
-    const seen = new Set();
-    const bits = [];
-    for (const j of joints) {
-      if (seen.has(j.type)) continue;
-      seen.add(j.type);
+  /* Clamp schedule for a FRAME glue-up — legs with rails or aprons between
+   * them — as opposed to an edge glue-up. The two are different operations
+   * and the arithmetic is not interchangeable: an edge glue-up spreads
+   * clamps ALONG a panel edge at 225 mm centers (glueupSchedule above),
+   * while a frame needs pressure running straight down each rail's axis, so
+   * the count is one bar clamp per rail seated in this stage — you cannot
+   * stack three clamps on one apron line. Cauls keep the jaws off show faces
+   * and spread the load across the shoulder. */
+  function frameClampSchedule(rails) {
+    const clamps = Math.max(1, Math.round(rails) || 1);
+    return {
+      clamps,
+      text: `Set ${clamps} bar clamp${clamps === 1 ? '' : 's'} — one in line with each apron, so the pressure runs through the shoulders instead of bending the legs — with a caul under every jaw, light first, then home.`
+    };
+  }
+
+  /* Display label for a fastening key: joinery keys come from K.JOINERY,
+   * hardware keys from the fastener catalog (localised through the units
+   * layer, since catalog labels carry {size} templates). */
+  function fasteningLabel(key) {
+    if (K.JOINERY[key]) return K.JOINERY[key].label;
+    const hw = (K.FASTENERS.hardware || []).find(h => h.key === key);
+    if (!hw) return key;
+    const label = U().fmtTemplate(hw.label);
+    return /[s)]$/.test(label) ? label : label + 's';
+  }
+
+  /* ---------------- what a step actually fastens ----------------
+   * One descriptor per DISTINCT fastening a step introduces, in the order
+   * encountered. Two things it fixes:
+   *   - `effective` vs `type` (audit D-03): the model records the nominal
+   *     joinery, but layoutForJoint may specify hardware instead (a solid
+   *     top floats on figure-8s whatever the joint record says). Anything
+   *     that TEACHES the joint must read `effective`/`label`.
+   *   - grouping (audit D-04): identical fastenings collapse to one entry
+   *     carrying a count, exactly as the cut list groups identical parts,
+   *     so a six-joint step can describe all of them and stay readable.
+   * Shape: { type, effective, hardware, label, a, b, text } — plus two
+   * grouping extras: `count` (how many joints collapsed into this entry) and
+   * `samePair` (false when those joints do NOT all run between the same two
+   * part names, so nothing describes them as "all N x-to-y joints" when one
+   * of them lands somewhere else). */
+  function stepJoints(spec, model, joints) {
+    const out = [];
+    const byKey = new Map();
+    const nameOf = id => {
+      const p = model.parts.find(x => x.id === id);
+      return p ? p.name : id;
+    };
+    for (const j of (joints || [])) {
       const lay = layoutForJoint(spec, model, j);
-      if (lay && lay.text) bits.push(lay.text);
-      if (bits.length >= 2) break; // steps stay readable
+      if (!lay || !lay.text) continue;
+      const effective = lay.effective || lay.type;
+      const key = effective + '|' + lay.text;
+      const pair = nameOf(j.a) + '|' + nameOf(j.b);
+      if (byKey.has(key)) {
+        const prev = byKey.get(key);
+        prev.count++;
+        if (prev._pair !== pair) prev.samePair = false;
+        continue;
+      }
+      const d = {
+        type: j.type,
+        effective,
+        hardware: !!lay.hardware,
+        label: fasteningLabel(effective),
+        a: j.a, b: j.b,
+        text: lay.text,
+        count: 1, samePair: true, _pair: pair
+      };
+      byKey.set(key, d);
+      out.push(d);
     }
-    return bits.join(' ');
+    for (const d of out) delete d._pair;
+    return out;
+  }
+
+  /* The fastening line(s) for an assembly step. Every distinct fastening the
+   * step introduces is described (audit D-04 — the old version deduped by
+   * joint TYPE and stopped at two, so a nightstand step carrying six joints
+   * printed the back apron's setout and left the drawer rails silent). When
+   * a step makes more than one kind of fastening, each line is prefixed with
+   * the pair it belongs to so the builder can tell them apart. */
+  function stepNote(spec, model, joints) {
+    const infos = stepJoints(spec, model, joints);
+    if (!infos.length) return '';
+    const nameOf = id => {
+      const p = model.parts.find(x => x.id === id);
+      return p ? p.name.toLowerCase() : id;
+    };
+    if (infos.length === 1) {
+      const d = infos[0];
+      if (d.count < 2) return d.text;
+      const how = d.count === 2 ? 'both' : 'all ' + d.count;
+      return d.text + (d.samePair
+        ? ` The same setout at ${how} ${nameOf(d.a)}-to-${nameOf(d.b)} joints.`
+        : ` The same setout at ${how} of them in this step.`);
+    }
+    const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
+    return infos
+      .map(d => `${cap1(nameOf(d.a))} to ${nameOf(d.b)}${d.count > 1 ? ` (× ${d.count})` : ''}: ${d.text}`)
+      .join(' ');
   }
 
   /* Print-sheet detail table + BOM-grade counts: one row per unique
@@ -446,5 +552,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     return [...totals.values()];
   }
 
-  BB.Fasteners = { RULES, CHISELS, DOWEL_DIAMETERS, layoutForJoint, stepNote, detailRows, countFor, jointRun, positions, glueupSchedule };
+  BB.Fasteners = {
+    RULES, CHISELS, DOWEL_DIAMETERS, layoutForJoint, stepJoints, stepNote, fasteningLabel,
+    detailRows, countFor, jointRun, positions, glueupSchedule, frameClampSchedule
+  };
 })();

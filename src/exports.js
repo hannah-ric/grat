@@ -172,7 +172,25 @@ ${nodes}
    * rebuilt model is geometrically identical no matter which display units
    * the user had selected. Do not route these through BB.Units. */
   function toRuby(spec, model) {
-    const rb = s => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    /* Escape for a Ruby DOUBLE-QUOTED string literal. This file's own header
+     * tells the reader to paste it into SketchUp's Ruby Console, and the one
+     * value in it that a stranger controls is the design name — it rides a
+     * share code between users byte-identical. Escaping only \ and " left two
+     * ways out of the literal:
+     *   - a newline ended the line, so `X\nsystem %w[id].first\n# ` put an
+     *     uncommented `system` call on its own line, and
+     *   - `#{…}` interpolates, and the name is emitted inside real quoted
+     *     strings (start_operation, the closing puts), so `#{system(`id`)}`
+     *     ran when the script did.
+     * Both are arbitrary code execution on the machine of whoever opened a
+     * shared design. `\#` is a literal # in Ruby, which kills interpolation;
+     * control characters become their escapes so nothing can end the line. */
+    const rb = s => String(s)
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/#/g, '\\#')
+      .replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t')
+      .replace(/[\u0000-\u001f\u007f]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
     const name = rb(spec.meta.name);
 
     // One ComponentDefinition per unique part (defKey), instances placed with

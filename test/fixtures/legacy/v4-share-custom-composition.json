@@ -1,0 +1,17 @@
+{
+  "why": "A frozen share code for a novel-grammar piece: the \"p\" part arrays and \"c\" connection index pairs, including a rotated panel and the kd_bolt joint (JNT index 20, from the 2026 append). This is the wire path with the most positional encoding in it, so it is the one most likely to be broken silently by an edit to encodePart/decodePart.",
+  "version": 4,
+  "kind": "share",
+  "shareCode": "BB4:eyJ2Ijo0LCJuIjoiQ3VzdG9tIFBpZWNlIiwidCI6NiwibCI6MCwidSI6MSwibyI6WzExMDAsMzUwLDQ2OF0sIm0iOjAsInMiOnsidCI6MjUsImwiOjcwLCJhIjo5MCwiYXQiOjIwLCJhaSI6MTIsImMiOjAsInN0IjoxOSwic2QiOjE4LCJiIjoxLCJrIjowfSwiaiI6WzEsMCwxXSwiZiI6MCwiZCI6MCwicCI6W1szLDAsNDQ5LDAsMTEwMCwzNTAsMzgsMCwwLDAsMCwwLDAsMSwic2VhdCJdLFsyLC00NzUsMjE1LDAsMzUwLDQzMCwzOCwwLDkwLDAsMCwwLDEsMCwibGVnX3BhbmVsIl0sWzIsNDc1LDIxNSwwLDM1MCw0MzAsMzgsMCw5MCwwLDAsMCwxLDAsImxlZ19wYW5lbCJdXSwiYyI6W1sxLDAsMjBdLFsyLDAsMjBdXX0",
+  "expect": {
+    "template": "custom",
+    "name": "Custom Piece",
+    "species": "red_oak",
+    "units": "in",
+    "drawers": null,
+    "customParts": 3,
+    "customConnections": 2,
+    "overall": { "width": 1100, "depth": 350, "height": 468 },
+    "minParts": 3
+  }
+}

@@ -86,20 +86,39 @@ jobs:
 
       # A suite that exists but is never run is the exact defect this job was
       # added to end (audit finding V-01: four green Playwright suites that ran
-      # only when a human remembered). package.json is the register — every
-      # `test:*` script that drives a *.playwright.js file must either get its
-      # own one-line `run: npm run test:…` step below (that exact shape is what
-      # this check greps for, so a mention in a comment does not count) or be
-      # named in SKIPPED with a reason. It also catches the reverse: a step or
-      # SKIPPED entry naming a script package.json no longer has.
+      # only when a human remembered). The check has two halves, because the
+      # first one alone left an obvious way through:
+      #
+      #   SCRIPTS  package.json is the register — every `test:*` script that
+      #     drives a *.playwright.js file must either get its own one-line
+      #     `run: npm run test:…` step below (that exact shape is what this
+      #     greps for, so a mention in a comment does not count) or be named in
+      #     SKIPPED with a reason. It also catches the reverse: a step or
+      #     SKIPPED entry naming a script package.json no longer has.
+      #
+      #   FILES    a test/*.playwright.js with no script at all was invisible
+      #     to the register — which is how test/diy-audit.playwright.js sat
+      #     there driving a #exportMenu the shell redesign deleted, never run,
+      #     never noticed. Every suite FILE must be reachable from a script, or
+      #     be declared in MANUAL below.
       # This runs first because it needs nothing installed and fails in seconds.
-      - name: Every browser suite in package.json is wired into this job
+      - name: Every browser suite is wired into this job (or declared)
         env:
           # Browser suites deliberately NOT run here, space-separated, each with
           # a reason. Empty today — every suite in package.json runs below, and
           # anything new that appears there fails this step until it is wired in
           # or listed here.
           SKIPPED: ''
+          # Suite FILES with no npm script: manual instruments, not gates. Same
+          # standing as test/benchmark-shaker.js in CLAUDE.md — run by hand,
+          # produce a report rather than a verdict. Listing one here is a
+          # declaration that it is not a gate, not a promise that it still runs.
+          #   diy-audit — a click-through that writes screenshots and a findings
+          #     log into dist/. Not an asserting suite (it has no failure exit),
+          #     and it writes into dist/, which the dist-sync check above would
+          #     then flag. Known stale: it drives #exportMenu, removed in the
+          #     shell redesign.
+          MANUAL: 'test/diy-audit.playwright.js'
         run: |
           node -e '
             const fs = require("fs");
@@ -107,6 +126,7 @@ jobs:
             const wf = fs.readFileSync(".github/workflows/ci.yml", "utf8");
             const run = new Set([...wf.matchAll(/^\s*run:\s*npm run (test:[A-Za-z0-9:_-]+)\s*$/gm)].map(m => m[1]));
             const skipped = new Set((process.env.SKIPPED || "").split(/\s+/).filter(Boolean));
+            const manual = new Set((process.env.MANUAL || "").split(/\s+/).filter(Boolean));
             const suites = Object.keys(scripts).filter(k => /\.playwright\.js/.test(scripts[k]));
             let bad = 0;
             for (const k of suites) if (!run.has(k) && !skipped.has(k)) {
@@ -117,10 +137,23 @@ jobs:
               bad++;
               console.log("::error file=.github/workflows/ci.yml::this workflow references \"" + k + "\" but package.json has no such script.");
             }
+            // Half two: every suite FILE on disk must be reachable from a script.
+            const files = fs.readdirSync("test").filter(f => f.endsWith(".playwright.js")).map(f => "test/" + f);
+            const driven = new Set();
+            for (const k of Object.keys(scripts)) for (const m of scripts[k].matchAll(/(test\/[A-Za-z0-9._-]+\.playwright\.js)/g)) driven.add(m[1]);
+            for (const f of files) if (!driven.has(f) && !manual.has(f)) {
+              bad++;
+              console.log("::error file=" + f + "::this browser suite has no npm script, so nothing can run it. Add a test:* script and a step below, or list it in the browser job MANUAL env with a reason.");
+            }
+            for (const f of manual) if (!fs.existsSync(f)) {
+              bad++;
+              console.log("::error file=.github/workflows/ci.yml::MANUAL names \"" + f + "\", which does not exist.");
+            }
             if (bad) process.exit(1);
             const here = suites.filter(k => !skipped.has(k));
-            console.log(suites.length + " browser suites accounted for — run here: " + here.join(", ") +
-              (skipped.size ? " | deliberately skipped: " + [...skipped].join(", ") : ""));
+            console.log(files.length + " browser suite files on disk; " + suites.length + " wired to scripts — run here: " + here.join(", ") +
+              (skipped.size ? " | deliberately skipped: " + [...skipped].join(", ") : "") +
+              (manual.size ? " | manual instruments: " + [...manual].join(", ") : ""));
           '
 
       - name: Cache the npm download cache
@@ -192,6 +225,12 @@ jobs:
       # RULER error. This measures them against the page box in a real browser.
       - name: Print — 1:1 template fidelity and page fit (34)
         run: npm run test:print
+
+      # axe-core over every state the app really has, plus hand-rolled checks
+      # for the promises axe cannot know about (verdict capsules carry text,
+      # not colour alone; token contrast pairs; reduced motion; forced colors).
+      - name: Accessibility — axe sweep + the project's own commitments (171)
+        run: npm run test:a11y
 
       # The only suite that boots the real serve.js rather than a static server.
       # It needs no secrets and no network: BB_DEV_LOGIN=1 gives it a one-redirect

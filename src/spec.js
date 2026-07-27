@@ -143,10 +143,20 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* Deep merge `patch` into a clone of `base`. `null` is kept as an explicit
    * null (how the AI removes drawers: {"drawers":null}) so correction can tell
    * "removed" apart from "unspecified" and won't resurrect a template default. */
+  /* Keys that are not data. `JSON.parse` creates a real OWN "__proto__"
+   * property, so a spec that arrived as raw JSON can carry one — and walking
+   * into it writes onto Object.prototype for the whole process, not onto the
+   * spec. The codec is immune (decode emits a fixed key set), but the server
+   * accepts a raw `body.spec` on POST /api/blueprint and api/_pipeline.js
+   * keeps its vm context warm between requests, so one poisoned merge would
+   * outlive the request that caused it and reach the next user's plan. This
+   * is the single choke point every merge path goes through. */
+  const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
   function deepMerge(base, patch) {
     const out = clone(base) || {};
     (function walk(dst, src) {
       for (const k of Object.keys(src)) {
+        if (UNSAFE_KEYS.includes(k)) continue;
         const v = src[k];
         if (v === null) { dst[k] = null; continue; }
         if (isObj(v)) {

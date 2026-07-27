@@ -58,7 +58,9 @@
      (crawlable, JS-off readable); porch.js removes it pre-boot for
      returning/share-link/?app arrivals. Figures are injected at runtime from
      the live pipeline — a number hardcoded here is a founding-rule violation. -->
-<section id="porch" class="porch" data-beat="mast" aria-label="Blueprint Buddy — how it works">
+<!-- role="main": while the porch is up the studio's own <main> is off the
+     page, so without this the landing document has no main landmark at all. -->
+<section id="porch" class="porch" role="main" data-beat="mast" aria-label="Blueprint Buddy — how it works">
   <div class="ph-stage" aria-hidden="true"><canvas id="porchCanvas"></canvas></div>
   <div class="ph-flow">
 
@@ -344,40 +346,60 @@
     </div>
     <div class="topbar-group">
       <div class="menu-wrap">
-        <button id="moreBtn" class="btn" aria-haspopup="menu" aria-expanded="false">More</button>
-        <div id="moreMenu" class="menu" role="menu" inert>
+        <!-- A DISCLOSURE trigger, not a menu button: aria-expanded +
+             aria-controls, and deliberately NO aria-haspopup. aria-haspopup's
+             value names the ROLE of what opens, and its only legal values are
+             menu / listbox / tree / grid / dialog ("true" being defined as a
+             synonym for "menu"). What opens here is a role="group" — see
+             below — which no value can honestly describe, so promising any of
+             them would announce a widget that is not there. -->
+        <button id="moreBtn" class="btn" aria-expanded="false" aria-controls="moreMenu">More</button>
+        <!-- NOT role="menu": this is a disclosure panel. Alongside its buttons
+             it carries settings groups (units, precision, theme, render) whose
+             controls are not menu items, and it implements no roving-focus
+             menu keyboard contract. Claiming the role promised a widget that
+             does not exist and failed aria-required-children; plain buttons in
+             a labelled group are what it actually is. -->
+        <div id="moreMenu" class="menu" role="group" aria-label="More" inert>
           <!-- ≤560px folds the topbar redo away; touch has no Ctrl+Shift+Z,
                so redo stays reachable here (P1-1). -->
-          <button role="menuitem" id="menuRedoBtn" class="menu-redo-item"><span>Redo</span><span class="hint">last undone change</span></button>
-          <button role="menuitem" id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
-          <button role="menuitem" id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
-          <button role="menuitem" id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
-          <button role="menuitem" id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
-          <button role="menuitem" id="faqBtn"><span>FAQ</span><span class="hint">about the studio</span></button>
-          <button role="menuitem" id="porchReplayBtn"><span>See the intro again</span><span class="hint">landing tour</span></button>
+          <button id="menuRedoBtn" class="menu-redo-item"><span>Redo</span><span class="hint">last undone change</span></button>
+          <button id="historyBtn" aria-haspopup="dialog"><span>History</span><span class="hint">revisions</span></button>
+          <button id="projectsBtn" aria-haspopup="dialog"><span>Projects</span><span class="hint">autosaved</span></button>
+          <button id="galleryBtn" aria-haspopup="dialog"><span>Starters</span><span class="hint">templates</span></button>
+          <button id="referenceBtn"><span>Shop reference</span><span class="hint">learn</span></button>
+          <button id="faqBtn"><span>FAQ</span><span class="hint">about the studio</span></button>
+          <button id="porchReplayBtn"><span>See the intro again</span><span class="hint">landing tour</span></button>
           <!-- ≤560px folds the topbar Share CTA away; this entry keeps share
                codes AND import reachable on phones (X-05). -->
-          <button role="menuitem" id="menuShareBtn" class="menu-share-item" aria-haspopup="dialog"><span>Share / Import</span><span class="hint">codes &amp; links</span></button>
-          <div class="menu-sep"></div>
-          <div class="menu-group" id="moreExportGroup">
-            <div class="menu-group-label">Export</div>
+          <button id="menuShareBtn" class="menu-share-item" aria-haspopup="dialog"><span>Share / Import</span><span class="hint">codes &amp; links</span></button>
+          <div class="menu-sep" aria-hidden="true"></div>
+          <div class="menu-group" id="moreExportGroup" role="group" aria-label="Export">
+            <div class="menu-group-label" aria-hidden="true">Export</div>
             <!-- hint-kbd hides under (pointer: coarse) — a Mac key glyph
                  means nothing to a thumb (C-14). -->
             <!-- The hint is DERIVED (renderExportGate): it said "issued" to
                  everyone, including anonymous visitors with no account. -->
-            <button role="menuitem" data-export="sheets"><span>Blueprint sheet set</span><span class="hint" id="exportSheetsHint"></span></button>
-            <button role="menuitem" data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
-            <button role="menuitem" data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
-            <button role="menuitem" data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
-            <button role="menuitem" data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
-            <button role="menuitem" data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
-            <button role="menuitem" data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
-            <button role="menuitem" data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
-            <button role="menuitem" data-export="help"><span>Import &amp; integration help</span></button>
+            <button data-export="sheets"><span>Blueprint sheet set</span><span class="hint" id="exportSheetsHint"></span></button>
+            <button data-export="print"><span>Print plans</span><span class="hint hint-kbd">⌘P</span></button>
+            <button data-export="svg"><span>Drawing sheet</span><span class="hint">.svg</span></button>
+            <button data-export="csv"><span>Cut list</span><span class="hint">.csv</span></button>
+            <button data-export="json"><span>DesignSpec</span><span class="hint">.json</span></button>
+            <button data-export="glb"><span>3D model / AR</span><span class="hint">.glb</span></button>
+            <button data-export="rb"><span>SketchUp build script</span><span class="hint">.rb</span></button>
+            <button data-export="dae"><span>SketchUp mesh</span><span class="hint">.dae</span></button>
+            <button data-export="help"><span>Import &amp; integration help</span></button>
           </div>
-          <div class="menu-sep" id="accountSep" hidden></div>
-          <div id="accountArea" hidden></div>
-          <div class="menu-sep"></div>
+          <div class="menu-sep" id="accountSep" aria-hidden="true" hidden></div>
+          <div id="accountArea" role="group" aria-label="Account" hidden></div>
+          <div class="menu-sep" aria-hidden="true"></div>
+          <!-- The rows below are layout, not structure: each one is visually
+               labelled by its .menu-row-label and each control inside already
+               carries its own role="group" with a real name ("Display units",
+               "Color theme", "Render quality"). They briefly wore role="group"
+               to satisfy the enclosing menu's required-children rule; that menu
+               is a group now, so the wrapper roles are gone rather than left
+               announcing a name none of them earned. -->
           <div class="menu-row">
             <span class="menu-row-label">Units</span>
             <div class="seg units-seg" role="group" aria-label="Display units">
@@ -553,7 +575,10 @@
             <button class="btn small ghost" id="frameBtn" title="Reframe view (Home)">Fit</button>
             <span class="vt-sep" aria-hidden="true"></span>
             <div class="menu-wrap">
-              <button class="btn small ghost" id="viewBtn" aria-haspopup="true" aria-expanded="false">View</button>
+              <!-- Disclosure, same as #moreBtn: what opens is a role="group"
+                   of camera/explode/render controls, which aria-haspopup has
+                   no legal value for. aria-expanded + aria-controls instead. -->
+              <button class="btn small ghost" id="viewBtn" aria-expanded="false" aria-controls="viewMenu">View</button>
               <div class="menu view-menu" id="viewMenu" role="group" aria-label="View controls" inert>
                 <div class="menu-row">
                   <span class="menu-row-label">Camera</span>
@@ -578,7 +603,7 @@
                     <button id="vpRenderFlat" aria-pressed="false" title="Flat colors, no shadows — easiest on the GPU">Flat</button>
                   </div>
                 </div>
-                <div class="menu-sep"></div>
+                <div class="menu-sep" aria-hidden="true"></div>
                 <button class="menu-help" id="vpHelpBtn" aria-haspopup="dialog" aria-expanded="false">Keyboard &amp; pointer help</button>
               </div>
             </div>
@@ -642,7 +667,7 @@
   </main>
 
   <div class="drawer-backdrop" id="historyBackdrop" hidden></div>
-  <aside class="drawer-panel" id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyTitle" aria-hidden="true" inert>
+  <div class="drawer-panel" id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyTitle" aria-hidden="true" inert>
     <div class="drawer-head">
       <h2 id="historyTitle">Revisions</h2>
       <button class="btn small" id="compareBtn" disabled>Compare</button>
@@ -650,7 +675,7 @@
     </div>
     <div class="drawer-body" id="historyList"></div>
     <p class="compare-note">Check two snapshots to compare them — the older appears ghosted behind the newer in 3D.</p>
-  </aside>
+  </div>
 
   <div class="scrim" inert id="galleryScrim" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
     <div class="modal">

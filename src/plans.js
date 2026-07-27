@@ -174,7 +174,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // shopping list always matches the drilling instructions (audit F-S3-1).
     // Every non-lumber price routes through the user-editable table
     // (prices.hardware) with the catalog defaults as fallback.
-    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    // No `fine` helper in this scope on purpose: nothing the BOM prints is a
+    // sag/kerf/tolerance value, so a decimal inch here would be a defect
+    // (audit D-05 — the bore that regressed was exactly this mistake).
+    const len = mm => U().fmtLength(mm);
     const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     const hp = (key, fallback) => K.hardwarePrice(opts.prices, key, fallback);
     const engineCounts = BB.Fasteners ? BB.Fasteners.countFor(spec, model) : [];
@@ -285,6 +288,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     // the 4% swing.
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
     const boxJ = K.JOINERY[spec.joinery.box];
+    /* THE formatting rule for every emitter in this file (audit M-01, and
+     * D-05 which caught the call sites the first pass missed):
+     *   drill(x)  hole diameters — pilots, bores, counterbores. A number you
+     *             can find in a bit index; imperial gets 1/64 fractions.
+     *   len(x)    measured gaps and positions — reveals, travel, setbacks,
+     *             recesses. A shim or a rule sets these, so imperial gets
+     *             reduced fractions, never a decimal.
+     *   fine(x)   sag, kerf, tolerance, computed movement ONLY — the values
+     *             that are honestly decimal because you measure them with a
+     *             caliper or never measure them at all. */
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
     const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
     /* Screwed/pocketed boxes have a relieved back: the bottom slides in from
@@ -322,7 +335,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           gearIds, { drawer: d.index }));
       } else if (d.runner === 'undermount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the undermount slides`,
-          `Screw the ${len(d.slideLen)} undermount slides to the case floor of the opening, dead parallel and flush to the front edge. The box was built to the slide — INSIDE width = opening − ${len(42)} (the locking devices register on the box interior), depth exactly ${len(d.slideLen)}, bottom recessed ${fine(12.7)} — so notch the box back for the hooks and press the locking clips on under the front corners.`,
+          `Screw the ${len(d.slideLen)} undermount slides to the case floor of the opening, dead parallel and flush to the front edge. The box was built to the slide — INSIDE width = opening − ${len(42)} (the locking devices register on the box interior), depth exactly ${len(d.slideLen)}, bottom recessed ${len(12.7)} — so notch the box back for the hooks and press the locking clips on under the front corners.`,
           gearIds, { drawer: d.index }));
       } else {
         const sp = K.WOOD_SPECIES[spec.wood.species];
@@ -339,7 +352,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const frontScrews = `screw it from inside the box with #8 × ${len(25)} screws — ${drill(4.5)} clearance holes through the box front, pilot ${drill(2.8)} into the false front, so it draws up tight`;
       out.push(step(`dr${n}_front`, `Drawer ${n}: attach the front`,
         d.frontStyle === 'inset'
-          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${fine(2)} reveal all around, then ${frontScrews}.`
+          ? `Shim the ${len(d.front.w)} × ${len(d.front.h)} front in its opening with a ${len(2)} reveal all around, then ${frontScrews}.`
           : `Center the ${len(d.front.w)} × ${len(d.front.h)} overlay front on the opening and ${frontScrews}.`,
         ids('front'), { drawer: d.index }));
       // Steps speak the EFFECTIVE style — the one pullSpec actually fitted.
@@ -351,15 +364,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         ? ` (The front is too narrow for ${pReq.label.toLowerCase()}s — a ${pRow.label.toLowerCase()} is fitted instead.)` : '';
       let pullText;
       if (pEff === 'none_touch') {
-        pullText = `No pull on this front: fit the magnetic touch latch behind it, striker on the box — press to pop open. It needs ${fine(2)} to ${fine(3)} of travel in the reveal.`;
+        pullText = `No pull on this front: fit the magnetic touch latch behind it, striker on the box — press to pop open. It needs ${len(2)} to ${len(3)} of travel in the reveal.`;
       } else if (pull.holes === 0) {
         pullText = pEff === 'edge_pull'
           ? `Screw the edge pull to the front’s TOP EDGE, centered — pre-drill every hole, this is end grain and it splits without pilots.${pSub}`
           : `Rout the flush-pull mortise with the maker’s template, centered on the front — freehand walls show through the finish forever.${pSub}`;
       } else if (pull.ctcMM) {
-        pullText = `Bore ${pull.holes} × ${fine(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). Bore through BOTH the false front and the box front behind it: the M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} screws drive from inside the box and cross both.${pSub}`;
+        pullText = `Bore ${pull.holes} × ${drill(5)} through-holes at ${len(pull.ctcMM)} centers, ${pull.count > 1 ? 'two pulls at the 1/3 and 2/3 points, ' : ''}on the front's centerline — every front in the stack shares ONE centerline (a story stick beats a tape). Bore through BOTH the false front and the box front behind it: the M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} screws drive from inside the box and cross both.${pSub}`;
       } else {
-        pullText = `Bore one ${fine((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : `, M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} from inside — through the box front too`}. Every front in the stack shares one centerline.${pSub}`;
+        pullText = `Bore one ${drill((pRow && pRow.boreDia) || 5)} hole at the front's center${pEff === 'knob_turned_wood' ? ' — glue the knob’s tenon in and wedge it from inside, wedge ACROSS the front’s grain' : `, M4 × ${len(BB.HW.pullScrewLenMM(d.box.t + d.front.t))} from inside — through the box front too`}. Every front in the stack shares one centerline.${pSub}`;
       }
       out.push(step(`dr${n}_pull`, `Drawer ${n}: ${pEff === 'none_touch' ? 'fit the touch latch' : 'add the pull'}`,
         pullText, ids('pull'), { drawer: d.index }));
@@ -451,6 +464,96 @@ var BB = globalThis.BB = globalThis.BB || {};
   const isKnockdown = joint => joint === 'kd_bolt';
   const KD_STEP_TEXT = 'Bolt together — hand-tight, then snug once square.';
 
+  /* ---------------- frame templates: table / desk / bench ----------------
+   * A leg-and-apron base is not three lines of instruction (audit D-01: the
+   * most-requested piece in the product shipped 3 steps and 151 words while
+   * casework got 10–18 steps and 437–943). It is two sub-assemblies, a cure,
+   * and one floating top, and it goes wrong exactly where the three-line
+   * version was silent: layout on the legs (every frame joint lands on one),
+   * wind in the frames, the open time that forces a two-stage glue-up in the
+   * first place, when the clamps come off versus when the piece can be
+   * loaded, and a top held so it cannot move across its grain.
+   *
+   * Every number below is READ, never written here: apron setback and
+   * shoulder from spec.structure, the joint count from the model, the clamp
+   * count from BB.Fasteners.frameClampSchedule, open/clamp/cure times from
+   * the glue K.recommendGlue picks for THIS design (make the finish
+   * food-safe and the bottle — and the reasoning — changes with it), and the
+   * top's seasonal travel from K.movementMM, the same function the integrity
+   * engine's movement check uses. */
+  function frameSteps(spec, model, out, opts, ctx) {
+    const frP = ctx.frP, ids = ctx.ids;
+    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const st = spec.structure;
+    const kd = isKnockdown(spec.joinery.frame);
+    const legIds = ids('leg_1', 'leg_2', 'leg_3', 'leg_4');
+    const shortIds = ids('apron_short_1', 'apron_short_2');
+    const longIds = ids('apron_long_1', 'apron_long_2');
+    // Count what actually lands ON a leg, not "joints of the frame type" —
+    // butt_screws is legal in the frame slot AND is the top's nominal joint,
+    // so a type filter would count the two top fixings as leg joinery.
+    const roleOf = id => { const p = model.parts.find(x => x.id === id); return p ? p.role : ''; };
+    const nJoints = model.joints.filter(j => roleOf(j.b) === 'leg').length;
+    const rec = K.recommendGlue(spec);
+    const glue = rec && rec.glue;
+    const clamps = n => (BB.Fasteners && BB.Fasteners.frameClampSchedule
+      ? BB.Fasteners.frameClampSchedule(n).text
+      : 'Clamp in line with each apron, with a caul under every jaw.');
+    // Same schedule, count only — the second stage does not need the reason
+    // restated, and repeating it verbatim would be padding, not instruction.
+    const nClamps = n => (BB.Fasteners && BB.Fasteners.frameClampSchedule
+      ? BB.Fasteners.frameClampSchedule(n).clamps : n);
+
+    /* 1. Layout. Every frame joint lands on a leg, so a leg mis-marked once
+     * is the same error repeated at every corner. */
+    out.push(step('layout', 'Mark the legs before you cut a joint',
+      `Stand the ${legIds.length} legs in the positions they will finish in and mark the tops with a cabinetmaker's triangle — best faces outward, sapwood and wild grain turned where nobody looks. All ${nJoints} frame joints land on a leg, so lay them out from ONE reference face and edge per leg: the aprons sit ${st.apronInset > 0 ? `${len(st.apronInset)} back from the outside leg face` : 'flush with the outside leg face'}, their top edges level with the leg tops and ${len(st.apronHeight)} of shoulder below that. Cut all ${nJoints} joints off that single setup — a layout error here is not one mistake, it is the same mistake ${nJoints} times over, and nothing downstream pulls a mis-marked base back into square. Pencil each part's cut-list name onto a face that finishes hidden.`,
+      legIds));
+
+    /* 2. The end frames — and the reason there are two stages at all. */
+    out.push(step('s1', 'Build the two end frames',
+      `Join a short apron between each leg pair with ${frP}. ${kd ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'} ` +
+      (kd
+        ? `Two mirror-image assemblies — build them against each other, not just against a square, or the base finishes wider at one end than the other. Bring the bolts up in stages, alternating ends, and re-measure the diagonals after every turn: a bolted frame walks out of square if you take one side home first.`
+        : `Two mirror-image assemblies, and the base goes together in two stages for a reason worth knowing — ${glue.label} gives ${glue.openMin} minutes of open time and the whole base is ${nJoints} joints, more than anyone spreads, seats, and clamps before the glue starts to grab. ${clamps(shortIds.length)} Measure both diagonals across each frame and make them equal, then sight along the clamp bars for wind — on a bench you have checked flat, not on the shop floor, because a frame with a twist in it will rock the finished piece however true the top is. ${glue.clampMin} minutes in the clamps.`),
+      legIds.concat(shortIds)));
+
+    /* 3. Closing the base. */
+    out.push(step('s2', 'Join the frames',
+      `Connect the end frames with the long aprons using ${frP}. ${kd ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking. ` +
+      (kd
+        ? `Stand both end frames up and let the long aprons find their bores before anything is driven home — a knockdown base is only as square as the last bolt you tightened. Check the diagonals across the leg tops corner to corner: equal, or a shoulder is not seated. Then sight across the four leg tops from one end; they have to lie in one plane, because the top telegraphs any twist you leave in the base.`
+        : `${nClamps(longIds.length)} bar clamps again, one in line with each long apron. Check the diagonals across the top of the base corner to corner — equal, or it is a parallelogram, and flattening the top will never hide that. Then sight across the four leg tops from one end: they have to lie in one plane, because the top telegraphs any twist you leave in the base. ${glue.clampMin} minutes in the clamps, and don't move it while it sets.`),
+      longIds));
+
+    /* 4. When the clamps come off is not when the piece can be loaded. */
+    const standCheck = ` Then set the base on the flattest floor you have and press each corner in turn. A base that rocks gets ONE foot trimmed — take the shaving off whichever foot is proud, with the base loaded on the opposite corner. Never shim it.`;
+    out.push(step('base_check', kd ? 'Snug the base and stand it up' : 'Out of the clamps, then let it cure',
+      (kd
+        ? `Nothing in this base is glued, which is the entire point of a knockdown frame — so it is finished when the bolts are. Go round once more with the key, and plan to go round again after the first heating season: a knockdown frame nobody re-snugs will rack.`
+        : `The clamps come off at ${glue.clampMin} minutes, but ${glue.label} is not at full strength for ${glue.cureHrs} hours — until then don't stand on the base, plane it, or hang a top off it. Pare the squeeze-out while it is still rubbery: a chisel or a card scraper lifts it away clean, where a wet rag drives it into the pores and it ghosts through the finish forever.`) + standCheck,
+      legIds.concat(shortIds, longIds)));
+
+    /* 5. The top: how it is held, and which way it is allowed to travel. */
+    const top = model.parts.find(p => p.id === 'top_1');
+    const topName = top ? top.name.toLowerCase() : 'top';
+    const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    const topKey = top && K.WOOD_SPECIES[top.material] ? top.material : spec.wood.species;
+    const topSp = K.WOOD_SPECIES[topKey];
+    // Cross-grain width, measured exactly as the integrity engine measures it
+    // for the movement check: the panel dimension across the grain.
+    const crossW = top ? Math.min(top.size.w, top.size.d) : 0;
+    const moves = !!(topSp && !topSp.sheet && crossW > 0);
+    const mv = moves ? K.movementMM(crossW, topKey, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    out.push(step('s3', `Attach the ${topName}`,
+      `Center the ${topName} and fasten it from below with figure-8s or buttons — never glue a solid ${topName} to its base. ` +
+      (moves
+        ? `This one travels about ${fine(mv)} across its ${len(crossW)} width between a dry winter and a damp summer (${topSp.label.toLowerCase()}, ${climate} indoor swing) and effectively nothing along its length, so every fastener has to hold it DOWN while letting it slide ACROSS the grain: set each figure-8 with its long axis running across the ${topName}'s grain so it can swivel, or cut the buttons' tongues to ride in a kerf running the same way. `
+        : `Hold it down without pinning it: a ${topName} that cannot move is one that splits. `) +
+      `Snug, not crushed — a fastener torqued solid is a glued top with extra steps, and the crack turns up two winters later. Check the overhang is even on all four sides before you drill anything.`,
+      ['top_1']));
+  }
+
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -513,15 +616,35 @@ var BB = globalThis.BB = globalThis.BB || {};
       out.push(step('mill', 'Mill and label every part',
         'Cut all parts to the dimensions in the cut list (angles included), then label each one in pencil.',
         model.parts.map(p => p.id)));
+      /* One step per connection, each one identified by the parts it joins
+       * (audit D-02: a two-connection piece emitted two steps both titled
+       * "Join leg panel to seat" with near-identical bodies — nothing in the
+       * plan told you which was which, and there was no clamp order, square
+       * check, or glue window anywhere). The part ids are the honest
+       * discriminator; the ordinal says why the step sits where it does. */
+      const glueRec = K.recommendGlue(spec);
+      const gl = glueRec && glueRec.glue;
       conns.forEach((c, i) => {
         const a = byId.get(c.a), b = byId.get(c.b);
         if (!a || !b) return;
         const j = K.JOINERY[c.joint];
         const ang = BB.Geo.cutAngles(a.rot) || BB.Geo.cutAngles(b.rot);
-        out.push(step('c' + (i + 1), `Join ${a.name.toLowerCase()} to ${b.name.toLowerCase()}`,
-          `Fix ${a.name.toLowerCase()} (${c.a}) to ${b.name.toLowerCase()} (${c.b}) with ${j ? (j.plural || j.label.toLowerCase()) : c.joint}.` +
+        const an = a.name.toLowerCase(), bn = b.name.toLowerCase();
+        const kd = isKnockdown(c.joint);
+        const first = i === 0, last = i === conns.length - 1;
+        // A novel piece has no template behind it, so the whole-piece dry run
+        // on the first connection is the only proof the parts go together.
+        const openingLine = first
+          ? ` And before you fix anything: stand the WHOLE piece up loose, every connection dry — a novel composition has no proven template behind it, so that trial run is the only evidence the parts meet where the drawing says they do.`
+          : ` Connection ${i + 1} of ${conns.length}, working up from the ground so each joint rests on one already made.`;
+        const closingLine = kd
+          ? ` Work round the bolts in sequence instead of taking one home first — a frame pulled up on one side drags itself out of square${last ? ', and with the last one snug the piece should stand without a rock' : ''}.`
+          : ` Clamp ACROSS the joint line so the pressure closes the faces, with a caul under each jaw to keep the marks off a show face, and check ${an} square to ${bn} in both planes before the glue tacks — ${gl ? `${gl.label} gives you ${gl.openMin} minutes` : 'you have minutes, not hours'}. ${gl ? `Leave it clamped ${gl.clampMin} minutes, and keep load off the piece for ${gl.cureHrs} hours.` : ''}${last ? ' This closes the piece: stand it and press each corner while the glue is still green — it should not rock.' : ''}`;
+        out.push(step('c' + (i + 1), `Join ${an} (${c.a}) to ${bn} (${c.b})`,
+          `Fix ${an} (${c.a}) to ${bn} (${c.b}) with ${j ? (j.plural || j.label.toLowerCase()) : c.joint}.` +
           (ang ? ` Angled joint: ${BB.Geo.angleText(ang)} — cut per the cut list before assembly.` : '') +
-          (isKnockdown(c.joint) ? ' ' + KD_STEP_TEXT : ' Dry-fit before glue.'),
+          (kd ? ' ' + KD_STEP_TEXT : ' Dry-fit before glue.') +
+          openingLine + closingLine,
           [c.a, c.b]));
       });
     } else if (t === 'bookshelf') {
@@ -553,9 +676,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
     } else {
-      out.push(step('s1', 'Build the two end frames', `Join a short apron between each leg pair with ${frP}. ${isKnockdown(spec.joinery.frame) ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'}`, ids('leg_1', 'leg_3', 'leg_2', 'leg_4', 'apron_short_1', 'apron_short_2')));
-      out.push(step('s2', 'Join the frames', `Connect the end frames with the long aprons using ${frP}. ${isKnockdown(spec.joinery.frame) ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking.`, ids('apron_long_1', 'apron_long_2')));
-      out.push(step('s3', 'Attach the top', 'Center the top and fasten it from below with figure-8s or buttons — never glue a solid top to its base.', ['top_1']));
+      frameSteps(spec, model, out, opts, { frP, ids });
     }
     // Mandatory anti-tip anchoring: an instruction step, not an aside. A
     // custom piece may not live against a wall at all (room dividers, column
@@ -578,18 +699,34 @@ var BB = globalThis.BB = globalThis.BB || {};
      * attachment note never surfaced). */
     const seenJoints = new Set();
     const jKey = j => `${j.type}|${j.a}|${j.b}`;
+    /* Steps that make no joint never own one. The custom "mill and label"
+     * step lists every part in the piece, so it used to swallow the whole
+     * connection graph and leave the connection steps with no setout at all
+     * (audit D-02: that is why a novel piece got 15 words a step). */
+    const MAKES_NO_JOINT = /^(mill|sand|finish|safety|antitip)/;
+    const claimed = new Map();
     for (const s of out) {
+      if (MAKES_NO_JOINT.test(s.id)) { s.joints = []; continue; }
       const ids = new Set(s.partIds || []);
       const mine = model.joints.filter(j => ids.has(j.a) && !seenJoints.has(jKey(j)));
       for (const j of mine) seenJoints.add(jKey(j));
+      claimed.set(s.id, mine);
+      // step.joints stays exactly as it was — the capped list other
+      // consumers (playback glow, the Joint Inspector) already read.
       s.joints = mine.slice(0, 8);
     }
     // Fastener locations & joinery setout, from the engine — the same numbers
-    // the BOM counted (audit F-S3-1).
-    if (BB.Fasteners) {
+    // the BOM counted (audit F-S3-1). jointInfo describes what the plan
+    // ACTUALLY fastens with (audit D-03) and covers every distinct fastening
+    // the step introduces, grouped with a count (audit D-04); it is derived
+    // from the step's full joint list, not the capped one, so a count printed
+    // in the text can never understate what is on the bench.
+    if (BB.Fasteners && BB.Fasteners.stepJoints) {
       for (const s of out) {
-        if (!s.joints || !s.joints.length || /^(mill|sand|finish|safety|antitip)/.test(s.id)) continue;
-        const note = BB.Fasteners.stepNote(spec, model, s.joints);
+        const mine = claimed.get(s.id);
+        if (!mine || !mine.length) continue;
+        s.jointInfo = BB.Fasteners.stepJoints(spec, model, mine);
+        const note = BB.Fasteners.stepNote(spec, model, mine);
         if (note) s.text += ' — ' + note;
       }
     }

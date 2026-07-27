@@ -472,7 +472,11 @@ const clickMoreCtl = async sel => {
   // top rule, and a mono summary strip computed from the live plan state.
   await page.click('#tab-cut');
   const ledger = await page.evaluate(() => {
-    const h = document.querySelector('#panel-main .ledger-head h3.kicker');
+    // :is(h2, h3) — panel headings were promoted h3→h2 so each panel's own
+    // heading sits one level under the page <h1> instead of skipping a rank
+    // (heading-order). The band is what is asserted; its rank is styles.css's
+    // business and both are styled as .kicker.
+    const h = document.querySelector('#panel-main .ledger-head :is(h2, h3).kicker');
     const sum = document.querySelector('#panel-main .ledger-sum');
     return {
       head: !!h && /cut list/i.test(h.textContent),
@@ -980,6 +984,34 @@ const clickMoreCtl = async sel => {
   ok(await page.evaluate(() => document.activeElement.id === 'projectsBtn'), 'arrow keys cycle menu items');
   ok(await page.evaluate(() => !!document.querySelector('#moreMenu [data-export="print"]')),
     'export actions live inside the More menu');
+
+  // Present is not the same as wired. Every [data-export] button in this panel
+  // gets its click handler from ONE querySelectorAll in ui.js, and when that
+  // selector stopped matching (the panel is a group, not a role="menu", so the
+  // old [role="menuitem"] query found nothing) every export in the product went
+  // dead while every button stayed visible, enabled and silent. Nothing failed.
+  // So: actually press one, and watch the export layer get called.
+  // .designspec.json is the entry to press — it is the one export that is not
+  // credit-gated (doExport openKinds), so this asserts the WIRING and never
+  // wanders into entitlement behaviour, which gating.playwright.js owns.
+  await page.evaluate(() => {
+    window.__exportCalls = [];
+    window.__exportOrig = BB.Exports.download;
+    BB.Exports.download = name => { window.__exportCalls.push(name); }; // no real download
+  });
+  await page.click('#moreMenu [data-export="json"]');
+  await page.waitForTimeout(150);
+  const exportFired = await page.evaluate(() => {
+    const calls = window.__exportCalls.slice();
+    BB.Exports.download = window.__exportOrig;
+    return { calls, menuOpen: document.getElementById('moreMenu').classList.contains('open') };
+  });
+  ok(exportFired.calls.length === 1 && /\.designspec\.json$/.test(exportFired.calls[0]),
+    `a More-menu export entry actually runs its export (got ${JSON.stringify(exportFired.calls)})`);
+  ok(!exportFired.menuOpen, 'picking an entry closes the More menu');
+
+  await page.focus('#moreBtn');
+  await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Escape');
   ok(await page.evaluate(() => !document.getElementById('moreMenu').classList.contains('open')), 'Escape closes the open menu');
 
@@ -1377,17 +1409,28 @@ const clickMoreCtl = async sel => {
   // Mobile shell: single-row header, one-row viewport toolbar, welcome fits.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
-  const mobileShell = await page.evaluate(() => ({
-    topbarH: document.querySelector('.topbar').getBoundingClientRect().height,
-    toolbarH: document.querySelector('.viewport-toolbar').getBoundingClientRect().height,
-    brandHidden: getComputedStyle(document.querySelector('.brand-name')).display === 'none',
-    shortCta: getComputedStyle(document.querySelector('#buildModeBtn .mode-label')).display !== 'none'
-  }));
+  const mobileShell = await page.evaluate(() => {
+    const brand = document.querySelector('.brand-name');
+    return {
+      topbarH: document.querySelector('.topbar').getBoundingClientRect().height,
+      toolbarH: document.querySelector('.viewport-toolbar').getBoundingClientRect().height,
+      // The wordmark yields its SPACE, not its existence. display:none took
+      // the document's only <h1> out of the accessibility tree on every phone
+      // state; it is visually clipped now instead. So the test is "occupies no
+      // header width" (≤2px, the 1px clip box) AND "still has its text",
+      // rather than the old display:none — which would pass again the moment
+      // someone reintroduced the defect.
+      brandYields: brand.getBoundingClientRect().width <= 2,
+      brandNamed: (brand.textContent || '').trim().length > 0 && brand.tagName === 'H1',
+      shortCta: getComputedStyle(document.querySelector('#buildModeBtn .mode-label')).display !== 'none'
+    };
+  });
   ok(mobileShell.topbarH <= 64, `mobile header stays one row (${Math.round(mobileShell.topbarH)}px, redesign spec: 56\u201364px)`);
   // Touch targets ≥40 px may wrap the toolbar onto a second row on narrow phones —
   // that is preferred over unreadably small controls at the bench.
   ok(mobileShell.toolbarH <= 120, `mobile viewport toolbar stays compact (${Math.round(mobileShell.toolbarH)}px)`);
-  ok(mobileShell.brandHidden && mobileShell.shortCta, 'wordmark yields and Build keeps its word on phones');
+  ok(mobileShell.brandYields && mobileShell.brandNamed && mobileShell.shortCta,
+    'wordmark yields its width but stays the page <h1>, and Build keeps its word on phones');
   await page.evaluate(() => __bb.selectTab('cut'));
   await page.waitForSelector('.cut-card');
   ok(await page.evaluate(() => !document.querySelector('#panel-main table.data') && document.querySelectorAll('.cut-card').length >= 3),
@@ -1587,7 +1630,10 @@ const clickMoreCtl = async sel => {
         visible: !!m && !m.hidden,
         text: m ? m.textContent : '',
         areaShown: !document.getElementById('accountArea').hidden,
-        menuHasPlans: !!document.querySelector('#accountArea [role="menuitem"]')
+        // The More panel is a disclosure of plain buttons, not an ARIA menu
+        // (its settings groups are not menu items), so query the button itself.
+        menuHasPlans: [...document.querySelectorAll('#accountArea button')]
+          .some(b => /credit|pricing|plan/i.test(b.textContent || ''))
       };
     };
     const real = BB.Store.auth().billing;

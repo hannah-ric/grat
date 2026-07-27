@@ -142,7 +142,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     fx = fx || {};
     const wrap = el('div', 'ledger');
     const head = el('div', 'ledger-head');
-    head.append(el('h3', 'kicker', esc(title)));
+    head.append(el('h2', 'kicker', esc(title)));
     if (sums && sums.length) {
       const strip = el('span', 'ledger-sum counter');
       sums.forEach((s, i) => {
@@ -664,24 +664,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         ${balanceChip}`;
       area.append(row);
       const billingBtn = el('button', '', '<span>Buy credits</span><span class="hint">one credit = one blueprint</span>');
-      billingBtn.setAttribute('role', 'menuitem');
       billingBtn.onclick = () => BB.Billing.open();
       area.append(billingBtn);
       if (a.billing && a.billing.plan === 'pro') {
         // Grandfathered subscribers keep their portal (legacy, honored).
         const manageBtn = el('button', '', '<span>Manage subscription</span><span class="hint">legacy Pro plan</span>');
-        manageBtn.setAttribute('role', 'menuitem');
         manageBtn.onclick = () => BB.Billing.manage();
         area.append(manageBtn);
       }
       const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
-      out.setAttribute('role', 'menuitem');
       out.onclick = () => { window.location.href = Store.logoutUrl; };
       area.append(out);
     } else {
       for (const p of a.providers) {
         const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">free credit + sync</span>`);
-        b.setAttribute('role', 'menuitem');
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
       }
@@ -689,7 +685,6 @@ var BB = globalThis.BB = globalThis.BB || {};
       // manager support); the menu routes there rather than inlining a form.
       if (a.passwordAuth) {
         const em = el('button', '', '<span>Sign in with email</span><span class="hint">free credit + sync</span>');
-        em.setAttribute('role', 'menuitem');
         em.onclick = () => { location.hash = '#signin'; };
         area.append(em);
       }
@@ -697,7 +692,6 @@ var BB = globalThis.BB = globalThis.BB || {};
       // the wall, not only at it.
       if (configured) {
         const plans = el('button', '', '<span>Credits &amp; pricing</span><span class="hint">one credit = one blueprint</span>');
-        plans.setAttribute('role', 'menuitem');
         plans.onclick = () => BB.Billing.open();
         area.append(plans);
       }
@@ -815,8 +809,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (box) syncScrollableTable(box);
     }
   });
+  /* Every horizontally scrolling table is built HERE, so none can be created
+   * without being keyboard-reachable: a region that scrolls but cannot take
+   * focus hides its overflow from anyone without a pointer, and the cut list
+   * and buying plan are exactly the tables that overflow on a phone. */
+  function scrollBox() {
+    const box = el('div', 'table-scroll');
+    // tabindex ONLY. A landmark role here would demand a unique accessible
+    // name per box and turn a scrolling wrapper into a navigation target; the
+    // requirement is simply that a keyboard can reach and scroll it.
+    box.tabIndex = 0;
+    return box;
+  }
+
   function wireScrollableTables(root) {
     root.querySelectorAll('.table-scroll').forEach(box => {
+      // A region that scrolls must be reachable by the keyboard, or its
+      // overflow is simply unreadable without a pointer — the cut list and the
+      // buying plan are exactly the tables that overflow on a phone. Given a
+      // name too, so it announces as more than "group".
+      if (!box.hasAttribute('tabindex')) box.tabIndex = 0;
       syncScrollableTable(box);
       if (!box.dataset.scrollObserved) {
         box.dataset.scrollObserved = '1';
@@ -873,7 +885,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       wrap.append(el('h2', '', 'Cut list — in your blueprint'));
       const partCount = state.cut.reduce((s, r) => s + r.qty, 0);
       wrap.append(el('p', 'txt-muted', `${state.cut.length} distinct parts, ${partCount} pieces total, joinery allowances included. Exact dimensions are issued with the blueprint.`));
-      const box = el('div', 'table-scroll');
+      const box = scrollBox();
       const rows = state.cut.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.qty}</td><td class="num preview-locked" aria-label="dimension included in the blueprint">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td></tr>`).join('');
       box.innerHTML = `<table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th></tr></thead><tbody>${rows}</tbody></table>`;
       wrap.append(box);
@@ -1010,7 +1022,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       b.onclick = () => selectTab(c.go);
       grid.append(b);
     }
-    root.append(el('h3', '', 'Overview'));
+    root.append(el('h2', '', 'Overview'));
     // The safety line as a spec plate (§9.4) — every value a live read.
     const checks = state.integrity.checks;
     const plate = el('div', 'spec-plate overview-verdict');
@@ -1184,7 +1196,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (cascade) { Motion.auto(list); list.dataset.cascaded = '1'; }
       return;
     }
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     const rows = state.cut.map((r, i) => `<tr data-motion="cascade">
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
@@ -1236,7 +1248,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     // shopping list
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     // composite stock names ("Cherry 1×6 × 6 ft (3/4 × 5 1/2 in)") are
     // machine values — the whole cell goes mono (B-03)
     const shopRows = plan.shopping.map(s => `<tr data-motion="cascade"><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
@@ -1359,7 +1371,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     compareBtn.onclick = openSpecies;
     root.append(compareBtn);
     root.append(el('div', '', '&nbsp;'));
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     // labels and detail strings carry lengths and per-unit prices — mono
     // machine-value cells (B-03)
     const rows = state.bomData.items.map(i => `<tr data-motion="cascade">
@@ -1414,6 +1426,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('jointCutaway').setAttribute('aria-pressed', 'false');
   }
 
+  /* The human name for a joinery key, for use when a step introduces more than
+   * one and the buttons have to say which is which. */
+  function jointLabel(type) {
+    const j = K.JOINERY[type];
+    return j ? j.label.toLowerCase() : String(type || '').replace(/_/g, ' ');
+  }
+
   function whyJointHTML(type) {
     const j = K.JOINERY[type];
     if (!j) return '';
@@ -1457,17 +1476,38 @@ var BB = globalThis.BB = globalThis.BB || {};
       item.dataset.motion = 'cascade';
       const num = el('div', 'step-num');
       const body = el('div', 'step-body');
-      const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
-      body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
-        (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
-      if (jointType) {
-        const j0 = s.joints[0];
-        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) + '<span>Inspect joint in 3D</span>');
+      /* Every DISTINCT fastening the step introduces gets its own explanation
+       * and its own way into the 3D close-up — not just the first one. A
+       * nightstand's "connect with back apron and rails" step carries six
+       * joints and used to teach exactly one of them (audit D-04).
+       *
+       * `jointInfo` is the plan's own account of what each fastening ACTUALLY
+       * is: for a solid top floating on figure-8s the model still records the
+       * nominal `butt_screws`, so reading `joints[0].type` taught a joint the
+       * plan does not use (audit D-03). Hardware fastenings describe
+       * themselves in the step text and have no joinery article to open, so
+       * they are named, not linked. Falls back to the raw joints when the
+       * plan layer has not supplied descriptors. */
+      const info = (s.jointInfo && s.jointInfo.length) ? s.jointInfo
+        : (s.joints || []).map(j => ({ type: j.type, effective: j.type, hardware: false, a: j.a, b: j.b }));
+      const seen = new Set();
+      const distinct = info.filter(d => {
+        const k = d.effective || d.type;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      body.innerHTML = `<h3>${esc(s.title)}</h3><p>${esc(s.text)}</p>` +
+        distinct.filter(d => !d.hardware).map(d => `<div>${whyJointHTML(d.type)}</div>`).join('');
+      for (const d of distinct) {
+        if (d.hardware) continue; // hardware is described in the step, not in the joinery library
+        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) +
+          `<span>Inspect ${distinct.filter(x => !x.hardware).length > 1 ? esc(jointLabel(d.type)) + ' ' : ''}joint in 3D</span>`);
         inspect.onclick = e => {
           e.stopPropagation();
-          openJointInspector(jointType,
-            state.model.parts.find(p => p.id === j0.a),
-            state.model.parts.find(p => p.id === j0.b));
+          openJointInspector(d.type,
+            state.model.parts.find(p => p.id === d.a),
+            state.model.parts.find(p => p.id === d.b));
         };
         body.append(inspect);
       }
@@ -1504,7 +1544,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const integ = state.integrity;
     const overall = integ.summary.verdict; // engine rollup (audit M-18): fail > anchor > advisory > pass
     const beginner = state.spec.meta.level === 'beginner';
-    root.append(el('h3', '', 'Safety'));
+    root.append(el('h2', '', 'Safety'));
     const summary = el('div', 'integrity-summary');
     summary.innerHTML = `<span class="stamp ${overall}">${overall === 'anchor' ? 'anchor required' : overall}</span>
       <span class="integrity-plain">${overall === 'pass'
@@ -1594,7 +1634,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function groupChecks(checks) {
     const out = [], byKey = new Map();
     for (const c of checks) {
-      const key = [c.status, c.value, c.threshold, c.explain, (c.fixes || []).map(f => f.label).join('|')].join(' ');
+      const key = [c.status, c.value, c.threshold, c.explain, (c.fixes || []).map(f => f.label).join('|')].join('\u0000');
       const hit = byKey.get(key);
       if (hit) { hit.count++; hit.subjects.push(c.title); continue; }
       const entry = { check: c, count: 1, subjects: [c.title] };
@@ -1649,7 +1689,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       ? c.explain
       : `${subject} would not safely carry the load this design is checked against.`
       + (c.fixes && c.fixes.length ? ' Any fix below solves it, or ask the chat for a different approach.' : ' Ask the chat for a different approach.');
-    card.innerHTML = `<div class="check-head"><h4>${esc(title)}${count > 1 ? `<span class="check-count">${count} parts, same result</span>` : ''}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
+    card.innerHTML = `<div class="check-head"><h3>${esc(title)}${count > 1 ? `<span class="check-count">${count} parts, same result</span>` : ''}</h3><span class="stamp ${c.status}">${c.status}</span></div>` +
       // The measured value earns its place at every level: "predicted sag
       // 4.4 mm over the 862 mm span" is the reason to trust the verdict.
       `<div class="check-value">${esc(c.value)}</div>` +
@@ -1714,7 +1754,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function renderReference(root) {
     syncReferenceTabForQuery();
-    root.append(el('h3', '', 'Shop reference'));
+    root.append(el('h2', '', 'Shop reference'));
     const search = el('input', 'ref-search');
     search.type = 'search';
     search.placeholder = 'Search species, joints, screws, finishes…';
@@ -1783,7 +1823,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     body.textContent = '';
     const q = state.refQuery.trim().toLowerCase();
     const hit = (...xs) => referenceHit(q, ...xs);
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     let rows = '', head = '';
     if (state.refTab === 'wood') {
       head = '<th>Species</th><th class="num">Janka</th><th class="num">MOE GPa</th><th class="num">MOR MPa</th><th class="num">SG</th><th class="num">Move ct/1%MC</th><th class="num">Cost</th><th>Character</th>';
@@ -1805,7 +1845,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td>${esc(r.appliesTo.join(', '))}</td>
         <td class="txt-small txt-muted">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
-      head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
+      head = '<th>Joint</th><th><span class="sr-only">3D view</span></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
         <td><strong>${esc(j.label)}</strong></td>
         <td><button type="button" class="btn small ghost joint-demo" data-joint="${esc(j.key)}" title="See this joint in 3D">${BB.Icons.svg('ruler', 13)} 3D</button></td>
@@ -1819,7 +1859,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // The hardware repository: when, why, how, where — quantities and
       // ratings are computed by code (BB.HW rules), the table teaches the
       // rest. Rows with a 3D button open a dimensioned inspector view.
-      head = '<th>Hardware</th><th></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
+      head = '<th>Hardware</th><th><span class="sr-only">3D view</span></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
       const HW = BB.HW;
       const view3d = { euro_cup: 'hw_cup_hinge', drop_leaf: 'hw_rule_joint', rule_joint_ref: 'hw_rule_joint', pivot_pin_hinge: 'hw_pivot_pin', tambour: 'hw_tambour', sawtooth_supports: 'hw_sawtooth', sawtooth: 'hw_sawtooth', undermount_45: 'hw_undermount' };
       const groups = [
@@ -2920,9 +2960,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (t.restoreTo && document.contains(t.restoreTo)) {
       t.restoreTo.focus();
       if (document.activeElement !== t.restoreTo) {
-        // Opener went inert with its closed menu — its menu button stands in.
+        // Opener went inert with its closed menu — its trigger stands in.
+        // Matched by the disclosure contract (aria-expanded + aria-controls),
+        // not by aria-haspopup: neither panel is a menu, so neither trigger
+        // may claim aria-haspopup="menu" — a selector for it matched nothing
+        // and dropped focus to <body> on every dialog closed from More.
         const wrap = t.restoreTo.closest('.menu-wrap');
-        const btn = wrap && wrap.querySelector('[aria-haspopup="menu"]');
+        const btn = wrap && wrap.querySelector(':scope > [aria-expanded][aria-controls]');
         if (btn) btn.focus();
       }
     }
@@ -3336,7 +3380,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const bestCost = best(c => c.cost), bestMove = best(c => c.movementMM), bestWeight = best(c => c.weightKg);
     const maxSag = Math.max(...cols.map(c => c.sagMargin || 0));
     const cell = (v, isBest, suffix) => `<td class="num${isBest ? ' species-best' : ''}">${v}${suffix || ''}</td>`;
-    wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
+    wrap.innerHTML = `<table class="data"><thead><tr><th><span class="sr-only">Property</span></th>${cols.map(c =>
       `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody data-motion-group>
       <tr data-motion="cascade"><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
       <tr data-motion="cascade"><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
@@ -4658,11 +4702,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       document.addEventListener('click', e => {
         if (!m.contains(e.target) && e.target !== b) closeMenu(btnId, m);
       });
-      // Menu-button keyboard pattern: ArrowDown opens and enters the menu,
-      // arrows cycle the items, Escape (global handler) closes topmost.
+      // Keyboard accelerator over the panel: ArrowDown opens and enters it,
+      // arrows cycle the entries, Escape (global handler) closes the topmost.
+      // Tab is the baseline path — these are ordinary buttons in an ordinary
+      // group, not a roving-focus menu — and arrows are the shortcut on top.
       // Width-hidden entries (e.g. the phone-only Share/Import item) must not
       // catch keyboard focus: only items with a rendered box participate.
-      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length);
+      //
+      // Selected by FOCUSABLE rather than [role="menuitem"]: the panels carry
+      // no menuitems (neither is a role="menu" — see index.template.html), so
+      // a menuitem query matches nothing and silently kills arrow navigation.
+      const items = () => [...m.querySelectorAll(FOCUSABLE)].filter(x => x.getClientRects().length);
+      // Controls that own the arrow keys themselves — the precision <select>,
+      // the explode range. They are navigation TARGETS, but while one has
+      // focus its own arrow behaviour wins; stealing ArrowDown from a slider
+      // to move focus is how a menu breaks the controls it contains.
+      const ARROW_OWNER = 'select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"])';
       b.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
@@ -4672,6 +4727,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
       });
       m.addEventListener('keydown', e => {
+        if (e.target.matches && e.target.matches(ARROW_OWNER)) return;
         const list = items();
         if (!list.length) return;
         const i = list.indexOf(document.activeElement);
@@ -4689,7 +4745,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     const viewMenu = bindMenu('viewBtn', 'viewMenu');
     // Picking a dialog from More closes the menu; the units row stays open
     // so the seg gives instant feedback.
-    moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
+    //
+    // This is the ONLY binding for [data-export], so the selector is load
+    // bearing: when the panel stopped being a role="menu", a leftover
+    // [role="menuitem"] query matched nothing and silently unwired every
+    // export in the product — sheet set, print, SVG, CSV, JSON, GLB, .rb,
+    // .dae — while the buttons stayed visible and clickable. Selected by
+    // structure now, which is what "entry" always meant here: the panel's own
+    // top-level buttons plus the Export group. Deliberately NOT the settings
+    // rows (.menu-row), whose segs must leave the panel open, and not
+    // #accountArea, which renders its own handlers after boot.
+    moreMenu.querySelectorAll(':scope > button, .menu-group button').forEach(b => {
       b.addEventListener('click', () => {
         closeMenu('moreBtn', moreMenu);
         if (b.dataset.export) { doExport(b.dataset.export); return; }

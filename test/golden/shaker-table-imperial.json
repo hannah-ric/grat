@@ -411,8 +411,10 @@
  "steps": [
   "glueup1",
   "thickness",
+  "layout",
   "s1",
   "s2",
+  "base_check",
   "s3",
   "safety",
   "sand",

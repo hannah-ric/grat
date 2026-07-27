@@ -1,0 +1,26 @@
+{
+  "why": "An explicitly stamped specVersion 2 design, in metric, with a sub-object the schema has since grown around. Same standing as v1: no registered migration, so this fixture exists to prove the design still opens and to force a 2 -> 3 migration to be exercised if one is ever added.",
+  "version": 2,
+  "kind": "spec",
+  "expect": {
+    "template": "desk",
+    "name": "Standing Desk",
+    "species": "hard_maple",
+    "units": "mm",
+    "drawers": null,
+    "minParts": 6
+  },
+  "spec": {
+    "specVersion": 2,
+    "meta": { "name": "Standing Desk", "template": "desk", "level": "intermediate", "units": "mm" },
+    "overall": { "width": 1400, "depth": 700, "height": 1050 },
+    "wood": { "species": "hard_maple" },
+    "structure": {
+      "topThickness": 25, "legThickness": 70, "apronHeight": 90, "apronThickness": 20,
+      "apronInset": 12, "shelfCount": 0, "shelfThickness": 19, "sideThickness": 18,
+      "backPanel": true, "toeKick": false
+    },
+    "joinery": { "frame": "mortise_tenon", "case": "butt_screws", "box": "pocket_screws" },
+    "finish": "hardwax_oil"
+  }
+}

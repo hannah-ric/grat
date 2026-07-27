@@ -237,6 +237,46 @@ fs.writeFileSync(path.join(root, 'dist/index.html'), html);
 /* robots.txt (A-06): allow everything, reference nothing that doesn't exist —
  * the app is one page, so there is deliberately no sitemap line. */
 fs.writeFileSync(path.join(root, 'dist/robots.txt'), 'User-agent: *\nAllow: /\n');
-console.log(`dist/index.html — ${(html.length / 1024).toFixed(0)} KB (+ robots.txt)`);
+
+/* ---- service worker (V-06) ----
+ * A SIBLING FILE, never part of the bundle: a service worker has to be served
+ * as its own same-origin script, so this is the one thing the single-file rule
+ * cannot swallow. dist/index.html above is written first and is byte-identical
+ * whatever happens here.
+ *
+ * BB_SW controls it, and the default is the only interesting decision:
+ *   on|1|true (default) — emit src/sw.js, stamped
+ *   off|0|false|none    — emit nothing and delete any dist/sw.js left by a
+ *                         previous build; ui.js's register() then 404s, is
+ *                         caught, and the product behaves exactly as it did
+ *                         before this file existed
+ *   tombstone|kill      — emit src/sw-kill.js: a worker that unregisters
+ *                         itself and drops every bb-shell-* cache. This is
+ *                         how a bad worker already in the field is recovered
+ *                         (see that file's header)
+ *
+ * The stamp is the sha256 of the emitted document, so the worker's cache name
+ * changes if and only if the bundle's bytes changed. */
+const SW_MODE = String(process.env.BB_SW == null ? 'on' : process.env.BB_SW).trim().toLowerCase();
+const swOut = path.join(root, 'dist/sw.js');
+let swNote = '';
+if (['on', '1', 'true', 'yes', ''].includes(SW_MODE)) {
+  const stamp = require('crypto').createHash('sha256').update(html).digest('hex').slice(0, 12);
+  /* Stamped before stripping so the parse guard checks the exact emitted
+   * bytes; the placeholder sits inside a string literal, and stripSource is
+   * line-granular, so the assignment line passes through untouched either way. */
+  const sw = stripJS('sw.js', read('src/sw.js').replace('{{BUILD_STAMP}}', stamp));
+  if (sw.includes('{{')) throw new Error('build: sw.js has an unreplaced placeholder');
+  fs.writeFileSync(swOut, sw);
+  swNote = `, sw.js @ ${stamp}`;
+} else if (['tombstone', 'kill', 'unregister'].includes(SW_MODE)) {
+  fs.writeFileSync(swOut, stripJS('sw-kill.js', read('src/sw-kill.js')));
+  swNote = ', sw.js TOMBSTONE (self-unregistering)';
+} else {
+  fs.rmSync(swOut, { force: true });
+  swNote = ', no sw.js (BB_SW=' + SW_MODE + ')';
+}
+
+console.log(`dist/index.html — ${(html.length / 1024).toFixed(0)} KB (+ robots.txt${swNote})`);
 
 module.exports = { stripSource, stripJS };
