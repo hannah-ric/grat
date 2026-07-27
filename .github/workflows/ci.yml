@@ -30,14 +30,21 @@ jobs:
       - name: Hand-arithmetic verification worksheet (every number computed twice)
         run: npm run test:handcalc
 
-      # dist/index.html is committed and must stay byte-identical to a fresh
-      # build — nothing else enforces this, and a stale bundle ships stale code.
-      - name: dist/index.html is in sync with src/
+      # Everything the build emits into dist/ is committed and must stay
+      # byte-identical to a fresh build — nothing else enforces this, and a
+      # stale bundle ships stale code. Scoped to the whole directory rather
+      # than index.html alone: the build emits siblings too (robots.txt, and
+      # the service worker), and a stale worker is the worst of them — it can
+      # keep serving an old app to someone at the bench. `git status` also
+      # catches a NEW emitted file that was never committed, which a `git
+      # diff` of a single path silently misses.
+      - name: dist/ is in sync with src/
         run: |
           node build.js
-          if ! git diff --quiet -- dist/index.html; then
-            echo "::error::dist/index.html is stale — run 'npm run build' and commit the result."
-            git --no-pager diff --stat -- dist/index.html
+          if [ -n "$(git status --porcelain -- dist/)" ]; then
+            echo "::error::dist/ is stale — run 'npm run build' and commit the result."
+            git --no-pager status --porcelain -- dist/
+            git --no-pager diff --stat -- dist/
             exit 1
           fi
 
@@ -180,6 +187,11 @@ jobs:
 
       - name: Adjust — joinery slots, thickness knobs, skill level (21)
         run: npm run test:adjust
+
+      # The 1:1 templates are the one artifact where a rendering error is a
+      # RULER error. This measures them against the page box in a real browser.
+      - name: Print — 1:1 template fidelity and page fit (34)
+        run: npm run test:print
 
       # The only suite that boots the real serve.js rather than a static server.
       # It needs no secrets and no network: BB_DEV_LOGIN=1 gives it a one-redirect

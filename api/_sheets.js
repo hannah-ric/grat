@@ -213,7 +213,35 @@ function sheetSet(p, meta) {
  * longer than a page are split into segments with alignment ticks. The
  * geometry is the engine's own (layoutForJoint / pull spec) — this file only
  * draws it. */
-const SEG_MM = 240;         // printable strip segment (letter/A4 portrait safe width)
+/* Strip segment width, in real millimetres, and the one number on this sheet
+ * that MUST be derived rather than guessed.
+ *
+ * A 1:1 strip does not scale to fit — it is drawn in physical units on
+ * purpose. So a strip wider than the printable column does not shrink, it
+ * CLIPS, and every fastener mark past the page edge is silently gone while
+ * the 100 mm scale-check bar still reads a perfect 100 mm, because the bar
+ * is short enough to survive. A truncated template that certifies itself as
+ * correct is worse than no template at all.
+ *
+ * The arithmetic, for the NARROWER of the two papers this will meet — the
+ * sheet asks for letter (215.9 mm) but a metric shop prints A4 (210 mm), and
+ * a browser handed A4 for a letter @page just clips harder:
+ *
+ *   A4 width            210.0 mm
+ *   − @page margin ×2  − 16.0 mm   (8 mm, below)
+ *   = printable column  194.0 mm
+ *   − printer slack     −  4.0 mm   (non-printable edge, rounding)
+ *   = 190 mm
+ *
+ * The body margin is deliberately zeroed in print (see the stylesheet): the
+ * page box already supplies the margin, and stacking a second one inside it
+ * was what squeezed the real column to 180 mm against a 240 mm strip.
+ * test/print.playwright.js measures this in a browser and fails if a strip
+ * ever outgrows the page again. */
+const PAGE_MARGIN_MM = 8;
+const NARROWEST_PAPER_MM = 210;   // A4 portrait; letter is 215.9
+const PRINTER_SLACK_MM = 4;
+const SEG_MM = NARROWEST_PAPER_MM - 2 * PAGE_MARGIN_MM - PRINTER_SLACK_MM;
 const STRIP_H = 46;         // strip height in mm
 
 function stripSVG(esc, seg, label, sub) {
@@ -298,7 +326,10 @@ function templateSet(p, meta) {
   h1 { font-size: 18px; margin: 0 0 2px; } .sub { color: #666; margin: 0 0 12px; }
   .strip { page-break-inside: avoid; margin: 0 0 8mm; }
   .strip p { margin: 0 0 2mm; font-size: 11px; }
-  @media print { @page { size: letter; margin: 8mm; } }
+  /* The page box owns the margin. The 10mm body margin above is for reading
+     this on screen; keeping it in print stacked a second margin inside the
+     page and cost the 1:1 strips 20mm of the column they are sized against. */
+  @media print { @page { size: letter; margin: ${PAGE_MARGIN_MM}mm; } body { margin: 0; } }
 </style></head><body>
   <h1>${esc(spec.meta.name)} — full-size templates (1:1)</h1>
   <p class="sub">Blueprint ${esc(meta.id)} rev ${meta.revision} · Print at 100% scale ("Actual size", never "Fit to page"), then stick each strip to the work and mark through the circles.</p>
