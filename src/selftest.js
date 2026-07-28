@@ -300,6 +300,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       test('classes', 'seating: rake clamps to straight-post capability',
         chairSpec.seat.backRake <= seat.geom.backRakeMax(chairSpec.structure, chairSpec.seat) + 0.05,
         String(chairSpec.seat.backRake), '≤ ' + seat.geom.backRakeMax(chairSpec.structure, chairSpec.seat));
+      /* Children's scope specifics (2026-07): the scope class overlays a
+       * live child design, its band pins the height, and its checklist is
+       * fully covered ALONGSIDE the host class's. */
+      const kid = Spec.correctSpec({ meta: { name: 'ct', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } });
+      test('classes', 'childrens: the band pins the EN 1729 seat height',
+        kid.seat.height === K.CHILD.BANDS.school.seatH, String(kid.seat.height), String(K.CHILD.BANDS.school.seatH));
+      const kidModel = Parametric.build(kid);
+      const kidRes = { integrity: BB.Structural.computeIntegrity(kid, kidModel, {}), validation: Spec.validate(kid, kidModel), spec: kid };
+      const kidRows = BB.Classes.runChecklist('chair', kidRes) || [];
+      const kidUncovered = kidRows.filter(r => r.status === 'uncovered' && !r.guard).map(r => r.id);
+      test('classes', 'childrens: scope checklist covered on a live child chair (host rows included)',
+        kidUncovered.length === 0 && kidRows.some(r => r.id === 'kid_tipover') && kidRows.some(r => r.id === 'rear_tilt_racking'),
+        kidUncovered.join(', ') || 'all modes examined', 'all modes examined');
+      test('classes', 'childrens: child-scoped storage mandates the anchor at any margin',
+        (() => {
+          const b = Spec.correctSpec({ meta: { name: 'ct', template: 'bookshelf', level: 'beginner', units: 'mm' }, overall: { width: 800, depth: 300, height: 720 }, structure: { shelfCount: 2 }, child: { ageBand: 'school' } });
+          return BB.Structural.computeIntegrity(b, Parametric.build(b), {}).antiTip === true;
+        })(), 'anchor mandated', 'anchor mandated');
     }
 
     /* ============ 2026 knowledge expansion: full engine coverage ============
@@ -472,7 +490,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2900-token ceiling', tk <= 2900 && tk > 800, tk + ' tokens', '≤ 2900'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07)
+      test('hardening', 'system prompt under the 3100-token ceiling', tk <= 3100 && tk > 800, tk + ' tokens', '≤ 3100'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07), then the children's scope: the "ch" age-band key and the regulated-product refusal list with its regulations named (the load-bearing spend — an unnamed refusal gets approximated)
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
 

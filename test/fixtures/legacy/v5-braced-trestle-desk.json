@@ -11,10 +11,11 @@
     "minParts": 12
   },
   "expectAfterMigration": {
-    "specVersion": 9,
+    "specVersion": 10,
     "structure.stretcher": "h",
     "structure.stretcherHeight": 300,
-    "doors": null
+    "doors": null,
+    "child": null
   },
   "spec": {
     "specVersion": 5,

@@ -31,7 +31,12 @@ var BB = globalThis.BB = globalThis.BB || {};
    * through the migration registry on load — a saved design must never fail
    * to open. From Phase 4 forward, EVERY schema change adds a migration here.
    */
-  const SPEC_VERSION = 9;
+  /* NOTE FOR THE INTEGRATOR (children's class workstream): this tree bumps
+   * 9 → 10 for the `child` section. The outdoor workstream owns 10, so at
+   * integration this becomes 10 → 11: change SPEC_VERSION to 11, renumber
+   * the `9:` migration key below to `10:` (its body is unchanged), and
+   * rename/renumber the v10 legacy fixture + expectAfterMigration stamps. */
+  const SPEC_VERSION = 10;
   const migrations = {
     /* v3 → v4: Phase 1–3 specs had no specVersion and no `custom` section.
      * Stamp the version, initialise custom to null, and normalise the legacy
@@ -99,6 +104,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       const out = clone(s) || {};
       out.specVersion = 9;
       if (out.bed === undefined) out.bed = null;
+      return out;
+    },
+    /* v9 -> v10: the children's SCOPE class added a `child` section
+     * (null = adult design — which is what every design saved before it
+     * was). Integrator: renumber to 10 -> 11 (see SPEC_VERSION note). */
+    9: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 10;
+      if (out.child === undefined) out.child = null;
       return out;
     }
   };
@@ -174,7 +188,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       custom: null,
       seat: null,
       wall: null,
-      bed: null
+      bed: null,
+      child: null
     };
     const t = base.meta.template;
     if (t === 'bed') {
@@ -417,7 +432,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners',
     'seat.width': 'seat width', 'seat.depth': 'seat depth', 'seat.height': 'seat height',
     'seat.slopeDeg': 'seat slope', 'seat.backHeight': 'back height', 'seat.backRake': 'back rake',
-    'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height'
+    'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height',
+    'child.ageBand': 'child age band'
   };
   const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|seat\.(width|depth|height|backHeight|counterHeight)$|custom\.part\.(len|wid|thk)$)/;
 
@@ -998,6 +1014,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       // its mattress size — their own sections carry the user-facing
       // refusals, so overall.* notes there would be noise.
       if (derivedOverall && path.startsWith('overall.')) continue;
+      // Child-scoped heights are PINNED to the EN 1729 band — childNotes
+      // owns those refusals with the band named; a second generic note here
+      // would be noise.
+      if (cor.child && (path === 'overall.height' || path.startsWith('seat.'))) continue;
       const dot = path.indexOf('.');
       const sec = path.slice(0, dot), key = path.slice(dot + 1);
       const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
@@ -1137,6 +1157,42 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* Children's-scope disclosures (the 'childrens' class): the band pinning
+   * heights, the backed-floor-seating refusal, and the scope cap — each a
+   * contract coupling or refusal, said here so it is never silent. */
+  function childNotes(raw, cor, notes) {
+    const rawChild = raw && isObj(raw.child) ? raw.child : null;
+    const t = at(cor, 'meta', 'template');
+    const fmt = mm => U().fmtLength(mm);
+    if (rawChild && (!cor || !cor.child)) {
+      notes.push('The child scope only rides tables, desks, chairs, and bookshelves — this template keeps adult sizing (child-scoped casework is future work).');
+      return;
+    }
+    if (!cor || !cor.child || !K.CHILD) return;
+    const band = K.CHILD.BANDS[cor.child.ageBand];
+    if (rawChild && typeof rawChild.ageBand === 'string' && rawChild.ageBand !== cor.child.ageBand) {
+      notes.push(`“${String(rawChild.ageBand).replace(/_/g, ' ')}” isn’t a child age band this tool knows (toddler, preschool, school, preteen) — the design is sized for a ${band.label}.`);
+    }
+    if (t === 'table' || t === 'desk') {
+      const want = num(at(raw, 'overall', 'height'), null);
+      if (want !== null && Math.abs(want - cor.overall.height) > 5) {
+        notes.push(`A ${t} for a ${band.label} is ${fmt(band.tableH)} tall — EN 1729 size mark ${band.mark} pairs it with the ${fmt(band.seatH)} seat — so the ${fmt(want)} asked for wasn’t used. Drop the child scope to size freely.`);
+      }
+    }
+    if (t === 'chair' && cor.seat) {
+      const rawSeat = raw && isObj(raw.seat) ? raw.seat : {};
+      const askedStool = num(rawSeat.backHeight, 1) === 0;
+      const askedCounter = num(rawSeat.counterHeight, null) !== null;
+      if (askedStool || askedCounter) {
+        notes.push('Child seating keeps a back and floor-serving height: a backless perch or a counter/bar stool puts a small child at fall height, so the child scope builds backed chairs only.');
+      }
+      const wantH = num(rawSeat.height, null);
+      if (wantH !== null && Math.abs(wantH - cor.seat.height) > 5) {
+        notes.push(`A chair for a ${band.label} seats at ${fmt(band.seatH)} (EN 1729 size mark ${band.mark}) — the ${fmt(wantH)} asked for wasn’t used.`);
+      }
+    }
+  }
+
   /* A drawer bank asked of a template that has no opening to put one in. */
   function drawerNote(raw, cor, notes) {
     const want = raw && raw.drawers;
@@ -1179,6 +1235,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       drawerNote(raw, correctedSpec, notes);
       seatNotes(raw, correctedSpec, notes);
       bedNotes(raw, correctedSpec, notes);
+      childNotes(raw, correctedSpec, notes);
     }
     return [...new Set(notes)];
   }
@@ -1276,6 +1333,28 @@ var BB = globalThis.BB = globalThis.BB || {};
     const G = C ? C.geom : null;
     const se = isObj(s.seat) ? s.seat : {};
     const out = {};
+    /* ---- children's scope (the 'childrens' class) ----
+     * The age band IS the seat: EN 1729 size-mark seat height with the
+     * class-derived plan (CHILD_GEOM.seatPlan — arithmetic documented in the
+     * contract). A child chair is always BACKED and floor-serving: backless
+     * perches and counter/bar stools put a small child at fall height, so
+     * backHeight > 0 and counterHeight = null are forced (childNotes says
+     * why). Slope and rake keep the seating class's own rules. */
+    const childCls = s.child && BB.Classes ? BB.Classes.get('childrens') : null;
+    if (childCls && K.CHILD && K.CHILD.BANDS[s.child.ageBand]) {
+      const plan = childCls.geom.seatPlan(s.child.ageBand);
+      out.width = plan.width;
+      out.depth = plan.depth;
+      out.height = plan.height;
+      out.backHeight = plan.backHeight;
+      out.counterHeight = null;
+      out.slopeDeg = r1(clamp(num(se.slopeDeg, 3), 0, 8));
+      out.splayDeg = 0;
+      let kidRake = clamp(num(se.backRake, 4), 0, 8);
+      if (G) kidRake = Math.min(kidRake, G.backRakeMax(s.structure, out));
+      out.backRake = r1(Math.max(0, kidRake));
+      return out;
+    }
     out.width = applyDim('seat.width', se.width);
     out.depth = applyDim('seat.depth', se.depth);
     /* Back: 0 = stool; otherwise the crest rides a fixed band ABOVE the seat
@@ -1331,6 +1410,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (s.meta.units !== 'mm') s.meta.units = 'in';
     s.meta.name = String(s.meta.name || 'Untitled').slice(0, 60);
 
+    /* ---- children's scope sanitize (the 'childrens' class) ----
+     * `child` is a SCOPE over an existing template, never a template: it
+     * rides only the templates the class contract names (table, desk,
+     * chair, bookshelf — the ones already generated soundly), an unknown
+     * band falls to `school`, and on any other template the scope is
+     * dropped (childNotes discloses both). Sanitized FIRST so the seat
+     * family and the height couplings below can read it. */
+    const CHILD_TEMPLATES = ['table', 'desk', 'chair', 'bookshelf'];
+    if (isObj(s.child) && CHILD_TEMPLATES.includes(template) && K.CHILD) {
+      s.child = { ageBand: K.CHILD.BANDS[s.child.ageBand] ? s.child.ageBand : 'school' };
+    } else {
+      s.child = null;
+    }
+
     const o = s.overall, st = s.structure;
     if (template !== 'custom') {
       o.width = applyDim('overall.width', o.width);
@@ -1362,6 +1455,20 @@ var BB = globalThis.BB = globalThis.BB || {};
      * stretcher rules in the seating block below. */
     st.stretcher = ((FRAME_TEMPLATES.includes(template) || template === 'chair') && STRETCHERS.includes(st.stretcher)) ? st.stretcher : 'none';
     st.stretcherHeight = applyDim('structure.stretcherHeight', st.stretcherHeight);
+
+    /* ---- children's heights (the 'childrens' class) ----
+     * The age band IS the height on a child table or desk: EN 1729 pairs a
+     * seat with a table per size mark, and the band's table height is pinned
+     * by code (K.CHILD — one source; childNotes discloses a refused ask).
+     * The apron band caps at the class's APRON_MAX so the band's own thigh
+     * room survives under the lower top (derivation in the contract).
+     * Bookshelf child scope changes no geometry — its regime is the anchor
+     * mandate and the finish advisory. */
+    if (s.child && (template === 'table' || template === 'desk') && K.CHILD) {
+      const cG = BB.Classes ? BB.Classes.get('childrens').geom : { APRON_MAX: 80 };
+      o.height = K.CHILD.BANDS[s.child.ageBand].tableH;
+      st.apronHeight = Math.min(st.apronHeight, cG.APRON_MAX);
+    }
 
     /* ---- seating (the 'seating' class family) ----
      * The seat section is corrected first, then the OVERALL is derived from
@@ -1790,6 +1897,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Ergonomics advisories (never block).
     for (const row of K.ERGONOMICS) {
       if (!row.appliesTo.includes(t)) continue;
+      // Child-scoped pieces are sized by the EN 1729 band (K.CHILD), not the
+      // adult height rows — a 530 mm preschool table judged against the
+      // 730–760 dining band would advise against its own correctness.
+      if (spec.child && row.axis === 'height') continue;
       if (row.axis === 'height' || row.axis === 'depth') {
         const v = o[row.axis];
         if (v < row.min || v > row.max) {
@@ -1806,7 +1917,9 @@ var BB = globalThis.BB = globalThis.BB || {};
      * WITH sources; advisories never block — a boundary chair is legal, just
      * named). The counter-coupling ask lives in the integrity checks
      * (chair:counter); these are the body-fit bands. */
-    if (t === 'chair' && spec.seat && BB.Classes) {
+    if (t === 'chair' && spec.seat && !spec.child && BB.Classes) {
+      // (child-scoped chairs are pinned to the EN 1729 band by correction —
+      // judging them against the ADULT body-fit bands would be noise)
       const hf = Object.fromEntries(BB.Classes.get('seating').humanFactors.map(h => [h.key, h]));
       const se = spec.seat;
       const stool = se.backHeight === 0;
@@ -1857,11 +1970,34 @@ var BB = globalThis.BB = globalThis.BB || {};
      * under the band. Residential desks commonly run ~600–640 clear; ADA
      * 306.3 asks 685 for an accessible workstation — both are named, and
      * the advisory never blocks. */
-    if (t === 'desk') {
+    if (t === 'desk' && !spec.child) {
+      // (the 600 mm band is ADULT seated knee room — a child desk is judged
+      // by its EN 1729 pair, and the child apron cap keeps the thigh room)
       const clear = o.height - spec.structure.topThickness - spec.structure.apronHeight;
       if (clear < 600) {
         advisories.push({ id: 'ergo_knee', text: `${fmt(clear)} of knee clearance under the ${spec.drawers ? 'drawer band' : 'apron'} is below the ~${fmt(600)} seated-knee band (Panero & Zelnik; ADA 306.3 asks ${fmt(685)} for accessible desks). Shallower ${spec.drawers ? 'band' : 'aprons'} or a taller desk buys it back.` });
       }
+    }
+
+    /* Children's finish safety (the 'childrens' class): every child-scoped
+     * design names the finish-safety ground truth — children mouth what they
+     * touch. Verified basis: EN 71-3 ("Safety of toys — Migration of certain
+     * elements") is the certification route for child-safe coatings; the
+     * catalog's foodContact finishes (pure tung oil, mineral oil, board
+     * butter) are food-contact class [FDA framing: shellac resin is listed
+     * under 21 CFR 175.300, but hardware-store premixed shellac carries no
+     * food/toy certification — so no product is blessed]. An uncertified
+     * film finish is COMMONLY considered inert once fully cured; that is
+     * practice, not a certification, and the advisory says which. */
+    if (spec.child) {
+      const cf = K.FINISHES.find(f => f.key === spec.finish);
+      const cured = cf && cf.foodContact
+        ? `${cf.label} is a food-contact-class finish — the safest family for a child's piece; still allow the full cure${cf.cureDays ? ` (${cf.cureDays} days)` : ''} before handover.`
+        : `${cf ? cf.label : 'The chosen finish'} carries no toy-safety certification: a fully cured film finish is commonly considered inert, but that is practice, not a certificate.`;
+      advisories.push({
+        id: 'child_finish',
+        text: `Child-scoped piece: children mouth what they touch. ${cured} For a certified route use a finish tested to EN 71-3 (toy-safety migration limits) — or a food-contact finish like pure tung oil; note hardware-store premixed shellac is not food/toy certified even though shellac resin itself is FDA-listed (21 CFR 175.300).`
+      });
     }
 
     // Outdoor hardware truth (2026 hardware expansion): an exterior finish

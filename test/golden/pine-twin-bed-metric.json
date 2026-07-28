@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 10,
   "meta": {
    "name": "Pine Twin Bed",
    "template": "bed",
@@ -49,7 +49,8 @@
    "size": "twin",
    "platformHeight": 300,
    "headboardHeight": 0
-  }
+  },
+  "child": null
  },
  "validation": {
   "errors": [],

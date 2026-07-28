@@ -308,6 +308,39 @@ const summarize = (name, r, ig, extra) => {
     const wsDry = say('a floating shelf on drywall');
     ok(wsDry.kind === 'info' && /creep|ultimate/i.test(wsDry.text || ''),
       'drywall-only is refused with the reason', wsDry.kind);
+
+    /* Children's scope class (2026-07): a kid-worded ask CREATES with the
+     * EN 1729 band carried and told; regulated children's products are
+     * refused with the regulation NAMED, before creation can trigger. */
+    const nsBench = Spec.correctSpec({ meta: { name: 'NS', template: 'nightstand', level: 'beginner', units: 'in' } });
+    const kidTable = say('a table for my toddler', nsBench);
+    ok(kidTable.kind === 'new' && kidTable.spec.meta.template === 'table' &&
+      kidTable.spec.child && kidTable.spec.child.ageBand === 'toddler',
+      '"a table for my toddler" creates a child-scoped table on the toddler band',
+      kidTable.kind === 'new' ? JSON.stringify(kidTable.spec.child) : kidTable.kind);
+    const kidCor = kidTable.kind === 'new' ? Spec.correctSpec(kidTable.spec) : null;
+    ok(kidCor && kidCor.overall.height === 460,
+      'and correction pins the EN 1729 mark 1 table height (460)', kidCor && kidCor.overall.height);
+    ok(/EN 1729/.test(kidTable.explain || '') && /adult design loads/.test(kidTable.explain || ''),
+      'the ack names the band source and the kept adult loads — TOLD, not silent', kidTable.explain);
+    // Same-template phrasing stays a refinement (X-08 doctrine) — and still
+    // carries the band onto the piece on the bench.
+    const kidRefine = say('a table for my toddler');
+    ok(kidRefine.kind === 'diff' && kidRefine.patch.child && kidRefine.patch.child.ageBand === 'toddler',
+      'on a table bench the toddler ask refines the bench piece into child scope', JSON.stringify(kidRefine.patch || kidRefine));
+    const toyBox = say('a toy box with a lid');
+    ok(toyBox.kind === 'info' && /F834/.test(toyBox.text) && /16 CFR 1250/.test(toyBox.text),
+      'a toy box with a lid is REFUSED with ASTM F834 (now F963 / 16 CFR 1250) named', toyBox.kind + ': ' + (toyBox.text || '').slice(0, 90));
+    const highChair = say('a high chair');
+    ok(highChair.kind === 'info' && /16 CFR 1231/.test(highChair.text),
+      'a high chair is refused with 16 CFR 1231 named', highChair.kind);
+    const kidsDesk = say('kids desk');
+    ok(kidsDesk.kind === 'question' && /age|old/i.test(kidsDesk.question),
+      'a bare "kids desk" ASKS the age — the band is the geometry', kidsDesk.kind + ': ' + (kidsDesk.question || ''));
+    for (const chip of kidsDesk.options || []) {
+      const r = AI.localModel(chip, nsBench, {});
+      ok(r.kind === 'new' && r.spec.child, `kids-desk chip "${chip}" really builds child-scoped`, r.kind);
+    }
     ok(/\bchair\b/i.test((outOfScope['a sofa'].options || [])[0]),
       'a sofa offers the chair — the seating it does build now', outOfScope['a sofa'].options);
 

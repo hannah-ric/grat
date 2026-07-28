@@ -264,5 +264,75 @@
     "engine": 3.5002915451895045,
     "errPct": 0,
     "pass": true
+  },
+  {
+    "name": "child seat plan width r5(260·430/445) (mm)",
+    "hand": 250,
+    "engine": 250,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child seat plan depth r5(260·420/445) (mm)",
+    "hand": 245,
+    "engine": 245,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child back rise r5(260·470/445) (mm)",
+    "hand": 275,
+    "engine": 275,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child rear-tilt moment M (N·mm)",
+    "hand": 96715,
+    "engine": 96715,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child rear-tilt joint demand R (N)",
+    "hand": 1045.5675675675675,
+    "engine": 1045.5675675675675,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child rear-tilt margin (×)",
+    "hand": 2.16915680090989,
+    "engine": 2.16915680090989,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child entrap gap seat→slat (mm)",
+    "hand": 140,
+    "engine": 140,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child entrap gap slat→crest (mm)",
+    "hand": 0,
+    "engine": 0,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child in-band opening reported as advisory",
+    "hand": 1,
+    "engine": 1,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child table height = EN 1729 mark 2 (mm)",
+    "hand": 530,
+    "engine": 530,
+    "errPct": 0,
+    "pass": true
   }
 ]

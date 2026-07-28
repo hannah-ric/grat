@@ -1838,7 +1838,9 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
   // kd_bolt is the class's beginner/default seat-frame joint — and the BED
   // goldens bolt by MANDATE (every rail end, all levels); their step text
   // is deliberately frozen WITH the corpus.
-  const KD_GOLDENS = ['maple-counter-stool-metric.json', 'walnut-chair-boundary-metric.json', 'oak-queen-bed-imperial.json', 'pine-twin-bed-metric.json'];
+  // oak-kids-chair-imperial (2026-07 childrens scope) bolts for the same
+  // seating-class reason: kd_bolt IS the beginner seat-frame mandate.
+  const KD_GOLDENS = ['maple-counter-stool-metric.json', 'walnut-chair-boundary-metric.json', 'oak-queen-bed-imperial.json', 'pine-twin-bed-metric.json', 'oak-kids-chair-imperial.json'];
   for (const f of fs.readdirSync(path.join(__dirname, 'golden'))) {
     if (KD_GOLDENS.includes(f)) continue;
     ok(!/kd_bolt/.test(fs.readFileSync(path.join(__dirname, 'golden', f), 'utf8')), `golden ${f} is kd_bolt-free`);
@@ -3480,6 +3482,221 @@ section('BED-3 refusals with their regulations, and the basis disclosure');
   // Sizes ride the wire: a share code carries the bed block.
   const rt = Spec.correctSpec(Codec.decode(Codec.encode(spec)));
   eq(rt.bed.size, spec.bed.size, 'the mattress size survives the codec roundtrip');
+}
+
+/* ================= CHILDREN'S SCOPE CLASS (2026-07) =================
+ * The safety-regime class: EN 1729 band heights pinned by code, ADULT loads
+ * kept, the anchor mandate widened, regulated products refused with their
+ * regulations named. Section numbers KID-0…KID-6 (integrator may renumber). */
+
+section('KID-0 the childrens contract holds, overlays cleanly, and its goldens exist');
+{
+  const cls = BB.Classes.get('childrens');
+  ok(cls && cls.scope === 'child', 'childrens is registered as a SCOPE class');
+  eq(BB.Classes.validateContract(cls), [], 'contract complete: childrens');
+  for (const g of cls.fixtures.golden) {
+    ok(fs.existsSync(path.join(__dirname, 'golden', g + '.json')), `childrens golden fixture on disk: ${g}`);
+  }
+  // A scope class never hijacks a template: the primary classes still answer.
+  eq(BB.Classes.forTemplate('chair').key, 'seating', 'forTemplate(chair) is still the seating class');
+  eq(BB.Classes.forTemplate('table').key, 'frame_table', 'forTemplate(table) is still frame_table');
+  ok(BB.Classes.forTemplate('bookshelf') === null, 'forTemplate(bookshelf) stays unowned — the scope class does not claim it');
+  // Checklist coverage on a live child-scoped chair: BOTH checklists ride.
+  const { spec, model, report } = pipeline({ meta: { name: 'K0', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const rows = BB.Classes.runChecklist('chair', { integrity: integ, validation: report, spec });
+  const uncovered = rows.filter(r => r.status === 'uncovered').map(r => r.id);
+  eq(uncovered, [], 'no uncovered failure modes on a child-scoped chair (seating + childrens checklists)');
+  ok(rows.some(r => r.id === 'kid_tipover') && rows.some(r => r.id === 'rear_tilt_racking'),
+    'the child rows OVERLAY the seating rows — both classes are examined');
+  // Without the child scope, the childrens rows never appear.
+  const ad = pipeline({ meta: { name: 'K0a', template: 'chair', level: 'beginner', units: 'mm' } });
+  const adRows = BB.Classes.runChecklist('chair', { integrity: Structural.computeIntegrity(ad.spec, ad.model, {}), validation: ad.report, spec: ad.spec });
+  ok(!adRows.some(r => String(r.id).startsWith('kid_')), 'an adult chair answers only the seating checklist');
+}
+
+section('KID-1 regulated children\'s products are refused with the regulation NAMED, before creation');
+{
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table' } });
+  const cases = [
+    ['a toy box with a lid', /ASTM F834/, /F963/, /16 CFR 1250/],
+    ['build me a toy chest', /ASTM F834/, /F963/, /16 CFR 1250/],
+    ['a high chair for the baby', /16 CFR 1231/, /F404/, /refus/i],
+    ['a changing table for the nursery', /16 CFR 1235/, /F2388/, /refus/i],
+    ['a play yard', /16 CFR 1221/, /F406/, /refus/i],
+    ['a baby gate for the stairs', /16 CFR 1239/, /F1004/, /refus/i]
+  ];
+  for (const [ask, ...rxs] of cases) {
+    const r = AI.localModel(ask, table, {});
+    ok(r.kind === 'info', `"${ask}" is refused, never created — got ${r.kind}`);
+    for (const rx of rxs) ok(r.kind === 'info' && rx.test(r.text), `"${ask}" names ${rx}`);
+  }
+  // The children's surface tells ONE story: cribs and bunks stay refused too.
+  const crib = AI.localModel('a crib for my kid', table, {});
+  ok(crib.kind === 'info' && /16 CFR 1219/.test(crib.text), 'cribs stay refused under 16 CFR 1219/1220');
+  const bunk = AI.localModel('a bunk bed for the kids', table, {});
+  ok(bunk.kind === 'info' && /F1427/.test(bunk.text), 'bunks stay refused under ASTM F1427');
+  // "changing table height" is an EDIT of the table on the bench, not a nursery ask.
+  const edit = AI.localModel('changing table height to 700mm', table, {});
+  ok(edit.kind !== 'info' || !/1235/.test(edit.text || ''), 'an edit phrase never trips the changing-table refusal');
+  // SCHEMA_DOC teaches the same refusals to the hosted model.
+  for (const rx of [/16 CFR 1250/, /16 CFR 1231/, /16 CFR 1235/, /16 CFR 1221/, /16 CFR 1239/]) {
+    ok(rx.test(Codec.SCHEMA_DOC), `SCHEMA_DOC names ${rx}`);
+  }
+}
+
+section('KID-2 heights come from the sourced EN 1729 table — pinned, told, and age-mapped');
+{
+  // The one source: K.CHILD carries the verified size-mark pairs.
+  eq([K.CHILD.BANDS.toddler.seatH, K.CHILD.BANDS.toddler.tableH], [260, 460], 'mark 1: 260/460');
+  eq([K.CHILD.BANDS.preschool.seatH, K.CHILD.BANDS.preschool.tableH], [310, 530], 'mark 2: 310/530');
+  eq([K.CHILD.BANDS.school.seatH, K.CHILD.BANDS.school.tableH], [350, 590], 'mark 3: 350/590');
+  eq([K.CHILD.BANDS.preteen.seatH, K.CHILD.BANDS.preteen.tableH], [380, 640], 'mark 4: 380/640');
+  // Correction pins the band height whatever was asked, and SAYS so.
+  for (const [band, tmpl] of [['toddler', 'table'], ['preschool', 'desk'], ['school', 'table'], ['preteen', 'desk']]) {
+    const raw = { meta: { name: 'K2', template: tmpl, level: 'beginner', units: 'mm' }, overall: { width: 900, depth: 600, height: 750 }, child: { ageBand: band } };
+    const spec = Spec.correctSpec(raw);
+    eq(spec.overall.height, K.CHILD.BANDS[band].tableH, `${band} ${tmpl} pins to ${K.CHILD.BANDS[band].tableH}`);
+    ok(spec.structure.apronHeight <= 80, `${band} ${tmpl} apron band capped for child thigh room`);
+    const notes = Spec.correctionNotes(raw, spec);
+    ok(notes.some(n => /EN 1729/.test(n) && n.includes(String(K.CHILD.BANDS[band].tableH))), `the refused 750 ask is DISCLOSED with the band named — got ${JSON.stringify(notes)}`);
+  }
+  // Child chairs take the band seat + derived plan; stools/counters are refused into backed floor seating.
+  const rawChair = { meta: { name: 'K2c', template: 'chair', level: 'beginner', units: 'mm' }, seat: { backHeight: 0, counterHeight: 900, height: 650 }, child: { ageBand: 'toddler' } };
+  const chair = Spec.correctSpec(rawChair);
+  eq(chair.seat.height, 260, 'toddler seat pins to mark 1 (260)');
+  ok(chair.seat.backHeight > 0 && chair.seat.counterHeight === null, 'a child "stool at the counter" is corrected to a backed floor chair');
+  const cNotes = Spec.correctionNotes(rawChair, chair);
+  ok(cNotes.some(n => /fall height/.test(n)), 'and the fall-height reason is said');
+  // The parser maps ages to bands ("a desk for my 6-year-old" gets mark 3).
+  const nightstand = Spec.correctSpec({ meta: { name: 'N', template: 'nightstand' } });
+  const six = AI.localModel('a desk for my 6-year-old', nightstand, {});
+  ok(six.kind === 'new' && six.spec.child && six.spec.child.ageBand === 'school', '"for my 6-year-old" → school band');
+  eq(Spec.correctSpec(six.spec).overall.height, 590, 'and the built desk is 590 (EN 1729 mark 3)');
+  ok(/EN 1729/.test(six.explain) && /adult design loads/.test(six.explain), 'the ack names the band source and the kept adult loads');
+  const teen = AI.localModel('a desk for my 14-year-old', nightstand, {});
+  ok(teen.kind === 'new' && teen.spec.child === null, 'age ≥ 12 is adult furniture (EN 1729 mark 5+ meets the adult bands)');
+  // The scope rides only sound templates; elsewhere it is dropped AND told.
+  const bedRaw = { meta: { name: 'K2b', template: 'bed', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } };
+  const bedSpec = Spec.correctSpec(bedRaw);
+  ok(bedSpec.child === null, 'child scope never rides a bed');
+  ok(Spec.correctionNotes(bedRaw, bedSpec).some(n => /child scope/i.test(n)), 'and the drop is disclosed');
+  // Adult ergonomics advisories stand down for the pinned child heights.
+  const kt = pipeline({ meta: { name: 'K2t', template: 'table', level: 'beginner', units: 'mm' }, child: { ageBand: 'preschool' } });
+  ok(!kt.report.advisories.some(a => a.id === 'ergo_dining_height'), 'a 530 child table is not scolded against the adult dining band');
+}
+
+section('KID-3 the anti-tip anchor is MANDATORY on child storage — stricter than F2057\'s own scope');
+{
+  // A SHORT bookshelf an adult design would never anchor (ratio ≤ 2.5, wide stance).
+  const raw = { meta: { name: 'K3', template: 'bookshelf', level: 'beginner', units: 'mm' }, overall: { width: 800, depth: 300, height: 720 }, structure: { shelfCount: 2 } };
+  const adult = pipeline(raw);
+  const adultInteg = Structural.computeIntegrity(adult.spec, adult.model, {});
+  ok(!adultInteg.antiTip, 'the adult version of the same case needs no anchor (control)');
+  const kid = pipeline(Object.assign({}, raw, { child: { ageBand: 'school' } }));
+  const kidInteg = Structural.computeIntegrity(kid.spec, kid.model, {});
+  ok(kidInteg.antiTip, 'the child-scoped version mandates the anchor regardless of margin');
+  const tip = kidInteg.checks.find(c => c.id === 'tip');
+  ok(tip.anchor === true && /child/i.test(tip.explain) && /Anchor It/i.test(tip.explain), 'the tip check says WHY: child scope, CPSC Anchor It!');
+  // The mandate reaches the BOM as a REQUIRED line (the deliverable, not a note).
+  const cut = Plans.cutList(kid.spec, kid.model);
+  const stock = Packing.planStock(kid.spec, kid.model, cut, {});
+  const bom = Plans.bom(kid.spec, kid.model, { integrity: kidInteg, stock });
+  ok(bom.items.some(i => /anti-tip/i.test(i.label) && /REQUIRED/i.test(i.label)), 'the anti-tip anchor is a mandatory BOM line');
+  const adultBom = Plans.bom(adult.spec, adult.model, { integrity: adultInteg, stock: Packing.planStock(adult.spec, adult.model, Plans.cutList(adult.spec, adult.model), {}) });
+  ok(!adultBom.items.some(i => /anti-tip/i.test(i.label)), 'and the adult control carries none');
+  // F2057 scope extension: a child desk's pencil drawer takes the 1.5× gate
+  // (adult desks are excluded from the regulation's clothing-storage scope).
+  const kdesk = pipeline({ meta: { name: 'K3d', template: 'desk', level: 'intermediate', units: 'mm' }, drawers: { count: 1 }, child: { ageBand: 'school' } });
+  const kdInteg = Structural.computeIntegrity(kdesk.spec, kdesk.model, {});
+  const f = kdInteg.checks.find(c => c.id === 'tip_f2057');
+  ok(f && f.data.childScope === true, 'the F2057 check runs IN SCOPE on a child desk');
+  ok(/child scope/i.test(f.threshold), 'and the threshold says the scope extension out loud');
+  if (f.data.marginRatio < 1.5) ok(f.anchor === true, 'below 1.5× the anchor is mandated on the child desk');
+  // Loads never lighten: the F2057 pull mass is the same 22.7 kg.
+  eq(f.data.testKg, 22.7, 'the test mass is unchanged (nothing is lightened for children)');
+}
+
+section('KID-4 ADULT design loads are kept on children\'s pieces — stated and priced');
+{
+  const { spec, model } = pipeline({ meta: { name: 'K4', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'toddler' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const seatCls = BB.Classes.get('seating');
+  // The magnitudes in the child chair's checks ARE the adult class magnitudes.
+  const tilt = integ.checks.find(c => c.id === 'chair:tilt');
+  const M = (seatCls.loads.BACK_STATIC_N / 2) * ((260 + 275 - 75 / 2) - (260 - 20 - 65 / 2));
+  near(tilt.data.momentNmm, M, 1, 'rear-tilt moment uses the 667 N adult back force on the child geometry');
+  const cyc = integ.checks.find(c => c.id === 'chair:cyclic');
+  near(cyc.data.perJointN, seatCls.loads.SEAT_STATIC_N / 4, 0.01, 'cyclic demand keeps the 1334 N adult seat mass');
+  // The shorter child couple arm RAISES the per-joint demand vs the adult chair —
+  // the opposite of a lightened case, and the class joinery still clears it.
+  const ad = pipeline({ meta: { name: 'K4a', template: 'chair', level: 'beginner', units: 'mm' } });
+  const adTilt = Structural.computeIntegrity(ad.spec, ad.model, {}).checks.find(c => c.id === 'chair:tilt');
+  ok(tilt.data.demandN > adTilt.data.demandN, `child per-joint demand (${tilt.data.demandN.toFixed(0)} N) exceeds the adult chair's (${adTilt.data.demandN.toFixed(0)} N)`);
+  ok(tilt.status === 'pass' && tilt.data.marginRatio >= 1.5, 'and the class-mandated joint still clears the 1.5× gate');
+  // The basis is DISCLOSED in the output, and it is never a certification claim.
+  const basis = integ.checks.find(c => c.id === 'child:basis');
+  ok(basis && /adult design loads/i.test(basis.value + basis.explain), 'child:basis states the kept adult loads');
+  ok(/EN 1729/.test(basis.explain) && /refused/i.test(basis.explain), 'and names EN 1729 + the refusal doctrine');
+  ok(!/certif(?:ied|ication)(?!.*(?:no|not|never))/i.test(basis.value) && /Guidance, not a certification/i.test(basis.explain),
+    'never a children\'s-product certification claim');
+  // The childrens class contract itself states the derivation.
+  const lc = BB.Classes.get('childrens').loadCases.find(l => l.id === 'child_seat_adult');
+  ok(lc && lc.traceability === 'derivation' && /adults sit/i.test(lc.source), 'the contract traces the adult-loads choice as a documented derivation');
+}
+
+section('KID-5 head-entrapment band: measured on the built back, honestly scoped, child-only');
+{
+  const { spec, model } = pipeline({ meta: { name: 'K5', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const en = integ.checks.find(c => c.id === 'child:entrap');
+  ok(en, 'a child chair carries the entrapment check');
+  // Probe/builder parity: the gaps are measured from the parts actually built.
+  const members = model.parts.filter(p => p.role === 'slat' || p.role === 'crest')
+    .map(p => ({ lo: p.pos.y - p.size.h / 2, hi: p.pos.y + p.size.h / 2 })).sort((a, b) => a.lo - b.lo);
+  let prev = spec.seat.height; const gaps = [];
+  for (const m of members) { gaps.push(Math.round((m.lo - prev) * 10) / 10); prev = Math.max(prev, m.hi); }
+  eq(en.data.gapsMM, gaps, 'check gaps == builder gaps (probe/builder parity)');
+  // The school-band back genuinely opens inside the band → advisory, with the source named honestly.
+  ok(gaps.some(g => g >= 89 && g < 230), 'the nominal school chair back has an in-band opening (140 mm seat→slat)');
+  eq(en.status, 'advisory', 'in-band openings are an ADVISORY, never a silent pass or an overclaimed fail');
+  ok(/16 CFR 1213/.test(en.threshold), 'the band names its source (16 CFR 1213 wedge block / 9 in sphere)');
+  ok(/does not regulate chairs/i.test(en.explain), 'and the scope is honest: the standard is bunk-guardrail law, applied here as geometry guidance');
+  // Adult chairs never carry it — the band is a child hazard scope.
+  const ad = pipeline({ meta: { name: 'K5a', template: 'chair', level: 'beginner', units: 'mm' } });
+  ok(!Structural.computeIntegrity(ad.spec, ad.model, {}).checks.some(c => c.id === 'child:entrap'), 'no entrapment check on an adult chair');
+}
+
+section('KID-6 finish advisory + the child field rides the wire and survives roundtrip');
+{
+  // Finish advisory: always on for child scope, names EN 71-3, blesses nothing unverified.
+  const cured = pipeline({ meta: { name: 'K6', template: 'table', level: 'beginner', units: 'mm' }, finish: 'tung_pure', child: { ageBand: 'preschool' } });
+  const a1 = cured.report.advisories.find(a => a.id === 'child_finish');
+  ok(a1 && /EN 71-3/.test(a1.text), 'the advisory names EN 71-3 as the certified route');
+  ok(/food-contact-class/.test(a1.text) && /cure/.test(a1.text), 'a food-contact finish is named as such, with the cure caveat');
+  const film = pipeline({ meta: { name: 'K6b', template: 'table', level: 'beginner', units: 'mm' }, finish: 'wipe_poly', child: { ageBand: 'preschool' } });
+  const a2 = film.report.advisories.find(a => a.id === 'child_finish');
+  ok(a2 && /no toy-safety certification/.test(a2.text) && /practice, not a cert/i.test(a2.text),
+    'an uncertified film finish is NOT blessed — cured-film practice is labeled practice');
+  ok(/not food\/toy certified/.test(a2.text), 'premixed shellac honesty rides every child finish advisory');
+  const adult = pipeline({ meta: { name: 'K6c', template: 'table', level: 'beginner', units: 'mm' }, finish: 'wipe_poly' });
+  ok(!adult.report.advisories.some(a => a.id === 'child_finish'), 'adult designs carry no child finish advisory');
+
+  // Wire: the child section rides only when set; old codes decode byte-identically.
+  const kidSpec = cured.spec;
+  const w = Codec.encode(kidSpec);
+  eq(w.ch, [1], 'child rides the wire as the appended "ch" key (preschool = AGE index 1)');
+  const rt = Spec.correctSpec(Codec.decode(w));
+  eq(rt.child, { ageBand: 'preschool' }, 'the band survives the codec roundtrip');
+  eq(rt.overall.height, 530, 'and re-correction re-derives the same band height');
+  const adultWire = Codec.encode(adult.spec);
+  ok(!('ch' in adultWire), 'adult designs encode without the key — pre-scope share codes are byte-identical');
+  // A junk band on the wire falls to a real one, never a crash.
+  const junk = Spec.correctSpec(Codec.decode(Object.assign({}, w, { ch: [99] })));
+  ok(junk.child && K.CHILD.BANDS[junk.child.ageBand], 'a junk AGE index decodes to a real band');
+  // Share-code path end to end.
+  const share = Codec.fromShareCode(Codec.toShareCode(kidSpec));
+  ok(!share.error && Spec.correctSpec(share.spec).child.ageBand === 'preschool', 'the child scope survives a share code');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

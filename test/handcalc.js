@@ -525,6 +525,61 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   row('bed headboard post stress (MPa)', sigmaH, hb.data.stressMPa);
 }
 
+/* =========================================================================
+ * 15. CHILDREN'S SCOPE (2026-07) — toddler chair, every number by hand.
+ *     Band: EN 1729 mark 1 (K.CHILD) — seat 260, table pair 460.
+ *     Derived plan (CHILD_GEOM, ratios off the adult 445/430/420/470 nominal,
+ *     round-to-5): width r5(260·430/445) = r5(251.24) = 250;
+ *     depth r5(260·420/445) = r5(245.39) = 245;
+ *     back r5(260·470/445) = r5(274.61) = 275.
+ *     ADULT LOADS KEPT (class doctrine): back force 667 N unchanged.
+ *     Rear tilt on the child geometry (beginner → kd_bolt mandate, red oak):
+ *       railY = 260 − 20 − 65/2 = 207.5
+ *       railBottom = 260 − 20 − 65 = 175 → stretcher clamp ceiling 175 − 60
+ *         = 115; asked 200 → strY = 115; arm = 207.5 − 115 = 92.5
+ *       crestY = 260 + 275 − 75/2 = 497.5
+ *       M = (667/2)·(497.5 − 207.5) = 333.5 × 290 = 96 715 N·mm
+ *       R = M/92.5 = 1045.568 N  (vs 840.25 N on the ADULT chair — the
+ *         shorter couple arm RAISES the joint demand; nothing lightened)
+ *       cap = 1800 × (0.63/0.5) = 2268 N → margin 2.169× → PASS (≥1.5)
+ *     Entrapment band (16 CFR 1213 wedge/sphere geometry, advisory):
+ *       slat bottom = (260 + 170) − 60/2 = 400 → gap₁ = 400 − 260 = 140 mm
+ *         → INSIDE the 89–230 band (the advisory must fire)
+ *       crest bottom = 497.5 − 37.5 = 460; slat top = 430 + 30 = 460
+ *         → gap₂ = 0 mm → below the band.
+ *     Band height pin: preschool (mark 2) table = 530 mm from K.CHILD.
+ * ========================================================================= */
+{
+  Units.set({ system: 'metric' });
+  const spec = Spec.correctSpec({ meta: { name: 'HC kid chair', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'toddler' } });
+  const model = Parametric.build(spec);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const r5 = v => Math.round(v / 5) * 5;
+  row('child seat plan width r5(260·430/445) (mm)', r5(260 * 430 / 445), spec.seat.width, 0.01);
+  row('child seat plan depth r5(260·420/445) (mm)', r5(260 * 420 / 445), spec.seat.depth, 0.01);
+  row('child back rise r5(260·470/445) (mm)', r5(260 * 470 / 445), spec.seat.backHeight, 0.01);
+  const railY = 260 - 20 - 65 / 2;
+  const crestY = 260 + 275 - 75 / 2;
+  const arm = railY - 115;
+  const Mhand = (667 / 2) * (crestY - railY);
+  const Rhand = Mhand / arm;
+  const capHand = 1800 * (K.WOOD_SPECIES.red_oak.sg / 0.5);
+  const tilt = integ.checks.find(c => c.id === 'chair:tilt');
+  console.log(`\n[23] Child chair rear tilt (ADULT 667 N kept): M = 333.5 × (${crestY} − ${railY}) = ${Mhand.toFixed(0)} N·mm; R = M/${arm} = ${Rhand.toFixed(2)} N; cap ${capHand} N; margin ${(capHand / Rhand).toFixed(3)}×`);
+  row('child rear-tilt moment M (N·mm)', Mhand, tilt.data.momentNmm);
+  row('child rear-tilt joint demand R (N)', Rhand, tilt.data.demandN);
+  row('child rear-tilt margin (×)', capHand / Rhand, tilt.data.marginRatio);
+  const en = integ.checks.find(c => c.id === 'child:entrap');
+  const gap1 = (260 + 170 - 60 / 2) - 260;
+  const gap2 = (crestY - 75 / 2) - (260 + 170 + 60 / 2);
+  console.log(`    Entrapment: gap₁ = ${gap1} (in 89–230 band → ${en.status}); gap₂ = ${gap2}`);
+  row('child entrap gap seat→slat (mm)', gap1, en.data.gapsMM[0], 0.01);
+  row('child entrap gap slat→crest (mm)', gap2, en.data.gapsMM[1], 0.01);
+  rows.push({ name: 'child in-band opening reported as advisory', hand: 1, engine: en.status === 'advisory' && en.data.inBandCount === 1 ? 1 : 0, errPct: en.status === 'advisory' ? 0 : 100, pass: en.status === 'advisory' && en.data.inBandCount === 1 });
+  const kt = Spec.correctSpec({ meta: { name: 'HC kid table', template: 'table', level: 'beginner', units: 'mm' }, overall: { height: 750 }, child: { ageBand: 'preschool' } });
+  row('child table height = EN 1729 mark 2 (mm)', K.CHILD.BANDS.preschool.tableH, kt.overall.height, 0.001);
+}
+
 const fails = rows.filter(r => !r.pass);
 console.log(`\nworksheet: ${rows.length - fails.length}/${rows.length} agree`);
 for (const f of fails) console.log(`  DISAGREE: ${f.name} (hand ${f.hand} vs engine ${f.engine})`);

@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 10,
   "meta": {
    "name": "Shaker Dining Table",
    "template": "table",
@@ -45,7 +45,8 @@
   "custom": null,
   "seat": null,
   "wall": null,
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],

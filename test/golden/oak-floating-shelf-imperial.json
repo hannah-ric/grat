@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 10,
   "meta": {
    "name": "Oak Floating Shelf",
    "template": "wall_shelf",
@@ -48,7 +48,8 @@
    "substrate": "stud",
    "studSpacingMM": 406
   },
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],

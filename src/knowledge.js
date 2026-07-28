@@ -812,6 +812,45 @@ var BB = globalThis.BB = globalThis.BB || {};
     return ERGONOMICS.find(r => r.key === key) || null;
   }
 
+  /* ---------------- Children's ergonomics (the 'childrens' scope class) ----
+   * EN 1729-1 pairs a chair SEAT height with a table height per size mark —
+   * the one citable children's-furniture sizing anchor (school furniture is
+   * exactly its subject: chairs and tables for educational institutions).
+   * Values below are the published size-mark pairs, cross-checked against
+   * multiple published EN 1729 sizing guides (ESPO chair & table guide, GLS
+   * Educational Supplies product listings, edu-quip/OWL buying guides,
+   * research 2026-07 — the standard text itself is paywalled):
+   *   mark 1 seat 260 / table 460 (age ≈3–4), mark 2 310/530 (4–6),
+   *   mark 3 350/590 (6–8), mark 4 380/640 (8–11).      [verified-exact]
+   * From EN 1729 mark 5 up (seat 430 / table 710, age 11–14) the pair meets
+   * the adult dining band this tool already builds (seat 430–460, table
+   * 730–760) — so age ≥ 12 is served by ADULT furniture, not a band here.
+   * Seat PLAN dimensions per mark (EN 1729 t4/b3) are not publicly
+   * published; the childrens class derives them (classes.js CHILD_GEOM,
+   * documented derivation). One source: correction, validation, the class
+   * contract, and the AI schema doc all read THIS table. */
+  const CHILD = {
+    BANDS: {
+      toddler: { mark: 1, seatH: 260, tableH: 460, ageLo: 2, ageHi: 3, label: 'toddler (≈3–4 yr, EN 1729 mark 1)' },
+      preschool: { mark: 2, seatH: 310, tableH: 530, ageLo: 4, ageHi: 5, label: 'preschooler (4–6 yr, EN 1729 mark 2)' },
+      school: { mark: 3, seatH: 350, tableH: 590, ageLo: 6, ageHi: 7, label: 'school-age child (6–8 yr, EN 1729 mark 3)' },
+      preteen: { mark: 4, seatH: 380, tableH: 640, ageLo: 8, ageHi: 11, label: 'preteen (8–11 yr, EN 1729 mark 4)' }
+    },
+    ADULT_AGE: 12, // ≥ this: EN 1729 mark 5+ coincides with the adult bands
+    /* Age (years) → band key; null = adult sizing fits (or the age is
+     * unusable). Under-2s sit in regulated infant products (high chairs,
+     * 16 CFR 1231), not loose furniture — they ride the smallest band with
+     * the band's own label saying who it actually fits. */
+    bandForAge(years) {
+      if (typeof years !== 'number' || !isFinite(years) || years < 1) return null;
+      if (years >= this.ADULT_AGE) return null;
+      for (const [k, b] of Object.entries(this.BANDS)) {
+        if (years >= b.ageLo && years <= b.ageHi) return k;
+      }
+      return 'toddler'; // years in [1, 2) — smallest band, label discloses fit
+    }
+  };
+
   /* ---------------- Digests for the AI system prompt ----------------
    * Compact, lossy on purpose: enough for good proposals; validation re-checks.
    * EVERY line is GENERATED from the tables above — never hand-copied — and
@@ -856,7 +895,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.K = {
     WOOD_SPECIES, ERGONOMICS, JOINERY, FASTENERS, FINISHES, GLUES,
-    LEVELS, SLIDE_LENGTHS, SLIDE_SPACE_MM, SOLID_THICKNESS, POST_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM,
+    LEVELS, SLIDE_LENGTHS, SLIDE_SPACE_MM, SOLID_THICKNESS, POST_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM, CHILD,
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,

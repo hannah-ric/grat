@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 10,
   "meta": {
    "name": "Sideboard Cabinet",
    "template": "cabinet",
@@ -49,7 +49,8 @@
   "custom": null,
   "seat": null,
   "wall": null,
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],
@@ -265,7 +266,8 @@
      "stabilizingNmm": 67872.514,
      "overturningNmm": 62003.425,
      "testKg": 22.7,
-     "openFraction": 0.667
+     "openFraction": 0.667,
+     "childScope": false
     }
    },
    {
