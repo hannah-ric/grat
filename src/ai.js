@@ -196,7 +196,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!patch) return null;
     // Wire keys outside the documented schema decode to nothing — record them
     // so the ack can say what was ignored instead of implying it landed (C4).
-    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c'];
+    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c', 'ex'];
     const ignored = Object.keys(wireDiff).filter(k => !KNOWN.includes(k));
     return { kind: 'diff', patch, explain: explain || 'Updated.', ignored };
   }
@@ -602,6 +602,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (t.includes(kw)) { set('finish', f.key); notes.push(f.label); break; }
     }
 
+    /* Outdoor exposure (2026-08): the WORD sets the exposure intent only —
+     * code routes every material consequence (durable species, Type-I glue,
+     * exterior finish, stainless/galvanized fasteners, outdoor ΔMC). A roof
+     * word means covered; a bare outdoor word means exposed (full weather —
+     * the conservative read). "back inside/indoors" clears it. */
+    {
+      const covered = /\bcovered\s+(?:patio|porch|deck|area|spot)\b|\bporch\b|\bveranda(?:h)?\b|\bscreened[- ](?:porch|room)\b|\bunder\s+(?:a\s+|the\s+)?(?:roof|cover|awning|pergola|overhang)\b|\bthree[- ]season\b|\bsunroom\b/.test(t);
+      // "deck" only in locative/attributive use — a bed's SLAT DECK is a part,
+      // not a place, and must never read as outdoor intent.
+      const outdoor = covered || /\boutdoors?\b|\boutside\b|\bpatio\b|\bgarden\b|\bbackyard\b|\bbalcon(?:y|ies)\b|\bterrace\b|\bal\s+fresco\b|\bexterior\b|\bweather ?proof\b|\bopen[- ]air\b|\b(?:on|for|by)\s+(?:the\s+|our\s+|my\s+)?deck\b|\bdeck\s+(?:furniture|bench|benches|table|tables|chairs?|set|box)\b/.test(t);
+      const indoor = /\bindoors?\b|\binside\b|\bback\s+in(?:doors|side)?\b/.test(t);
+      if (outdoor && !negated(t, /\boutdoors?\b|\boutside\b|\bpatio\b|\bgarden\b|\bporch\b|\bdeck\b/)) {
+        set('exposure', covered ? 'covered' : 'exposed');
+        notes.push(covered ? 'covered outdoor duty' : 'outdoor (exposed) duty');
+      } else if (indoor && !outdoor && spec.exposure && spec.exposure !== 'interior') {
+        set('exposure', 'interior');
+        notes.push('back to interior duty');
+      }
+    }
+
     if (creating) {
       // A workbench is a table at working height: the WORD itself implies the
       // height, from the ergonomics table (A8) — an explicit height still wins.
@@ -632,6 +652,12 @@ var BB = globalThis.BB = globalThis.BB || {};
        * guessing (the chips parse straight back in here). Drywall-only is
        * refused with the reason, matching the class contract. */
       if (wantTemplate === 'wall_shelf') {
+        /* Exposure refusal at the parser (the wall_mounted class's
+         * no_exposed_mount): the anchor math is NDS dry-service only. A
+         * covered porch wall stays dry-service and passes through. */
+        if (patch.exposure === 'exposed') {
+          return { kind: 'info', text: 'A wall shelf can’t hang in direct weather — the anchor math here uses NDS dry-service withdrawal values (moisture content ≤ 19%), and rain-wetted framing crosses into wet service, which derates withdrawal and isn’t modeled. On a covered porch wall (roofed, no direct rain) I can build it; fully exposed, a freestanding shelf or bench is the honest answer.' };
+        }
         if (/\bdrywall\b|\bplasterboard\b|\bsheetrock\b/.test(t) && !/\bstuds?\b/.test(t)) {
           return { kind: 'info', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. If there are wood studs behind it (there usually are, 16 or 24 in apart), say “on studs”; on brick or block, say “on masonry”.' };
         }

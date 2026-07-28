@@ -10,11 +10,12 @@
     "minParts": 25
   },
   "expectAfterMigration": {
-    "specVersion": 9,
+    "specVersion": 10,
     "bed.size": "queen",
     "bed.platformHeight": 350,
     "bed.headboardHeight": 1000,
-    "joinery.frame": "kd_bolt"
+    "joinery.frame": "kd_bolt",
+    "exposure": "interior"
   },
   "spec": {
     "specVersion": 9,

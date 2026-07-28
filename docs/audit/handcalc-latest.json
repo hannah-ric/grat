@@ -341,5 +341,40 @@
     "engine": 4,
     "errPct": 0,
     "pass": true
+  },
+  {
+    "name": "interior movement 800×0.00365×4 (mm)",
+    "hand": 11.68,
+    "engine": 11.68,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "covered movement 800×0.00365×6 (mm)",
+    "hand": 17.52,
+    "engine": 17.52,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "exposed movement 800×0.00365×12 (mm)",
+    "hand": 35.04,
+    "engine": 35.04,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "engine movement check, interior table (mm)",
+    "hand": 11.68,
+    "engine": 11.68,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "engine movement check, exposed table (mm)",
+    "hand": 35.04,
+    "engine": 35.04,
+    "errPct": 0,
+    "pass": true
   }
 ]

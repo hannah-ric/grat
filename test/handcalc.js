@@ -596,6 +596,44 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   row('hinge count (height band vs weight)', nHand, BB.HW.doorHingeCount(door.size.h, sag.data.leafKg), 0.001);
 }
 
+/* =========================================================================
+ * 15. OUTDOOR EXPOSURE (2026-08) — indoor vs outdoor movement, every step.
+ *     ΔMC sources (single source: K.EXPOSURE_DMC, knowledge.js):
+ *       interior temperate 4  — CLIMATE_DMC, unchanged.
+ *       covered 6   — WH FPL-GTR-282 Table 13-2 exterior installation MC:
+ *                     12% average, 9–14% range for most of the US (≈5 pts),
+ *                     widened to 6 for humid-coastal outdoor monthly spans
+ *                     (FPL-RN-0268 data, e.g. Seattle 12.2–16.5%).
+ *       exposed 12  — sun-dried lows ≈7% (arid monthly EMC 4–8.5% band) to
+ *                     the 19% MC NDS dry/wet-service boundary under direct
+ *                     wetting: 19 − 7 = 12 points (documented derivation).
+ *     White-oak top, 800 mm across the grain, ct 0.00365 (Table 13-5):
+ *       interior: 800 × 0.00365 × 4  = 11.680 mm
+ *       covered:  800 × 0.00365 × 6  = 17.520 mm
+ *       exposed:  800 × 0.00365 × 12 = 35.040 mm  (3× the indoor swing)
+ * ========================================================================= */
+{
+  Units.set({ system: 'metric' });
+  const ct = K.WOOD_SPECIES.white_oak.ct;
+  console.log(`\n[23] Outdoor movement: 800 × ${ct} × {4, 6, 12} ΔMC`);
+  row('interior movement 800×0.00365×4 (mm)', 800 * ct * 4, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('interior', 'temperate')), 0.01);
+  row('covered movement 800×0.00365×6 (mm)', 800 * ct * 6, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('covered', 'temperate')), 0.01);
+  row('exposed movement 800×0.00365×12 (mm)', 800 * ct * 12, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('exposed', 'temperate')), 0.01);
+  /* The ENGINE's movement check on the same top, indoors and out — the same
+   * spec, one field apart, must report exactly these two numbers. */
+  const mk = exposure => {
+    const { spec, model } = pipeline({
+      meta: { name: 'HC outdoor', template: 'table', level: 'advanced', units: 'mm' },
+      overall: { width: 1400, depth: 800, height: 740 }, wood: { species: 'white_oak' },
+      joinery: { frame: 'mortise_tenon' }, exposure
+    });
+    return Structural.computeIntegrity(spec, model, {}).checks.find(c => c.id === 'move:top_1').data.movementMM;
+  };
+  row('engine movement check, interior table (mm)', 800 * ct * 4, mk('interior'), 0.01);
+  row('engine movement check, exposed table (mm)', 800 * ct * 12, mk('exposed'), 0.01);
+  console.log(`    exposed / interior = ${(mk('exposed') / mk('interior')).toFixed(3)} (hand: 12/4 = 3.000)`);
+}
+
 const fails = rows.filter(r => !r.pass);
 console.log(`\nworksheet: ${rows.length - fails.length}/${rows.length} agree`);
 for (const f of fails) console.log(`  DISAGREE: ${f.name} (hand ${f.hand} vs engine ${f.engine})`);

@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 10,
   "meta": {
    "name": "Boundary Chair",
    "template": "chair",
@@ -36,6 +36,7 @@
    "box": "pocket_screws"
   },
   "finish": "wipe_poly",
+  "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
    "hinge": "euro_cup"

@@ -201,7 +201,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         { id: 'stretcher_on_leg', rule: 'stretcher centreline ∈ [floor+100, apron underside − 90] — it must land on the leg with clamp room', enforcedBy: 'Spec.correctSpec stretcher clamp (X-07)' },
         { id: 'drawer_in_band', rule: 'desk drawers live INSIDE the apron band: opening = apronHeight − 40 clamped 45–80 (pencil-drawer class, hence the 45 mm floor in validate), fronts inset, wood runners at every level (no case side for slides), a single opening wider than 620 splits around a centre stile', enforcedBy: 'Spec.correctSpec desk-drawer block + Parametric.addDeskDrawers' },
         { id: 'knee_room', rule: 'desk knee clearance = height − top − band ≥ ~600 (Panero & Zelnik seated knee; ADA 306.3 asks 685 for accessible desks) — advisory, never silent', enforcedBy: 'Spec.validate ergo_knee' },
-        { id: 'long_span', rule: 'clear span between legs > 1800 scales the racking score down (linearly to ×0.7 at the cap) — the couple on the apron–leg joints grows with span while joint capacity is fixed, and the top’s torsional stiffness stops helping', enforcedBy: 'Structural racking span factor (roadmap item 2)' }
+        { id: 'long_span', rule: 'clear span between legs > 1800 scales the racking score down (linearly to ×0.7 at the cap) — the couple on the apron–leg joints grows with span while joint capacity is fixed, and the top’s torsional stiffness stops helping', enforcedBy: 'Structural racking span factor (roadmap item 2)' },
+        { id: 'exposure_routing', rule: 'exposure ∈ {interior, covered, exposed} (one spec field, roadmap item 5): outdoor routes Type-I glue (K.recommendGlue), an exterior finish, stainless/hot-dip-galvanized fastener lines, and the outdoor ΔMC (K.EXPOSURE_DMC, WH ch. 13) into the movement math; EXPOSED additionally corrects a non-durable species to the deterministic durable substitute (costTier 1 → western_red_cedar, else white_oak) and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [
@@ -232,7 +233,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       { id: 'joint_overload', mode: 'weakest frame joint below its load share', checkIds: ['joints'], fixture: 'audit G5', realWorld: 'aprons torn off their legs' },
       { id: 'tipping', mode: 'piece tips when top-loaded at the edge', checkIds: ['tip'], fixture: 'audit M-18', realWorld: 'tall narrow pieces going over' },
       { id: 'band_weakened', mode: 'the drawer opening guts the front apron and the band sags or breaks', checkIds: ['sag:apron:', 'str:apron:'], conditional: true, fixture: 'audit DESK-1 (stiffness-shared band model, handcalc [17])', realWorld: 'pencil-drawer desks that bounce at the front edge' },
-      { id: 'drawer_pullout_tip', mode: 'open drawer + downward pull tips the desk', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit DESK-2 (reported; anchor mandate stays scoped to clothing storage)', realWorld: 'kids hanging on an open pencil drawer' }
+      { id: 'drawer_pullout_tip', mode: 'open drawer + downward pull tips the desk', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit DESK-2 (reported; anchor mandate stays scoped to clothing storage)', realWorld: 'kids hanging on an open pencil drawer' },
+      { id: 'weather_rot', mode: 'a non-durable species or interior materials left in the weather rot, delaminate, and shed their finish', conditional: true, guard: 'Spec.correctSpec exposure routing (durable species substitution + exterior finish) with exposureNotes disclosure; validate out_sheet refuses interior sheet goods exposed', checkIds: ['out_'], fixture: 'audit OUT-2/OUT-3/OUT-5; golden pine-patio-table-metric freezes the substitution', realWorld: 'the picnic-table pine bench that composts itself in three seasons' }
     ],
     hardware: [
       { id: 'top_fasteners', item: 'figure-8 fasteners / tabletop buttons', when: 'every solid top', capacity: 'hold-down only; movement is released by design', matchedTo: 'seasonal travel computed by K.movementMM — the same number the movement check reports' },
@@ -247,7 +249,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     refusals: [
       { id: 'no_wall_hang', shape: 'wall-hung / floating variants of a frame piece', reason: 'anchor pullout and stud engagement are a different class (wall-mounted) not yet generated soundly', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule' },
       { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' },
-      { id: 'no_over_span', shape: 'tops wider than 2400 mm', reason: 'past the cap the apron-beam model still runs but the racking couple and the top’s torsional floppiness have no code-owned answer (breadboard/batten stiffening is future work) — the clamp is the refusal and correction says so', surface: 'Spec.DIM_RULES overall.width max 2400 (dimensionNotes disclose the clamp) + the racking span factor' }
+      { id: 'no_over_span', shape: 'tops wider than 2400 mm', reason: 'past the cap the apron-beam model still runs but the racking couple and the top’s torsional floppiness have no code-owned answer (breadboard/batten stiffening is future work) — the clamp is the refusal and correction says so', surface: 'Spec.DIM_RULES overall.width max 2400 (dimensionNotes disclose the clamp) + the racking span factor' },
+      { id: 'no_exposed_sheet', shape: 'interior sheet goods (plywood drawer boxes, MDF panels, ply backs) on an EXPOSED build', reason: 'no exterior-rated sheet good exists in the catalog — interior plywood delaminates and MDF swells when wetted, and a guessed exterior rating is worse than a refusal (covered builds get the advisory instead: sheltered, but unrated)', surface: 'Spec.validate out_sheet error (exposed) / advisory (covered)' }
     ],
     fixtures: {
       golden: ['seed-table-imperial', 'shaker-table-imperial', 'custom-bench-metric', 'walnut-writing-desk-imperial'],
@@ -369,7 +372,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         { id: 'splay_stool_only', rule: 'leg splay 0–10° on stools; 0 on backed chairs (the offset-rail rake geometry assumes vertical posts)', enforcedBy: 'Spec.correctSeat' },
         { id: 'envelope_derived', rule: 'overall = seat plan + splay run; height = seat + back rise — the audit envelope always contains the splayed feet', enforcedBy: 'Spec.correctSpec chair block' },
         { id: 'footrest_drop', rule: 'stool footrest (box stretcher) top ≈ 230 below the seat; stools ALWAYS carry it — it is structure and ergonomics at once', enforcedBy: 'Spec.correctSpec chair block' },
-        { id: 'rail_band', rule: 'seat-rail band ≤ seat height − topThickness − 160 so the stretcher and knee room survive', enforcedBy: 'Spec.correctSpec chair block' }
+        { id: 'rail_band', rule: 'seat-rail band ≤ seat height − topThickness − 160 so the stretcher and knee room survive', enforcedBy: 'Spec.correctSpec chair block' },
+        { id: 'exposure_routing', rule: 'the cross-class exposure overlay (roadmap item 5) applies: outdoor chairs/stools route Type-I glue, exterior finish, corrosion-spec fasteners and outdoor ΔMC; exposed corrects non-durable species and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [
@@ -535,7 +539,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       { id: 'no_unknown_wall', shape: 'mounting on an unstated or unknown wall', reason: 'the wall carries the whole load path — without the substrate the anchor math is a guess, and a plausible guess is worse than a refusal', surface: 'validate wall_substrate error + parser asks before creating' },
       { id: 'no_drywall_only', shape: 'drywall-anchor-only mounting', reason: 'drywall anchors creep under sustained load and their ratings are ULTIMATE, not working (industry practice is ≤ ¼ of listed) — shelving is sustained load, so drywall alone is refused, not derated', surface: 'validate error + correction note + parser' },
       { id: 'no_heavy_cantilever', shape: 'depths past 300 mm / desk-duty wall units', reason: 'the couple demand outruns hobby fixings — that is the wall-hung casework class, not yet generated soundly', surface: 'Spec.correctSpec depth clamp + dimensionNotes' },
-      { id: 'no_ceiling', shape: 'ceiling-hung anything', reason: 'overhead failure is injury-first; no ceiling model exists', surface: 'SCHEMA_DOC + parser (unchanged floor/wall doctrine)' }
+      { id: 'no_ceiling', shape: 'ceiling-hung anything', reason: 'overhead failure is injury-first; no ceiling model exists', surface: 'SCHEMA_DOC + parser (unchanged floor/wall doctrine)' },
+      { id: 'no_exposed_mount', shape: 'a wall shelf in direct weather (exposure = exposed)', reason: 'the anchor math uses NDS dry-service withdrawal values (MC ≤ 19%); direct wetting crosses the wet-service boundary, where NDS derates withdrawal to CM = 0.7 — a derating this model does not carry. A covered porch wall stays dry-service and is allowed', surface: 'Spec.validate out_mount error + parser refusal on outdoor wall-shelf asks' }
     ],
     fixtures: {
       golden: ['oak-floating-shelf-imperial', 'deep-shelf-masonry-metric'],
@@ -625,7 +630,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         { id: 'knockdown_mandate', rule: 'rails bolt to posts (kd_bolt) at every level — a glued bed cannot leave the room; asking for glued joinery is overridden and told', enforcedBy: 'Spec.correctSpec + bedNotes' },
         { id: 'slat_gap', rule: 'slat count solved so gaps ≤ 70 mm (foam-warranty floor: Amerisleep 2.75 in) with ≥ 75 mm slat width (Tempur-Pedic ≥ 3 in)', enforcedBy: 'Parametric.bedBuild + bed:slats check' },
         { id: 'centre_support', rule: 'interior ≥ 1350 mm always gets a centre rail + floor leg (Sealy/S&F warranty: ≥ 5 legs with centre support at queen+)', enforcedBy: 'Parametric.bedBuild + bed:centre check' },
-        { id: 'headboard_clear', rule: 'a headboard clears the rail band by ≥ 150 or it is trim, not a headboard', enforcedBy: 'Spec.correctSpec bed block' }
+        { id: 'headboard_clear', rule: 'a headboard clears the rail band by ≥ 150 or it is trim, not a headboard', enforcedBy: 'Spec.correctSpec bed block' },
+        { id: 'exposure_routing', rule: 'the cross-class exposure overlay (roadmap item 5) applies — a porch daybed is a covered/exposed bed: Type-I glue, exterior finish, corrosion-spec fasteners, outdoor ΔMC; exposed corrects non-durable species and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [

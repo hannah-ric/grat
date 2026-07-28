@@ -3704,5 +3704,183 @@ section('CASE-5 casework refusals and disclosures: split guard, dropped doors, e
   eq(JSON.stringify(again.doors), JSON.stringify(wide.doors), 'the door correction is idempotent');
 }
 
+/* =========================================================================
+ * OUT — the outdoor exposure model (2026-08, class roadmap item 5).
+ * One spec field (`exposure`: interior | covered | exposed) routes species
+ * durability, glue class, finish class, fastener corrosion, and the ΔMC the
+ * movement math runs on — all in code, all disclosed, refusals stated.
+ * ========================================================================= */
+section('OUT-1 one field: interior default, junk-proof, idempotent, byte-identical on the wire');
+{
+  // Absence and junk both fall to the interior default — silently, because
+  // interior IS the truth about a design that never named the outdoors.
+  const plain = Spec.correctSpec({ meta: { name: 'O1', template: 'table', units: 'mm' } });
+  eq(plain.exposure, 'interior', 'a spec that never mentions exposure corrects to interior');
+  eq(Spec.correctSpec({ meta: { template: 'table' }, exposure: 'submerged' }).exposure, 'interior', 'junk exposure falls to interior, never survives');
+  eq(Spec.correctSpec({ meta: { template: 'table' }, exposure: null }).exposure, 'interior', 'an explicit null falls to interior');
+  // Migration: a v9 design opens as an interior design at v10.
+  const migrated = Spec.migrateSpec({ specVersion: 9, meta: { template: 'bench' } });
+  eq([migrated.specVersion, migrated.exposure], [10, 'interior'], 'v9 → v10 writes the explicit interior default');
+  // Wire discipline: interior never rides the wire, so every pre-exposure
+  // design encodes byte-identically; an outdoor choice rides and returns.
+  ok(!('ex' in Codec.encode(plain)), 'interior designs carry no "ex" key — old share codes stay byte-identical');
+  const exposed = Spec.correctSpec({ meta: { name: 'O1x', template: 'bench', units: 'mm' }, wood: { species: 'white_oak' }, exposure: 'exposed' });
+  eq(Codec.encode(exposed).ex, 2, 'exposed rides the wire as EXP index 2');
+  eq(Spec.correctSpec(Codec.fromShareCode(Codec.toShareCode(exposed)).spec).exposure, 'exposed', 'exposure survives a share-code round trip');
+  // Partial-merge refinement: {"ex":1} is a legal wire diff.
+  eq(Codec.decodePartial({ ex: 1 }).exposure, 'covered', 'a refinement diff can move a piece outdoors');
+  ok(Codec.decodePartial({ ex: 99 }) === null || Codec.decodePartial({ ex: 99 }).exposure === undefined, 'an out-of-range EXP index decodes to nothing, never a silent reset');
+  // Idempotency: correcting a corrected exposed spec changes nothing.
+  eq(JSON.stringify(Spec.correctSpec(JSON.parse(JSON.stringify(exposed)))), JSON.stringify(exposed), 'correction is idempotent over an exposed spec');
+}
+
+section('OUT-2 species durability: exposed corrects to the durable substitute and TELLS; covered advises');
+{
+  // costTier 1 (box-store softwood) → western red cedar; else → white oak.
+  // The species table's `outdoor` flags are the single authority.
+  const pine = Spec.correctSpec({ meta: { name: 'O2a', template: 'bench', units: 'mm' }, wood: { species: 'pine' }, exposure: 'exposed' });
+  eq(pine.wood.species, 'western_red_cedar', 'exposed pine is corrected to western red cedar (costTier 1 aisle)');
+  const walnut = Spec.correctSpec({ meta: { name: 'O2b', template: 'table', units: 'mm' }, wood: { species: 'walnut' }, exposure: 'exposed' });
+  eq(walnut.wood.species, 'white_oak', 'exposed walnut is corrected to white oak (hardwood aisle)');
+  for (const durable of ['white_oak', 'teak', 'sapele', 'western_red_cedar']) {
+    eq(Spec.correctSpec({ meta: { template: 'bench' }, wood: { species: durable }, exposure: 'exposed' }).wood.species, durable,
+      `${durable} is outdoor-rated and survives exposed untouched`);
+  }
+  // The substitution is DISCLOSED (the bed glued-rail pattern): the note
+  // names the refusal reason and the heartwood-only honesty.
+  const notes = Spec.correctionNotes({ meta: { name: 'O2a', template: 'bench', units: 'mm' }, wood: { species: 'pine' }, exposure: 'exposed' }, pine);
+  ok(notes.some(n => /decay-resistant/.test(n) && /Western Red Cedar/.test(n)), `the substitution is told with its reason — got: ${notes.join(' | ')}`);
+  ok(notes.some(n => /heartwood/.test(n) && /sapwood/i.test(n)), 'the note carries the heartwood-vs-sapwood honesty, never a blanket rot-proof claim');
+  // COVERED keeps the species (no direct wetting) and validation advises.
+  const covered = pipeline({ meta: { name: 'O2c', template: 'bench', units: 'mm' }, wood: { species: 'hard_maple' }, exposure: 'covered' });
+  eq(covered.spec.wood.species, 'hard_maple', 'covered keeps the asked-for species');
+  ok(covered.report.advisories.some(a => a.id === 'out_species' && /decay-resistant/.test(a.text)), 'and the durability advisory is named, never silent');
+  // Interior emits nothing from the out_* family.
+  const indoor = pipeline({ meta: { name: 'O2d', template: 'bench', units: 'mm' }, wood: { species: 'pine' } });
+  ok(!indoor.report.advisories.some(a => a.id.startsWith('out_')) && !indoor.report.errors.some(e => e.id.startsWith('out_')), 'interior designs carry no outdoor chatter');
+}
+
+section('OUT-3 material routing: Type-I glue, exterior finish, corrosion-spec fasteners — BOM and steps agree');
+{
+  const raw = { meta: { name: 'O3', template: 'bench', level: 'advanced', units: 'mm' }, wood: { species: 'white_oak' }, structure: { topThickness: 38, apronHeight: 100, apronThickness: 25 }, joinery: { frame: 'mortise_tenon' }, exposure: 'exposed', finish: 'danish_oil' };
+  const { spec, model } = pipeline(raw);
+  // Glue: ANSI/HPVA Type I (the Titebond III class — verified on the
+  // manufacturer's spec page) for every outdoor build.
+  const rec = K.recommendGlue(spec);
+  eq(rec.glue.key, 'pva_waterproof', 'outdoor glue routes to Type I waterproof PVA');
+  ok(/Type I/.test(rec.why) && /outdoor/.test(rec.why), 'the reason names the ANSI/HPVA class and the exposure');
+  // Oily-species precedence holds: outdoor teak still takes epoxy (waterproof).
+  eq(K.recommendGlue(Spec.correctSpec({ meta: { template: 'bench' }, wood: { species: 'teak' }, exposure: 'exposed' })).glue.key, 'epoxy_slow', 'outdoor teak keeps the oily-species epoxy route');
+  // Finish: the interior ask is corrected to the exterior-rated row and told.
+  eq(spec.finish, 'spar_urethane', 'an interior finish on an exposed build is corrected to spar urethane');
+  const notes = Spec.correctionNotes(raw, spec);
+  ok(notes.some(n => /Danish oil/i.test(n) && /interior finish/.test(n) && /Spar urethane/i.test(n)), `the finish routing is told — got: ${notes.join(' | ')}`);
+  // BOM: glue line matches recommendGlue; fastener lines carry the corrosion
+  // spec; the tannin advisory fires for white oak (a tannic species).
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const cut = Plans.cutList(spec, model);
+  const stock = Packing.planStock(spec, model, cut, {});
+  const bom = Plans.bom(spec, model, { integrity: integ, stock });
+  const glueLine = bom.items.find(i => i.kind === 'glue');
+  eq(glueLine && glueLine.label, 'Waterproof PVA (Type I)', 'the BOM glue line is the routed bottle');
+  const fastLines = bom.items.filter(i => i.kind === 'fastener' && !/dowel|tenon|biscuit|spline/i.test(i.label));
+  ok(fastLines.length > 0 && fastLines.every(i => /stainless or hot-dip galvanized/.test(i.label)), `every metal fastener line carries the corrosion spec — got: ${fastLines.map(i => i.label).join(' | ')}`);
+  const report = Spec.validate(spec, model);
+  ok(report.advisories.some(a => a.id === 'hw_outdoor' && /tannin/.test(a.text)), 'the tannin iron-stain advisory is named for white oak');
+  // The assembly plan carries the outdoor maintenance truths in its safety step.
+  const steps = Plans.assembly(spec, model, integ, { stockPlan: stock });
+  const safety = steps.find(s => s.id === 'safety');
+  ok(safety && /stainless or hot-dip galvanized/.test(safety.text) && /end grain/.test(safety.text), 'the safety step mandates the fastener spec and end-grain sealing');
+  ok(safety && /soil|grass/.test(safety.text), 'exposed builds get the ground-contact rule (pavers, never soil)');
+  // An interior build's BOM is untouched — no corrosion suffix anywhere.
+  const indoor = pipeline({ meta: { name: 'O3i', template: 'bench', units: 'mm' } });
+  const ibom = Plans.bom(indoor.spec, indoor.model, { integrity: Structural.computeIntegrity(indoor.spec, indoor.model, {}), stock: Packing.planStock(indoor.spec, indoor.model, Plans.cutList(indoor.spec, indoor.model), {}) });
+  ok(ibom.items.every(i => !/stainless or hot-dip galvanized/.test(i.label || '')), 'interior BOM lines are byte-identical to before');
+}
+
+section('OUT-4 physics honesty: the movement math runs on the outdoor EMC range when exposed');
+{
+  // ΔMC single source: K.EXPOSURE_DMC (Wood Handbook ch. 13 / FPL-RN-0268
+  // sourced) — covered 6, exposed 12 — and the boundary is K.effectiveDMC.
+  eq([K.EXPOSURE_DMC.covered, K.EXPOSURE_DMC.exposed], [6, 12], 'the outdoor ΔMC constants are the sourced values');
+  eq(K.effectiveDMC('exposed', 'arid'), 12, 'exposure outranks the indoor climate preference');
+  eq(K.effectiveDMC('interior', 'humid'), 6, 'interior keeps the indoor climate behavior');
+  eq(K.effectiveDMC(undefined, undefined), 4, 'no exposure, no climate — the temperate default, unchanged');
+  // The engine's movement check uses it: same white-oak table, indoors vs out.
+  const mk = exposure => {
+    const r = pipeline({ meta: { name: 'O4', template: 'table', level: 'advanced', units: 'mm' }, overall: { width: 1400, depth: 800, height: 740 }, wood: { species: 'white_oak' }, joinery: { frame: 'mortise_tenon' }, exposure });
+    return Structural.computeIntegrity(r.spec, r.model, {}).checks.find(c => c.id === 'move:top_1');
+  };
+  const indoors = mk('interior'), outdoors = mk('exposed');
+  near(indoors.data.movementMM, 800 * 0.00365 * 4, 0.01, 'interior movement = 800 × ct × 4 (unchanged)');
+  near(outdoors.data.movementMM, 800 * 0.00365 * 12, 0.01, 'exposed movement = 800 × ct × 12 (the outdoor swing)');
+  near(outdoors.data.movementMM / indoors.data.movementMM, 3, 0.001, 'the exposed swing is honestly 3× the temperate indoor swing');
+  ok(/× 12% ΔMC/.test(outdoors.explain), 'the check shows its outdoor arithmetic in the explain string');
+  // The wood-runner fitting clearance follows the same boundary, and the
+  // step names the outdoor swing instead of claiming an indoor one.
+  const cov = pipeline({ meta: { name: 'O4d', template: 'nightstand', level: 'intermediate', units: 'mm' }, drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }, exposure: 'covered' });
+  const covSteps = Plans.assembly(cov.spec, cov.model, Structural.computeIntegrity(cov.spec, cov.model, {}), {});
+  const runnerStep = covSteps.find(s => /runners/.test(s.id));
+  ok(runnerStep && /covered outdoor swing/.test(runnerStep.text), 'the runner-fitting step names the covered outdoor swing');
+}
+
+section('OUT-5 refusals and water traps: sheet goods, wall shelves, and the named advisories');
+{
+  // EXPOSED + interior sheet stock (ply drawer boxes, ply back) = refusal
+  // with the reason: no exterior-rated sheet good exists in the catalog.
+  const cab = pipeline({ meta: { name: 'O5a', template: 'cabinet', units: 'mm' }, drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }, exposure: 'exposed' });
+  const sheetErr = cab.report.errors.find(e => e.id === 'out_sheet');
+  ok(sheetErr && /no exterior-rated sheet good/.test(sheetErr.text) && /delaminates|swells/.test(sheetErr.text), 'exposed sheet stock is refused with the reason');
+  // COVERED downgrades to the named advisory (sheltered, but unrated).
+  const cov = pipeline({ meta: { name: 'O5b', template: 'cabinet', units: 'mm' }, drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }, exposure: 'covered' });
+  ok(!cov.report.errors.some(e => e.id === 'out_sheet') && cov.report.advisories.some(a => a.id === 'out_sheet'), 'covered sheet stock is an advisory, not a refusal');
+  // EXPOSED wall shelf = refusal: the anchor math is NDS dry-service only.
+  const shelf = pipeline({ meta: { name: 'O5c', template: 'wall_shelf', units: 'mm' }, wall: { substrate: 'stud' }, exposure: 'exposed' });
+  const mountErr = shelf.report.errors.find(e => e.id === 'out_mount');
+  ok(mountErr && /dry-service/.test(mountErr.text) && /19%/.test(mountErr.text), 'an exposed wall shelf is refused with the NDS dry/wet-service reason');
+  const porchShelf = pipeline({ meta: { name: 'O5d', template: 'wall_shelf', units: 'mm' }, wall: { substrate: 'stud' }, exposure: 'covered' });
+  ok(!porchShelf.report.errors.some(e => e.id === 'out_mount'), 'a covered porch wall stays dry-service and is allowed');
+  // The water traps are NAMED advisories on every exposed floor-standing piece.
+  const bench = pipeline({ meta: { name: 'O5e', template: 'bench', level: 'advanced', units: 'mm' }, wood: { species: 'white_oak' }, structure: { topThickness: 38, apronHeight: 100, apronThickness: 25 }, joinery: { frame: 'mortise_tenon' }, exposure: 'exposed' });
+  const legAdv = bench.report.advisories.find(a => a.id === 'out_legs');
+  const drainAdv = bench.report.advisories.find(a => a.id === 'out_drain');
+  ok(legAdv && /end grain/.test(legAdv.text) && /wick/.test(legAdv.text), 'unsealed leg bottoms (end-grain wicking) are a named advisory');
+  ok(legAdv && /preservative-treated/.test(legAdv.text), 'the ground-contact rule names why soil contact is out of scope');
+  ok(drainAdv && /drain/.test(drainAdv.text) && /end grain/.test(drainAdv.text), 'water-trapping geometry (end grain up, joint mouths) is a named advisory');
+  ok(bench.report.errors.length === 0, 'a sound all-solid exposed bench is not blocked by the advisories');
+}
+
+section('OUT-6 the surfaces agree: contract, wire doc, and the offline parser');
+{
+  // Contracts still hold with the exposure artifacts registered.
+  for (const cls of BB.Classes.all()) {
+    eq(BB.Classes.validateContract(cls), [], `${cls.key} contract holds`);
+  }
+  const ft = BB.Classes.get('frame_table');
+  ok(ft.family.couplings.some(c => c.id === 'exposure_routing'), 'frame_table registers the exposure coupling');
+  ok(ft.refusals.some(r => r.id === 'no_exposed_sheet'), 'frame_table states the exposed-sheet refusal');
+  ok(ft.failureModes.some(m => m.id === 'weather_rot' && m.guard), 'the weather-rot failure mode is guarded by correction and named');
+  ok(BB.Classes.get('wall_mounted').refusals.some(r => r.id === 'no_exposed_mount'), 'wall_mounted states the exposed-mount refusal');
+  ok(BB.Classes.get('seating').family.couplings.some(c => c.id === 'exposure_routing'), 'seating carries the exposure coupling');
+  ok(BB.Classes.get('bed').family.couplings.some(c => c.id === 'exposure_routing'), 'bed carries the exposure coupling');
+  // The wire doc teaches the key, the enum, and the refusals.
+  ok(/EXP=\[interior,covered,exposed\]/.test(Codec.SCHEMA_DOC) && /"ex"/.test(Codec.SCHEMA_DOC), 'SCHEMA_DOC documents the "ex" key and EXP enum');
+  ok(/REFUSED exposed/.test(Codec.SCHEMA_DOC) && /wall_shelf cannot be exposed/.test(Codec.SCHEMA_DOC), 'SCHEMA_DOC states the exposure refusals');
+  // The offline parser: outdoor words set the exposure intent.
+  const table = Spec.correctSpec({ meta: { template: 'table' } });
+  const teak = AI.localModel('a teak garden bench', table, {});
+  ok(teak.kind === 'new' && teak.spec.meta.template === 'bench' && teak.spec.wood.species === 'teak' && teak.spec.exposure === 'exposed',
+    `"a teak garden bench" creates an exposed teak bench — got ${teak.kind} ${teak.spec && teak.spec.exposure}`);
+  const patio = AI.localModel('an oak desk for the patio', table, {});
+  ok(patio.kind === 'new' && patio.spec.meta.template === 'desk' && patio.spec.exposure === 'exposed', '"an oak desk for the patio" creates an exposed desk');
+  const corrected = Spec.correctSpec(patio.spec);
+  eq(corrected.wood.species, 'white_oak', 'and correction routes the red oak to white oak');
+  ok(Spec.correctionNotes(patio.spec, corrected).some(n => /decay-resistant/.test(n)), 'with the substitution told');
+  const porch = AI.localModel('a walnut bookshelf for the covered porch', table, {});
+  ok(porch.kind === 'new' && porch.spec.exposure === 'covered', 'porch words read as covered, not exposed');
+  const outShelf = AI.localModel('build a floating shelf for the deck on studs', table, {});
+  ok(outShelf.kind === 'info' && /dry-service/.test(outShelf.text), 'an outdoor wall-shelf ask is refused at the parser with the NDS reason');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

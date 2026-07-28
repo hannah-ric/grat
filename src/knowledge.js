@@ -602,6 +602,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       };
     }
     if (sp.oily) return { glue: byKey('epoxy_slow'), why: `${sp.label} is oily — epoxy after a solvent wipe` };
+    /* Outdoor exposure routes to Type I BEFORE the finish is consulted: the
+     * glue line lives in the weather whatever the film over it does. Type I
+     * is the ANSI/HPVA HP-1 waterproof class — the Titebond III class
+     * (verified: Titebond publishes "passes the ANSI/HPVA Type I
+     * water-resistance specification", titebond.com product page). */
+    if (isOutdoor(spec)) {
+      return {
+        glue: byKey('pva_waterproof'),
+        why: `${exposureOf(spec)} outdoor build — every glue line must be Type I waterproof (ANSI/HPVA HP-1)`
+      };
+    }
     if (fin.exterior) return { glue: byKey('pva_waterproof'), why: 'exterior finish — the glue line must outlast the weather too' };
     return { glue: byKey('pva_interior'), why: 'interior build — long-grain PVA is stronger than the wood' };
   }
@@ -797,6 +808,59 @@ var BB = globalThis.BB = globalThis.BB || {};
     return widthMM * coef * (dMC === undefined ? CLIMATE_DMC.temperate : dMC);
   }
 
+  /* ---------------- Outdoor exposure (2026-08, class roadmap item 5) ----------------
+   * ONE spec signal (`spec.exposure`: interior | covered | exposed) routes
+   * every material consequence in code — species durability, glue class,
+   * finish class, fastener corrosion spec, and the ΔMC the movement math runs
+   * on. The AI proposes the exposure WORD only; nothing downstream is a
+   * prompt's number.
+   *
+   * ΔMC sources (Wood Handbook FPL-GTR-282 ch. 13; FPL-RN-0268):
+   *   covered = 6  — sheltered outdoor (roofed porch, no direct rain). WH
+   *     Table 13-2 puts exterior installation MC at 12% average, 9–14% range
+   *     for most of the US (≈5 points); humid-coastal outdoor monthly EMC
+   *     spans run slightly wider (e.g. Seattle 12.2–16.5% per the FPL-RN-0268
+   *     monthly data), so the envelope is 6. verified-approximate.
+   *   exposed = 12 — direct sun and rain. Sun-dried monthly lows reach the
+   *     4–8.5% EMC band (arid-region FPL-RN-0268 data) ≈ 7% typical, and rain
+   *     wetting drives the surface to the 19% MC dry/wet-service boundary
+   *     (NDS: CM = 1.0 at MC ≤ 19%): 19 − 7 = 12 points. A disclosed
+   *     derivation (verified-approximate) — direct wetting can locally exceed
+   *     fiber saturation, so this is a floor, not an overclaim ceiling.
+   */
+  const EXPOSURES = ['interior', 'covered', 'exposed'];
+  const EXPOSURE_DMC = { covered: 6, exposed: 12 };
+  /* The one ΔMC boundary: exposure (spec-driven) outranks the indoor climate
+   * preference; interior keeps the CLIMATE_DMC behavior byte-identically. */
+  function effectiveDMC(exposure, climate) {
+    if (EXPOSURE_DMC[exposure] !== undefined) return EXPOSURE_DMC[exposure];
+    return CLIMATE_DMC[climate] !== undefined ? CLIMATE_DMC[climate] : CLIMATE_DMC.temperate;
+  }
+  function exposureOf(spec) {
+    const e = spec && spec.exposure;
+    return EXPOSURES.includes(e) ? e : 'interior';
+  }
+  function isOutdoor(spec) { return exposureOf(spec) !== 'interior'; }
+  /* Deterministic durable substitute for an EXPOSED build (the bed class's
+   * glued-rail override pattern: correction makes the sound substitution and
+   * TELLS). The species table's `outdoor` flags are the single authority;
+   * costTier keeps the substitution in the buyer's own aisle: tier-1
+   * box-store stock routes to western red cedar (the lumberyard outdoor
+   * default), everything else to white oak (the outdoor-worthy hardwood).
+   * Heartwood honesty: even durable species are durable in HEARTWOOD only —
+   * sapwood of all species is perishable (Wood Handbook ch. 14 doctrine) —
+   * so the correction note carries that, never a blanket rot-proof claim. */
+  function outdoorSubstitute(speciesKey) {
+    const sp = WOOD_SPECIES[speciesKey];
+    if (!sp || sp.sheet || sp.outdoor) return speciesKey;
+    return sp.costTier === 1 ? 'western_red_cedar' : 'white_oak';
+  }
+  /* Fastener corrosion spec for outdoor duty: stainless or hot-dip
+   * galvanized only — WRCLA/Real Cedar installation guidance (electroplated
+   * zinc is too thin; plain steel reacts with tannin extractives). The
+   * tannic-species list itself lives in BB.HW.GATES.outdoorHardware. */
+  const OUTDOOR_FASTENER_SPEC = 'stainless or hot-dip galvanized';
+
   /* Stock thickness snapping tables (mm). POST_THICKNESS extends the solid
    * table for custom-grammar posts/legs: the packer laminates anything over
    * 45, exactly as templates already allow 100 mm legs (audit F-S2-6). */
@@ -860,6 +924,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,
+    EXPOSURES, EXPOSURE_DMC, effectiveDMC, exposureOf, isOutdoor,
+    outdoorSubstitute, OUTDOOR_FASTENER_SPEC,
     recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES,
     hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel
   };

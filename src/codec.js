@@ -42,6 +42,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SUB = ['unknown', 'stud', 'masonry', 'drywall'];
   const BSZ = ['twin', 'full', 'queen', 'king', 'cal_king'];
+  // Outdoor exposure (2026-08) — append only, like every enum here. Index 0
+  // (interior) never rides the wire: encode() omits "ex" for interior, so
+  // every pre-exposure design still encodes byte-identically.
+  const EXP = ['interior', 'covered', 'exposed'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
   const STK = ['solid', 'sheet'];
@@ -100,6 +104,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Pull style likewise: only a non-default choice rides the wire.
     if (spec.hardware && spec.hardware.pull && spec.hardware.pull !== 'bar_pull') {
       w.hp = ix(PUL, spec.hardware.pull, 0);
+    }
+    // Exposure (2026-08): only an outdoor choice rides the wire — every
+    // interior design (which is every pre-exposure design) is byte-identical.
+    if (spec.exposure && spec.exposure !== 'interior') {
+      w.ex = ix(EXP, spec.exposure, 0);
     }
     for (const [k, path] of S_KEYS) {
       const v = spec.structure[path];
@@ -199,6 +208,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
       finish: at(FIN, w.f, 'wipe_poly'),
+      exposure: at(EXP, w.ex, 'interior'),
       hardware: { pull: at(PUL, w.hp, 'bar_pull'), hinge: at(HNG, w.hh, 'euro_cup') },
       doors: Array.isArray(w.dr) && w.dr.length
         ? { count: w.dr[0], style: at(FRONT, w.dr[1], 'overlay') }
@@ -277,6 +287,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (w.j.b !== undefined) patch.joinery.box = at(JNT, w.j.b, undefined);
     }
     if (w.f !== undefined) patch.finish = at(FIN, w.f, undefined);
+    if (w.ex !== undefined) patch.exposure = at(EXP, w.ex, undefined);
     if (w.hp !== undefined) patch.hardware = { pull: at(PUL, w.hp, undefined) };
     if (w.d !== undefined) {
       if (!w.d) patch.drawers = null;
@@ -409,13 +420,14 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* ---------------- static schema documentation (sent ONCE, in the system prompt) ---------------- */
   const SCHEMA_DOC = [
     'WIRE FORMAT — every reply is minified JSON in this compact format (mm integers; enums are 0-based indexes into these lists, documented once here):',
-    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
+    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}] EXP=[${EXP.join(',')}]`,
     'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
     `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
     'BED (t=9 bed): knock-down platform bed + slat deck. "bd"=[BSZ,platformHeight,headboardHeight(0=none)], BSZ=[twin,full,queen,king,cal_king] — the mattress size drives the whole frame (overall is derived). Rails are ALWAYS barrel-bolted (code enforces; a glued bed cannot leave the room); centre rail auto-added at queen+. NOT buildable: bunk/loft beds (ASTM F1427 fall territory), cribs (16 CFR 1219 — always refuse), murphy/folding beds, storage/drawer beds — refuse or ask.',
+    'OUTDOOR ("ex"=EXP, omit for interior): propose the exposure WORD only — code routes everything (durable species, Type-I glue, exterior finish, stainless/galvanized fasteners, outdoor movement math). "porch"/"covered patio"=1 covered; open patio/garden/deck=2 exposed. On exposed, non-durable species are corrected to a durable one and told; interior sheet goods (plywood/MDF parts: drawers, back panels) are REFUSED exposed — no exterior sheet exists here; wall_shelf cannot be exposed (anchor math is dry-service only).',
     'WALL SHELF (t=8 wall_shelf): the ONE wall-mounted template — a French-cleat floating shelf. "wl"=[SUB,studSpacing_mm], SUB=[unknown,stud,masonry,drywall]. The SUBSTRATE IS REQUIRED: never propose wl[0]=0 (unknown) — ASK which wall it is; drywall-only is refused by code (anchor creep). Depth caps at 300; height is derived (cleat+shelf).',
     'SEATING (t=7 chair): "se"=[seatW,seatD,seatH,slopeDeg,backHeight,backRake,splayDeg,counterH|0]. backHeight 0=stool (splay stools-only); counterH>0 derives seat height (ask when a stool names none). Code mandates tenon-class seat-frame joints (never screws). NOT buildable: upholstered/slip seats, arms, sawn or bent rear legs, rockers, folders — refuse or ask, never approximate.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
@@ -446,7 +458,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR, HNG,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR, HNG, EXP,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };
