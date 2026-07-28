@@ -1383,7 +1383,10 @@ section('prompt budget: hard ceiling with measured headroom');
   // the stool/counter coupling, and the refusal doctrine (upholstery, arms,
   // sawn rear legs) — the refusals are the load-bearing part: a model that
   // cannot name what seating refuses will approximate it silently.
-  ok(tokens <= 2620, `system prompt stays under the 2620-token ceiling (measured ${tokens})`);
+  // 2620 → 2760 for the wall_mounted class: the "wl" key with its substrate
+  // enum and the never-propose-unknown / drywall-refused doctrine — again
+  // the refusal is the spend that matters.
+  ok(tokens <= 2760, `system prompt stays under the 2760-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
@@ -1426,10 +1429,13 @@ section('prompt budget: hard ceiling with measured headroom');
   // G10: the floor-standing boundary is documented next to the mechanisms
   // line — the model kept proposing hangs and correction silently grounded
   // them into mangled floor deliveries (ref1 both runs).
-  ok(/STAND ON THE FLOOR/.test(Codec.SCHEMA_DOC) && /hanging\/wall\/ceiling mounting does not exist/.test(Codec.SCHEMA_DOC),
-    'SCHEMA_DOC states the everything-stands-on-the-floor boundary');
-  ok(/nearest floor-standing design and say so in "e", or ask/.test(Codec.SCHEMA_DOC),
-    'the floor line instructs the same disclose-or-ask behavior as the mechanisms line');
+  // Amended with the wall_mounted class (2026-07): wall_shelf is the ONE
+  // named exception; the novel grammar keeps the full floor doctrine and the
+  // disclose-or-ask instruction survives.
+  ok(/STAND ON THE FLOOR except t=8 wall_shelf/.test(Codec.SCHEMA_DOC) && /ceiling mounting do not exist/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC states the floor boundary with its single wall_shelf exception');
+  ok(/novel grammar still cannot hang/.test(Codec.SCHEMA_DOC) && /nearest expressible design and say so in "e", or ask/.test(Codec.SCHEMA_DOC),
+    'the floor line keeps the novel-grammar refusal and the disclose-or-ask behavior');
 }
 
 section('word-number lengths and storage driver honesty');
@@ -2217,7 +2223,7 @@ section('V-05 · __proto__ in a share code leaves Object.prototype clean');
     // survives decode.
     const decoded = Codec.decode(JSON.parse(JSON.stringify(wire)));
     ok(!Object.prototype.hasOwnProperty.call(decoded, '__proto__'), `${what}: decode() never copies an own __proto__ key onto the spec`);
-    eq(Object.keys(decoded).sort(), ['custom', 'doors', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'seat', 'specVersion', 'structure', 'wood'],
+    eq(Object.keys(decoded).sort(), ['custom', 'doors', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'seat', 'specVersion', 'structure', 'wall', 'wood'],
       `${what}: decode() emits exactly the spec schema and nothing else`);
   }
   // The partial-merge path (AI refinement diffs) rides the same whitelist.

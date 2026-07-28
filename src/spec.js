@@ -16,7 +16,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   const Geo = BB.Geo;
   const U = () => BB.Units;
 
-  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair'];
+  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair', 'wall_shelf'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
   /* The templates Parametric.tableLike() builds: four legs tied by an apron
@@ -31,7 +31,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * through the migration registry on load — a saved design must never fail
    * to open. From Phase 4 forward, EVERY schema change adds a migration here.
    */
-  const SPEC_VERSION = 7;
+  const SPEC_VERSION = 8;
   const migrations = {
     /* v3 → v4: Phase 1–3 specs had no specVersion and no `custom` section.
      * Stamp the version, initialise custom to null, and normalise the legacy
@@ -82,6 +82,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       const out = clone(s) || {};
       out.specVersion = 7;
       if (out.seat === undefined) out.seat = null;
+      return out;
+    },
+    /* v7 -> v8: the wall-mounted class added a `wall` section. Same doctrine:
+     * nothing saved before it was wall-mounted, so absence becomes an
+     * explicit null. */
+    7: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 8;
+      if (out.wall === undefined) out.wall = null;
       return out;
     }
   };
@@ -155,9 +164,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       drawers: null,
       doors: null,
       custom: null,
-      seat: null
+      seat: null,
+      wall: null
     };
     const t = base.meta.template;
+    if (t === 'wall_shelf') {
+      /* Wall-mounted class (BB.Classes 'wall_mounted'): width = length along
+       * the wall, depth = shelf depth, height DERIVED (cleat + shelf). The
+       * substrate defaults to studs at 16 in o.c. — the CHAT path asks
+       * before creating; a share code can carry 'unknown' and is refused. */
+      base.meta.name = 'Floating Shelf';
+      Object.assign(base.overall, { width: 914.4, depth: 241.3, height: 102 });
+      base.structure.topThickness = 32;
+      base.wall = { substrate: 'stud', studSpacingMM: 406 };
+    }
     if (t === 'chair') {
       /* Seating class defaults (BB.Classes 'seating' owns the ranges and
        * sources). Overall is DERIVED from the seat family by correction —
@@ -544,10 +564,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     // with no matching artifact gets the code truth appended.
     {
       const isCustom = spec.meta && spec.meta.template === 'custom';
-      const hasCleat = isCustom
+      /* The wall_mounted class (2026-07) really does fasten to the building
+       * — a wall_shelf's cleat/stud/mount talk is honest and never
+       * "corrected". Everything else keeps the floor doctrine. */
+      const isWallMounted = spec.meta && spec.meta.template === 'wall_shelf';
+      const hasCleat = isWallMounted || (isCustom
         ? ((spec.custom && spec.custom.parts) || []).some(p => /cleat/.test(p.role || '')) ||
           ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'french_cleat')
-        : ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'french_cleat');
+        : ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'french_cleat'));
       const BUILDING = '(columns?|walls?|ceilings?|studs?|joists?|rafters?|masonry|brick)';
       const mountRx = new RegExp('\\b(?:screw(?:ed|s)?|bolt(?:ed|s)?|lag(?:ged)?|mount(?:ed|s)?|attach(?:ed|es)?|fasten(?:ed|s)?|hangs?|hung|suspend(?:ed|s)?)\\b[^.;:!?]{0,40}?\\b' + BUILDING + '\\b');
       const styleRx = new RegExp('\\b' + BUILDING + '[\\s-](?:mounted|mount|hung|suspended)\\b');
@@ -556,7 +580,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!hasCleat && cleatM && !NEG.test(clauseAt(cleatM.index))) {
         fixes.push('no french cleat exists in this plan — the only building attachment this tool ever adds is the anti-tip strap');
       } else {
-        const m = mountRx.exec(low) || styleRx.exec(low);
+        const m = isWallMounted ? null : (mountRx.exec(low) || styleRx.exec(low));
         if (m) {
           const clause = clauseAt(m.index);
           const noun = m[1];
@@ -1345,6 +1369,27 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.seat = null;
     }
 
+    /* ---- wall-mounted (the 'wall_mounted' class) ----
+     * Depth caps at the fixing class (300); past 250 the shelf must run 32+
+     * thick (K.ERGONOMICS floating_shelf_depth note). Height is DERIVED:
+     * cleat + shelf — the assembly, not a room position. Substrate is
+     * sanitized but NEVER invented: junk falls to the stud default, an
+     * explicit 'unknown' or 'drywall' survives so validation can refuse it. */
+    if (template === 'wall_shelf') {
+      const G = BB.Classes ? BB.Classes.get('wall_mounted').geom : { CLEAT_H: 70, STUD_SPACINGS: [406, 610] };
+      const w = isObj(s.wall) ? s.wall : {};
+      o.depth = r1(clamp(o.depth, 200, 300));
+      if (o.depth > 250) st.topThickness = Math.max(st.topThickness, 32);
+      o.height = r1(G.CLEAT_H + st.topThickness);
+      s.wall = {
+        substrate: ['stud', 'masonry', 'unknown', 'drywall'].includes(w.substrate) ? w.substrate : 'stud',
+        studSpacingMM: G.STUD_SPACINGS.includes(w.studSpacingMM) ? w.studSpacingMM : 406
+      };
+      s.drawers = null; s.doors = null;
+    } else {
+      s.wall = null;
+    }
+
     // Geometry sanity: aprons and legs must fit under the top.
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
     // When the footprint caps the legs, snap DOWN to the largest post-stock
@@ -1544,16 +1589,24 @@ var BB = globalThis.BB = globalThis.BB || {};
       return { min, max };
     };
 
+    /* Wall-mounted classes hang by design: the mount plane, not the floor,
+     * is their datum, so the floor and footprint invariants are exempted —
+     * for exactly the classes whose contract declares `mounted: 'wall'` and
+     * carries the anchor math that replaces them. Everything else keeps the
+     * floor doctrine untouched. */
+    const wallMounted = !!(BB.Classes && BB.Classes.forTemplate(spec.meta.template) &&
+      BB.Classes.forTemplate(spec.meta.template).mounted === 'wall');
+
     // 1. The floor plane is real: nothing passes through it, something rests on it.
     let globalMinY = Infinity;
     for (const p of parts) {
       const my = minY.get(p.id);
       globalMinY = Math.min(globalMinY, my);
-      if (my < -AUDIT.BELOW_EPS) {
+      if (!wallMounted && my < -AUDIT.BELOW_EPS) {
         errors.push({ id: 'geom_below:' + p.id, text: `“${p.name}” (${p.id}) extends ${fine(-my)} below the floor — wood can’t pass through the ground.` });
       }
     }
-    if (globalMinY > AUDIT.FLOOR_EPS) {
+    if (!wallMounted && globalMinY > AUDIT.FLOOR_EPS) {
       errors.push({ id: 'geom_floats', text: `Nothing touches the floor — the whole piece hovers ${fine(globalMinY)} in the air.` });
     }
 
@@ -1640,7 +1693,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       mass += m; mx += m * p.pos.x; mz += m * p.pos.z;
     }
     const hull = Geo.convexHull2D(footPts);
-    if (globalMinY <= AUDIT.FLOOR_EPS) { // otherwise geom_floats already covers it
+    if (!wallMounted && globalMinY <= AUDIT.FLOOR_EPS) { // otherwise geom_floats already covers it; wall classes stand on the wall
       if (hull.length < 3) {
         errors.push({ id: 'geom_footprint', text: footPts.length ? 'The floor contact points are collinear — the piece falls over sideways.' : 'No part offers a floor footprint to stand on.' });
       } else if (mass > 0) {
@@ -1705,6 +1758,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       band(hf.seat_depth, se.depth, 'ergo_seat_depth', 'seat depth');
       band(hf.seat_width, se.width, 'ergo_seat_width', 'seat width');
+    }
+
+    /* Wall-mounted refusals (the 'wall_mounted' class): the wall carries the
+     * whole load path, so an unknown substrate is a hard error — the refusal
+     * the class contract states — and drywall-only gets its own, because it
+     * arrives asked-for and deserves the reason. */
+    if (t === 'wall_shelf' && spec.wall) {
+      if (spec.wall.substrate === 'unknown') {
+        errors.push({ id: 'wall_substrate', text: 'What is this wall? A shelf hangs on its substrate, and the anchor math needs it: wood studs or masonry. Hanging on an unknown wall is a guess — worse than a refusal.' });
+      } else if (spec.wall.substrate === 'drywall') {
+        errors.push({ id: 'wall_substrate', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. Find the studs behind it (16 or 24 in apart) or name a masonry wall.' });
+      }
     }
 
     /* Desk knee room (frame_table coupling): the seated knee needs the air

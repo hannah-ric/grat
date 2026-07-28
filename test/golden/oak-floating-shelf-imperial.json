@@ -1,0 +1,254 @@
+{
+ "spec": {
+  "specVersion": 8,
+  "meta": {
+   "name": "Oak Floating Shelf",
+   "template": "wall_shelf",
+   "level": "beginner",
+   "units": "in"
+  },
+  "overall": {
+   "width": 914.4,
+   "depth": 241.3,
+   "height": 102
+  },
+  "wood": {
+   "species": "red_oak",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 32,
+   "legThickness": 60,
+   "apronHeight": 40,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false,
+   "stretcher": "none",
+   "stretcherHeight": 280
+  },
+  "joinery": {
+   "frame": "pocket_screws",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "danish_oil",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": null,
+  "doors": null,
+  "custom": null,
+  "seat": null,
+  "wall": {
+   "substrate": "stud",
+   "studSpacingMM": 406
+  }
+ },
+ "validation": {
+  "errors": [],
+  "advisories": []
+ },
+ "cutList": [
+  {
+   "name": "Shelf",
+   "qty": 1,
+   "L": 914.4,
+   "W": 241.3,
+   "T": 32,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Wall cleat",
+   "qty": 1,
+   "L": 894.4,
+   "W": 70,
+   "T": 19,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "one 45° rip makes both halves — bevel faces interlock · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Shelf cleat",
+   "qty": 1,
+   "L": 894.4,
+   "W": 70,
+   "T": 19,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "one 45° rip makes both halves — bevel faces interlock · select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "verdict": "pass",
+  "rackScore": 6,
+  "tip": null,
+  "checks": [
+   {
+    "id": "sag:shelf_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.008,
+     "limitMM": 1.355,
+     "spanMM": 203.3
+    }
+   },
+   {
+    "id": "str:shelf_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "wall:studs",
+    "status": "pass",
+    "data": {
+     "studs": 2,
+     "cleatLen": 894.4,
+     "spacing": 406
+    }
+   },
+   {
+    "id": "wall:anchor",
+    "status": "pass",
+    "data": {
+     "momentNmm": 71974.51,
+     "tensionN": 1439.49,
+     "perScrewN": 359.873,
+     "capN": 637,
+     "screws": 4,
+     "marginRatio": 1.77,
+     "shearMargin": 2.387
+    }
+   },
+   {
+    "id": "wall:basis",
+    "status": "pass",
+    "data": null
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Red Oak 1x4 x 6 ft (3/4 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 10.864
+   },
+   {
+    "label": "Red Oak 2x12 x 6 ft (1 1/2 x 11 1/4 in)",
+    "qty": 1,
+    "cost": 53.992
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x4",
+    "stockLen": 1829,
+    "offcut": 7.2,
+    "cuts": [
+     {
+      "name": "Wall cleat",
+      "len": 894.4,
+      "offset": 15
+     },
+     {
+      "name": "Shelf cleat",
+      "len": 894.4,
+      "offset": 912.4
+     }
+    ]
+   },
+   {
+    "nominal": "2x12",
+    "stockLen": 1829,
+    "offcut": 884.6,
+    "cuts": [
+     {
+      "name": "Shelf",
+      "len": 914.4,
+      "offset": 15
+     }
+    ]
+   }
+  ],
+  "sheets": [],
+  "totalCost": 64.86,
+  "wasteSolidPct": 59,
+  "wasteSheetPct": null
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Red Oak 1x4 x 6 ft (3/4 x 3 1/2 in)",
+    "qty": 1,
+    "price": 10.86
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 2x12 x 6 ft (1 1/2 x 11 1/4 in)",
+    "qty": 1,
+    "price": 53.99
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 5.3 bd ft",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 59%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 15/16 in wood screw (pilot 1/8 in)",
+    "qty": 2,
+    "price": 0.12
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 1/2 in wood screw (pilot 7/64 in)",
+    "qty": 7,
+    "price": 0.42
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "finish",
+    "label": "Danish oil",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 91.39
+ },
+ "steps": [
+  "thickness",
+  "rip",
+  "studs",
+  "mount",
+  "shelf_half",
+  "hang",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

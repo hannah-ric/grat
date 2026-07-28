@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 7,
+  "specVersion": 8,
   "meta": {
    "name": "Boundary Chair",
    "template": "chair",
@@ -52,7 +52,8 @@
    "slopeDeg": 8,
    "splayDeg": 0,
    "backRake": 4.2
-  }
+  },
+  "wall": null
  },
  "validation": {
   "errors": [],

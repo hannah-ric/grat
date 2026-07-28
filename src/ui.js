@@ -2652,6 +2652,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     nightstand: ['frame', 'case', 'box'],
     cabinet: ['frame', 'case', 'box'],
     chair: ['frame'],
+    wall_shelf: [],
     custom: []
   };
   const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
@@ -2686,7 +2687,22 @@ var BB = globalThis.BB = globalThis.BB || {};
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
-    if (s.meta.template === 'chair') {
+    if (s.meta.template === 'wall_shelf') {
+      /* Wall-mounted: length/depth/thickness are the honest knobs (height is
+       * derived from cleat + shelf); the substrate select carries the class's
+       * required input, and 'not sure' routes through chat where the refusal
+       * lives. Depth slider stops at the class cap (300). */
+      body.append(dim('Length', 'overall.width', 300, 2400));
+      body.append(paramSlider('Depth', s.overall.depth, 200, 300, 5, true,
+        v => live({ overall: { depth: v } }), () => done()));
+      body.append(dim('Thickness', 'structure.topThickness', 19, 45));
+      body.append(paramSeg('Wall', [['stud', 'Wood studs'], ['masonry', 'Masonry']], (s.wall && s.wall.substrate) || 'stud',
+        v => { merge({ wall: { substrate: v } }, 'manual'); renderAdjustBody(); }));
+      if (s.wall && s.wall.substrate === 'stud') {
+        body.append(paramSeg('Stud spacing', [['406', '16 in'], ['610', '24 in']], String((s.wall && s.wall.studSpacingMM) || 406),
+          v => { merge({ wall: { studSpacingMM: +v } }, 'manual'); renderAdjustBody(); }));
+      }
+    } else if (s.meta.template === 'chair') {
       /* Seating: the OVERALL is derived from the seat family (splay widens
        * the footprint, the back sets the height), so overall sliders would
        * be controls correction silently overrules — the seat family gets

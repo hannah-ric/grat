@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 7,
+  "specVersion": 8,
   "meta": {
    "name": "Writing Desk",
    "template": "desk",
@@ -47,7 +47,8 @@
   },
   "doors": null,
   "custom": null,
-  "seat": null
+  "seat": null,
+  "wall": null
  },
  "validation": {
   "errors": [],

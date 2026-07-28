@@ -44,7 +44,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth',
     // Seating class (2026-07): every chair member is on a load path — the
     // clear-stock note is the difference between a chair and kindling.
-    'post', 'stretcher', 'crest', 'slat', 'corner_block'];
+    'post', 'stretcher', 'crest', 'slat', 'corner_block',
+    // Wall-mounted class: the cleat carries everything.
+    'cleat'];
 
   /* ---------------- cut list ---------------- */
   function cutList(spec, model) {
@@ -741,6 +743,45 @@ var BB = globalThis.BB = globalThis.BB || {};
       []));
   }
 
+  /* ---------------- wall shelf (the 'wall_mounted' class) ----------------
+   * The assembly is mostly INSTALLATION, and the wall is a structural member
+   * — so the steps carry the substrate discipline the anchor check assumed:
+   * studs found and verified, screws in centres, level line first, and a
+   * gentle load test before anything lives on it. Every number is read from
+   * the class geometry and the live check data. */
+  function wallShelfSteps(spec, model, integrity, out) {
+    const len = mm => U().fmtLength(mm);
+    const G = BB.Classes && BB.Classes.get('wall_mounted') ? BB.Classes.get('wall_mounted').geom : { CLEAT_H: 70, SCREWS_PER_STUD: 2, MASONRY_PITCH: 300 };
+    const wall = spec.wall || { substrate: 'stud', studSpacingMM: 406 };
+    const anchor = integrity && integrity.checks ? integrity.checks.find(c => c.id === 'wall:anchor') : null;
+    const studCheck = integrity && integrity.checks ? integrity.checks.find(c => c.id === 'wall:studs') : null;
+    const rec = K.recommendGlue(spec);
+    const glue = rec && rec.glue;
+
+    out.push(step('rip', 'Rip the cleat — one board, two halves',
+      `Rip the ${len(model.parts.find(p => p.id === 'cleat_wall_1').size.w)} cleat board down its length with the blade tilted 45° — the single cut makes both interlocking halves (they're both in the cut list). Keep the bevel faces clean off the saw; they are the bearing surfaces the whole shelf hangs on.`,
+      ['cleat_wall_1', 'cleat_shelf_1']));
+    if (wall.substrate === 'stud') {
+      const studs = studCheck && studCheck.data ? studCheck.data.studs : 2;
+      out.push(step('studs', 'Find the studs — then prove them',
+        `Mark every stud line behind the shelf position (spacing here is ${len(wall.studSpacingMM)} centres — IRC framing). A finder gets you close; a ${len(3)} pilot hole through the paint PROVES the centre — solid resistance full depth is a stud, a punch-through is a miss. The anchor math guarantees ${studs} stud${studs === 1 ? '' : 's'} under this cleat and assumes every screw lands in wood, not drywall.`,
+        []));
+      out.push(step('mount', 'Level line, then the wall half',
+        `Strike a level line at mounting height (bookshelf duty likes ${len(1200)}–${len(1500)}; the cleat top sits ${len(G.CLEAT_H + spec.structure.topThickness)} below the finished shelf top). Screw the wall half bevel-UP-and-OUT through to the studs: ${G.SCREWS_PER_STUD} × #10 × ${len(76)} screws per stud, pilots drilled, heads snug — ${anchor && anchor.data ? `each carries ${U().fmtPointLoad(anchor.data.perScrewN / 9.81)} of withdrawal at ${anchor.data.marginRatio.toFixed(1)}× margin` : 'the Safety tab prices each screw'}. NEVER into drywall alone: the capacity math is wood-screw withdrawal, and drywall anchors creep.`,
+        ['cleat_wall_1']));
+    } else {
+      out.push(step('mount', 'Level line, then the wall half — masonry',
+        `Strike a level line at mounting height. Drill and set rated masonry anchors every ${len(G.MASONRY_PITCH)} along the cleat${anchor && anchor.data ? ` — buy a published WORKING load rating of at least ${U().fmtPointLoad(anchor.data.requiredWorkingN / 9.81)} each (the BOM prints it; ultimate ratings are ~4× working, so read the box carefully)` : ''}. Blow the dust out of every hole — a dusty hole halves an anchor.`,
+        ['cleat_wall_1']));
+    }
+    out.push(step('shelf_half', 'Fit the shelf half',
+      `Glue and screw the mating half under the shelf's rear edge, bevel DOWN-and-IN, flush to the back. ${glue ? `${glue.label}: ${glue.clampMin} minutes clamped, load after ${glue.cureHrs} hours.` : ''} The two bevels convert gravity into a clamping couple — that geometry, not the screws alone, is what a French cleat is.`,
+      ['cleat_shelf_1', 'shelf_1']));
+    out.push(step('hang', 'Hang, seat, and load-test',
+      'Drop the shelf onto the wall half and press down along its length — it must seat fully with no rock. Check level. Then the acceptance test, gently: pull straight down at the FRONT edge with real force before any load goes on. A shelf that moves now moves worse with your things on it.',
+      ['shelf_1']));
+  }
+
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -864,6 +905,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       drawerSteps(spec, model, out, opts);
     } else if (t === 'chair') {
       chairSteps(spec, model, out, opts, { frP, ids });
+    } else if (t === 'wall_shelf') {
+      wallShelfSteps(spec, model, integrity, out);
     } else {
       frameSteps(spec, model, out, opts, { frP, ids });
       // Desk apron drawers (frame_table extension): the band members go in

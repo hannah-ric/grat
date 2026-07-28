@@ -440,8 +440,109 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   });
 
+  /* =========================================================================
+   * WALL-MOUNTED — floating shelves on a French cleat. The class where the
+   * load path leaves the furniture entirely: the wall carries the cantilever
+   * moment, so the substrate is a REQUIRED input and "unknown wall" is a
+   * refusal, not a default. Highest injury risk on the roadmap — built with
+   * the anchor model or not at all.
+   * ========================================================================= */
+  const DESIGN_BASIS_WALL =
+    'Anchor math uses NDS reference withdrawal design values for wood screws ' +
+    '(W = 2850·G²·D lb per inch of thread penetration — a DESIGN value, ' +
+    'already ~5× under ultimate), worst-case SPF studs (G = 0.42), and IRC ' +
+    'R602.3(5) stud spacing. Masonry anchors are specified by REQUIRED ' +
+    'working load, to be met by the anchor’s published rating — never ' +
+    'assumed. This is fixing guidance for a hobby shelf, not certified ' +
+    'anchor design; screws must land in stud centres, and drywall alone is ' +
+    'refused outright (anchors creep under sustained load; ratings are ' +
+    'ultimate, not working).';
+
+  const WALL_GEOM = {
+    CLEAT_H: 70,            // cleat height (each half), 19 mm stock, 45° rip
+    CLEAT_T: 19,
+    SCREW_LINE: 50,         // screw centreline above the cleat bottom (upper third)
+    SCREWS_PER_STUD: 2,     // French-cleat practice: two per stud crossing
+    STUD_SPACINGS: [406, 610], // IRC R602.3(5): 16/24 in o.c.
+    MASONRY_PITCH: 300,     // masonry anchors every ≤ 300 mm along the cleat
+    /* #10 wood screw, 1.5 in of thread in the stud (3 in screw through
+     * 13 mm drywall + 19 mm cleat): NDS W = 2850 × 0.42² × 0.190 =
+     * 95.5 lb/in × 1.5 in = 143 lb = 637 N design withdrawal (SPF floor). */
+    SCREW_WITHDRAWAL_N: 637,
+    /* Lateral (vertical shear) per #10 into a stud: NDS Table 12L is
+     * paywalled; secondary woodworking sources put 80–100 lb allowable —
+     * the conservative end (80 lb = 356 N) is used and labeled. */
+    SCREW_LATERAL_N: 356,
+    /* Guaranteed stud crossings for a cleat of length L at spacing s under
+     * WORST phase alignment. */
+    studsEngaged(cleatLen, spacing) { return Math.max(0, Math.floor(cleatLen / spacing)); }
+  };
+
+  register({
+    key: 'wall_mounted',
+    label: 'Wall-mounted shelves (French cleat)',
+    templates: ['wall_shelf'],
+    mounted: 'wall', // audit + structural engines key floor-invariant exemptions off this
+    geom: WALL_GEOM,
+    DESIGN_BASIS_WALL,
+    family: {
+      rules: [
+        { path: 'overall.width', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.depth', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.topThickness', ownedBy: 'Spec.DIM_RULES' }
+      ],
+      couplings: [
+        { id: 'substrate_required', rule: 'substrate ∈ {stud, masonry} or the design is refused — a shelf hung on unknown structure is a guess, and drywall-only is refused outright (anchor creep; ratings are ultimate)', enforcedBy: 'Spec.validate wall_substrate error + parser ask' },
+        { id: 'depth_thickness', rule: 'depth > 250 forces shelf thickness ≥ 32 (K.ERGONOMICS floating_shelf_depth note) and depth caps at 300 — past that the couple demand outruns hobby fixings', enforcedBy: 'Spec.correctSpec wall block' },
+        { id: 'stud_engagement', rule: 'on studs, the cleat’s guaranteed crossings = floor(length/spacing) (worst phase, IRC 406/610 o.c.); 0 studs fails, 1 stud is a named single-stud mount (centre the cleat, width ≤ 600)', enforcedBy: 'Structural wall:studs' },
+        { id: 'height_derived', rule: 'overall.height = cleat + shelf thickness (the assembly, not a room position) — floor invariants are exempted for mounted classes and the mount plane is the datum', enforcedBy: 'Spec.correctSpec + auditModel exemption' }
+      ]
+    },
+    humanFactors: [
+      { key: 'floating_shelf_depth', label: 'Floating shelf depth', min: 200, max: 300, unit: 'mm', source: 'K.ERGONOMICS floating_shelf_depth (deeper than 250 wants 32+ thickness and a full-length cleat)' },
+      { key: 'shelf_reach', label: 'Mounting height guidance', min: 1200, max: 1800, unit: 'mm', source: 'standing reach band, Panero & Zelnik (guidance in the steps — the spec models the assembly, not the room)' }
+    ],
+    loadCases: [
+      { id: 'shelf_books', label: 'Books along the shelf', magnitude: '60 kg/m sustained', apply: 'uniform, centroid at half the depth', direction: 'gravity', duration: 'sustained (×2 creep)', acceptance: 'cantilever sag ≤ span/150 at the free edge; bending margin ≥ 1 at MOR/4', source: 'BIFMA X5.9 shelf load 40 lb/ft (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' },
+      { id: 'anchor_couple', label: 'Cleat screw withdrawal', magnitude: 'M = load × depth/2, resolved over the screw-line arm', apply: 'top screws in withdrawal, bottom edge in bearing', direction: 'tension out of the wall', duration: 'sustained', acceptance: 'margin ≥ 1.5 vs NDS design withdrawal (637 N per #10 × 1.5 in in SPF); masonry emits the REQUIRED rating instead of assuming one', source: 'NDS W = 2850·G²·D (verified vs SYP cross-check); arithmetic in test/handcalc.js', traceability: 'derivation' },
+      { id: 'anchor_shear', label: 'Vertical shear on the fixings', magnitude: 'full shelf load across the engaged screws', apply: 'screw group, vertical', direction: 'gravity', duration: 'sustained', acceptance: 'margin ≥ 1.5 vs 356 N per screw (80 lb — conservative end of secondary sources; NDS 12L is paywalled and the label says so)', source: 'secondary (Obsessed Woodworking / trade practice), marked verified-approximate', traceability: 'derivation' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'shelf → wall cleat', required: ['french_cleat'], prohibited: ['butt_screws', 'pocket_screws', 'kd_bolt'], reason: 'the cleat is the one joint whose mate is the BUILDING: 45° halves convert gravity into a clamping couple and lift off for moving day. Screwing the shelf straight to the wall loses the bearing couple and puts every newton in withdrawal.' },
+        { connection: 'wall cleat → structure', required: [], prohibited: [], reason: 'not a wood-to-wood joint: #10 × 3 in screws, two per stud, into stud CENTRES (or rated masonry anchors every ≤ 300 mm). Capacity math in the wall:anchor check; drywall alone refused.' }
+      ]
+    },
+    failureModes: [
+      { id: 'unknown_wall', mode: 'shelf hung on unknown or drywall-only structure', conditional: true, checkIds: ['wall_substrate', 'wall:substrate'], fixture: 'audit WALL-1 (unknown → error; drywall → refusal with the creep reason)', realWorld: 'the shelf that came down with the plaster' },
+      { id: 'anchor_pullout', mode: 'top screws pull out of the studs under the cantilever couple', checkIds: ['wall:anchor'], fixture: 'handcalc anchor section; audit WALL-2 heavy/deep fixture', realWorld: 'loaded shelves peeling off the wall' },
+      { id: 'missed_studs', mode: 'cleat spans too few studs (or none)', checkIds: ['wall:studs'], fixture: 'audit WALL-3 (short cleat on 610 spacing)', realWorld: 'shelves screwed to drywall between studs' },
+      { id: 'shelf_dive', mode: 'shelf sags or breaks at the free edge', checkIds: ['sag:', 'str:'], fixture: 'golden fixtures freeze the cantilever margins', realWorld: 'drooping floating shelves' },
+      { id: 'overdeep', mode: 'depth beyond the fixing class', guard: 'Spec.correctSpec clamps depth at 300 and couples thickness ≥ 32 past 250; dimensionNotes reports the refusal', checkIds: ['wall:anchor'], fixture: 'audit WALL-4', realWorld: 'display ledges asked to be desks' }
+    ],
+    hardware: [
+      { id: 'stud_screws', item: '#10 × 3 in wood screws (2 per stud crossing)', when: 'substrate = stud', capacity: '637 N design withdrawal each (NDS, SPF floor, 1.5 in thread)', matchedTo: 'wall:anchor couple demand at ≥ 1.5×' },
+      { id: 'masonry_anchors', item: 'rated masonry anchors every ≤ 300 mm', when: 'substrate = masonry', capacity: 'REQUIRED working load printed by the check and the BOM — met by the anchor’s published rating, never assumed', matchedTo: 'wall:anchor demand × 1.5' }
+    ],
+    assembly: {
+      sequence: ['rip the cleat pair at 45° from one board', 'find and mark every stud (knock + finder + pilot verify)', 'level line at mounting height', 'wall half screwed to studs (pilots, two per stud)', 'shelf half glued + screwed under the shelf', 'hang, check level and seating, load test gently'],
+      jigs: ['stud finder + verification pilot holes', 'a level (the cleat IS the level line)', '45° rip: table saw blade tilted, one board makes both halves'],
+      checks: ['level along the cleat before driving screws home', 'every screw lands in a stud CENTRE (probe with a pilot)', 'cleat halves seat fully — no rock along the length', 'gentle pull-down load test before real load goes on']
+    },
+    refusals: [
+      { id: 'no_unknown_wall', shape: 'mounting on an unstated or unknown wall', reason: 'the wall carries the whole load path — without the substrate the anchor math is a guess, and a plausible guess is worse than a refusal', surface: 'validate wall_substrate error + parser asks before creating' },
+      { id: 'no_drywall_only', shape: 'drywall-anchor-only mounting', reason: 'drywall anchors creep under sustained load and their ratings are ULTIMATE, not working (industry practice is ≤ ¼ of listed) — shelving is sustained load, so drywall alone is refused, not derated', surface: 'validate error + correction note + parser' },
+      { id: 'no_heavy_cantilever', shape: 'depths past 300 mm / desk-duty wall units', reason: 'the couple demand outruns hobby fixings — that is the wall-hung casework class, not yet generated soundly', surface: 'Spec.correctSpec depth clamp + dimensionNotes' },
+      { id: 'no_ceiling', shape: 'ceiling-hung anything', reason: 'overhead failure is injury-first; no ceiling model exists', surface: 'SCHEMA_DOC + parser (unchanged floor/wall doctrine)' }
+    ],
+    fixtures: {
+      golden: ['oak-floating-shelf-imperial', 'deep-shelf-masonry-metric'],
+      bad: ['audit WALL-1 unknown/drywall substrate', 'audit WALL-2 anchor margin arithmetic', 'audit WALL-3 stud engagement', 'audit WALL-4 depth refusal + thickness coupling']
+    }
+  });
+
   BB.Classes = {
     register, get, all, forTemplate, validateContract, runChecklist,
-    DESIGN_BASIS_SEATING
+    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL
   };
 })();

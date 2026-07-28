@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 7,
+  "specVersion": 8,
   "meta": {
    "name": "Oak Dining Chair",
    "template": "chair",
@@ -52,7 +52,8 @@
    "slopeDeg": 3,
    "splayDeg": 0,
    "backRake": 4
-  }
+  },
+  "wall": null
  },
  "validation": {
   "errors": [],

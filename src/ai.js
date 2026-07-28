@@ -266,10 +266,10 @@ var BB = globalThis.BB = globalThis.BB || {};
      * chair the tool genuinely builds. */
     [/\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\brecliners?\b|\bchaises?\b/,
       'Sofas and soft seating are outside what I build — upholstery is a different craft. A solid-wood dining chair, stool, or bench I can do.', 'A dining chair in red oak'],
-    // Only a WALL-HUNG shelf is out of scope — a bare "shelves" is ordinary
-    // bookshelf vocabulary and must keep its edit answer ("more shelves").
-    [/\b(?:floating|wall|hanging|wall[\s-]?mounted)\b[\w\s'’-]{0,20}?\bshel(?:f|ves)\b/,
-      'Wall-hung and floating shelves are past what I build — everything I make stands on its own legs.', 'A bookshelf'],
+    // Floating shelves graduated to the wall_mounted class (2026-07) and
+    // route through tmplWords; only ceiling-hung stays out of scope here.
+    [/\b(?:ceiling|suspended|hanging from)\b[\w\s'’-]{0,24}?\bshel(?:f|ves)\b/,
+      'Ceiling-hung shelves are past what I build — overhead failure is injury-first and I have no ceiling model. A wall-mounted floating shelf on studs or masonry I can do.', 'A floating shelf on wood studs'],
     [/\bdressers?\b|\barmoires?\b|\bwardrobes?\b|\bcredenzas?\b|\bhutch(?:es)?\b|\bvanit(?:y|ies)\b/,
       'A dresser-sized case is the cabinet template here — same carcass, same drawer bank.', 'A cabinet with three drawers'],
     // Doors LEFT this list with X-07 — they are built on cabinets and
@@ -321,7 +321,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // New design? Longest template word first: "bedside table" must win
     // over "table".
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair', 'floating shelf': 'wall_shelf', 'wall shelf': 'wall_shelf', 'wall-mounted shelf': 'wall_shelf', 'wall mounted shelf': 'wall_shelf', 'shelf ledge': 'wall_shelf' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -603,6 +603,27 @@ var BB = globalThis.BB = globalThis.BB || {};
        * coupling). The WORD sets sensible surface defaults; an explicit
        * "for my 950 mm counter" wins; a bare "stool" ships dining height
        * and the integrity panel asks for the counter. */
+      /* Wall shelf: the SUBSTRATE is required input — the wall carries the
+       * whole load path, so a creation with no wall named ASKS rather than
+       * guessing (the chips parse straight back in here). Drywall-only is
+       * refused with the reason, matching the class contract. */
+      if (wantTemplate === 'wall_shelf') {
+        if (/\bdrywall\b|\bplasterboard\b|\bsheetrock\b/.test(t) && !/\bstuds?\b/.test(t)) {
+          return { kind: 'info', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. If there are wood studs behind it (there usually are, 16 or 24 in apart), say “on studs”; on brick or block, say “on masonry”.' };
+        }
+        const onStuds = /\bstuds?\b/.test(t);
+        const onMasonry = /\bmasonry\b|\bbrick\b|\bconcrete\b|\bblock\b|\bstone\b/.test(t);
+        if (!onStuds && !onMasonry) {
+          return {
+            kind: 'question',
+            question: 'A shelf hangs on its wall, so I need the substrate before I size the fixings — what’s behind the finish?',
+            options: ['A floating shelf on wood studs', 'A floating shelf on masonry', 'A bookshelf instead (floor-standing)']
+          };
+        }
+        set('wall.substrate', onMasonry ? 'masonry' : 'stud');
+        if (/\b24\s?(?:in|inch|″|")\b|\b610\s?mm\b/.test(t)) set('wall.studSpacingMM', 610);
+        notes.push(onMasonry ? 'masonry wall' : 'stud wall');
+      }
       let stoolAsk = '';
       if (wantTemplate === 'chair') {
         const isStool = /stool/.test(tmplWord || '');

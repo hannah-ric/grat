@@ -173,5 +173,26 @@
     "engine": 13.024418159100374,
     "errPct": 0,
     "pass": true
+  },
+  {
+    "name": "desk band governing sag (mm)",
+    "hand": 2.0397286841640705,
+    "engine": 2.0397286841640705,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "wall anchor per-screw withdrawal (N)",
+    "hand": 359.87254844264726,
+    "engine": 359.87254844264726,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "wall anchor margin (×)",
+    "hand": 1.7700711064420587,
+    "engine": 1.7700711064420587,
+    "errPct": 0,
+    "pass": true
   }
 ]

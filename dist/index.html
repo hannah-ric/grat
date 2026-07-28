@@ -5313,9 +5313,92 @@ body.ph-open .porch::after { display: none; }
       bad: ['audit SEAT-1 screwed side rail', 'audit SEAT-2 sawn rear leg (rake refusal)', 'audit SEAT-3 stool vs wrong counter', 'audit SEAT-4 seat height outside human factors', 'audit SEAT-5 upholstery/arms refusal', 'audit SEAT-6 pine cyclic honest-fail']
     }
   });
+  const DESIGN_BASIS_WALL =
+    'Anchor math uses NDS reference withdrawal design values for wood screws ' +
+    '(W = 2850·G²·D lb per inch of thread penetration — a DESIGN value, ' +
+    'already ~5× under ultimate), worst-case SPF studs (G = 0.42), and IRC ' +
+    'R602.3(5) stud spacing. Masonry anchors are specified by REQUIRED ' +
+    'working load, to be met by the anchor’s published rating — never ' +
+    'assumed. This is fixing guidance for a hobby shelf, not certified ' +
+    'anchor design; screws must land in stud centres, and drywall alone is ' +
+    'refused outright (anchors creep under sustained load; ratings are ' +
+    'ultimate, not working).';
+  const WALL_GEOM = {
+    CLEAT_H: 70,            // cleat height (each half), 19 mm stock, 45° rip
+    CLEAT_T: 19,
+    SCREW_LINE: 50,         // screw centreline above the cleat bottom (upper third)
+    SCREWS_PER_STUD: 2,     // French-cleat practice: two per stud crossing
+    STUD_SPACINGS: [406, 610], // IRC R602.3(5): 16/24 in o.c.
+    MASONRY_PITCH: 300,     // masonry anchors every ≤ 300 mm along the cleat
+    SCREW_WITHDRAWAL_N: 637,
+    SCREW_LATERAL_N: 356,
+    studsEngaged(cleatLen, spacing) { return Math.max(0, Math.floor(cleatLen / spacing)); }
+  };
+  register({
+    key: 'wall_mounted',
+    label: 'Wall-mounted shelves (French cleat)',
+    templates: ['wall_shelf'],
+    mounted: 'wall', // audit + structural engines key floor-invariant exemptions off this
+    geom: WALL_GEOM,
+    DESIGN_BASIS_WALL,
+    family: {
+      rules: [
+        { path: 'overall.width', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.depth', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.topThickness', ownedBy: 'Spec.DIM_RULES' }
+      ],
+      couplings: [
+        { id: 'substrate_required', rule: 'substrate ∈ {stud, masonry} or the design is refused — a shelf hung on unknown structure is a guess, and drywall-only is refused outright (anchor creep; ratings are ultimate)', enforcedBy: 'Spec.validate wall_substrate error + parser ask' },
+        { id: 'depth_thickness', rule: 'depth > 250 forces shelf thickness ≥ 32 (K.ERGONOMICS floating_shelf_depth note) and depth caps at 300 — past that the couple demand outruns hobby fixings', enforcedBy: 'Spec.correctSpec wall block' },
+        { id: 'stud_engagement', rule: 'on studs, the cleat’s guaranteed crossings = floor(length/spacing) (worst phase, IRC 406/610 o.c.); 0 studs fails, 1 stud is a named single-stud mount (centre the cleat, width ≤ 600)', enforcedBy: 'Structural wall:studs' },
+        { id: 'height_derived', rule: 'overall.height = cleat + shelf thickness (the assembly, not a room position) — floor invariants are exempted for mounted classes and the mount plane is the datum', enforcedBy: 'Spec.correctSpec + auditModel exemption' }
+      ]
+    },
+    humanFactors: [
+      { key: 'floating_shelf_depth', label: 'Floating shelf depth', min: 200, max: 300, unit: 'mm', source: 'K.ERGONOMICS floating_shelf_depth (deeper than 250 wants 32+ thickness and a full-length cleat)' },
+      { key: 'shelf_reach', label: 'Mounting height guidance', min: 1200, max: 1800, unit: 'mm', source: 'standing reach band, Panero & Zelnik (guidance in the steps — the spec models the assembly, not the room)' }
+    ],
+    loadCases: [
+      { id: 'shelf_books', label: 'Books along the shelf', magnitude: '60 kg/m sustained', apply: 'uniform, centroid at half the depth', direction: 'gravity', duration: 'sustained (×2 creep)', acceptance: 'cantilever sag ≤ span/150 at the free edge; bending margin ≥ 1 at MOR/4', source: 'BIFMA X5.9 shelf load 40 lb/ft (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' },
+      { id: 'anchor_couple', label: 'Cleat screw withdrawal', magnitude: 'M = load × depth/2, resolved over the screw-line arm', apply: 'top screws in withdrawal, bottom edge in bearing', direction: 'tension out of the wall', duration: 'sustained', acceptance: 'margin ≥ 1.5 vs NDS design withdrawal (637 N per #10 × 1.5 in in SPF); masonry emits the REQUIRED rating instead of assuming one', source: 'NDS W = 2850·G²·D (verified vs SYP cross-check); arithmetic in test/handcalc.js', traceability: 'derivation' },
+      { id: 'anchor_shear', label: 'Vertical shear on the fixings', magnitude: 'full shelf load across the engaged screws', apply: 'screw group, vertical', direction: 'gravity', duration: 'sustained', acceptance: 'margin ≥ 1.5 vs 356 N per screw (80 lb — conservative end of secondary sources; NDS 12L is paywalled and the label says so)', source: 'secondary (Obsessed Woodworking / trade practice), marked verified-approximate', traceability: 'derivation' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'shelf → wall cleat', required: ['french_cleat'], prohibited: ['butt_screws', 'pocket_screws', 'kd_bolt'], reason: 'the cleat is the one joint whose mate is the BUILDING: 45° halves convert gravity into a clamping couple and lift off for moving day. Screwing the shelf straight to the wall loses the bearing couple and puts every newton in withdrawal.' },
+        { connection: 'wall cleat → structure', required: [], prohibited: [], reason: 'not a wood-to-wood joint: #10 × 3 in screws, two per stud, into stud CENTRES (or rated masonry anchors every ≤ 300 mm). Capacity math in the wall:anchor check; drywall alone refused.' }
+      ]
+    },
+    failureModes: [
+      { id: 'unknown_wall', mode: 'shelf hung on unknown or drywall-only structure', conditional: true, checkIds: ['wall_substrate', 'wall:substrate'], fixture: 'audit WALL-1 (unknown → error; drywall → refusal with the creep reason)', realWorld: 'the shelf that came down with the plaster' },
+      { id: 'anchor_pullout', mode: 'top screws pull out of the studs under the cantilever couple', checkIds: ['wall:anchor'], fixture: 'handcalc anchor section; audit WALL-2 heavy/deep fixture', realWorld: 'loaded shelves peeling off the wall' },
+      { id: 'missed_studs', mode: 'cleat spans too few studs (or none)', checkIds: ['wall:studs'], fixture: 'audit WALL-3 (short cleat on 610 spacing)', realWorld: 'shelves screwed to drywall between studs' },
+      { id: 'shelf_dive', mode: 'shelf sags or breaks at the free edge', checkIds: ['sag:', 'str:'], fixture: 'golden fixtures freeze the cantilever margins', realWorld: 'drooping floating shelves' },
+      { id: 'overdeep', mode: 'depth beyond the fixing class', guard: 'Spec.correctSpec clamps depth at 300 and couples thickness ≥ 32 past 250; dimensionNotes reports the refusal', checkIds: ['wall:anchor'], fixture: 'audit WALL-4', realWorld: 'display ledges asked to be desks' }
+    ],
+    hardware: [
+      { id: 'stud_screws', item: '#10 × 3 in wood screws (2 per stud crossing)', when: 'substrate = stud', capacity: '637 N design withdrawal each (NDS, SPF floor, 1.5 in thread)', matchedTo: 'wall:anchor couple demand at ≥ 1.5×' },
+      { id: 'masonry_anchors', item: 'rated masonry anchors every ≤ 300 mm', when: 'substrate = masonry', capacity: 'REQUIRED working load printed by the check and the BOM — met by the anchor’s published rating, never assumed', matchedTo: 'wall:anchor demand × 1.5' }
+    ],
+    assembly: {
+      sequence: ['rip the cleat pair at 45° from one board', 'find and mark every stud (knock + finder + pilot verify)', 'level line at mounting height', 'wall half screwed to studs (pilots, two per stud)', 'shelf half glued + screwed under the shelf', 'hang, check level and seating, load test gently'],
+      jigs: ['stud finder + verification pilot holes', 'a level (the cleat IS the level line)', '45° rip: table saw blade tilted, one board makes both halves'],
+      checks: ['level along the cleat before driving screws home', 'every screw lands in a stud CENTRE (probe with a pilot)', 'cleat halves seat fully — no rock along the length', 'gentle pull-down load test before real load goes on']
+    },
+    refusals: [
+      { id: 'no_unknown_wall', shape: 'mounting on an unstated or unknown wall', reason: 'the wall carries the whole load path — without the substrate the anchor math is a guess, and a plausible guess is worse than a refusal', surface: 'validate wall_substrate error + parser asks before creating' },
+      { id: 'no_drywall_only', shape: 'drywall-anchor-only mounting', reason: 'drywall anchors creep under sustained load and their ratings are ULTIMATE, not working (industry practice is ≤ ¼ of listed) — shelving is sustained load, so drywall alone is refused, not derated', surface: 'validate error + correction note + parser' },
+      { id: 'no_heavy_cantilever', shape: 'depths past 300 mm / desk-duty wall units', reason: 'the couple demand outruns hobby fixings — that is the wall-hung casework class, not yet generated soundly', surface: 'Spec.correctSpec depth clamp + dimensionNotes' },
+      { id: 'no_ceiling', shape: 'ceiling-hung anything', reason: 'overhead failure is injury-first; no ceiling model exists', surface: 'SCHEMA_DOC + parser (unchanged floor/wall doctrine)' }
+    ],
+    fixtures: {
+      golden: ['oak-floating-shelf-imperial', 'deep-shelf-masonry-metric'],
+      bad: ['audit WALL-1 unknown/drywall substrate', 'audit WALL-2 anchor margin arithmetic', 'audit WALL-3 stud engagement', 'audit WALL-4 depth refusal + thickness coupling']
+    }
+  });
   BB.Classes = {
     register, get, all, forTemplate, validateContract, runChecklist,
-    DESIGN_BASIS_SEATING
+    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL
   };
 })();</script>
 <script>var BB = globalThis.BB = globalThis.BB || {};
@@ -5324,11 +5407,11 @@ body.ph-open .porch::after { display: none; }
   const K = BB.K;
   const Geo = BB.Geo;
   const U = () => BB.Units;
-  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair'];
+  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair', 'wall_shelf'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
   const FRAME_TEMPLATES = ['table', 'desk', 'bench'];
-  const SPEC_VERSION = 7;
+  const SPEC_VERSION = 8;
   const migrations = {
     3: function (s) {
       const out = clone(s) || {};
@@ -5358,6 +5441,12 @@ body.ph-open .porch::after { display: none; }
       const out = clone(s) || {};
       out.specVersion = 7;
       if (out.seat === undefined) out.seat = null;
+      return out;
+    },
+    7: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 8;
+      if (out.wall === undefined) out.wall = null;
       return out;
     }
   };
@@ -5405,9 +5494,16 @@ body.ph-open .porch::after { display: none; }
       drawers: null,
       doors: null,
       custom: null,
-      seat: null
+      seat: null,
+      wall: null
     };
     const t = base.meta.template;
+    if (t === 'wall_shelf') {
+      base.meta.name = 'Floating Shelf';
+      Object.assign(base.overall, { width: 914.4, depth: 241.3, height: 102 });
+      base.structure.topThickness = 32;
+      base.wall = { substrate: 'stud', studSpacingMM: 406 };
+    }
     if (t === 'chair') {
       base.meta.name = 'Dining Chair';
       Object.assign(base.overall, { width: 430, depth: 420, height: 915 });
@@ -5704,10 +5800,11 @@ body.ph-open .porch::after { display: none; }
     }
     {
       const isCustom = spec.meta && spec.meta.template === 'custom';
-      const hasCleat = isCustom
+      const isWallMounted = spec.meta && spec.meta.template === 'wall_shelf';
+      const hasCleat = isWallMounted || (isCustom
         ? ((spec.custom && spec.custom.parts) || []).some(p => /cleat/.test(p.role || '')) ||
           ((spec.custom && spec.custom.connections) || []).some(c => c.joint === 'french_cleat')
-        : ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'french_cleat');
+        : ['frame', 'case', 'box'].some(k => spec.joinery && spec.joinery[k] === 'french_cleat'));
       const BUILDING = '(columns?|walls?|ceilings?|studs?|joists?|rafters?|masonry|brick)';
       const mountRx = new RegExp('\\b(?:screw(?:ed|s)?|bolt(?:ed|s)?|lag(?:ged)?|mount(?:ed|s)?|attach(?:ed|es)?|fasten(?:ed|s)?|hangs?|hung|suspend(?:ed|s)?)\\b[^.;:!?]{0,40}?\\b' + BUILDING + '\\b');
       const styleRx = new RegExp('\\b' + BUILDING + '[\\s-](?:mounted|mount|hung|suspended)\\b');
@@ -5716,7 +5813,7 @@ body.ph-open .porch::after { display: none; }
       if (!hasCleat && cleatM && !NEG.test(clauseAt(cleatM.index))) {
         fixes.push('no french cleat exists in this plan — the only building attachment this tool ever adds is the anti-tip strap');
       } else {
-        const m = mountRx.exec(low) || styleRx.exec(low);
+        const m = isWallMounted ? null : (mountRx.exec(low) || styleRx.exec(low));
         if (m) {
           const clause = clauseAt(m.index);
           const noun = m[1];
@@ -6254,6 +6351,20 @@ body.ph-open .porch::after { display: none; }
     } else {
       s.seat = null;
     }
+    if (template === 'wall_shelf') {
+      const G = BB.Classes ? BB.Classes.get('wall_mounted').geom : { CLEAT_H: 70, STUD_SPACINGS: [406, 610] };
+      const w = isObj(s.wall) ? s.wall : {};
+      o.depth = r1(clamp(o.depth, 200, 300));
+      if (o.depth > 250) st.topThickness = Math.max(st.topThickness, 32);
+      o.height = r1(G.CLEAT_H + st.topThickness);
+      s.wall = {
+        substrate: ['stud', 'masonry', 'unknown', 'drywall'].includes(w.substrate) ? w.substrate : 'stud',
+        studSpacingMM: G.STUD_SPACINGS.includes(w.studSpacingMM) ? w.studSpacingMM : 406
+      };
+      s.drawers = null; s.doors = null;
+    } else {
+      s.wall = null;
+    }
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
     const legCap = Math.floor(Math.min(o.width, o.depth) / 4);
     if (st.legThickness > legCap) {
@@ -6360,15 +6471,17 @@ body.ph-open .porch::after { display: none; }
       }
       return { min, max };
     };
+    const wallMounted = !!(BB.Classes && BB.Classes.forTemplate(spec.meta.template) &&
+      BB.Classes.forTemplate(spec.meta.template).mounted === 'wall');
     let globalMinY = Infinity;
     for (const p of parts) {
       const my = minY.get(p.id);
       globalMinY = Math.min(globalMinY, my);
-      if (my < -AUDIT.BELOW_EPS) {
+      if (!wallMounted && my < -AUDIT.BELOW_EPS) {
         errors.push({ id: 'geom_below:' + p.id, text: `“${p.name}” (${p.id}) extends ${fine(-my)} below the floor — wood can’t pass through the ground.` });
       }
     }
-    if (globalMinY > AUDIT.FLOOR_EPS) {
+    if (!wallMounted && globalMinY > AUDIT.FLOOR_EPS) {
       errors.push({ id: 'geom_floats', text: `Nothing touches the floor — the whole piece hovers ${fine(globalMinY)} in the air.` });
     }
     for (const p of parts) {
@@ -6442,7 +6555,7 @@ body.ph-open .porch::after { display: none; }
       mass += m; mx += m * p.pos.x; mz += m * p.pos.z;
     }
     const hull = Geo.convexHull2D(footPts);
-    if (globalMinY <= AUDIT.FLOOR_EPS) { // otherwise geom_floats already covers it
+    if (!wallMounted && globalMinY <= AUDIT.FLOOR_EPS) { // otherwise geom_floats already covers it; wall classes stand on the wall
       if (hull.length < 3) {
         errors.push({ id: 'geom_footprint', text: footPts.length ? 'The floor contact points are collinear — the piece falls over sideways.' : 'No part offers a floor footprint to stand on.' });
       } else if (mass > 0) {
@@ -6493,6 +6606,13 @@ body.ph-open .porch::after { display: none; }
       }
       band(hf.seat_depth, se.depth, 'ergo_seat_depth', 'seat depth');
       band(hf.seat_width, se.width, 'ergo_seat_width', 'seat width');
+    }
+    if (t === 'wall_shelf' && spec.wall) {
+      if (spec.wall.substrate === 'unknown') {
+        errors.push({ id: 'wall_substrate', text: 'What is this wall? A shelf hangs on its substrate, and the anchor math needs it: wood studs or masonry. Hanging on an unknown wall is a guess — worse than a refusal.' });
+      } else if (spec.wall.substrate === 'drywall') {
+        errors.push({ id: 'wall_substrate', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. Find the studs behind it (16 or 24 in apart) or name a masonry wall.' });
+      }
     }
     if (t === 'desk') {
       const clear = o.height - spec.structure.topThickness - spec.structure.apronHeight;
@@ -7407,6 +7527,25 @@ body.ph-open .porch::after { display: none; }
       joints.push({ type: 'butt_screws', a: 'seat_1', b: pid, pos: { x: (pid === 'post_1' ? -1 : 1) * (W / 2 - 20), y: seatTopAt(-D / 2 + 20) - seatT / 2, z: -D / 2 + 20 }, noCutAllowance: true });
     }
   }
+  function wallShelfBuild(spec) {
+    const o = spec.overall, st = spec.structure;
+    const G = BB.Classes.get('wall_mounted').geom;
+    const sp = spec.wood.species;
+    const parts = [], joints = [];
+    const T = st.topThickness, ch = G.CLEAT_H, ct = G.CLEAT_T;
+    const cleatLen = o.width - 20; // 10 mm shy each end so the shelf hides it
+    const zWall = -o.depth / 2;
+    parts.push(part('cleat_wall_1', 'cleat', 'cleat', 'Wall cleat', cleatLen, ch, ct,
+      0, ch / 2, zWall + ct / 2, { material: sp, explode: { x: 0, y: -0.5, z: -0.8 } }));
+    parts.push(part('cleat_shelf_1', 'cleat', 'cleat', 'Shelf cleat', cleatLen, ch, ct,
+      0, ch / 2, zWall + ct + ct / 2, { material: sp, explode: { x: 0, y: -0.2, z: -0.4 } }));
+    for (const p of parts) p.angleNote = 'one 45° rip makes both halves — bevel faces interlock';
+    parts.push(part('shelf_1', 'wall_shelf', 'shelf', 'Shelf', o.width, T, o.depth,
+      0, ch + T / 2, 0, { material: sp, explode: { x: 0, y: 1, z: 0.4 } }));
+    joints.push({ type: 'french_cleat', a: 'cleat_shelf_1', b: 'cleat_wall_1', pos: { x: 0, y: ch / 2, z: zWall + ct }, noCutAllowance: true });
+    joints.push({ type: 'butt_screws', a: 'cleat_shelf_1', b: 'shelf_1', pos: { x: 0, y: ch, z: zWall + ct + ct / 2 }, noCutAllowance: true });
+    return { parts, joints, openings: [], drawers: [] };
+  }
   function customBuild(spec) {
     const parts = [], joints = [];
     const c = spec.custom || { parts: [], connections: [] };
@@ -7448,6 +7587,7 @@ body.ph-open .porch::after { display: none; }
     else if (t === 'cabinet') m = cabinet(spec);
     else if (t === 'custom') m = customBuild(spec);
     else if (t === 'chair') m = chairBuild(spec);
+    else if (t === 'wall_shelf') m = wallShelfBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
     for (const p of m.parts) {
@@ -7536,7 +7676,7 @@ body.ph-open .porch::after { display: none; }
     if (kind === 'seat') return 'seating';
     if (kind === 'top') return 'worktop';
     if (defaultLoad && defaultLoad !== 'auto' && LOAD_PRESETS[defaultLoad]) return defaultLoad;
-    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom') return 'books';
+    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom' || template === 'wall_shelf') return 'books';
     return 'display';
   }
   const JOINT_RATING = {
@@ -7687,6 +7827,15 @@ body.ph-open .porch::after { display: none; }
         push({
           id: p.id, part: p, label: p.role === 'top' ? 'Top panel' : `Shelf ${p.id.replace(/\D+/g, '') || 1}`,
           kind: 'shelf', model: 'ss', span: p.size.w, b: p.size.d, h: p.size.h, over: 0
+        });
+      }
+    } else if (t === 'wall_shelf') {
+      const shelf = parts.find(p => p.id === 'shelf_1');
+      if (shelf) {
+        const G2 = BB.Classes ? BB.Classes.get('wall_mounted').geom : { CLEAT_T: 19 };
+        push({
+          id: shelf.id, part: shelf, label: 'Shelf', kind: 'shelf', model: 'cant',
+          span: Math.max(60, shelf.size.d - 2 * G2.CLEAT_T), b: shelf.size.w, h: shelf.size.h, over: 0
         });
       }
     } else if (t === 'chair') {
@@ -8383,8 +8532,76 @@ body.ph-open .porch::after { display: none; }
         fixes: []
       });
     }
+    const wallCls = BB.Classes ? BB.Classes.forTemplate(t) : null;
+    const isWallMounted = !!(wallCls && wallCls.mounted === 'wall');
+    if (isWallMounted && t === 'wall_shelf' && spec.wall) {
+      const G2 = wallCls.geom;
+      const shelf = parts.find(p => p.id === 'shelf_1');
+      const su = spec.wall.substrate;
+      const W = spec.overall.width, D = spec.overall.depth;
+      const cleatLen = W - 20;
+      const surf = surfaces.find(x => x.id === 'shelf_1');
+      const presetKey = surf ? surf.presetKey : 'books';
+      const loadN = totalLoadN(presetKey, W);
+      let selfN = 0;
+      for (const p of parts) if (!p.hardware) selfN += p.size.w * p.size.h * p.size.d * 1e-9 * partDensity(p, spec) * GRAV;
+      const totalN = loadN + selfN;
+      const M = totalN * (D / 2);
+      const Tn = M / G2.SCREW_LINE;
+      if (su === 'stud') {
+        const studs = G2.studsEngaged(cleatLen, spec.wall.studSpacingMM);
+        const screws = Math.max(1, studs) * G2.SCREWS_PER_STUD;
+        const perScrew = Tn / screws;
+        const margin = G2.SCREW_WITHDRAWAL_N / perScrew;
+        const shearPer = totalN / screws;
+        const shearMargin = G2.SCREW_LATERAL_N / shearPer;
+        checks.push({
+          id: 'wall:studs', title: 'Stud engagement',
+          status: studs >= 2 ? 'pass' : studs === 1 ? 'advisory' : 'fail',
+          value: `${studs} stud${studs === 1 ? '' : 's'} guaranteed under a ${fmtLen(cleatLen)} cleat at ${fmtLen(spec.wall.studSpacingMM)} centres`,
+          threshold: '≥ 2 studs (worst-phase floor(length/spacing), IRC R602.3(5) spacing)',
+          explain: studs >= 2
+            ? 'Whatever the cleat’s phase against the stud grid, it crosses at least two studs — find them, and put two screws in each.'
+            : studs === 1
+              ? `Only one stud crossing is guaranteed at this length. A single-stud mount works CENTRED on the stud with both screws in it — keep the shelf under ${fmtLen(600)} and expect no forgiveness for a missed centre.`
+              : 'The cleat cannot guarantee a single stud crossing — lengthen the shelf past one spacing bay or name a masonry wall.',
+          fixes: studs < 2 ? [{ id: 'wall-wider', label: `Lengthen to ${fmtLen(2 * spec.wall.studSpacingMM + 40)}`, patch: { overall: { width: 2 * spec.wall.studSpacingMM + 40 } } }] : [],
+          data: { studs, cleatLen, spacing: spec.wall.studSpacingMM }
+        });
+        checks.push({
+          id: 'wall:anchor', title: 'Anchor pullout — cleat screws',
+          status: jointStatus(Math.min(margin, shearMargin)),
+          value: `${U().fmtPointLoad(perScrew / GRAV)} withdrawal per screw vs ${U().fmtPointLoad(G2.SCREW_WITHDRAWAL_N / GRAV)} design capacity (${margin.toFixed(2)}×)`,
+          threshold: `≥ 1.5× on ${screws} × #10 screws (NDS W = 2850·G²·D, SPF floor, 1.5 in thread; shear ${shearMargin.toFixed(2)}× vs the 356 N secondary-source value)`,
+          explain: `${U().fmtPointLoad(totalN / GRAV)} at half the ${fmtLen(D)} depth throws a ${Math.round(M).toLocaleString()} N·mm couple into the wall: tension along the screw line, bearing at the cleat bottom, arm ${fmtLen(G2.SCREW_LINE)}. Every screw must land in a stud CENTRE — the capacity assumes wood, not drywall.`,
+          fixes: margin < 1.5 ? [{ id: 'wall-shallow', label: `Shallow the shelf to ${fmtLen(Math.max(200, D - 50))}`, patch: { overall: { depth: Math.max(200, D - 50) } } }] : [],
+          data: { momentNmm: M, tensionN: Tn, perScrewN: perScrew, capN: G2.SCREW_WITHDRAWAL_N, screws, marginRatio: margin, shearMargin },
+          prov: { rule: `anchor couple: M = ${Math.round(totalN)} N × ${Math.round(D / 2)} mm; T = M/${G2.SCREW_LINE} = ${Math.round(Tn)} N over ${screws} screws` }
+        });
+      } else if (su === 'masonry') {
+        const anchors = Math.max(2, Math.floor(cleatLen / G2.MASONRY_PITCH) + 1);
+        const perAnchor = Tn / anchors;
+        const required = Math.ceil(perAnchor * 1.5 / 10) * 10;
+        checks.push({
+          id: 'wall:anchor', title: 'Anchor pullout — masonry',
+          status: 'advisory',
+          value: `${anchors} anchors at ≤ ${fmtLen(G2.MASONRY_PITCH)}: buy a WORKING load rating ≥ ${U().fmtPointLoad(required / GRAV)} each`,
+          threshold: 'anchor’s published WORKING rating ≥ 1.5 × the computed demand — capacity is never assumed for masonry',
+          explain: `The couple puts ${U().fmtPointLoad(perAnchor / GRAV)} of tension on each of ${anchors} anchors. The BOM prints the required rating instead of guessing one: match it against the anchor box's WORKING (not ultimate) value, in the actual wall material.`,
+          fixes: [],
+          data: { momentNmm: M, perAnchorN: perAnchor, requiredWorkingN: required, anchors }
+        });
+      }
+      checks.push({
+        id: 'wall:basis', title: 'What these fixing numbers are', status: 'pass',
+        value: 'design guidance, not certified anchor engineering',
+        threshold: 'no fixing claim without the substrate stated',
+        explain: BB.Classes.DESIGN_BASIS_WALL,
+        fixes: []
+      });
+    }
     let antiTip = false, tip = null;
-    {
+    if (!isWallMounted) {
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
         if (p.role === 'pull' || p.hardware) continue;
@@ -8541,7 +8758,7 @@ body.ph-open .porch::after { display: none; }
         if (TABLE_LIKE.includes(t) && spec.joinery.frame === 'butt_screws') fixes.push({ id: 'pocket', label: 'Pocket-screw the frame', patch: { joinery: { frame: 'pocket_screws' } } });
       }
       const cheapFix = TABLE_LIKE.includes(t) ? 'stronger frame joints or a lower shelf' : custom ? 'a stretcher or panel between the uprights' : 'a fastened back panel and dado-housed shelves';
-      checks.push({
+      if (!isWallMounted) checks.push({
         id: 'rack', title: 'Racking resistance', status: rack.score < 40 ? 'advisory' : 'pass',
         value: `score ${rack.score} / 100`, threshold: '≥ 40 (heuristic, not physics)',
         explain: rack.score < 40
@@ -8683,7 +8900,7 @@ body.ph-open .porch::after { display: none; }
         return { map, patch: { custom: { parts: (spec.custom && spec.custom.parts) || [], connections: conns } } };
       };
       for (const s of surfaces) {
-        if (t === 'chair') continue;
+        if (t === 'chair' || t === 'wall_shelf') continue; // both run their own joint/anchor cases
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
         let demand = null, apron = false; // G5: apron end reaction overrides N/count
@@ -9666,7 +9883,8 @@ body.ph-open .porch::after { display: none; }
     return Math.max(0, Math.min(cap, Math.floor(mateT / 3)));
   }
   const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth',
-    'post', 'stretcher', 'crest', 'slat', 'corner_block'];
+    'post', 'stretcher', 'crest', 'slat', 'corner_block',
+    'cleat'];
   function cutList(spec, model) {
     const byId = new Map(model.parts.map(p => [p.id, p]));
     const ends = {};
@@ -10173,6 +10391,37 @@ body.ph-open .porch::after { display: none; }
         : `Clamps off at ${glue.clampMin} minutes, but ${glue.label} reaches full strength at ${glue.cureHrs} hours — no sitting, no rear-tilt testing, nothing, until then. Pare squeeze-out while rubbery. Then the acceptance test, gently: sit, shift, lean back a LITTLE — a new chair should feel dead, with no clicks and no give at any joint.`,
       []));
   }
+  function wallShelfSteps(spec, model, integrity, out) {
+    const len = mm => U().fmtLength(mm);
+    const G = BB.Classes && BB.Classes.get('wall_mounted') ? BB.Classes.get('wall_mounted').geom : { CLEAT_H: 70, SCREWS_PER_STUD: 2, MASONRY_PITCH: 300 };
+    const wall = spec.wall || { substrate: 'stud', studSpacingMM: 406 };
+    const anchor = integrity && integrity.checks ? integrity.checks.find(c => c.id === 'wall:anchor') : null;
+    const studCheck = integrity && integrity.checks ? integrity.checks.find(c => c.id === 'wall:studs') : null;
+    const rec = K.recommendGlue(spec);
+    const glue = rec && rec.glue;
+    out.push(step('rip', 'Rip the cleat — one board, two halves',
+      `Rip the ${len(model.parts.find(p => p.id === 'cleat_wall_1').size.w)} cleat board down its length with the blade tilted 45° — the single cut makes both interlocking halves (they're both in the cut list). Keep the bevel faces clean off the saw; they are the bearing surfaces the whole shelf hangs on.`,
+      ['cleat_wall_1', 'cleat_shelf_1']));
+    if (wall.substrate === 'stud') {
+      const studs = studCheck && studCheck.data ? studCheck.data.studs : 2;
+      out.push(step('studs', 'Find the studs — then prove them',
+        `Mark every stud line behind the shelf position (spacing here is ${len(wall.studSpacingMM)} centres — IRC framing). A finder gets you close; a ${len(3)} pilot hole through the paint PROVES the centre — solid resistance full depth is a stud, a punch-through is a miss. The anchor math guarantees ${studs} stud${studs === 1 ? '' : 's'} under this cleat and assumes every screw lands in wood, not drywall.`,
+        []));
+      out.push(step('mount', 'Level line, then the wall half',
+        `Strike a level line at mounting height (bookshelf duty likes ${len(1200)}–${len(1500)}; the cleat top sits ${len(G.CLEAT_H + spec.structure.topThickness)} below the finished shelf top). Screw the wall half bevel-UP-and-OUT through to the studs: ${G.SCREWS_PER_STUD} × #10 × ${len(76)} screws per stud, pilots drilled, heads snug — ${anchor && anchor.data ? `each carries ${U().fmtPointLoad(anchor.data.perScrewN / 9.81)} of withdrawal at ${anchor.data.marginRatio.toFixed(1)}× margin` : 'the Safety tab prices each screw'}. NEVER into drywall alone: the capacity math is wood-screw withdrawal, and drywall anchors creep.`,
+        ['cleat_wall_1']));
+    } else {
+      out.push(step('mount', 'Level line, then the wall half — masonry',
+        `Strike a level line at mounting height. Drill and set rated masonry anchors every ${len(G.MASONRY_PITCH)} along the cleat${anchor && anchor.data ? ` — buy a published WORKING load rating of at least ${U().fmtPointLoad(anchor.data.requiredWorkingN / 9.81)} each (the BOM prints it; ultimate ratings are ~4× working, so read the box carefully)` : ''}. Blow the dust out of every hole — a dusty hole halves an anchor.`,
+        ['cleat_wall_1']));
+    }
+    out.push(step('shelf_half', 'Fit the shelf half',
+      `Glue and screw the mating half under the shelf's rear edge, bevel DOWN-and-IN, flush to the back. ${glue ? `${glue.label}: ${glue.clampMin} minutes clamped, load after ${glue.cureHrs} hours.` : ''} The two bevels convert gravity into a clamping couple — that geometry, not the screws alone, is what a French cleat is.`,
+      ['cleat_shelf_1', 'shelf_1']));
+    out.push(step('hang', 'Hang, seat, and load-test',
+      'Drop the shelf onto the wall half and press down along its length — it must seat fully with no rock. Check level. Then the acceptance test, gently: pull straight down at the FRONT edge with real force before any load goes on. A shelf that moves now moves worse with your things on it.',
+      ['shelf_1']));
+  }
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -10271,6 +10520,8 @@ body.ph-open .porch::after { display: none; }
       drawerSteps(spec, model, out, opts);
     } else if (t === 'chair') {
       chairSteps(spec, model, out, opts, { frP, ids });
+    } else if (t === 'wall_shelf') {
+      wallShelfSteps(spec, model, integrity, out);
     } else {
       frameSteps(spec, model, out, opts, { frP, ids });
       if (t === 'desk' && spec.drawers) drawerSteps(spec, model, out, opts);
@@ -11170,7 +11421,7 @@ BlueprintBuddyImport.build
 (function () {
   'use strict';
   const TPL = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom',
-    'chair'];
+    'chair', 'wall_shelf'];
   const SPC = ['red_oak', 'white_oak', 'hard_maple', 'walnut', 'cherry', 'ash', 'poplar', 'pine', 'baltic_birch',
     'douglas_fir', 'syp', 'spf', 'western_red_cedar', 'soft_maple', 'hickory', 'beech', 'yellow_birch',
     'red_alder', 'sapele', 'teak', 'mdf', 'hardwood_ply'];
@@ -11186,6 +11437,7 @@ BlueprintBuddyImport.build
   const PUL = ['bar_pull', 'knob_round', 'knob_turned_wood', 'cup_pull', 'ring_pull',
     'edge_pull', 'flush_recessed', 'appliance_pull', 'leather_pull', 'none_touch'];
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
+  const SUB = ['unknown', 'stud', 'masonry', 'drywall'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
   const STK = ['solid', 'sheet'];
@@ -11246,6 +11498,9 @@ BlueprintBuddyImport.build
     if (spec.seat && spec.meta.template === 'chair') {
       w.se = [spec.seat.width, spec.seat.depth, spec.seat.height, spec.seat.slopeDeg,
         spec.seat.backHeight, spec.seat.backRake, spec.seat.splayDeg, spec.seat.counterHeight || 0];
+    }
+    if (spec.wall && spec.meta.template === 'wall_shelf') {
+      w.wl = [ix(SUB, spec.wall.substrate, 1), spec.wall.studSpacingMM];
     }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
@@ -11312,8 +11567,15 @@ BlueprintBuddyImport.build
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
         : null,
       custom: null,
-      seat: null
+      seat: null,
+      wall: null
     };
+    if (Array.isArray(w.wl) && spec.meta.template === 'wall_shelf') {
+      spec.wall = {
+        substrate: at(SUB, w.wl[0], 'stud'),
+        studSpacingMM: typeof w.wl[1] === 'number' ? w.wl[1] : 406
+      };
+    }
     if (Array.isArray(w.se) && spec.meta.template === 'chair') {
       const n = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
       spec.seat = {
@@ -11368,6 +11630,14 @@ BlueprintBuddyImport.build
         if (w.d.c !== undefined) patch.drawers.count = w.d.c;
         if (w.d.f !== undefined) patch.drawers.frontStyle = at(FRONT, w.d.f, undefined);
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
+      }
+    }
+    if (w.wl !== undefined) {
+      if (Array.isArray(w.wl)) patch.wall = { substrate: at(SUB, w.wl[0], undefined), studSpacingMM: w.wl[1] };
+      else if (w.wl && typeof w.wl === 'object') {
+        patch.wall = {};
+        if (w.wl.su !== undefined) patch.wall.substrate = at(SUB, w.wl.su, undefined);
+        if (w.wl.sp !== undefined) patch.wall.studSpacingMM = w.wl.sp;
       }
     }
     if (w.se !== undefined) {
@@ -11450,10 +11720,11 @@ BlueprintBuddyImport.build
     `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
+    'WALL SHELF (t=8 wall_shelf): the ONE wall-mounted template — a French-cleat floating shelf. "wl"=[SUB,studSpacing_mm], SUB=[unknown,stud,masonry,drywall]. The SUBSTRATE IS REQUIRED: never propose wl[0]=0 (unknown) — ASK which wall it is; drywall-only is refused by code (anchor creep). Depth caps at 300; height is derived (cleat+shelf).',
     'SEATING (t=7 chair): "se"=[seatW,seatD,seatH,slopeDeg,backHeight,backRake,splayDeg,counterH|0]. backHeight 0=stool (splay stools-only); counterH>0 derives seat height (ask when a stool names none). Code mandates tenon-class seat-frame joints (never screws). NOT buildable: upholstered/slip seats, arms, sawn or bent rear legs, rockers, folders — refuse or ask, never approximate.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
     'Mechanisms (hinge/lift-off/fold/slide) NOT expressible IN THE NOVEL GRAMMAR — every JNT is permanent except kd_bolt (tool-removable). Template doors ("dr") are the sole exception; a novel composition still cannot hinge anything. Otherwise build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
-    'Everything must STAND ON THE FLOOR — hanging/wall/ceiling mounting does not exist (airborne parts are force-grounded); for such asks build the nearest floor-standing design and say so in "e", or ask.',
+    'Everything must STAND ON THE FLOOR except t=8 wall_shelf (the one wall-mounted template) — the novel grammar still cannot hang, wall-hung casework and ceiling mounting do not exist, and airborne custom parts are force-grounded; for such asks build the nearest expressible design and say so in "e", or ask.',
     'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences, ≤500 chars — complete sentences, disclosures included), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
   ].join('\n');
   function buildDigest(snapshots, currentSpec) {
@@ -11618,8 +11889,8 @@ BlueprintBuddyImport.build
       'Beds are outside what I build — nothing here is sized to carry a mattress.', null],
     [/\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\brecliners?\b|\bchaises?\b/,
       'Sofas and soft seating are outside what I build — upholstery is a different craft. A solid-wood dining chair, stool, or bench I can do.', 'A dining chair in red oak'],
-    [/\b(?:floating|wall|hanging|wall[\s-]?mounted)\b[\w\s'’-]{0,20}?\bshel(?:f|ves)\b/,
-      'Wall-hung and floating shelves are past what I build — everything I make stands on its own legs.', 'A bookshelf'],
+    [/\b(?:ceiling|suspended|hanging from)\b[\w\s'’-]{0,24}?\bshel(?:f|ves)\b/,
+      'Ceiling-hung shelves are past what I build — overhead failure is injury-first and I have no ceiling model. A wall-mounted floating shelf on studs or masonry I can do.', 'A floating shelf on wood studs'],
     [/\bdressers?\b|\barmoires?\b|\bwardrobes?\b|\bcredenzas?\b|\bhutch(?:es)?\b|\bvanit(?:y|ies)\b/,
       'A dresser-sized case is the cabinet template here — same carcass, same drawer bank.', 'A cabinet with three drawers'],
     [/\blids?\b/,
@@ -11649,7 +11920,7 @@ BlueprintBuddyImport.build
       const clause = src.slice(0, m.index).split(/[,.;:!?()]|\s[—–-]\s/).pop();
       return /(?:^|\s)(?:no|not|never|without|avoid|don'?t|do not|hate)(?:\s+[\w']+){0,2}\s*$/.test(clause);
     };
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair', 'floating shelf': 'wall_shelf', 'wall shelf': 'wall_shelf', 'wall-mounted shelf': 'wall_shelf', 'wall mounted shelf': 'wall_shelf', 'shelf ledge': 'wall_shelf' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -11840,6 +12111,23 @@ BlueprintBuddyImport.build
       if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
         const row = K.ergoRow('workbench_height');
         if (row) { set('overall.height', Math.round((row.min + row.max) / 2)); benchHeight = true; }
+      }
+      if (wantTemplate === 'wall_shelf') {
+        if (/\bdrywall\b|\bplasterboard\b|\bsheetrock\b/.test(t) && !/\bstuds?\b/.test(t)) {
+          return { kind: 'info', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. If there are wood studs behind it (there usually are, 16 or 24 in apart), say “on studs”; on brick or block, say “on masonry”.' };
+        }
+        const onStuds = /\bstuds?\b/.test(t);
+        const onMasonry = /\bmasonry\b|\bbrick\b|\bconcrete\b|\bblock\b|\bstone\b/.test(t);
+        if (!onStuds && !onMasonry) {
+          return {
+            kind: 'question',
+            question: 'A shelf hangs on its wall, so I need the substrate before I size the fixings — what’s behind the finish?',
+            options: ['A floating shelf on wood studs', 'A floating shelf on masonry', 'A bookshelf instead (floor-standing)']
+          };
+        }
+        set('wall.substrate', onMasonry ? 'masonry' : 'stud');
+        if (/\b24\s?(?:in|inch|″|")\b|\b610\s?mm\b/.test(t)) set('wall.studSpacingMM', 610);
+        notes.push(onMasonry ? 'masonry wall' : 'stud wall');
       }
       let stoolAsk = '';
       if (wantTemplate === 'chair') {
@@ -13410,7 +13698,7 @@ BlueprintBuddyImport.build
         humid && /humid indoor swing/.test(humid.text), humid ? 'humid named' : 'step missing', 'humid named');
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2620-token ceiling', tk <= 2620 && tk > 800, tk + ' tokens', '≤ 2620'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating-class keys + refusal doctrine (2026-07)
+      test('hardening', 'system prompt under the 2760-token ceiling', tk <= 2760 && tk > 800, tk + ' tokens', '≤ 2760'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted class keys and their refusal doctrines (2026-07)
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
       const mode = Store.persistenceMode();
@@ -18644,6 +18932,7 @@ BlueprintBuddyImport.build
     nightstand: ['frame', 'case', 'box'],
     cabinet: ['frame', 'case', 'box'],
     chair: ['frame'],
+    wall_shelf: [],
     custom: []
   };
   const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
@@ -18669,7 +18958,18 @@ BlueprintBuddyImport.build
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
-    if (s.meta.template === 'chair') {
+    if (s.meta.template === 'wall_shelf') {
+      body.append(dim('Length', 'overall.width', 300, 2400));
+      body.append(paramSlider('Depth', s.overall.depth, 200, 300, 5, true,
+        v => live({ overall: { depth: v } }), () => done()));
+      body.append(dim('Thickness', 'structure.topThickness', 19, 45));
+      body.append(paramSeg('Wall', [['stud', 'Wood studs'], ['masonry', 'Masonry']], (s.wall && s.wall.substrate) || 'stud',
+        v => { merge({ wall: { substrate: v } }, 'manual'); renderAdjustBody(); }));
+      if (s.wall && s.wall.substrate === 'stud') {
+        body.append(paramSeg('Stud spacing', [['406', '16 in'], ['610', '24 in']], String((s.wall && s.wall.studSpacingMM) || 406),
+          v => { merge({ wall: { studSpacingMM: +v } }, 'manual'); renderAdjustBody(); }));
+      }
+    } else if (s.meta.template === 'chair') {
       const stool = s.seat && s.seat.backHeight === 0;
       body.append(paramSeg('Type', [['chair', 'Chair'], ['stool', 'Stool']], stool ? 'stool' : 'chair',
         v => { merge({ seat: { backHeight: v === 'stool' ? 0 : 470 } }, 'manual'); renderAdjustBody(); }));

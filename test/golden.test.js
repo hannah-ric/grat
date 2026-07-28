@@ -139,6 +139,30 @@ const CORPUS = [
       finish: 'hardwax_oil'
     }
   },
+  /* ---- wall_mounted class (2026-07): nominal stud shelf (imperial) and a
+   * boundary masonry shelf at the depth cap with the thickness coupling +
+   * required-anchor-rating pattern frozen (metric). */
+  {
+    name: 'oak-floating-shelf-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Oak Floating Shelf', template: 'wall_shelf', level: 'beginner', units: 'in' },
+      wood: { species: 'red_oak' },
+      overall: { width: 914.4, depth: 241.3 },
+      finish: 'danish_oil'
+    }
+  },
+  {
+    name: 'deep-shelf-masonry-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Deep Alcove Shelf', template: 'wall_shelf', level: 'intermediate', units: 'mm' },
+      wood: { species: 'white_oak' },
+      overall: { width: 1200, depth: 300 },
+      structure: { topThickness: 25 }, // the coupling forces 32 — frozen proof
+      wall: { substrate: 'masonry' }
+    }
+  },
   {
     /* Boundary: every seat-family knob at (or past) its edge — width/depth
      * at the band tops, seat height at the dining clamp, back rise at max,

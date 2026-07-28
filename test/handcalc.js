@@ -384,6 +384,71 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   row('footrest bending stress (MPa)', sigmaF, foot.data.stressMPa);
 }
 
+/* =========================================================================
+ * 12. Desk drawer band — stiffness-shared unequal pair, by hand.
+ *     Default desk (1320.8 wide, legT 70, apron 90) with drawers: openH =
+ *     90 − 40 = 50 → lower rail h = 40; rear apron h = 90; t = 20.
+ *     shareW = 40³/(40³+90³) = 64 000/793 000 = 0.080706…
+ *     Weak member spans its opening (stile posts the middle):
+ *       apLen = (1320.8 − 2·35) − 2·70 = 1110.8; openW = (1110.8−60)/2 = 525.4
+ *     Worktop preset: spread 75 kg over the span + 90 kg point.
+ *       weak: w = 75·9.81/525.4 · shareW; P = 90·9.81 · max(shareW, 0.25)
+ *       strong: span 1110.8, w · (1−shareW), P · 0.75
+ *     Engine reports the GOVERNING member; both are recomputed here.
+ * ========================================================================= */
+{
+  Units.set({ system: 'metric' });
+  const spec = Spec.correctSpec({ meta: { name: 'HC desk', template: 'desk', level: 'intermediate', units: 'mm' }, drawers: { count: 1 } });
+  const model = Parametric.build(spec);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const chk = integ.checks.find(c => c.id === 'sag:apron:top_1');
+  const E = 12500, t = spec.structure.apronThickness;
+  const hW = 40, hS = 90;
+  const shareW = Math.pow(hW, 3) / (Math.pow(hW, 3) + Math.pow(hS, 3));
+  const openW = model.openings[0].w;
+  const apLen = 1110.8;
+  const beam = (h, span, sSh, pSh) => {
+    const I = t * Math.pow(h, 3) / 12;
+    const w = (75 * 9.81 / span) * sSh;
+    const P = 90 * 9.81 * pSh;
+    const sag = 5 * w * Math.pow(span, 4) / (384 * E * I) + P * Math.pow(span, 3) / (48 * E * I);
+    return { sag, ratio: sag / (span / 300) };
+  };
+  const weak = beam(hW, openW, shareW, Math.max(shareW, 0.25));
+  const strong = beam(hS, apLen, 1 - shareW, 0.75);
+  const gov = weak.ratio >= strong.ratio ? weak : strong;
+  console.log(`\n[17] Desk band: shareW = 40³/(40³+90³) = ${shareW.toFixed(5)}; weak(${openW} span) sag ${weak.sag.toFixed(3)}, strong(${apLen}) sag ${strong.sag.toFixed(3)} — governing ${gov === weak ? 'weak rail' : 'rear apron'}`);
+  row('desk band governing sag (mm)', gov.sag, chk.data.sagMM);
+}
+
+/* =========================================================================
+ * 13. Wall shelf anchor couple — by hand.
+ *     Default shelf: 914.4 × 241.3, 32 thick red oak; cleat 894.4 long,
+ *     two halves 70 × 19. Studs at 406: floor(894.4/406) = 2 → 4 screws.
+ *     Load: books 60 kg/m × 0.9144 m = 54.864 kg → 538.22 N, plus self
+ *     weight (shelf 914.4·32·241.3 mm³ + 2 cleats 894.4·70·19) at red oak
+ *     630 kg/m³.
+ *     M = total · D/2; T = M/50 (screw line); per screw = T/4;
+ *     capacity 637 N (NDS 2850·G²·D × 1.5 in, SPF floor).
+ * ========================================================================= */
+{
+  const spec = Spec.correctSpec({ meta: { name: 'HC shelf', template: 'wall_shelf', level: 'beginner', units: 'mm' } });
+  const model = Parametric.build(spec);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const chk = integ.checks.find(c => c.id === 'wall:anchor');
+  const loadN = 60 * 0.9144 * 9.81;
+  const dens = K.WOOD_SPECIES.red_oak.sg * 1000;
+  const selfN = (914.4 * 32 * 241.3 + 2 * 894.4 * 70 * 19) * 1e-9 * dens * 9.81;
+  const totalN = loadN + selfN;
+  const M = totalN * (241.3 / 2);
+  const T = M / 50;
+  const perScrew = T / 4;
+  const margin = 637 / perScrew;
+  console.log(`\n[18] Wall anchor: load ${loadN.toFixed(1)} + self ${selfN.toFixed(1)} = ${totalN.toFixed(1)} N; M = ${M.toFixed(0)} N·mm; T = M/50 = ${T.toFixed(1)} N; per screw ${perScrew.toFixed(1)} N vs 637 N (margin ${margin.toFixed(2)})`);
+  row('wall anchor per-screw withdrawal (N)', perScrew, chk.data.perScrewN);
+  row('wall anchor margin (×)', margin, chk.data.marginRatio);
+}
+
 const fails = rows.filter(r => !r.pass);
 console.log(`\nworksheet: ${rows.length - fails.length}/${rows.length} agree`);
 for (const f of fails) console.log(`  DISAGREE: ${f.name} (hand ${f.hand} vs engine ${f.engine})`);

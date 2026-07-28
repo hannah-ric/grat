@@ -3270,5 +3270,117 @@ section('SEAT-9 units are display-only: one geometry in mm and inches');
   Units.set({ system: 'metric', precision: 16, dual: false });
 }
 
+/* =========================================================================
+ * DESK apron drawers (frame_table extension, 2026-07)
+ * ========================================================================= */
+section('DESK-1 the band opens honestly: geometry, forced knobs, weakened-beam model');
+{
+  const { spec, model, report } = pipeline({ meta: { name: 'D1', template: 'desk', level: 'beginner', units: 'mm' }, drawers: { count: 1, frontStyle: 'overlay', runner: 'side_mount_slides' } });
+  eq(spec.drawers.frontStyle, 'inset', 'fronts are forced inset — there is no case face to overlay');
+  eq(spec.drawers.runner, 'wood_runners', 'runners are wood at EVERY level (no case side for slides) — the beginner slide gate is a casework rule');
+  eq(spec.drawers.count, 2, 'a single opening wider than 620 splits around the centre stile');
+  ok(model.parts.some(p => p.id === 'stile_1') && model.parts.some(p => p.id === 'rail_lower_1'),
+    'the front apron became a lower rail + centre stile');
+  ok(!model.parts.some(p => p.id === 'apron_long_2'), 'the solid front apron is gone');
+  ok(model.openings.every(op => op.h >= 45 && op.h <= 80), `pencil openings sit in the 45–80 band — got ${model.openings.map(o => o.h)}`);
+  eq(report.errors, [], 'the drawer desk builds clean');
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const band = integ.checks.find(c => c.id === 'sag:apron:top_1');
+  ok(/stiffness|governing/.test(band.prov.rule + band.explain), 'the beam check names the stiffness-shared band model');
+  ok(band.status === 'pass', 'and the default drawer desk passes it');
+  const steps = Plans.assembly(spec, model, integ, {});
+  ok(steps.some(s => /^dr1_runners/.test(s.id)) && steps.some(s => /^dr1_box/.test(s.id)), 'drawer steps ride the desk sequence');
+  // Anchor scope: a pencil-drawer desk is NOT clothing storage.
+  const f2057 = integ.checks.find(c => c.id === 'tip_f2057');
+  ok(f2057 && !integ.antiTip, 'the open-drawer physics reports WITHOUT mandating a wall anchor on a desk');
+}
+
+section('DESK-2 knee room is named, never silent');
+{
+  const deep = pipeline({ meta: { name: 'D2', template: 'desk', level: 'beginner', units: 'mm' }, structure: { apronHeight: 160 }, drawers: { count: 1 } });
+  ok(deep.report.advisories.some(a => a.id === 'ergo_knee' && /ADA 306\.3/.test(a.text)),
+    `a deep band under a standard top names the knee band with sources — got ${JSON.stringify(deep.report.advisories.map(a => a.id))}`);
+  const nominal = pipeline({ meta: { name: 'D2', template: 'desk', level: 'beginner', units: 'mm' } });
+  ok(!nominal.report.advisories.some(a => a.id === 'ergo_knee'), 'the plain default desk stays quiet');
+}
+
+/* =========================================================================
+ * WALL-MOUNTED shelves (the 'wall_mounted' class, 2026-07)
+ * ========================================================================= */
+section('WALL-1 unknown and drywall substrates are refused, not guessed');
+{
+  for (const [sub, rx] of [['unknown', /anchor math needs it|worse than a refusal/], ['drywall', /creep|ultimate/]]) {
+    const { report } = pipeline({ meta: { name: 'W1', template: 'wall_shelf', level: 'beginner', units: 'mm' }, wall: { substrate: sub } });
+    ok(report.errors.some(e => e.id === 'wall_substrate' && rx.test(e.text)),
+      `substrate '${sub}' is a hard error with the reason — got ${JSON.stringify(report.errors.map(e => e.id))}`);
+  }
+  // The refusal survives the wire: a share code carrying 'unknown' decodes to it.
+  const bad = Spec.correctSpec({ meta: { name: 'W1', template: 'wall_shelf', level: 'beginner', units: 'mm' }, wall: { substrate: 'unknown' } });
+  const rt = Spec.correctSpec(Codec.decode(Codec.encode(bad)));
+  eq(rt.wall.substrate, 'unknown', 'the unknown substrate rides the share code — the refusal cannot be laundered away');
+  // Parser: no wall named → ASK; drywall named → refusal; studs named → build.
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table' } });
+  const q = AI.localModel('a floating shelf for the living room', table, {});
+  ok(q.kind === 'question' && /substrate|behind the finish/i.test(q.question), 'the parser asks for the wall before creating');
+  const dw = AI.localModel('a floating shelf on drywall', table, {});
+  ok(dw.kind === 'info' && /creep/i.test(dw.text), 'drywall-only is refused in chat with the reason');
+  const st = AI.localModel('a floating shelf on wood studs', table, {});
+  ok(st.kind === 'new' && st.spec.wall && st.spec.wall.substrate === 'stud', 'naming studs builds with the substrate carried');
+}
+
+section('WALL-2 the anchor couple is arithmetic, sourced, and honest about margins');
+{
+  const { spec, model } = pipeline({ meta: { name: 'W2', template: 'wall_shelf', level: 'beginner', units: 'mm' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const anchor = integ.checks.find(c => c.id === 'wall:anchor');
+  ok(anchor && anchor.status === 'pass' && anchor.data.marginRatio > 1.5 && anchor.data.marginRatio < 2.2,
+    `the default stud shelf carries books at a real (not infinite) margin — got ${anchor && anchor.data.marginRatio}`);
+  ok(/NDS/.test(anchor.threshold) && /stud CENTRE/i.test(anchor.explain), 'the check names its source and its assumption');
+  // Heavier duty on the same fixings: margins fall, honestly.
+  const heavy = Structural.computeIntegrity(spec, model, { loadChoices: { shelf_1: 'heavy' } });
+  const hAnchor = heavy.checks.find(c => c.id === 'wall:anchor');
+  ok(hAnchor.data.marginRatio < anchor.data.marginRatio && hAnchor.status !== 'pass',
+    `heavy storage drops the anchor margin below the gate — got ${hAnchor.data.marginRatio.toFixed(2)} (${hAnchor.status})`);
+  // Masonry: capacity is NEVER assumed — the required rating is printed.
+  const ms = pipeline({ meta: { name: 'W2m', template: 'wall_shelf', level: 'beginner', units: 'mm' }, wall: { substrate: 'masonry' } });
+  const mInteg = Structural.computeIntegrity(ms.spec, ms.model, {});
+  const mAnchor = mInteg.checks.find(c => c.id === 'wall:anchor');
+  ok(mAnchor && mAnchor.data.requiredWorkingN > 0 && /WORKING/.test(mAnchor.explain + mAnchor.threshold),
+    'masonry emits the REQUIRED working rating instead of assuming a capacity');
+}
+
+section('WALL-3 stud engagement: worst-phase counting, single-stud named, zero refused');
+{
+  const mk = (w, sp2) => {
+    const { spec, model } = pipeline({ meta: { name: 'W3', template: 'wall_shelf', level: 'beginner', units: 'mm' }, overall: { width: w }, wall: { substrate: 'stud', studSpacingMM: sp2 } });
+    return Structural.computeIntegrity(spec, model, {}).checks.find(c => c.id === 'wall:studs');
+  };
+  eq(mk(914.4, 406).status, 'pass', 'a 36 in shelf on 16 in centres guarantees 2 studs');
+  const single = mk(500, 406);
+  ok(single.status === 'advisory' && /CENTRED on the stud/i.test(single.explain), 'a short shelf is a NAMED single-stud mount');
+  const none = mk(500, 610);
+  ok(none.status === 'fail' && none.fixes.some(f => /Lengthen/.test(f.label)), 'a shelf that cannot guarantee one stud FAILS with the lengthen fix');
+}
+
+section('WALL-4 depth is the fixing class: clamped, coupled, and the floor doctrine holds elsewhere');
+{
+  const raw = { meta: { name: 'W4', template: 'wall_shelf', level: 'beginner', units: 'mm' }, overall: { depth: 400 }, structure: { topThickness: 19 } };
+  const spec = Spec.correctSpec(raw);
+  eq(spec.overall.depth, 300, 'depth clamps at the 300 fixing cap');
+  eq(spec.structure.topThickness, 32, 'past 250 deep, the shelf is forced to 32 thick (ergonomics note, now structure)');
+  // The audit exemption is CLASS-scoped: a floor piece still refuses to hover.
+  const t2 = Spec.correctSpec({ meta: { name: 'W4t', template: 'table' } });
+  const m2 = Parametric.build(t2);
+  for (const p of m2.parts) p.pos.y += 500;
+  ok(Spec.auditModel(t2, m2).some(e => e.id === 'geom_floats'), 'a hovering TABLE still fails geom_floats — the exemption is only for mounted classes');
+  const ws = Spec.correctSpec({ meta: { name: 'W4s', template: 'wall_shelf' } });
+  eq(Spec.auditModel(ws, Parametric.build(ws)).length, 0, 'the wall shelf itself audits clean with no floor contact');
+  // No output claims a rating it doesn't have.
+  const integ = Structural.computeIntegrity(ws, Parametric.build(ws), {});
+  const basis = integ.checks.find(c => c.id === 'wall:basis');
+  ok(basis && /not certified anchor design/i.test(basis.explain) && /drywall alone is refused/i.test(basis.explain),
+    'the fixing-basis disclosure ships in the output');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

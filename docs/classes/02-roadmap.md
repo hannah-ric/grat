@@ -32,7 +32,7 @@ beyond it. Ranked second because the app *already generates* 2400 mm tables
 — any unsoundness here is live today, and closing it is cheap (the frame
 model and contract exist).
 
-## 3. Wall-mounted and floating pieces — driver: injury risk (both directions)
+## 3. Wall-mounted and floating pieces — BUILT (2026-07, see 03-wall-mounted.md)
 
 Highest injury risk of anything on the list — which cuts both ways: highest
 value when done soundly, and the current blanket refusal ("everything stands
@@ -43,8 +43,7 @@ substrate (stud, masonry, hollow-wall), stud spacing as a *coupling rule*
 (cleat length quantized to 400/600 mm centres), the cantilever moment
 carried by the wall, and a refusal wherever substrate is unknown. The
 `french_cleat` joint and floating-shelf ergonomics rows are already staged.
-Build third, and only with the substrate model — a floating shelf without
-anchor math is the S0 case incarnate.
+Built as specified: substrate required (unknown refused, drywall refused), NDS-sourced withdrawal math, IRC stud coupling, masonry by required-rating. Wall-hung CASEWORK (cabinets) remains future work on this foundation.
 
 ## 4. Doored casework completion — driver: smallest distance to sound
 

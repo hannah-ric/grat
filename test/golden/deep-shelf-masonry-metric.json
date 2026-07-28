@@ -1,0 +1,284 @@
+{
+ "spec": {
+  "specVersion": 8,
+  "meta": {
+   "name": "Deep Alcove Shelf",
+   "template": "wall_shelf",
+   "level": "intermediate",
+   "units": "mm"
+  },
+  "overall": {
+   "width": 1200,
+   "depth": 300,
+   "height": 102
+  },
+  "wood": {
+   "species": "white_oak",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 32,
+   "legThickness": 70,
+   "apronHeight": 40,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false,
+   "stretcher": "none",
+   "stretcherHeight": 280
+  },
+  "joinery": {
+   "frame": "pocket_screws",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "wipe_poly",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": null,
+  "doors": null,
+  "custom": null,
+  "seat": null,
+  "wall": {
+   "substrate": "masonry",
+   "studSpacingMM": 406
+  }
+ },
+ "validation": {
+  "errors": [],
+  "advisories": []
+ },
+ "cutList": [
+  {
+   "name": "Shelf",
+   "qty": 1,
+   "L": 1200,
+   "W": 300,
+   "T": 32,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Wall cleat",
+   "qty": 1,
+   "L": 1180,
+   "W": 70,
+   "T": 19,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "one 45° rip makes both halves — bevel faces interlock · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Shelf cleat",
+   "qty": 1,
+   "L": 1180,
+   "W": 70,
+   "T": 19,
+   "material": "white_oak",
+   "grain": "length",
+   "note": "one 45° rip makes both halves — bevel faces interlock · select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "verdict": "advisory",
+  "rackScore": 7,
+  "tip": null,
+  "checks": [
+   {
+    "id": "sag:shelf_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.017,
+     "limitMM": 1.747,
+     "spanMM": 262
+    }
+   },
+   {
+    "id": "str:shelf_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "wall:anchor",
+    "status": "advisory",
+    "data": {
+     "momentNmm": 120615.888,
+     "perAnchorN": 603.079,
+     "requiredWorkingN": 910,
+     "anchors": 4
+    }
+   },
+   {
+    "id": "wall:basis",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:shelf_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 4.38,
+     "crossWidthMM": 300,
+     "context": "compatible"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "White Oak 19 x 89 x 2438 mm (1x4)",
+    "qty": 1,
+    "cost": 20.918
+   },
+   {
+    "label": "White Oak 38 x 89 x 1829 mm (2x4)",
+    "qty": 1,
+    "cost": 19.973
+   },
+   {
+    "label": "White Oak 38 x 89 x 3658 mm (2x4)",
+    "qty": 1,
+    "cost": 39.945
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x4",
+    "stockLen": 2438,
+    "offcut": 45,
+    "cuts": [
+     {
+      "name": "Wall cleat",
+      "len": 1180,
+      "offset": 15
+     },
+     {
+      "name": "Shelf cleat",
+      "len": 1180,
+      "offset": 1198
+     }
+    ]
+   },
+   {
+    "nominal": "2x4",
+    "stockLen": 3658,
+    "offcut": 22,
+    "cuts": [
+     {
+      "name": "Shelf (strip 1/4)",
+      "len": 1200,
+      "offset": 15
+     },
+     {
+      "name": "Shelf (strip 2/4)",
+      "len": 1200,
+      "offset": 1218
+     },
+     {
+      "name": "Shelf (strip 3/4)",
+      "len": 1200,
+      "offset": 2421
+     }
+    ]
+   },
+   {
+    "nominal": "2x4",
+    "stockLen": 1829,
+    "offcut": 599,
+    "cuts": [
+     {
+      "name": "Shelf (strip 4/4)",
+      "len": 1200,
+      "offset": 15
+     }
+    ]
+   }
+  ],
+  "sheets": [],
+  "totalCost": 80.84,
+  "wasteSolidPct": 35,
+  "wasteSheetPct": null
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "White Oak 19 x 89 x 2438 mm (1x4)",
+    "qty": 1,
+    "price": 20.92
+   },
+   {
+    "kind": "lumber",
+    "label": "White Oak 38 x 89 x 1829 mm (2x4)",
+    "qty": 1,
+    "price": 19.97
+   },
+   {
+    "kind": "lumber",
+    "label": "White Oak 38 x 89 x 3658 mm (2x4)",
+    "qty": 1,
+    "price": 39.95
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 8.1 bd ft (0.02 m³)",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 35%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 50 mm wood screw (pilot 3.2 mm)",
+    "qty": 2,
+    "price": 0.12
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 38 mm wood screw (pilot 2.8 mm)",
+    "qty": 9,
+    "price": 0.54
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "finish",
+    "label": "Wipe-on polyurethane",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 107.5
+ },
+ "steps": [
+  "glueup1",
+  "thickness",
+  "rip",
+  "mount",
+  "shelf_half",
+  "hang",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

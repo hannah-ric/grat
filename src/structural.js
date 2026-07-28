@@ -147,8 +147,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* A custom part tagged 'shelf' gets the same book duty the bookshelf
      * template uses (G4/B3): a novel BOOKSHELF was being checked at display
      * 10 kg/m — 1/6 of the duty its template twin assumes. Template shelf
-     * kinds (a table's lower shelf, a nightstand top) keep display duty. */
-    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom') return 'books';
+     * kinds (a table's lower shelf, a nightstand top) keep display duty.
+     * Wall shelves take book duty too — that is what people put on them. */
+    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom' || template === 'wall_shelf') return 'books';
     return 'display';
   }
 
@@ -344,6 +345,18 @@ var BB = globalThis.BB = globalThis.BB || {};
         push({
           id: p.id, part: p, label: p.role === 'top' ? 'Top panel' : `Shelf ${p.id.replace(/\D+/g, '') || 1}`,
           kind: 'shelf', model: 'ss', span: p.size.w, b: p.size.d, h: p.size.h, over: 0
+        });
+      }
+    } else if (t === 'wall_shelf') {
+      /* Wall-mounted: the shelf cantilevers its DEPTH off the cleat line —
+       * the wall:anchor check below prices the couple the cantilever throws
+       * into the fixings. */
+      const shelf = parts.find(p => p.id === 'shelf_1');
+      if (shelf) {
+        const G2 = BB.Classes ? BB.Classes.get('wall_mounted').geom : { CLEAT_T: 19 };
+        push({
+          id: shelf.id, part: shelf, label: 'Shelf', kind: 'shelf', model: 'cant',
+          span: Math.max(60, shelf.size.d - 2 * G2.CLEAT_T), b: shelf.size.w, h: shelf.size.h, over: 0
         });
       }
     } else if (t === 'chair') {
@@ -1179,9 +1192,87 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     }
 
+    /* ---- wall-mounted anchor model (the 'wall_mounted' class) ----
+     * The load path leaves the furniture: the cantilever couple lands in the
+     * fixings, and the class contract carries the sourced capacities
+     * (classes.js WALL_GEOM — NDS withdrawal, IRC spacing). Arithmetic is
+     * hand-verified in test/handcalc.js. */
+    const wallCls = BB.Classes ? BB.Classes.forTemplate(t) : null;
+    const isWallMounted = !!(wallCls && wallCls.mounted === 'wall');
+    if (isWallMounted && t === 'wall_shelf' && spec.wall) {
+      const G2 = wallCls.geom;
+      const shelf = parts.find(p => p.id === 'shelf_1');
+      const su = spec.wall.substrate;
+      const W = spec.overall.width, D = spec.overall.depth;
+      const cleatLen = W - 20;
+      const surf = surfaces.find(x => x.id === 'shelf_1');
+      const presetKey = surf ? surf.presetKey : 'books';
+      // Load: the chosen preset along the shelf + the shelf's own mass.
+      const loadN = totalLoadN(presetKey, W);
+      let selfN = 0;
+      for (const p of parts) if (!p.hardware) selfN += p.size.w * p.size.h * p.size.d * 1e-9 * partDensity(p, spec) * GRAV;
+      const totalN = loadN + selfN;
+      // Couple: load centroid at D/2 off the wall; tension at the screw
+      // line, bearing at the cleat bottom → arm = SCREW_LINE.
+      const M = totalN * (D / 2);
+      const Tn = M / G2.SCREW_LINE;
+
+      if (su === 'stud') {
+        const studs = G2.studsEngaged(cleatLen, spec.wall.studSpacingMM);
+        const screws = Math.max(1, studs) * G2.SCREWS_PER_STUD;
+        const perScrew = Tn / screws;
+        const margin = G2.SCREW_WITHDRAWAL_N / perScrew;
+        const shearPer = totalN / screws;
+        const shearMargin = G2.SCREW_LATERAL_N / shearPer;
+        checks.push({
+          id: 'wall:studs', title: 'Stud engagement',
+          status: studs >= 2 ? 'pass' : studs === 1 ? 'advisory' : 'fail',
+          value: `${studs} stud${studs === 1 ? '' : 's'} guaranteed under a ${fmtLen(cleatLen)} cleat at ${fmtLen(spec.wall.studSpacingMM)} centres`,
+          threshold: '≥ 2 studs (worst-phase floor(length/spacing), IRC R602.3(5) spacing)',
+          explain: studs >= 2
+            ? 'Whatever the cleat’s phase against the stud grid, it crosses at least two studs — find them, and put two screws in each.'
+            : studs === 1
+              ? `Only one stud crossing is guaranteed at this length. A single-stud mount works CENTRED on the stud with both screws in it — keep the shelf under ${fmtLen(600)} and expect no forgiveness for a missed centre.`
+              : 'The cleat cannot guarantee a single stud crossing — lengthen the shelf past one spacing bay or name a masonry wall.',
+          fixes: studs < 2 ? [{ id: 'wall-wider', label: `Lengthen to ${fmtLen(2 * spec.wall.studSpacingMM + 40)}`, patch: { overall: { width: 2 * spec.wall.studSpacingMM + 40 } } }] : [],
+          data: { studs, cleatLen, spacing: spec.wall.studSpacingMM }
+        });
+        checks.push({
+          id: 'wall:anchor', title: 'Anchor pullout — cleat screws',
+          status: jointStatus(Math.min(margin, shearMargin)),
+          value: `${U().fmtPointLoad(perScrew / GRAV)} withdrawal per screw vs ${U().fmtPointLoad(G2.SCREW_WITHDRAWAL_N / GRAV)} design capacity (${margin.toFixed(2)}×)`,
+          threshold: `≥ 1.5× on ${screws} × #10 screws (NDS W = 2850·G²·D, SPF floor, 1.5 in thread; shear ${shearMargin.toFixed(2)}× vs the 356 N secondary-source value)`,
+          explain: `${U().fmtPointLoad(totalN / GRAV)} at half the ${fmtLen(D)} depth throws a ${Math.round(M).toLocaleString()} N·mm couple into the wall: tension along the screw line, bearing at the cleat bottom, arm ${fmtLen(G2.SCREW_LINE)}. Every screw must land in a stud CENTRE — the capacity assumes wood, not drywall.`,
+          fixes: margin < 1.5 ? [{ id: 'wall-shallow', label: `Shallow the shelf to ${fmtLen(Math.max(200, D - 50))}`, patch: { overall: { depth: Math.max(200, D - 50) } } }] : [],
+          data: { momentNmm: M, tensionN: Tn, perScrewN: perScrew, capN: G2.SCREW_WITHDRAWAL_N, screws, marginRatio: margin, shearMargin },
+          prov: { rule: `anchor couple: M = ${Math.round(totalN)} N × ${Math.round(D / 2)} mm; T = M/${G2.SCREW_LINE} = ${Math.round(Tn)} N over ${screws} screws` }
+        });
+      } else if (su === 'masonry') {
+        const anchors = Math.max(2, Math.floor(cleatLen / G2.MASONRY_PITCH) + 1);
+        const perAnchor = Tn / anchors;
+        const required = Math.ceil(perAnchor * 1.5 / 10) * 10;
+        checks.push({
+          id: 'wall:anchor', title: 'Anchor pullout — masonry',
+          status: 'advisory',
+          value: `${anchors} anchors at ≤ ${fmtLen(G2.MASONRY_PITCH)}: buy a WORKING load rating ≥ ${U().fmtPointLoad(required / GRAV)} each`,
+          threshold: 'anchor’s published WORKING rating ≥ 1.5 × the computed demand — capacity is never assumed for masonry',
+          explain: `The couple puts ${U().fmtPointLoad(perAnchor / GRAV)} of tension on each of ${anchors} anchors. The BOM prints the required rating instead of guessing one: match it against the anchor box's WORKING (not ultimate) value, in the actual wall material.`,
+          fixes: [],
+          data: { momentNmm: M, perAnchorN: perAnchor, requiredWorkingN: required, anchors }
+        });
+      }
+      checks.push({
+        id: 'wall:basis', title: 'What these fixing numbers are', status: 'pass',
+        value: 'design guidance, not certified anchor engineering',
+        threshold: 'no fixing claim without the substrate stated',
+        explain: BB.Classes.DESIGN_BASIS_WALL,
+        fixes: []
+      });
+    }
+
     /* ---- tipping stability: COG from part volumes & density, empty and loaded ---- */
     let antiTip = false, tip = null;
-    {
+    if (!isWallMounted) {
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
         if (p.role === 'pull' || p.hardware) continue;
@@ -1362,7 +1453,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (TABLE_LIKE.includes(t) && spec.joinery.frame === 'butt_screws') fixes.push({ id: 'pocket', label: 'Pocket-screw the frame', patch: { joinery: { frame: 'pocket_screws' } } });
       }
       const cheapFix = TABLE_LIKE.includes(t) ? 'stronger frame joints or a lower shelf' : custom ? 'a stretcher or panel between the uprights' : 'a fastened back panel and dado-housed shelves';
-      checks.push({
+      // A wall shelf does not rack — the wall is its shear panel; the anchor
+      // checks own its safety story.
+      if (!isWallMounted) checks.push({
         id: 'rack', title: 'Racking resistance', status: rack.score < 40 ? 'advisory' : 'pass',
         value: `score ${rack.score} / 100`, threshold: '≥ 40 (heuristic, not physics)',
         explain: rack.score < 40
@@ -1556,7 +1649,7 @@ var BB = globalThis.BB = globalThis.BB || {};
          * chair:cyclic the durability one) — the generic per-surface share
          * would price the seat's movement screws as the load path, which is
          * the wrong model for a frame the slab merely rests on. */
-        if (t === 'chair') continue;
+        if (t === 'chair' || t === 'wall_shelf') continue; // both run their own joint/anchor cases
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
         let demand = null, apron = false; // G5: apron end reaction overrides N/count

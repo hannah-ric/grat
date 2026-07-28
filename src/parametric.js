@@ -1066,6 +1066,35 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* ---------------- wall shelf (the 'wall_mounted' class) ----------------
+   * A French-cleat floating shelf: the wall half screwed to the studs, the
+   * shelf half glued and screwed under the shelf's rear edge, 45° faces
+   * interlocked. Modeled in ASSEMBLY space — y = 0 at the cleat bottom, the
+   * wall at z = −depth/2 — because the piece's datum is the mount plane, not
+   * the floor (the audit exempts mounted classes from floor invariants). */
+  function wallShelfBuild(spec) {
+    const o = spec.overall, st = spec.structure;
+    const G = BB.Classes.get('wall_mounted').geom;
+    const sp = spec.wood.species;
+    const parts = [], joints = [];
+    const T = st.topThickness, ch = G.CLEAT_H, ct = G.CLEAT_T;
+    const cleatLen = o.width - 20; // 10 mm shy each end so the shelf hides it
+    const zWall = -o.depth / 2;
+
+    parts.push(part('cleat_wall_1', 'cleat', 'cleat', 'Wall cleat', cleatLen, ch, ct,
+      0, ch / 2, zWall + ct / 2, { material: sp, explode: { x: 0, y: -0.5, z: -0.8 } }));
+    parts.push(part('cleat_shelf_1', 'cleat', 'cleat', 'Shelf cleat', cleatLen, ch, ct,
+      0, ch / 2, zWall + ct + ct / 2, { material: sp, explode: { x: 0, y: -0.2, z: -0.4 } }));
+    for (const p of parts) p.angleNote = 'one 45° rip makes both halves — bevel faces interlock';
+    parts.push(part('shelf_1', 'wall_shelf', 'shelf', 'Shelf', o.width, T, o.depth,
+      0, ch + T / 2, 0, { material: sp, explode: { x: 0, y: 1, z: 0.4 } }));
+
+    // The interlock is the french_cleat joint (external mate: the studs).
+    joints.push({ type: 'french_cleat', a: 'cleat_shelf_1', b: 'cleat_wall_1', pos: { x: 0, y: ch / 2, z: zWall + ct }, noCutAllowance: true });
+    joints.push({ type: 'butt_screws', a: 'cleat_shelf_1', b: 'shelf_1', pos: { x: 0, y: ch, z: zWall + ct + ct / 2 }, noCutAllowance: true });
+    return { parts, joints, openings: [], drawers: [] };
+  }
+
   /* ---------------- custom (novel) compositions ----------------
    * The AI composes primitives + a connection graph; correction has already
    * grounded, centered, and canonicalized them. This builder is a straight
@@ -1114,6 +1143,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (t === 'cabinet') m = cabinet(spec);
     else if (t === 'custom') m = customBuild(spec);
     else if (t === 'chair') m = chairBuild(spec);
+    else if (t === 'wall_shelf') m = wallShelfBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
     // Round sizes/positions to 0.1 mm so exports and cut lists are stable.
