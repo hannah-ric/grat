@@ -50,7 +50,8 @@
    "size": "queen",
    "platformHeight": 350,
    "headboardHeight": 1000
-  }
+  },
+  "child": null
  },
  "validation": {
   "errors": [],

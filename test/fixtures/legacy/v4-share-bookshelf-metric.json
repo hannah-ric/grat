@@ -12,7 +12,11 @@
     "drawers": null,
     "shelfCount": 4,
     "finish": "danish_oil",
-    "overall": { "width": 900, "depth": 300, "height": 1800 },
+    "overall": {
+      "width": 900,
+      "depth": 300,
+      "height": 1800
+    },
     "minParts": 6
   }
 }

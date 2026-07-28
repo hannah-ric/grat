@@ -11,7 +11,11 @@
     "drawers": null,
     "customParts": 3,
     "customConnections": 2,
-    "overall": { "width": 1100, "depth": 350, "height": 468 },
+    "overall": {
+      "width": 1100,
+      "depth": 350,
+      "height": 468
+    },
     "minParts": 3
   }
 }

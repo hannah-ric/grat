@@ -12,15 +12,37 @@
   },
   "spec": {
     "specVersion": 2,
-    "meta": { "name": "Standing Desk", "template": "desk", "level": "intermediate", "units": "mm" },
-    "overall": { "width": 1400, "depth": 700, "height": 1050 },
-    "wood": { "species": "hard_maple" },
-    "structure": {
-      "topThickness": 25, "legThickness": 70, "apronHeight": 90, "apronThickness": 20,
-      "apronInset": 12, "shelfCount": 0, "shelfThickness": 19, "sideThickness": 18,
-      "backPanel": true, "toeKick": false
+    "meta": {
+      "name": "Standing Desk",
+      "template": "desk",
+      "level": "intermediate",
+      "units": "mm"
     },
-    "joinery": { "frame": "mortise_tenon", "case": "butt_screws", "box": "pocket_screws" },
+    "overall": {
+      "width": 1400,
+      "depth": 700,
+      "height": 1050
+    },
+    "wood": {
+      "species": "hard_maple"
+    },
+    "structure": {
+      "topThickness": 25,
+      "legThickness": 70,
+      "apronHeight": 90,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 0,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": false
+    },
+    "joinery": {
+      "frame": "mortise_tenon",
+      "case": "butt_screws",
+      "box": "pocket_screws"
+    },
     "finish": "hardwax_oil"
   }
 }

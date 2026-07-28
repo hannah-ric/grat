@@ -281,6 +281,37 @@ const CORPUS = [
       joinery: { frame: 'mortise_tenon' },
       exposure: 'exposed'
     }
+  },
+
+  /* ---- childrens scope class (2026-07): the school-age pair the class
+   * contract's golden manifest names — a table (metric) and a chair
+   * (imperial), both pinned to EN 1729 mark 3 by the child block. The table
+   * freezes the band height pin (750 asked, 590 delivered) + the child
+   * finish advisory; the chair freezes the derived child seat plan, the
+   * adult-magnitude tilt margins on child geometry, and the child:entrap /
+   * child:basis checks. Refusal cases (toy chest, high chair, changing
+   * table, play yard/gate) are exact-match assertions in audit KID-1 —
+   * a refusal produces a named regulation, not a plan to snapshot. */
+  {
+    name: 'maple-kids-table-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Kids Craft Table', template: 'table', level: 'beginner', units: 'mm' },
+      wood: { species: 'hard_maple' },
+      overall: { width: 900, depth: 600, height: 750 }, // 750 asked — the band pins 590
+      child: { ageBand: 'school' },
+      finish: 'tung_pure'
+    }
+  },
+  {
+    name: 'oak-kids-chair-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Kids Chair', template: 'chair', level: 'beginner', units: 'in' },
+      wood: { species: 'red_oak' },
+      child: { ageBand: 'school' },
+      finish: 'hardwax_oil'
+    }
   }
 ];
 

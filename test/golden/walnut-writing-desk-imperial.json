@@ -50,7 +50,8 @@
   "custom": null,
   "seat": null,
   "wall": null,
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],
@@ -241,7 +242,8 @@
      "stabilizingNmm": 71385.701,
      "overturningNmm": 53930.412,
      "testKg": 22.7,
-     "openFraction": 0.667
+     "openFraction": 0.667,
+     "childScope": false
     }
    },
    {

@@ -97,7 +97,7 @@ math); water traps and ground contact are named advisories. Wet-cycle
 drainage GEOMETRY (slat-top templates, drained mortises) remains future
 work — the advisories carry it honestly until a slat-top surface exists.
 
-## 6. Children's furniture — driver: regulatory weight, deliberately last
+## 6. Children's furniture — BUILT as a scope class (2026-07, see 07-childrens.md)
 
 F2057/STURDY tipping is already modeled for drawer units, but a children's
 class is CPSC territory end-to-end: entrapment gaps (3.5–9 in rule), small
@@ -106,6 +106,16 @@ parts, finger pinch, crib rules that this tool should likely *always* refuse
 "step stools and toy boxes with lid-support mandates, cribs refused
 permanently". Ranked last because getting it wrong injures children and the
 refusal today is explicit.
+Built — narrower and stricter than the sketch above: a SCOPE (`child`
+section) over the templates already sound (table, desk, chair, bookshelf),
+never new nursery products. EN 1729 size-mark heights pinned by code, ADULT
+loads kept (nothing lightened), the anti-tip anchor mandatory on child
+storage regardless of margin, the 16 CFR 1213 entrapment band measured on
+chair backs as an honest advisory, EN 71-3 finish guidance — and toy chests
+(F963/F834, 16 CFR 1250), high chairs (1231), changing tables (1235), play
+yards (1221), and gates (1239) refused with their regulations named, exactly
+as cribs and bunks already were. Step stools stayed refused (a perch is fall
+height); toy boxes stayed refused (the lid is the hazard).
 
 ## This run's decision
 

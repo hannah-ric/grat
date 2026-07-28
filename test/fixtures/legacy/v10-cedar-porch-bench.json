@@ -10,9 +10,10 @@
     "minParts": 9
   },
   "expectAfterMigration": {
-    "specVersion": 10,
+    "specVersion": 11,
     "exposure": "covered",
-    "finish": "spar_urethane"
+    "finish": "spar_urethane",
+    "child": null
   },
   "spec": {
     "specVersion": 10,

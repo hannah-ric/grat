@@ -13,15 +13,37 @@
   },
   "spec": {
     "specVersion": 1,
-    "meta": { "name": "Study Shelves", "template": "bookshelf", "level": "beginner", "units": "in" },
-    "overall": { "width": 914.4, "depth": 304.8, "height": 1828.8 },
-    "wood": { "species": "poplar" },
-    "structure": {
-      "topThickness": 25, "legThickness": 70, "apronHeight": 90, "apronThickness": 20,
-      "apronInset": 12, "shelfCount": 3, "shelfThickness": 25, "sideThickness": 18,
-      "backPanel": true, "toeKick": false
+    "meta": {
+      "name": "Study Shelves",
+      "template": "bookshelf",
+      "level": "beginner",
+      "units": "in"
     },
-    "joinery": { "frame": "pocket_screws", "case": "dado", "box": "pocket_screws" },
+    "overall": {
+      "width": 914.4,
+      "depth": 304.8,
+      "height": 1828.8
+    },
+    "wood": {
+      "species": "poplar"
+    },
+    "structure": {
+      "topThickness": 25,
+      "legThickness": 70,
+      "apronHeight": 90,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 3,
+      "shelfThickness": 25,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": false
+    },
+    "joinery": {
+      "frame": "pocket_screws",
+      "case": "dado",
+      "box": "pocket_screws"
+    },
     "finish": "danish_oil"
   }
 }

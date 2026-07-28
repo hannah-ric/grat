@@ -1185,6 +1185,43 @@ var BB = globalThis.BB = globalThis.BB || {};
         });
       }
 
+      /* (h2) HEAD ENTRAPMENT — children's scope only (BB.Classes
+       * 'childrens', audit KID-5). Bounded openings between the seat, the
+       * back slats, and the crest are measured on the BUILT parts (probe/
+       * builder parity, same doctrine as bed:slats) against the 16 CFR 1213
+       * head-entrapment band: an opening that passes the wedge block
+       * (~89 mm — verified-approximate; the block is drawn in the CFR
+       * figure) but not the 9 in / 230 mm rigid sphere (verified-exact,
+       * §1213.3) can pass a child's body and trap the head. That band is
+       * DEFINED for bunk-bed guardrails — this check applies the same
+       * body-passes-head-doesn't geometry to a child chair's back as an
+       * ADVISORY, honestly scoped, never a compliance claim. */
+      if (spec.child && !stool && BB.Classes.get('childrens')) {
+        const cG = BB.Classes.get('childrens').geom;
+        const members = parts
+          .filter(p => p.role === 'slat' || p.role === 'crest') // chair back members (defKey back_slat / crest)
+          .map(p => ({ lo: p.pos.y - p.size.h / 2, hi: p.pos.y + p.size.h / 2 }))
+          .sort((a, b) => a.lo - b.lo);
+        const gaps = [];
+        let prevTop = se.height; // the seat surface bounds the lowest opening
+        for (const m of members) {
+          gaps.push(Math.round((m.lo - prevTop) * 10) / 10);
+          prevTop = Math.max(prevTop, m.hi);
+        }
+        const inBand = gaps.filter(g => g >= cG.ENTRAP_MIN && g < cG.ENTRAP_MAX);
+        checks.push({
+          id: 'child:entrap', title: 'Back openings vs the head-entrapment band',
+          status: inBand.length ? 'advisory' : 'pass',
+          value: `bounded back openings: ${gaps.map(g => fmtLen(Math.max(0, g))).join(', ')} (seat → slats → crest)`,
+          threshold: `openings between ${fmtLen(cG.ENTRAP_MIN)} and ${fmtLen(cG.ENTRAP_MAX)} are the head-entrapment band (16 CFR 1213: passes the wedge block, not the ${fmtLen(cG.ENTRAP_MAX)} sphere)`,
+          explain: inBand.length
+            ? `${inBand.length} bounded opening${inBand.length > 1 ? 's' : ''} in this back fall${inBand.length > 1 ? '' : 's'} inside the band where a small body slips through but the head does not — the geometry 16 CFR 1213 rejects on bunk guardrails. That standard does not regulate chairs, so this is an advisory, not a failure: closing the gap below ${fmtLen(cG.ENTRAP_MIN)} (an added slat or a filler panel — not yet generated here) or opening it past ${fmtLen(cG.ENTRAP_MAX)} removes the geometry. The assembly checks carry the tape-measure rule.`
+            : `No bounded opening in this back falls inside the ${fmtLen(cG.ENTRAP_MIN)}–${fmtLen(cG.ENTRAP_MAX)} band.`,
+          fixes: [],
+          data: { gapsMM: gaps, inBandCount: inBand.length }
+        });
+      }
+
       /* (i) The benchmark disclosure — in the OUTPUT, not just the docs:
        * never a compliance claim. */
       checks.push({
@@ -1439,6 +1476,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     }
 
+    /* ---- children's scope basis (BB.Classes 'childrens') ----
+     * Every child-scoped output states its ground truth: EN 1729 band
+     * heights, ADULT loads kept (nothing lightened — adults use kids'
+     * furniture), anchor mandate on storage, regulated products refused.
+     * Guidance, never a children's-product certification. */
+    if (spec.child && BB.Classes && BB.Classes.get('childrens') && K.CHILD) {
+      const band = K.CHILD.BANDS[spec.child.ageBand];
+      checks.push({
+        id: 'child:basis', title: 'Child scope — what changes and what never does', status: 'pass',
+        value: `sized for a ${band.label} · adult design loads KEPT`,
+        threshold: 'EN 1729 size-mark heights pinned by code; no load case is ever lightened; regulated children\'s products are refused',
+        explain: BB.Classes.DESIGN_BASIS_CHILD,
+        fixes: []
+      });
+    }
+
     /* ---- tipping stability: COG from part volumes & density, empty and loaded ---- */
     let antiTip = false, tip = null;
     if (!isWallMounted) {
@@ -1471,17 +1524,28 @@ var BB = globalThis.BB = globalThis.BB || {};
           angLoaded = (Math.atan2(edge(cogL), cogL[1]) * 180) / Math.PI;
         }
         const ratio = height / baseDepth;
-        antiTip = ratio > 2.5 || angLoaded < 10;
+        /* Children's scope (BB.Classes 'childrens', audit KID-3): a
+         * child-scoped STORAGE piece takes the anchor as a mandate
+         * regardless of computed margin — children climb shelves, and CPSC
+         * Anchor It! guidance is to anchor storage furniture in a child's
+         * space, full stop. Stricter than the F2057 clothing-storage scope
+         * by design; the physics is still computed and reported honestly. */
+        const childStorage = !!spec.child && ['bookshelf', 'cabinet', 'nightstand'].includes(t);
+        antiTip = ratio > 2.5 || angLoaded < 10 || childStorage;
         tip = { angEmpty, angLoaded, ratio, loadKg, massKg: mass };
         checks.push({
           id: 'tip', title: 'Tipping stability',
           ...(antiTip ? { anchor: true } : {}), // this check mandates the wall anchor (audit M-18)
           status: angLoaded < 5 ? 'fail' : antiTip ? 'advisory' : 'pass',
           value: `tipping angle ${fmtDeg(angLoaded)} loaded · ${fmtDeg(angEmpty)} empty · height/depth ${ratio.toFixed(1)}`,
-          threshold: '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
-          explain: antiTip
-            ? `Tall or top-heavy${loadKg ? ` with ${U().fmtPointLoad(loadKg)} on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
-            : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
+          threshold: childStorage
+            ? 'child-scoped storage: the wall anchor is mandatory at ANY margin (CPSC Anchor It!)'
+            : '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
+          explain: childStorage
+            ? `Child-scoped storage: the anti-tip wall anchor is mandatory regardless of the computed margin${ratio > 2.5 || angLoaded < 10 ? '' : ` (the geometry itself measures stable — ${fmtDeg(angLoaded)} loaded)`} — children climb shelves, and anchoring storage in a child's space is the CPSC Anchor It! rule this class adopts as a mandate. It is in the BOM and the assembly steps.`
+            : antiTip
+              ? `Tall or top-heavy${loadKg ? ` with ${U().fmtPointLoad(loadKg)} on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
+              : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
           fixes: []
         });
       }
@@ -1520,10 +1584,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         // F2057/STURDY covers CLOTHING STORAGE ≥ 27 in — a desk's pencil
         // drawer is not a dresser drawer, so the anchor mandate follows the
         // regulation's scope while the physics is still reported.
-        const inScope = spec.overall.height >= 686 && t !== 'desk';
+        // CHILD SCOPE EXTENSION (BB.Classes 'childrens', audit KID-3): a
+        // child-scoped piece is IN SCOPE whatever its height or template —
+        // the child at the drawer is not hypothetical there, so the 1.5×
+        // anchor gate applies to a kids desk's pencil drawer too. Stricter
+        // than the regulation's own scope, by design; magnitudes unchanged.
+        const childScope = !!spec.child;
+        const inScope = childScope || (spec.overall.height >= 686 && t !== 'desk');
         const status = margin >= 1.5 ? 'pass' : margin >= 1 ? 'advisory' : (inScope ? 'fail' : 'advisory');
-        // Anchor mandatory when it actually tips, or when a clothing-storage-
-        // height piece runs a thin margin (the regulated scenario).
+        // Anchor mandatory when it actually tips, or when an in-scope piece
+        // (clothing-storage height, or ANY child-scoped piece) runs thin.
         const anchorHere = margin < 1 || (inScope && margin < 1.5);
         if (anchorHere) antiTip = true;
         checks.push({
@@ -1531,14 +1601,14 @@ var BB = globalThis.BB = globalThis.BB || {};
           ...(anchorHere ? { anchor: true } : {}), // this check mandates the wall anchor (audit M-18)
           status,
           value: `margin ${margin === Infinity ? '∞' : margin.toFixed(2) + '×'} with all drawers open ⅔ and ${U().fmtPointLoad(TEST_KG)} on the top drawer front`,
-          threshold: `≥ 1× to stand, ≥ 1.5× to skip the anchor — aligned with ASTM F2057 / STURDY (${U().fmtPointLoad(TEST_KG)} on an open drawer)`,
+          threshold: `≥ 1× to stand, ≥ 1.5× to skip the anchor — aligned with ASTM F2057 / STURDY (${U().fmtPointLoad(TEST_KG)} on an open drawer)${childScope ? '; child scope: the gate applies at ANY height and template' : ''}`,
           explain: margin >= 1.5
             ? 'Even with every drawer open and a child-weight pull on the top one, the piece stays planted.'
             : margin >= 1
-              ? `It stands, but the margin is thin${inScope ? ' at clothing-storage height (F2057 territory) — the anti-tip wall anchor is added and required' : ' — anchor it if children are around'}.`
+              ? `It stands, but the margin is thin${childScope ? ' — and this is a CHILD-SCOPED piece, so the F2057 anchor gate applies whatever the height: the anti-tip wall anchor is added and required' : inScope ? ' at clothing-storage height (F2057 territory) — the anti-tip wall anchor is added and required' : ' — anchor it if children are around'}.`
               : 'With drawers open and weight on the top front, this piece TIPS. The wall anchor is mandatory — and this check follows the same scenario regulators test dressers against.',
           fixes: [],
-          data: { marginRatio: margin, stabilizingNmm: stab, overturningNmm: over, testKg: TEST_KG, openFraction: OPEN_FRACTION }
+          data: { marginRatio: margin, stabilizingNmm: stab, overturningNmm: over, testKg: TEST_KG, openFraction: OPEN_FRACTION, childScope }
         });
       }
 

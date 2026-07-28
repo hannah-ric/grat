@@ -55,7 +55,8 @@
    "backRake": 4
   },
   "wall": null,
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],

@@ -49,7 +49,8 @@
    "substrate": "stud",
    "studSpacingMM": 406
   },
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],

@@ -196,7 +196,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!patch) return null;
     // Wire keys outside the documented schema decode to nothing — record them
     // so the ack can say what was ignored instead of implying it landed (C4).
-    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c', 'ex'];
+    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c', 'ex', 'ch'];
     const ignored = Object.keys(wireDiff).filter(k => !KNOWN.includes(k));
     return { kind: 'diff', patch, explain: explain || 'Updated.', ignored };
   }
@@ -361,6 +361,30 @@ var BB = globalThis.BB = globalThis.BB || {};
       return { kind: 'info', text: 'Murphy and folding beds need a lift mechanism and wall anchorage under a moving load — mechanisms are outside what I build (every joint here is fixed or bolted). A freestanding platform bed I can do.' };
     }
 
+    /* Children's-class refusals (BB.Classes 'childrens'): every federally
+     * regulated children's product, refused with its regulation NAMED,
+     * before any creation can trigger. Verified pairings (research 2026-07):
+     * toy chests — ASTM F963 lid-support provisions (formerly ASTM F834),
+     * mandatory via 16 CFR 1250; high chairs — 16 CFR 1231 / ASTM F404;
+     * changing tables — 16 CFR 1235 / ASTM F2388; play yards — 16 CFR 1221 /
+     * ASTM F406; gates/enclosures — 16 CFR 1239 / ASTM F1004. Cribs
+     * (16 CFR 1219/1220) and bunks (F1427) are refused by the bed block
+     * above — one coherent story across the children's surface. */
+    if (/\btoy[- ]?(?:chest|box)(?:es)?\b|\b(?:hinged|lidded)[- ]?(?:toy )?box(?:es)?\b|\bbox\b.{0,16}\bhinged lid\b/.test(t)) {
+      return { kind: 'info', text: 'Toy chests and hinged-lid boxes are refused: a falling lid is a strangulation and crush hazard with its own lid-support requirements — ASTM F834, whose toy-chest rules now live in ASTM F963 and are federal law under 16 CFR 1250 — and nothing I build has a lid or lid-support hardware. An open bin, or a low anchored bookshelf for toy storage, I can do.' };
+    }
+    if (/\bhigh[- ]?chairs?\b|\bbooster[- ]?seats?\b|\bfeeding chairs?\b/.test(t)) {
+      return { kind: 'info', text: 'High chairs and booster seats are refused: a product that holds a child at height for feeding is 16 CFR 1231 territory (ASTM F404 — restraint systems, stability and retention tests), not a hobbyist domain. A floor-height child\'s chair sized to EN 1729 I can build — say the age.' };
+    }
+    // (negative lookahead: "changing table height/legs…" is an EDIT of the
+    // table on the bench, not a nursery product)
+    if (/\bchanging[- ]?(?:table|station|topper|unit)s?\b(?!\s*(?:height|width|depth|size|legs?|top|thickness))|\bdiaper[- ]?chang\w*\b/.test(t)) {
+      return { kind: 'info', text: 'Changing tables are refused: an elevated infant surface carries 16 CFR 1235 (ASTM F2388) barrier and retention requirements I don\'t model — I refuse rather than approximate. An ordinary dresser is also NOT a changing table unless it meets that standard.' };
+    }
+    if (/\bplay[- ]?(?:yard|pen)s?\b|\b(?:baby|safety|stair|child)[- ]?gates?\b|\bplay ?enclosures?\b/.test(t)) {
+      return { kind: 'info', text: 'Play yards and safety gates are refused: containment products carry 16 CFR 1221 (ASTM F406) and 16 CFR 1239 (ASTM F1004) entrapment and strength rules — federal law, not furniture I can approximate. Child-scoped tables, chairs, desks, and anchored bookshelves I can do.' };
+    }
+
     /* Seating-class refusals (BB.Classes 'seating') — said as refusals, never
      * approximated silently. These fire whenever seating is the subject,
      * creating or refining: an upholstered/arm/rocking/folding ask has no
@@ -377,6 +401,58 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       if (/\bsteam[- ]?bent\b|\bbent[- ]?wood\b|\bcurved (rear |back )?legs?\b|\bsculpted\b/.test(t)) {
         return { kind: 'info', text: 'Curved or steam-bent rear legs are outside what I build soundly — sawing a bend from straight stock leaves short grain exactly where the back load breaks chairs, and I don’t model laminated bends. My chairs use straight rear posts with the back raked a few degrees by offset joinery.' };
+      }
+    }
+
+    /* ---- children's scope detection (BB.Classes 'childrens') ----
+     * "for my 6-year-old", "kids desk", "a table for my toddler",
+     * "children's table". Code owns the band (K.CHILD maps age → EN 1729
+     * size mark); the words only pick it. An age or a band word decides;
+     * a bare kid-word on a height-coupled template ASKS the age (the band
+     * IS the geometry — G6 ask-or-disclose), while a bookshelf takes the
+     * scope directly (its regime is the anchor + finish, not a height). */
+    const CHILD_OK = ['table', 'desk', 'chair', 'bookshelf'];
+    const AGE_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+    let childBand = null, childAge = null, childWord = false;
+    {
+      const am = t.match(/\b(\d{1,2})\s*[- ]?\s*(?:year|yr)s?[- ]?[- ]?olds?\b/) ||
+        t.match(/\bage\s+(\d{1,2})\b/) || t.match(/\b(\d{1,2})\s*yo\b/) ||
+        t.match(new RegExp('\\b(' + Object.keys(AGE_WORDS).join('|') + ')[- ]?(?:year|yr)s?[- ]?olds?\\b'));
+      if (am) childAge = AGE_WORDS[am[1]] !== undefined ? AGE_WORDS[am[1]] : parseInt(am[1], 10);
+      if (/\btoddlers?\b/.test(t)) childBand = 'toddler';
+      else if (/\bpre[- ]?schooler?s?\b|\bkindergart\w*\b/.test(t)) childBand = 'preschool';
+      else if (/\bpre[- ]?teens?\b|\btweens?\b/.test(t)) childBand = 'preteen';
+      else if (childAge !== null && K.CHILD) childBand = K.CHILD.bandForAge(childAge);
+      childWord = childBand !== null || childAge !== null ||
+        /\bkids?\b|\bkid'?s'?\b|\bchild(?:ren)?(?:'s)?\b|\bchilds\b/.test(t);
+      // Old enough for adult furniture: say so once, then build normally.
+      if (childAge !== null && childAge >= (K.CHILD ? K.CHILD.ADULT_AGE : 12)) {
+        childWord = false; childBand = null;
+        notes.push(`sized adult — at ${childAge}, EN 1729's larger marks meet the adult bands`);
+      }
+      const landT = creating ? wantTemplate : spec.meta.template;
+      // A kids bookshelf takes the scope without an age: its regime is the
+      // anchor mandate + finish advisory, not a height band.
+      if (childWord && !childBand && landT === 'bookshelf') childBand = 'school';
+      if (childBand && CHILD_OK.includes(landT)) {
+        set('child.ageBand', childBand);
+        notes.push(landT === 'bookshelf' && childAge === null
+          ? 'child-scoped (anti-tip anchor mandated)'
+          : K.CHILD ? `sized for a ${K.CHILD.BANDS[childBand].label}` : 'child-scoped');
+      } else if (childWord && !childBand && (creating || BACK_REF.test(t)) &&
+        ['table', 'desk', 'chair'].includes(landT)) {
+        /* The band is the geometry on these templates — ask ONE question,
+         * with chips that parse straight back in. */
+        const word = tmplWord || spec.meta.template;
+        return {
+          kind: 'question',
+          question: `Happy to size a ${word} for a child — the age sets the whole geometry (EN 1729 school-furniture size marks). How old?`,
+          options: [`A kids ${word} for a 3-year-old`, `A kids ${word} for a 5-year-old`, `A kids ${word} for a 7-year-old`]
+        };
+      } else if (childBand && creating && wantTemplate === 'bed') {
+        // A single/twin bed for an older child is an adult-scope design; the
+        // infant shapes were refused above.
+        notes.push('a standard bed (the bed class is not child-scoped; cribs/toddler beds are refused)');
       }
     }
 
@@ -676,7 +752,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       let stoolAsk = '';
       if (wantTemplate === 'chair') {
-        const isStool = /stool/.test(tmplWord || '');
+        // A child "stool" is served as the backed floor-height chair the
+        // class mandates (a perch is fall height) — correctSeat enforces it,
+        // and the childLine below says what was built.
+        const isStool = /stool/.test(tmplWord || '') && !patch.child;
         if (isStool) {
           set('seat.backHeight', 0);
           const cm = t.match(/(\d+(?:\.\d+)?\s*(?:mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?)\s*(?:counter|bar|island|worktop)/);
@@ -695,6 +774,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       merged.meta.template = wantTemplate;
       merged.meta.name = pieceName(phrasing, tmplWord);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
+      /* Child scope in the ack: the band and the two ground rules, said. */
+      const childLine = patch.child && K.CHILD
+        ? ` Sized for a ${K.CHILD.BANDS[patch.child.ageBand].label}: EN 1729 heights pinned by code, adult design loads kept (grown-ups use kids’ furniture too). Refine away.`
+        : '';
       // X-06: the word buys the HEIGHT and nothing else. The top thickness
       // ceiling lives in correction, and it is nowhere near a laminated bench
       // top — so the ack names the piece for what it is rather than letting
@@ -706,7 +789,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         };
       }
       if (wantTemplate === 'chair') {
-        return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to the seating class's human-factors table${drawerNote} — solid wood seat, class-mandated seat-frame joinery (screwed rails don't survive the rear-tilt case).${stoolAsk || ' Refine away.'}` };
+        return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord}${drawerNote} — solid wood seat, class-mandated seat-frame joinery (screwed rails don't survive the rear-tilt case).${childLine || stoolAsk || ' Refine away.'}` };
+      }
+      if (childLine) {
+        return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord}${drawerNote}.${childLine}` };
       }
       return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }

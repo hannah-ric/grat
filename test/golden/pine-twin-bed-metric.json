@@ -50,7 +50,8 @@
    "size": "twin",
    "platformHeight": 300,
    "headboardHeight": 0
-  }
+  },
+  "child": null
  },
  "validation": {
   "errors": [],

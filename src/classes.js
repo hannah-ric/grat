@@ -51,8 +51,21 @@ var BB = globalThis.BB = globalThis.BB || {};
   function get(key) { return registry.get(key) || null; }
   function all() { return [...registry.values()]; }
   function forTemplate(t) {
-    for (const c of registry.values()) if (c.templates.includes(t)) return c;
+    /* Scope classes (childrens) OVERLAY a template class rather than owning
+     * a template: a child-scoped chair is still the seating class's chair.
+     * They are skipped here so the primary class always answers, and reached
+     * through scopeClasses()/runChecklist(res.spec) instead. */
+    for (const c of registry.values()) if (!c.scope && c.templates.includes(t)) return c;
     return null;
+  }
+  /* Scope classes active for THIS spec (today: `childrens` when spec.child). */
+  function scopeClasses(spec) {
+    const out = [];
+    if (spec && spec.child) {
+      const c = registry.get('childrens');
+      if (c && c.templates.includes(spec.meta && spec.meta.template)) out.push(c);
+    }
+    return out;
   }
 
   /* ---------------- contract validation ----------------
@@ -156,12 +169,18 @@ var BB = globalThis.BB = globalThis.BB || {};
    */
   function runChecklist(template, res) {
     const cls = forTemplate(template);
-    if (!cls) return null;
+    /* Scope-class overlays (childrens): when the live result carries the
+     * spec (res.spec) and the spec is in scope, the scope class's checklist
+     * rides ON TOP of the template class's — a child-scoped chair answers
+     * both the seating modes and the children's modes. Call sites that don't
+     * pass a spec get exactly the old behavior. */
+    const scoped = scopeClasses(res && res.spec).filter(c => c !== cls);
+    if (!cls && !scoped.length) return null;
     const ids = []
       .concat(((res && res.integrity && res.integrity.checks) || []).map(c => ({ id: c.id, status: c.status })))
       .concat(((res && res.validation && res.validation.errors) || []).map(e => ({ id: e.id, status: 'fail' })))
       .concat(((res && res.validation && res.validation.advisories) || []).map(a => ({ id: a.id, status: 'advisory' })));
-    return cls.failureModes.map(m => {
+    const walk = c => c.failureModes.map(m => {
       if (m.guard) return { id: m.id, mode: m.mode, covered: true, guard: m.guard, fired: false, status: 'guarded' };
       const hits = ids.filter(x => m.checkIds.some(px => x.id === px || x.id.startsWith(px)));
       const worst = hits.reduce((w, h) => (h.status === 'fail' ? 'fail' : h.status === 'advisory' && w !== 'fail' ? 'advisory' : w), 'pass');
@@ -171,6 +190,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const absent = m.conditional ? 'n/a' : 'uncovered';
       return { id: m.id, mode: m.mode, covered: hits.length > 0, fired: hits.some(h => h.status !== 'pass'), status: hits.length ? worst : absent };
     });
+    return [].concat(cls ? walk(cls) : [], ...scoped.map(walk));
   }
 
   /* =========================================================================
@@ -413,7 +433,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       { id: 'ergonomic_miss', mode: 'seat height/depth outside the human-factors band', checkIds: ['ergo_seat'], conditional: true, fixture: 'audit SEAT bad-fixture: 550 seat height on a dining chair', realWorld: 'chairs nobody wants to sit in' },
       { id: 'grain_orientation', mode: 'splayed leg sawn from a vertical blank (grain runout) instead of ripped with the grain', checkIds: ['chair:grain'], fixture: 'audit SEAT grain section', realWorld: 'splayed stool legs shearing along the runout' },
       { id: 'footrest_break', mode: 'stool footrest stretcher breaks under a mounting step', checkIds: ['chair:foot'], conditional: true, fixture: 'handcalc footrest section', realWorld: 'bar stool rungs snapping underfoot' },
-      { id: 'seat_movement_split', mode: 'solid seat glued/pinned rigid splits across the grain', checkIds: ['move:seat_1'], fixture: 'movement check on golden chair fixtures', realWorld: 'seasonal seat cracks at the fasteners' }
+      /* conditional since the children's scope (2026-07): the movement check
+       * exists only where a WIDE solid panel exists — every adult seat
+       * qualifies (golden fixtures prove it fires), but a child-band seat
+       * (250–360 mm, EN 1729-derived plan) sits below the movement-width
+       * threshold, and absence there is the geometry's truth, not a
+       * vanished check. */
+      { id: 'seat_movement_split', mode: 'solid seat glued/pinned rigid splits across the grain', conditional: true, checkIds: ['move:seat_1'], fixture: 'movement check on golden chair fixtures (adult seats; child seats are below the movement-width threshold)', realWorld: 'seasonal seat cracks at the fasteners' }
     ],
     hardware: [
       { id: 'corner_block_screws', item: '#8 × 32 wood screws, 2 per block face (glue + screws)', when: 'every seat frame (4 corner blocks)', capacity: 'screw shear ≥ 500 N each (JOINT_RATING butt_screws basis)', matchedTo: 'racking share of the seat frame; blocks close the frame loop — counted by the fastener engine so BOM = drilling instructions' },
@@ -770,6 +796,70 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   };
 
+  /* =========================================================================
+   * CHILDREN'S — a SCOPE class, not a template: `spec.child` overlays an
+   * existing sound template (table / desk / chair / bookshelf) with the
+   * safety regime children need. The regime, in one sentence: EN 1729
+   * size-mark heights are pinned by code, design loads stay ADULT (adults
+   * sit on kids' chairs — nothing is lightened), the anti-tip anchor becomes
+   * mandatory on storage regardless of margin, and everything federally
+   * regulated is REFUSED with the regulation named — because for children's
+   * furniture a plausible unverified plan is worse than a refusal twice over.
+   * ========================================================================= */
+  const DESIGN_BASIS_CHILD =
+    'Child-scoped designs pin their heights to EN 1729-1 size-mark pairs ' +
+    '(the school-furniture standard — the one citable children\'s sizing ' +
+    'anchor; values cross-checked against published sizing guides, the ' +
+    'standard text is paywalled) and KEEP the adult design loads: adults ' +
+    'sit on children\'s chairs and lean on children\'s tables, so nothing ' +
+    'is lightened (documented derivation). The anti-tip anchor is mandatory ' +
+    'on child-scoped storage regardless of computed margin (CPSC Anchor It! ' +
+    'guidance; stricter than the ASTM F2057/STURDY clothing-storage scope). ' +
+    'Regulated children\'s products — cribs (16 CFR 1219/1220), toy chests ' +
+    '(ASTM F963 toy-chest lid-support requirements, formerly ASTM F834, ' +
+    'mandatory under 16 CFR 1250), high chairs (16 CFR 1231/ASTM F404), ' +
+    'changing tables (16 CFR 1235/ASTM F2388), play yards (16 CFR 1221/' +
+    'ASTM F406), safety gates (16 CFR 1239/ASTM F1004), bunk beds (ASTM ' +
+    'F1427/16 CFR 1213) — are refused, never approximated. Guidance, not a ' +
+    'certification: no children\'s-product testing is claimed.';
+
+  const CHILD_GEOM = {
+    /* Seat-plan derivation (DERIVATION, arithmetic shown): EN 1729-1's seat
+     * width/depth per mark (t4/b3) are not publicly published, so the child
+     * seat plan scales the class's adult nominal (seat 445 h × 430 w × 420 d,
+     * crest rise 470 — Panero & Zelnik-derived, see the seating contract) by
+     * the band's seat-height ratio, rounded to 5 mm. A toddler (260) chair
+     * lands 250 w × 245 d with a 275 crest rise. */
+    RATIO_W: 430 / 445, RATIO_D: 420 / 445, RATIO_B: 470 / 445,
+    /* Head-entrapment hazard band for rigid bounded openings, from the one
+     * citable US source: 16 CFR 1213 (bunk-bed guardrail entrapment) rejects
+     * openings that pass its wedge block unless they also freely pass a
+     * 9 in (230 mm) rigid sphere [verified-exact]; the wedge block's ~3.5 in
+     * (89 mm) height is the commonly cited lower bound [verified-
+     * approximate — the figure itself is in the CFR drawing]. The band is
+     * DEFINED for bunk guardrails; the childrens class applies the same
+     * body-passes-head-doesn't geometry to bounded chair-back openings as an
+     * ADVISORY, honestly scoped — never a compliance claim. */
+    ENTRAP_MIN: 89, ENTRAP_MAX: 230,
+    /* Child table/desk apron band: the EN 1729 pair leaves ~180 mm between
+     * the seat plane and the tabletop underside (mark 1: 460 − 19 − 260 =
+     * 181 — the same air the adult pair leaves: 740 − 25 − 445 = 270 with a
+     * 90 band → 180 clear). Capping the band at 80 keeps ≥ ~100 mm of thigh
+     * room over the band's own seat (derivation; EN 1729's t1 clearance
+     * dimension is paywalled). DIM_RULES' 60 floor still applies. */
+    APRON_MAX: 80,
+    seatPlan(bandKey) {
+      const b = (K.CHILD && K.CHILD.BANDS[bandKey]) || { seatH: 350 };
+      const r5 = v => Math.round(v / 5) * 5;
+      return {
+        height: b.seatH,
+        width: r5(b.seatH * this.RATIO_W),
+        depth: r5(b.seatH * this.RATIO_D),
+        backHeight: r5(b.seatH * this.RATIO_B)
+      };
+    }
+  };
+
   register({
     key: 'casework',
     label: 'Casework (bookshelves, nightstands, cabinets — doored or open)',
@@ -856,8 +946,81 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   });
 
+  register({
+    key: 'childrens',
+    label: 'Children\'s furniture (scope over table / desk / chair / bookshelf)',
+    templates: ['chair', 'table', 'desk', 'bookshelf'],
+    scope: 'child', // overlay class: forTemplate skips it; scopeClasses(spec) reaches it
+    geom: CHILD_GEOM,
+    DESIGN_BASIS_CHILD,
+    family: {
+      rules: [
+        /* The host template's DIM_RULES still own every range; the child
+         * scope pins the two body-fit heights on top of them. */
+        { path: 'overall.height', ownedBy: 'K.CHILD.BANDS tableH via Spec.correctSpec child block (table/desk)' },
+        { path: 'seat.height', ownedBy: 'K.CHILD.BANDS seatH via Spec.correctSeat child branch (chair)' },
+        { path: 'child.ageBand', ownedBy: 'K.CHILD.BANDS enum via Spec.correctSpec child sanitize' }
+      ],
+      couplings: [
+        { id: 'band_pins_heights', rule: 'the age band IS the height: table/desk overall.height = band tableH and chair seat = the band seat plan (EN 1729 size-mark pairs) — asked-for heights are not used and the refusal is said', enforcedBy: 'Spec.correctSpec child block + correctSeat child branch; childNotes discloses' },
+        { id: 'adult_loads_kept', rule: 'child scope NEVER lightens a load case: adults sit on kids\' chairs, so every structural check runs at the host class\'s adult magnitudes (documented derivation, stated in child:basis)', enforcedBy: 'Structural — the child scope adds checks and scope, changes no magnitude' },
+        { id: 'anchor_mandate', rule: 'child-scoped storage (bookshelf) carries the anti-tip wall anchor as a MANDATORY BOM line regardless of computed margin, and any child-scoped drawered piece takes the F2057 anchor gate at ≥1.5× whatever its height (CPSC Anchor It!; stricter than the F2057 clothing-storage scope)', enforcedBy: 'Structural tip / tip_f2057 child extension (audit KID-3)' },
+        { id: 'backed_floor_seating', rule: 'child seating keeps a back and floor-serving height: backless perches and counter/bar stools put a small child at fall height, so backHeight > 0 and counterHeight = null are forced and told', enforcedBy: 'Spec.correctSeat child branch + childNotes' },
+        { id: 'scope_templates', rule: 'the scope rides only templates already generated soundly (table, desk, chair, bookshelf); on any other template `child` is dropped and told — nightstand/cabinet child variants are future work on this foundation', enforcedBy: 'Spec.correctSpec child sanitize + childNotes' }
+      ]
+    },
+    humanFactors: [
+      { key: 'child_seat_height', label: 'Child seat height (EN 1729 marks 1–4)', min: 260, max: 380, unit: 'mm', source: 'K.CHILD.BANDS — EN 1729-1 size-mark seat heights (260/310/350/380 for marks 1–4), cross-checked against published sizing guides (ESPO/GLS/edu-quip, research 2026-07)' },
+      { key: 'child_table_height', label: 'Child table/desk height (EN 1729 marks 1–4)', min: 460, max: 640, unit: 'mm', source: 'K.CHILD.BANDS — EN 1729-1 size-mark table heights (460/530/590/640 for marks 1–4), same sources as the seat rows' },
+      { key: 'child_adult_boundary', label: 'Adult-sizing boundary', min: 12, max: 17, unit: 'years', source: 'EN 1729 mark 5 (seat 430 / table 710, age 11–14) meets the adult dining band this tool already builds — age ≥ 12 is served by adult furniture' }
+    ],
+    loadCases: [
+      { id: 'child_seat_adult', label: 'Seat load — ADULT magnitude kept', magnitude: '1334 N (136 kg) — unchanged from the seating class', apply: 'centre of the child seat', direction: 'gravity', duration: 'functional', acceptance: 'same gates as the seating class (sag ≤ L/300, bending ≥ 1× at MOR/4, joints ≥ 1.5×)', source: 'derivation: adults sit on children\'s chairs — the child scope keeps the seating class\'s BIFMA-benchmarked magnitudes and lightens nothing', traceability: 'derivation', ownedBy: 'Structural.LOAD_PRESETS.seating' },
+      { id: 'child_back_adult', label: 'Back/tilt load — ADULT magnitude kept', magnitude: '667 N at the crest, rear-tilt case included', apply: 'crest of the child chair back', direction: 'horizontal, rearward', duration: 'functional + repeated abuse', acceptance: 'seating-class gates unchanged (the shorter child geometry changes the levers, never the force)', source: 'derivation: same rationale — the heaviest user of a child chair is the adult who sits in it', traceability: 'derivation' },
+      { id: 'child_tip_pull', label: 'Open-drawer tip pull', magnitude: '22.7 kg (50 lb) on the open top drawer', apply: 'front of the highest open drawer, all drawers ⅔ open', direction: 'gravity at the worst lever', duration: 'abuse case', acceptance: 'child scope: ≥ 1.5× or the anchor is mandatory, at ANY height and on any drawered template (the adult check gates only clothing-storage height)', source: 'ASTM F2057 / STURDY test magnitude (existing check); the scope extension to all child-scoped pieces is ours (CPSC Anchor It! guidance)', traceability: 'standard' },
+      { id: 'child_shelf_books', label: 'Bookshelf duty unchanged', magnitude: '60 kg/m sustained', apply: 'every shelf', direction: 'gravity', duration: 'sustained (×2 creep)', acceptance: 'long-term sag ≤ L/300 — children\'s books are books', source: 'BIFMA X5.9 shelf load (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'child chair seat frame (inherits the seating mandate)', required: ['mortise_tenon', 'loose_tenon', 'kd_bolt'], prohibited: ['butt_screws', 'pocket_screws', 'biscuits', 'dowels'], reason: 'the child scope keeps adult loads, so the seating class\'s rear-tilt arithmetic — and its tenon-class mandate — apply unchanged. The SHORTER rail-to-stretcher arm on a child chair raises the couple demand per newton of back force, which is the opposite of a reason to relax the joint.' },
+        { connection: 'child table/desk aprons → legs (inherits frame_table)', required: ['mortise_tenon', 'dowels', 'pocket_screws', 'loose_tenon', 'kd_bolt', 'half_lap', 'bridle'], prohibited: ['biscuits', 'edge_glue'], reason: 'the frame_table joint rules apply unchanged at the band\'s shorter heights; the level matrix still gates.' }
+      ]
+    },
+    failureModes: [
+      { id: 'kid_tipover', mode: 'furniture tips onto a child (the CPSC tip-over scenario)', checkIds: ['tip', 'tip_f2057'], fixture: 'audit KID-3 (mandatory anchor on child storage; F2057 scope extension)', realWorld: 'furniture tip-over deaths — the reason STURDY exists' },
+      { id: 'kid_oversize', mode: 'child piece built at adult heights (dangling feet, chin-height desk)', guard: 'Spec.correctSpec child block + correctSeat child branch pin the EN 1729 band heights; childNotes discloses every refused height', fixture: 'audit KID-2', realWorld: 'kids kneeling on chairs to reach adult tables' },
+      { id: 'kid_entrapment', mode: 'a bounded opening in the 89–230 mm band traps a head', conditional: true, checkIds: ['child:entrap'], fixture: 'audit KID-5 (the chair-back openings are measured and named)', realWorld: 'head entrapment between rails — the 16 CFR 1213 scenario' },
+      { id: 'kid_finish_toxicity', mode: 'a child mouths a finish never meant for mouths', checkIds: ['child_finish'], fixture: 'audit KID-6', realWorld: 'lead-paint history; modern coatings are certified to EN 71-3 for a reason' },
+      { id: 'kid_adult_overload', mode: 'an adult sits/leans/steps on the child piece and it fails', checkIds: ['sag:', 'str:', 'chair:'], fixture: 'audit KID-4 (adult magnitudes asserted on child geometry, arithmetic in handcalc [23])', realWorld: 'the parent who perches on the kids\' chair at the school open house' },
+      { id: 'kid_regulated_product', mode: 'a regulated children\'s product is asked of a hobby tool', guard: 'intent-parser refusals with the regulation named (ai.js children\'s block) + SCHEMA_DOC; fires before any creation', fixture: 'audit KID-1 + battery children cases', realWorld: 'toy-chest lids, high-chair restraints, crib slats — categories with body counts and federal rules' },
+      { id: 'kid_fall_height', mode: 'a small child perches on a backless or counter-height seat', guard: 'Spec.correctSeat child branch forces a backed, floor-serving chair (backHeight > 0, counterHeight null) and childNotes says why', fixture: 'audit KID-2 (stool/counter asks corrected and told)', realWorld: 'falls from bar stools — the top of the child furniture injury tables' }
+    ],
+    hardware: [
+      { id: 'kid_antitip', item: 'anti-tip wall anchor kit', when: 'EVERY child-scoped storage piece (bookshelf), and any child-scoped drawered piece below the 1.5× F2057 gate', capacity: 'per kit rating', matchedTo: 'tip / tip_f2057 with the child scope extension — mandatory regardless of computed margin on storage (audit KID-3)' }
+    ],
+    assembly: {
+      sequence: ['build per the host template sequence (frame/case/chair steps unchanged)', 'ease every edge and round every corner — child duty, before finishing', 'finish on the toy-safe schedule and let it FULLY cure before handover', 'storage: fasten the anti-tip strap into a stud before anything goes on a shelf'],
+      jigs: ['roundover bit or sanding block for the eased-edge pass (no sharp arris anywhere a child reaches)'],
+      checks: ['no bounded opening between 89 and 230 mm within reach of the seat (measure the assembled back)', 'anti-tip strap engaged and tugged BEFORE the piece is loaded', 'finish cured hard (no odor, no tack) before a child touches it']
+    },
+    refusals: [
+      { id: 'no_toy_chest', shape: 'toy chests / hinged-lid boxes', reason: 'a falling toy-chest lid is a strangulation/crush hazard with its own lid-support requirements — ASTM F963 toy-chest provisions (formerly ASTM F834), mandatory under 16 CFR 1250 — and no lid or lid-support hardware is modeled here (lids are refused generally)', surface: 'intent parser (children\'s block) + SCHEMA_DOC' },
+      { id: 'no_high_chair', shape: 'high chairs / booster seats', reason: '16 CFR 1231 (ASTM F404) territory: restraint systems, stability tests, occupant retention — federal rules for a product that holds a child at height', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_changing_table', shape: 'changing tables / changing toppers', reason: '16 CFR 1235 (ASTM F2388) territory: barrier and retention requirements for an elevated infant surface', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_play_yard_gate', shape: 'play yards, playpens, safety gates and enclosures', reason: '16 CFR 1221 (ASTM F406) and 16 CFR 1239 (ASTM F1004) territory: containment products with entrapment and strength rules this tool does not model', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_infant_sleep', shape: 'cribs, bassinets, cradles, toddler beds', reason: '16 CFR 1219/1220 is federal safety law — permanently refused (restating the bed class\'s refusal so the children\'s surface tells one story)', surface: 'intent parser (bed block) + SCHEMA_DOC' },
+      { id: 'no_bunks_restated', shape: 'bunk and loft beds', reason: 'ASTM F1427 / 16 CFR 1213 territory (restating the bed class\'s refusal)', surface: 'intent parser (bed block) + SCHEMA_DOC' },
+      { id: 'no_child_stool', shape: 'backless or counter/bar-height child seating', reason: 'a perch at counter height puts a small child at fall height; the scope forces a backed, floor-serving chair and says so', surface: 'Spec.correctSeat child branch + childNotes' },
+      { id: 'no_other_templates', shape: 'child scope on templates outside table/desk/chair/bookshelf', reason: 'the scope only overlays templates already generated soundly; child-scoped casework (nightstand/cabinet) is future work', surface: 'Spec.correctSpec child sanitize + childNotes' }
+    ],
+    fixtures: {
+      golden: ['maple-kids-table-metric', 'oak-kids-chair-imperial'],
+      bad: ['audit KID-1 refusals with regulations named', 'audit KID-2 band pinning + disclosures', 'audit KID-3 anchor mandate', 'audit KID-4 adult loads kept', 'audit KID-5 entrapment band', 'audit KID-6 finish advisory + wire roundtrip', 'battery children cases']
+    }
+  });
+
   BB.Classes = {
-    register, get, all, forTemplate, validateContract, runChecklist,
-    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED
+    register, get, all, forTemplate, scopeClasses, validateContract, runChecklist,
+    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED, DESIGN_BASIS_CHILD
   };
 })();
