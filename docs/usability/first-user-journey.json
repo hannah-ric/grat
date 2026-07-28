@@ -1,0 +1,355 @@
+{
+  "generatedAt": "2026-07-28T20:45:36.833Z",
+  "method": "Fresh Chromium profiles against serve.js with BB_DEV_LOGIN=1, no ANTHROPIC_API_KEY (localhost offline parser). Desktop 1440×900 + mobile 390×844.",
+  "steps": [
+    {
+      "id": "A1",
+      "title": "Fresh visit boots",
+      "ok": true,
+      "detail": "boot 1182ms",
+      "shot": null
+    },
+    {
+      "id": "A2",
+      "title": "Porch landing shows first",
+      "ok": true,
+      "detail": "h1=\"Furniture that starts as a sentence.Furniturethat starts asa sentence.\" cta=\"Open the studio\" signin=\"Sign in\"",
+      "shot": null
+    },
+    {
+      "id": "A3",
+      "title": "Masthead composition in first viewport",
+      "ok": true,
+      "detail": "brand=BlueprintBuddy h1=Furniture that starts as a sentence.Furniturethat starts asa sentence. ctaBottom=828/900",
+      "shot": null
+    },
+    {
+      "id": "A4",
+      "title": "Build-vs-buy calculator shows a dollar figure",
+      "ok": true,
+      "detail": "cost=$290.04 chips=Table,Desk,Bench,Bookshelf",
+      "shot": null
+    },
+    {
+      "id": "A5",
+      "title": "FAQ cost answer readable",
+      "ok": true,
+      "detail": "Designing is free. On installations with accounts enabled, an optional Pro plan raises the monthly AI-message allowance, removes the saved-p",
+      "shot": null
+    },
+    {
+      "id": "B1",
+      "title": "Sign-in page renders providers",
+      "ok": true,
+      "detail": "buttons=[Continue with Dev (local) | Sign in | Create one — it’s free]",
+      "shot": null
+    },
+    {
+      "id": "B2",
+      "title": "Dev sign-in lands in studio with session",
+      "ok": true,
+      "detail": "user=Local Dev mode=cloud welcomeHidden=false hash=#design;split=58;chat=0",
+      "shot": null
+    },
+    {
+      "id": "C1",
+      "title": "Studio ready for a prompt",
+      "ok": true,
+      "detail": "welcome=true heroPh=\"A walnut nightstand with two drawers\" chatPh=\"Describe your piece…\" seed=table/Seed Table",
+      "shot": null
+    },
+    {
+      "id": "C2",
+      "title": "Walnut desk prompt produces a desk in walnut",
+      "ok": true,
+      "detail": "template=desk species=walnut size=undefined×undefined×undefinedmm name=\"New desk\"",
+      "shot": null
+    },
+    {
+      "id": "C4",
+      "title": "AI status communicated",
+      "ok": true,
+      "detail": "AI not configured | Roughed out a desk to standard proportions — refine away.",
+      "shot": null
+    },
+    {
+      "id": "D1",
+      "title": "Plan mode opens",
+      "ok": true,
+      "detail": "tabs=Overview, Cut, Buy, Assemble, Safety; buildLocked=false",
+      "shot": null
+    },
+    {
+      "id": "C3",
+      "title": "Width ~48 in honored",
+      "ok": true,
+      "detail": "48.0 in (depth=26.0 height=29.0)",
+      "shot": null
+    },
+    {
+      "id": "D2",
+      "title": "Cut list shows credit wall or dimensions",
+      "ok": true,
+      "detail": "locks=12 cta=\"One credit issues this design as a complete blueprint — shee\" Cut list — in your blueprint 4 distinct parts, 9 pieces total, joinery allowances included. Exact di",
+      "shot": null
+    },
+    {
+      "id": "D3",
+      "title": "Assembly preview present",
+      "ok": true,
+      "detail": "Assembly — in your blueprint 10 steps, in dependency order, at your skill level. Step-by-step text, joinery setout, and ",
+      "shot": null
+    },
+    {
+      "id": "D4",
+      "title": "Safety / integrity visible without credit",
+      "ok": true,
+      "detail": "verdict=ADVISORY",
+      "shot": null
+    },
+    {
+      "id": "D5",
+      "title": "Build click surfaces issue/unlock path",
+      "ok": false,
+      "detail": "mode=plan issueCta=false",
+      "shot": null
+    },
+    {
+      "id": "D6",
+      "title": "Issue blueprint CTA available",
+      "ok": false,
+      "detail": "no-cta",
+      "shot": null
+    },
+    {
+      "id": "E1",
+      "title": "Anonymous AI prompt asks for sign-in",
+      "ok": true,
+      "detail": "buttons=[Sign in with Dev (local)|Sign in with email] template still table/red_oak",
+      "shot": null
+    },
+    {
+      "id": "E2",
+      "title": "Unsigned starter path",
+      "ok": true,
+      "detail": "welcome already dismissed — skipped gallery probe",
+      "shot": null
+    },
+    {
+      "id": "F1",
+      "title": "Mobile masthead usable",
+      "ok": true,
+      "detail": "ctaBottom=780 overflowX=false",
+      "shot": null
+    },
+    {
+      "id": "F2",
+      "title": "Mobile enters studio",
+      "ok": true,
+      "detail": "welcome=false chatCollapsed=false",
+      "shot": null
+    },
+    {
+      "id": "G1",
+      "title": "No serious page errors on desktop journey",
+      "ok": true,
+      "detail": "clean",
+      "shot": null
+    }
+  ],
+  "findings": [
+    {
+      "sev": "MEDIUM",
+      "area": "A11y/Landing",
+      "title": "Hero H1 textContent is duplicated after line-split animation",
+      "detail": "document.getElementById('phH1').textContent === \"Furniture that starts as a sentence.Furniturethat starts asa sentence.\". Screen readers / select-all may hear the headline twice.",
+      "evidence": {
+        "h1": "Furniture that starts as a sentence.Furniturethat starts asa sentence."
+      }
+    },
+    {
+      "sev": "HIGH",
+      "area": "Trust/Copy",
+      "title": "FAQ still describes the legacy Pro subscription, not credits",
+      "detail": "First-time visitors reading \"What does it cost?\" see: \"Designing is free. On installations with accounts enabled, an optional Pro plan raises the monthly AI-message allowance, removes the saved-project cap, and unlocks premium exports — you’ll see plans and pricing in the studio wherever that a\". Product now sells blueprint credits.",
+      "evidence": {
+        "faqCost": "Designing is free. On installations with accounts enabled, an optional Pro plan raises the monthly AI-message allowance, removes the saved-project cap, and unlocks premium exports — you’ll see plans and pricing in the studio wherever that applies. Nothing you’ve designed is ever held hostage: share codes and core exports stay open."
+      }
+    },
+    {
+      "sev": "HIGH",
+      "area": "Trust",
+      "title": "\"AI not configured\" badge is the loudest status in Design chat",
+      "detail": "After a successful design, the chat header still shows a red-dot \"AI not configured.\" The offline caveat (\"Working offline…\") is quieter. A first user reads this as \"the product is broken,\" not \"degraded mode.\"",
+      "evidence": {
+        "aiText": "AI not configured",
+        "aiState": "unconfigured",
+        "lastBot": "Roughed out a desk to standard proportions — refine away."
+      }
+    },
+    {
+      "sev": "MEDIUM",
+      "area": "Chat",
+      "title": "Natural first prompts become \"New <template>\"",
+      "detail": "Prompt was longer than the offline namer's 40-char budget, so the design was titled \"New desk\" instead of something like \"Walnut writing desk\".",
+      "evidence": {
+        "name": "New desk"
+      }
+    },
+    {
+      "sev": "LOW",
+      "area": "Trust/Copy",
+      "title": "ADVISORY rollup still reads as a soft pass",
+      "detail": "Overview shows ADVISORY + \"passes the required strength checks, with notes worth reading.\" First users may skip Safety.",
+      "evidence": {
+        "snippet": "Overview STRUCTURAL VERDICT ADVISORY This design passes the required strength checks, with notes worth reading. Every number below comes from the same engineering pass. Checks pass"
+      }
+    },
+    {
+      "sev": "MEDIUM",
+      "area": "Chat",
+      "title": "First design named generically \"New desk\"",
+      "detail": "User said \"walnut writing desk\"; the title bar shows \"New desk\". The CHANGE log says \"Renamed to New desk,\" which feels like a downgrade of their words.",
+      "evidence": {
+        "name": "New desk"
+      }
+    },
+    {
+      "sev": "MEDIUM",
+      "area": "Intent fidelity",
+      "title": "Offline ack is thin; CHANGE log carries the real story",
+      "detail": "Bot said only \"Roughed out a desk to standard proportions — refine away.\" Width 48 in was honored, but depth/species/name changes live in a separate CHANGED list a hurried user may miss.",
+      "evidence": {
+        "width": 1219.2,
+        "depth": 660.4,
+        "height": 736.6
+      }
+    },
+    {
+      "sev": "HIGH",
+      "area": "Core loop / Monetization",
+      "title": "Cut dimensions locked until a credit is spent — after the user already \"designed\" the piece",
+      "detail": "Landing promised plans you can build Saturday. After a successful walnut-desk prompt, Cut/Buy/Assemble withhold exact numbers behind \"Issue blueprint — 1 credit.\" Overview stays open (ADVISORY + cost). First users feel the product worked, then hit a paywall for the thing the headline sold.",
+      "evidence": {
+        "cta": "One credit issues this design as a complete blueprint — sheet set, exact cut list, stock plan, joinery setout, assembly, every export, and the shop companion. Refine it free for 30 days; re-download forever. You have 1 credit.Issue blueprint — 1 creditAbout credits",
+        "panel": "Cut list — in your blueprint 4 distinct parts, 9 pieces total, joinery allowances included. Exact dimensions are issued with the blueprint. Part Qty Length Width Thick Material Top 1 Black Walnut Long apron 2 Black Walnu"
+      }
+    },
+    {
+      "sev": "MEDIUM",
+      "area": "IA",
+      "title": "Two front-door CTAs with different outcomes",
+      "detail": "\"Open the studio\" lets you in unsigned, but AI chat immediately demands sign-in. \"Sign in\" is a separate header link. A first-time user who wants \"walnut desk\" needs: Open studio → type → blocked → Sign in → retype. Prefer a primary CTA that matches the promised loop (\"Describe a piece\").",
+      "evidence": null
+    },
+    {
+      "sev": "CRITICAL",
+      "area": "Core loop / Monetization",
+      "title": "“Issue blueprint” CTA sits below the fold in the Plan panel",
+      "detail": "After designing a walnut desk, Cut shows locked dimensions and copy about the blueprint — but the primary “Issue blueprint — 1 credit” button sits at ~1109px while the panel viewport ends at 900px (panel scrollHeight 651 vs clientHeight 292). A first user looking at the cut list never sees how to unlock it without discovering panel scroll.",
+      "evidence": {
+        "btnTop": 1109,
+        "panelBottom": 900,
+        "inPanelView": false,
+        "inWindow": false,
+        "shot": "10-plan-cut-locked.png"
+      }
+    },
+    {
+      "sev": "HIGH",
+      "area": "Trust / Safety copy",
+      "title": "ADVISORY checks use FAIL language (“would not safely carry”)",
+      "detail": "Safety tab headline: design “passes the required strength checks, with notes worth reading.” Individual ADVISORY cards (beginner plain layer) say “Top would not safely carry the load this design is checked against.” That is fail wording on a soft pass — trains the user to distrust every green light, or to panic on a buildable desk.",
+      "evidence": {
+        "verdict": "advisory",
+        "plainLine": "Top would not safely carry the load…",
+        "shot": "13-plan-safety.png"
+      }
+    },
+    {
+      "sev": "HIGH",
+      "area": "Mobile onboarding",
+      "title": "Phone “Open the studio” lands on overture + Adjust rail, not the welcome prompt",
+      "detail": "Fresh mobile visit → Open the studio → welcome card hidden, phone overture playing (Skip visible), Adjust rail already open over a sparse/partial seed model. The “What are you building?” hero never appears. First prompt affordance is a bottom chat field while chrome competes for attention.",
+      "evidence": {
+        "welcome": false,
+        "overture": true,
+        "skip": true,
+        "adjustOpen": true,
+        "shot": "21-mobile-studio.png"
+      }
+    },
+    {
+      "sev": "MEDIUM",
+      "area": "Studio chrome",
+      "title": "Adjust rail auto-opens and covers the model on first studio entry",
+      "detail": "Unsigned and mobile first entries open the Adjust drawer over the 3D view before the user has a design they care about. It competes with the chat prompt and makes the seed table look like an inspector dump.",
+      "evidence": {
+        "shots": [
+          "17-anon-gated-prompt.png",
+          "21-mobile-studio.png"
+        ]
+      }
+    },
+    {
+      "sev": "MEDIUM",
+      "area": "Chat polish",
+      "title": "Chat placeholder truncates to “Describe your pie” in the default split",
+      "detail": "At the default Design split, #chatText placeholder “Describe your piece…” visually clips to “Describe your pie” — reads as a typo on first glance.",
+      "evidence": {
+        "shots": [
+          "06-after-dev-login.png",
+          "17-anon-gated-prompt.png"
+        ]
+      }
+    },
+    {
+      "sev": "MEDIUM",
+      "area": "Auth gating",
+      "title": "Unsigned prompt is clear, but leaves the seed design + Adjust open underneath",
+      "detail": "Typing “A walnut desk” while signed out correctly offers Sign in with free credit. The seed Red Oak table and open Adjust rail remain, so it still feels like the app ignored the request rather than gated it.",
+      "evidence": {
+        "shot": "17-anon-gated-prompt.png"
+      }
+    },
+    {
+      "sev": "LOW",
+      "area": "Landing",
+      "title": "Primary masthead CTA is near the bottom of a 900px viewport",
+      "detail": "At 1440×900, “Open the studio” under the lede lands at y≈828 — technically in-view but tight. Header also has a duplicate Open-the-studio control, which helps.",
+      "evidence": {
+        "ctaBottom": 828,
+        "vh": 900
+      }
+    }
+  ],
+  "counts": {
+    "CRITICAL": 1,
+    "HIGH": 5,
+    "MEDIUM": 8,
+    "LOW": 2
+  },
+  "screenshots": [
+    "01-landing-masthead.png",
+    "02-landing-chapter-describe.png",
+    "03-landing-calc-cta.png",
+    "04-faq-pricing.png",
+    "05-signin-page.png",
+    "06-after-dev-login.png",
+    "07-hero-walnut-desk-typed.png",
+    "08-walnut-desk-designed.png",
+    "09-plan-overview.png",
+    "10-plan-cut-locked.png",
+    "11-plan-buy-locked.png",
+    "12-plan-assemble-locked.png",
+    "13-plan-safety.png",
+    "14-build-or-issue.png",
+    "16-anon-studio-welcome.png",
+    "17-anon-gated-prompt.png",
+    "20-mobile-landing.png",
+    "21-mobile-studio.png",
+    "22-build-confirm.png",
+    "24-mobile-enter-detail.png"
+  ],
+  "enrichedAt": "2026-07-28T20:48:18.408Z"
+}
