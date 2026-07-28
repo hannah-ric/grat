@@ -1132,13 +1132,14 @@ const clickMoreCtl = async sel => {
   await page.screenshot({ path: SHOTS + '/16-species.png' });
 
   // Diagnostics via long-press on the logo; every self-test green in-app.
+  // Hold until the panel actually opens, THEN release. The 650 ms long-press
+  // timer races the queued pointerup on a jammed CI main thread — input
+  // events can be processed before an expired timer callback, so pointerup's
+  // cancel wins and the panel never opens (runs #77 and #78 flaked exactly
+  // here on a release clocked at 800 ms). A real thumb holds until it opens.
   await page.dispatchEvent('#brandLogo', 'pointerdown');
-  await page.waitForTimeout(800);
+  await page.waitForSelector('#diagScrim.open', { timeout: 15000 }).catch(() => {});
   await page.dispatchEvent('#brandLogo', 'pointerup');
-  // Wait for the open state instead of sampling the instant after pointerup:
-  // the panel opens through the motion system, and a slow CI runner can be a
-  // frame or two behind the event (run #77 flaked exactly here).
-  await page.waitForSelector('#diagScrim.open', { timeout: 10000 }).catch(() => {});
   ok(await page.isVisible('#diagScrim.open'), 'long-press opens the diagnostics panel');
   await page.waitForFunction(() => /green/.test(document.getElementById('diagSummary').textContent), null, { timeout: 60000 });
   const diag = await page.textContent('#diagSummary');
