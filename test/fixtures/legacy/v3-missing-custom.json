@@ -3,10 +3,11 @@
   "version": 3,
   "kind": "spec",
   "expectAfterMigration": {
-    "specVersion": 5,
+    "specVersion": 6,
     "custom": null,
     "wood.sheetSpecies": "baltic_birch",
-    "structure.stretcher": "none"
+    "structure.stretcher": "none",
+    "doors": null
   },
   "expect": {
     "template": "cabinet",

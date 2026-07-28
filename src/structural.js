@@ -1093,6 +1093,50 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     }
 
+    /* ---- door hinges: weight vs the hinges the app itself specified ----
+     * The one check a door genuinely needs. Everything in it is code-owned
+     * and already existed as hardware.js's READY stratum: panel weight from
+     * geometry × species SG, hinge count from the height band and the weight
+     * rule, and the per-pair capacity straight off the catalog row. Nothing
+     * here is a preference — an under-hinged door sags, drags on the case,
+     * and eventually pulls its screws out of the stile. */
+    if (spec.doors && BB.HW) {
+      const doors = parts.filter(p => p.role === 'door');
+      const hinge = BB.HW.HINGES[spec.hardware && spec.hardware.hinge] || BB.HW.HINGES.euro_cup;
+      let worst = null;
+      for (const dp of doors) {
+        const kg = BB.HW.panelWeightKg(dp.size.w, dp.size.h, dp.size.d, dp.material);
+        const n = BB.HW.doorHingeCount(dp.size.h, kg);
+        // The catalog rates a PAIR, so n hinges carry n/2 pairs' worth.
+        const capacity = hinge.capacityKgPair * (n / 2);
+        const ratio = capacity > 0 ? kg / capacity : Infinity;
+        if (!worst || ratio > worst.ratio) worst = { part: dp, kg, n, capacity, ratio };
+      }
+      if (worst) {
+        const over = worst.ratio > 1;
+        const fixes = [];
+        if (over) {
+          // A heavier-rated hinge that still suits this door style — read off
+          // the same catalog, never invented.
+          const style = spec.doors.style;
+          const stronger = Object.values(BB.HW.HINGES)
+            .filter(h => (h.fronts || []).includes(style) && h.capacityKgPair > hinge.capacityKgPair)
+            .sort((a, b) => a.capacityKgPair - b.capacityKgPair)[0];
+          if (stronger) fixes.push({ id: 'hinge-up', label: `Hang it on ${stronger.label.toLowerCase()}`, patch: { hardware: { hinge: stronger.key } } });
+          if (spec.doors.count === 1) fixes.push({ id: 'door-pair', label: 'Split it into a pair of doors', patch: { doors: { count: 2 } } });
+        }
+        checks.push({
+          id: 'hinge', title: 'Door hinges', status: over ? 'advisory' : 'pass',
+          value: `${U().fmtWeight(worst.kg)} on ${worst.n} × ${hinge.label.toLowerCase()}`,
+          threshold: `≤ ${U().fmtWeight(worst.capacity)} for ${worst.n} hinges (${U().fmtWeight(hinge.capacityKgPair)} per pair)`,
+          explain: over
+            ? `This door outweighs the hinges carrying it. An over-loaded hinge does not fail all at once — the door drops a millimetre, catches on the case, and the screws work loose in the stile from there.`
+            : `${worst.n} hinges is what this door's height and weight ask for, and ${hinge.label.toLowerCase()} carries it with room to spare.`,
+          fixes
+        });
+      }
+    }
+
     /* ---- leg slenderness: unbraced length / least thickness > 20 ---- */
     {
       const legs = custom

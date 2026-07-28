@@ -31,7 +31,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * through the migration registry on load — a saved design must never fail
    * to open. From Phase 4 forward, EVERY schema change adds a migration here.
    */
-  const SPEC_VERSION = 5;
+  const SPEC_VERSION = 6;
   const migrations = {
     /* v3 → v4: Phase 1–3 specs had no specVersion and no `custom` section.
      * Stamp the version, initialise custom to null, and normalise the legacy
@@ -60,6 +60,18 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!isObj(out.structure)) out.structure = {};
       if (out.structure.stretcher === undefined) out.structure.stretcher = 'none';
       if (out.structure.stretcherHeight === undefined) out.structure.stretcherHeight = 280;
+      return out;
+    },
+    /* v5 → v6: doors and their hinge (X-07). Same principle as v4 → v5 — a
+     * case saved before doors existed was an OPEN case, and must open as one.
+     * The hinge default rides along so the picker has something to show the
+     * moment doors are added; it is inert while `doors` is null. */
+    5: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 6;
+      if (out.doors === undefined) out.doors = null;
+      if (!isObj(out.hardware)) out.hardware = {};
+      if (out.hardware.hinge === undefined) out.hardware.hinge = 'euro_cup';
       return out;
     }
   };
@@ -129,8 +141,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
-      hardware: { pull: 'bar_pull' },
+      hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
+      doors: null,
       custom: null
     };
     const t = base.meta.template;
@@ -702,6 +715,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     'structure.stretcherHeight': { min: 100, max: 600, def: 280 }
   };
   const STRETCHERS = ['none', 'h', 'box'];
+  /* Doors (X-07). Templates with a front opening to close. A bookshelf
+   * qualifies as much as a cabinet — glazed-or-panelled bookcase doors are
+   * ordinary furniture — but a frame piece has no case to hang them on. */
+  const DOOR_TEMPLATES = ['cabinet', 'bookshelf'];
+  const DOOR_STYLES = ['inset', 'overlay'];
+  /* A single door past this width sags on its own hinges and needs a swing
+   * radius nobody has in a kitchen; correction splits it into a pair rather
+   * than building something that will droop. Standard cabinet practice. */
+  const DOOR_MAX_SINGLE_W = 600;
   /* Clear air the stretcher needs under the apron, and the least it can sit
    * above the floor. Both are shop numbers, not taste: the gap is what lets
    * you get a clamp and a hand between the two rails during glue-up, and the
@@ -1185,11 +1207,47 @@ var BB = globalThis.BB = globalThis.BB || {};
     s.hardware = s.hardware && typeof s.hardware === 'object' ? s.hardware : {};
     if (!BB.HW || !BB.HW.PULLS[s.hardware.pull]) s.hardware.pull = 'bar_pull';
 
+    /* Doors (X-07). Geometry intent lives in `doors`; the hinge is a STYLE,
+     * so it sits with the pull in `hardware` — code owns the count, the
+     * boring, and the capacity, exactly as it does for pulls.
+     * Order matters: this runs before the drawer block below, because a
+     * cabinet's door zone is what the drawer bank leaves behind. */
+    if (s.doors && DOOR_TEMPLATES.includes(template)) {
+      const d = s.doors;
+      d.style = DOOR_STYLES.includes(d.style) ? d.style : 'overlay';
+      d.count = clamp(Math.round(num(d.count, 2)), 1, 2);
+      // A single door wider than one person can swing is a pair, whatever
+      // was asked for. Correction owns geometry.
+      const leafW = o.width / d.count;
+      if (d.count === 1 && leafW > DOOR_MAX_SINGLE_W) d.count = 2;
+    } else {
+      s.doors = null;
+    }
+    /* The hinge must physically suit the door style it is hanging — the
+     * catalog carries that as `fronts`, so the rule reads off the same table
+     * the Shop Reference teaches from rather than a second hand-kept list.
+     * A knife hinge on an overlay door is not a preference, it is a hinge
+     * that cannot be fitted. */
+    if (BB.HW) {
+      const style = s.doors ? s.doors.style : null;
+      const h = BB.HW.HINGES[s.hardware.hinge];
+      const fits = h && (!style || (h.fronts || []).includes(style));
+      if (!fits) {
+        s.hardware.hinge = style === 'inset' ? 'butt_brass' : 'euro_cup';
+      }
+    }
+
     // Drawers: only templates with openings support them.
     if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
       const d = s.drawers;
       d.count = clamp(Math.round(num(d.count, 1)), 1, 4);
       d.frontStyle = d.frontStyle === 'overlay' ? 'overlay' : 'inset';
+      /* Drawers and doors on the same case share one front plane, so they
+       * share one style. Mixing them is not a taste — an overlay drawer
+       * front stands proud of exactly the face an inset door sits behind,
+       * and the two occupy the same wood. Correction owns geometry, so the
+       * doors win and correctionNotes reports the change. */
+      if (s.doors && d.frontStyle !== s.doors.style) d.frontStyle = s.doors.style;
       d.runner = ['wood_runners', 'undermount_slides'].includes(d.runner) ? d.runner : 'side_mount_slides';
       // Fussier running gear is gated past beginner: wood runners need
       // fitting, undermounts forgive nothing (box built to the slide).
@@ -1239,7 +1297,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     FOOT_Y: 5,           // a part grounds if its lowest corner is under this
     FOOT_PT_Y: 30        // corners under this height count as floor contact
   };
-  const PROUD_ROLES = { pull: true, drawer_front: true }; // stand proud of the case front by design
+  // Applied fronts and the hardware on them stand proud of the case front by
+  // design. A DOOR is the same class of object as a drawer front — same face,
+  // same overlay convention — so it is measured the same way rather than
+  // being given a rule of its own.
+  const PROUD_ROLES = { pull: true, drawer_front: true, door: true };
 
   function auditModel(spec, model) {
     const errors = [];

@@ -1374,19 +1374,25 @@ section('prompt budget: hard ceiling with measured headroom');
   // then 2060 → 2290 for the G6 ask-or-disclose policy (~170 tokens — the
   // sev-5 silent-guessing fix) and the G10 floor-boundary line (~56 tokens),
   // then 2290 → 2400 for the M-22 budget digest (real $/bd ft per species +
-  // the code-computed materials total — budget asks were unanswerable);
-  // the guard still catches accidental bloat.
-  ok(tokens <= 2400, `system prompt stays under the 2400-token ceiling (measured ${tokens})`);
+  // the code-computed materials total — budget asks were unanswerable), and
+  // 2400 → 2500 for X-07's new geometry: the stretcher keys (~25 tokens) and
+  // the doors + hinge-style keys with their enum (~70). Both buy capability
+  // the model cannot otherwise reach — a door it cannot name is a door the
+  // user cannot ask for. The guard still catches accidental bloat.
+  ok(tokens <= 2500, `system prompt stays under the 2500-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
-  // A1: mechanism honesty — the wire cannot carry hinges/lids/doors, and the
-  // schema doc must SAY so (kd_bolt is the only non-permanent joint) so the
-  // model never narrates motion the parts lack.
+  // A1: mechanism honesty. Doors became expressible with X-07, but only as a
+  // TEMPLATE field — the novel grammar still has no hinge, so the doc must
+  // keep saying so, and must not let "doors exist now" leak into custom
+  // compositions the parts of which cannot move.
   ok(/NOT expressible/.test(Codec.SCHEMA_DOC) && /except kd_bolt/.test(Codec.SCHEMA_DOC),
     'SCHEMA_DOC states mechanisms are inexpressible (kd_bolt the only non-permanent joint)');
   ok(/hinge/.test(Codec.SCHEMA_DOC) && /never claim motion/.test(Codec.SCHEMA_DOC),
     'SCHEMA_DOC names hinge-class mechanisms and forbids claiming motion the parts lack');
+  ok(/NOVEL GRAMMAR/.test(Codec.SCHEMA_DOC) && /novel composition still cannot hinge/.test(Codec.SCHEMA_DOC),
+    'and scopes that refusal to the novel grammar, now that template doors exist');
   // The ANSWER shape: pure advice is legal wire, not a validation failure.
   const info = AI.classify({ i: 'Use wipe-on poly.' });
   eq([info.kind, info.text], ['info', 'Use wipe-on poly.'], 'ANSWER replies classify as info');
@@ -2207,7 +2213,7 @@ section('V-05 · __proto__ in a share code leaves Object.prototype clean');
     // survives decode.
     const decoded = Codec.decode(JSON.parse(JSON.stringify(wire)));
     ok(!Object.prototype.hasOwnProperty.call(decoded, '__proto__'), `${what}: decode() never copies an own __proto__ key onto the spec`);
-    eq(Object.keys(decoded).sort(), ['custom', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'specVersion', 'structure', 'wood'],
+    eq(Object.keys(decoded).sort(), ['custom', 'doors', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'specVersion', 'structure', 'wood'],
       `${what}: decode() emits exactly the spec schema and nothing else`);
   }
   // The partial-merge path (AI refinement diffs) rides the same whitelist.

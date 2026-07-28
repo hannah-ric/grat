@@ -55,6 +55,10 @@ var BB = globalThis.BB = globalThis.BB || {};
    * and still the default — must encode to the same bytes it always did.
    * Both stretcher keys are written only when there IS a stretcher. */
   const STR = ['none', 'h', 'box'];
+  /* Hinge STYLE, alongside PUL. Append-only like every enum here: a frozen
+   * share code decodes by index, so reordering this list turns somebody's
+   * saved euro hinge into a piano hinge. */
+  const HNG = ['euro_cup', 'compact_ff', 'butt_brass', 'no_mortise', 'piano', 'soss_invisible', 'knife_pivot', 'pivot_offset', 'strap_t'];
 
   /* ---------------- encode: verbose corrected spec -> wire ---------------- */
   function encodePart(p) {
@@ -101,6 +105,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       w.s.sy = spec.structure.stretcherHeight;
     }
     w.d = spec.drawers ? [spec.drawers.count, ix(FRONT, spec.drawers.frontStyle, 0), ix(RUN, spec.drawers.runner, 0)] : 0;
+    // Doors and their hinge ride only on a design that HAS doors, so every
+    // pre-X-07 share code still encodes to the same bytes.
+    if (spec.doors) {
+      w.dr = [spec.doors.count, ix(FRONT, spec.doors.style, 1)];
+      if (spec.hardware && spec.hardware.hinge && spec.hardware.hinge !== 'euro_cup') w.hh = ix(HNG, spec.hardware.hinge, 0);
+    }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
       w.p = spec.custom.parts.map(encodePart);
@@ -167,7 +177,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
       finish: at(FIN, w.f, 'wipe_poly'),
-      hardware: { pull: at(PUL, w.hp, 'bar_pull') },
+      hardware: { pull: at(PUL, w.hp, 'bar_pull'), hinge: at(HNG, w.hh, 'euro_cup') },
+      doors: Array.isArray(w.dr) && w.dr.length
+        ? { count: w.dr[0], style: at(FRONT, w.dr[1], 'overlay') }
+        : null,
       drawers: Array.isArray(w.d) && w.d.length
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
         : null,
@@ -206,6 +219,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (w.m !== undefined) patch.wood = { species: at(SPC, w.m, undefined) };
     if (w.ms !== undefined) { patch.wood = patch.wood || {}; patch.wood.sheetSpecies = at(SPC, w.ms, undefined); }
     if (w.s !== undefined) patch.structure = decodeStructure(w.s);
+    // "dr":0 removes the doors, mirroring how "d":0 removes drawers.
+    if (w.dr !== undefined) patch.doors = Array.isArray(w.dr) && w.dr.length
+      ? { count: w.dr[0], style: at(FRONT, w.dr[1], 'overlay') } : null;
+    if (w.hh !== undefined) { patch.hardware = patch.hardware || {}; patch.hardware.hinge = at(HNG, w.hh, undefined); }
     if (Array.isArray(w.j)) patch.joinery = { frame: at(JNT, w.j[0], undefined), case: at(JNT, w.j[1], undefined), box: at(JNT, w.j[2], undefined) };
     else if (w.j && typeof w.j === 'object') {
       patch.joinery = {};
@@ -308,10 +325,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
     'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
+    `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
-    'Mechanisms (hinge/lift-off/fold/slide/door) NOT expressible — all JNT are permanent except kd_bolt (tool-removable). For openable asks build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
+    'Mechanisms (hinge/lift-off/fold/slide) NOT expressible IN THE NOVEL GRAMMAR — every JNT is permanent except kd_bolt (tool-removable). Template doors ("dr") are the sole exception; a novel composition still cannot hinge anything. Otherwise build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
     // G10: the floor boundary was undocumented — the model kept proposing
     // hangs and correction silently grounded them into mangled deliveries.
     'Everything must STAND ON THE FLOOR — hanging/wall/ceiling mounting does not exist (airborne parts are force-grounded); for such asks build the nearest floor-standing design and say so in "e", or ask.',
@@ -338,7 +356,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR, HNG,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };

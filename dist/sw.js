@@ -1,5 +1,5 @@
 'use strict';
-var STAMP = '570a0f4f2ae9';
+var STAMP = '671bcd936a3e';
 var PREFIX = 'bb-shell-';
 var CACHE = PREFIX + STAMP;
 var ROOT = new URL('./', self.location.href).pathname;

@@ -3790,7 +3790,7 @@ body.ph-open .porch::after { display: none; }
       key: 'euro_cup', label: '35 mm concealed cup hinge', price: 4.5,
       fronts: ['overlay', 'inset'], opening: 110, softCloseAvail: true,
       capacityKgPair: 7, countRule: 'doorHinges',
-      boring: { cupDia: 35, cupDepth: 13, tbMin: 3, tbMax: 7, tbDefault: 5, plateSetback: 37, maxDoorT: 26 },
+      boring: { cupDia: 35, cupDepth: 13, tbMin: 3, tbMax: 7, tbDefault: 5, plateSetback: 37, maxDoorT: 26, plateHeights: [0, 3, 6, 9] },
       bestFor: 'Cabinet doors of every kind — 3-axis adjustable after hanging, soft-close available, invisible when closed.',
       failure: 'Cup bored too far from the edge robs the opening angle and drags the door on the carcass — respect the 3 to 7 mm boring distance.'
     },
@@ -4200,7 +4200,19 @@ body.ph-open .porch::after { display: none; }
     const b = HINGES.euro_cup.boring;
     const raw = overlayMM - 11 + (plateHeightMM || 0);
     const tb = Math.min(b.tbMax, Math.max(b.tbMin, Math.round(raw * 10) / 10));
-    return { tbMM: tb, inRange: raw >= b.tbMin && raw <= b.tbMax, cupDia: b.cupDia, cupDepth: b.cupDepth, plateSetback: b.plateSetback };
+    return { tbMM: tb, inRange: raw >= b.tbMin && raw <= b.tbMax, cupDia: b.cupDia, cupDepth: b.cupDepth, plateSetback: b.plateSetback, plateMM: plateHeightMM || 0 };
+  }
+  function cupBoringFor(overlayMM) {
+    const heights = (HINGES.euro_cup.boring.plateHeights || [0]);
+    let best = null;
+    for (const h of heights) {
+      const r = cupBoring(overlayMM, h);
+      if (r.inRange) return r;
+      const b = HINGES.euro_cup.boring;
+      const miss = Math.min(Math.abs(overlayMM - 11 + h - b.tbMin), Math.abs(overlayMM - 11 + h - b.tbMax));
+      if (!best || miss < best.miss) best = { miss, r };
+    }
+    return best.r;
   }
   function gasStrut(lidKg, lidDepthMM, lidWidthMM, opts) {
     opts = opts || {};
@@ -4291,7 +4303,7 @@ body.ph-open .porch::after { display: none; }
   BB.HW = {
     HINGES, PULLS, PULL_CTC_SERIES, SLIDES, LIFTS, CATCHES, LOCKS,
     SHELF_SUPPORT, TABLE_BED, WALL_HANG, FEET_MISC, TRADITIONAL, GATES,
-    panelWeightKg, doorHingeCount, cupBoring, gasStrut, lidStay, powerFactor,
+    panelWeightKg, doorHingeCount, cupBoring, cupBoringFor, gasStrut, lidStay, powerFactor,
     pullSpec, pullScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
     digestLine
   };
@@ -5014,7 +5026,7 @@ body.ph-open .porch::after { display: none; }
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
   const FRAME_TEMPLATES = ['table', 'desk', 'bench'];
-  const SPEC_VERSION = 5;
+  const SPEC_VERSION = 6;
   const migrations = {
     3: function (s) {
       const out = clone(s) || {};
@@ -5030,6 +5042,14 @@ body.ph-open .porch::after { display: none; }
       if (!isObj(out.structure)) out.structure = {};
       if (out.structure.stretcher === undefined) out.structure.stretcher = 'none';
       if (out.structure.stretcherHeight === undefined) out.structure.stretcherHeight = 280;
+      return out;
+    },
+    5: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 6;
+      if (out.doors === undefined) out.doors = null;
+      if (!isObj(out.hardware)) out.hardware = {};
+      if (out.hardware.hinge === undefined) out.hardware.hinge = 'euro_cup';
       return out;
     }
   };
@@ -5073,8 +5093,9 @@ body.ph-open .porch::after { display: none; }
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
-      hardware: { pull: 'bar_pull' },
+      hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
+      doors: null,
       custom: null
     };
     const t = base.meta.template;
@@ -5505,6 +5526,9 @@ body.ph-open .porch::after { display: none; }
     'structure.stretcherHeight': { min: 100, max: 600, def: 280 }
   };
   const STRETCHERS = ['none', 'h', 'box'];
+  const DOOR_TEMPLATES = ['cabinet', 'bookshelf'];
+  const DOOR_STYLES = ['inset', 'overlay'];
+  const DOOR_MAX_SINGLE_W = 600;
   const STRETCHER_APRON_GAP = 90;
   const STRETCHER_FLOOR_MIN = 100;
   function applyDim(path, v) {
@@ -5833,10 +5857,28 @@ body.ph-open .porch::after { display: none; }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
     s.hardware = s.hardware && typeof s.hardware === 'object' ? s.hardware : {};
     if (!BB.HW || !BB.HW.PULLS[s.hardware.pull]) s.hardware.pull = 'bar_pull';
+    if (s.doors && DOOR_TEMPLATES.includes(template)) {
+      const d = s.doors;
+      d.style = DOOR_STYLES.includes(d.style) ? d.style : 'overlay';
+      d.count = clamp(Math.round(num(d.count, 2)), 1, 2);
+      const leafW = o.width / d.count;
+      if (d.count === 1 && leafW > DOOR_MAX_SINGLE_W) d.count = 2;
+    } else {
+      s.doors = null;
+    }
+    if (BB.HW) {
+      const style = s.doors ? s.doors.style : null;
+      const h = BB.HW.HINGES[s.hardware.hinge];
+      const fits = h && (!style || (h.fronts || []).includes(style));
+      if (!fits) {
+        s.hardware.hinge = style === 'inset' ? 'butt_brass' : 'euro_cup';
+      }
+    }
     if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
       const d = s.drawers;
       d.count = clamp(Math.round(num(d.count, 1)), 1, 4);
       d.frontStyle = d.frontStyle === 'overlay' ? 'overlay' : 'inset';
+      if (s.doors && d.frontStyle !== s.doors.style) d.frontStyle = s.doors.style;
       d.runner = ['wood_runners', 'undermount_slides'].includes(d.runner) ? d.runner : 'side_mount_slides';
       if (d.runner !== 'side_mount_slides' && lvl === 'beginner') d.runner = 'side_mount_slides';
       while (d.count > 1 && BB.Parametric && BB.Parametric.openingHeightFor(s) < 80) d.count--;
@@ -5864,7 +5906,7 @@ body.ph-open .porch::after { display: none; }
     FOOT_Y: 5,           // a part grounds if its lowest corner is under this
     FOOT_PT_Y: 30        // corners under this height count as floor contact
   };
-  const PROUD_ROLES = { pull: true, drawer_front: true }; // stand proud of the case front by design
+  const PROUD_ROLES = { pull: true, drawer_front: true, door: true };
   function auditModel(spec, model) {
     const errors = [];
     if (!model || !Array.isArray(model.parts) || !model.parts.length) return errors;
@@ -6426,6 +6468,7 @@ body.ph-open .porch::after { display: none; }
     const sideT = st.sideThickness, shT = st.shelfThickness;
     const innerW = o.width - 2 * sideT;
     const sp = spec.wood.species;
+    const ds = doorSpace(spec);
     [[-1, 1], [1, 2]].forEach(([s, i]) => {
       parts.push(part(`side_${i}`, 'side', 'side', 'Side', sideT, o.height, o.depth, s * (o.width / 2 - sideT / 2), o.height / 2, 0,
         { material: sp, explode: { x: s, y: 0, z: 0 } }));
@@ -6436,7 +6479,7 @@ body.ph-open .porch::after { display: none; }
     const n = st.shelfCount;
     for (let i = 1; i <= n; i++) {
       const y = y0 + (y1 - y0) * i / (n + 1);
-      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, shT, o.depth - 20, 0, y, 10, { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
+      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, shT, o.depth - 20 - ds.recess, 0, y, 10 - ds.recess / 2, { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -(o.width / 2 - sideT), y, z: 0 } });
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: (o.width / 2 - sideT), y, z: 0 } });
     }
@@ -6452,6 +6495,10 @@ body.ph-open .porch::after { display: none; }
     joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
+    addDoors(spec, parts, joints, {
+      openW: innerW, openTop: o.height - shT, openBottom: shT + 40,
+      zFront: o.depth / 2, caseOuterW: o.width, sideT, sp
+    });
     return { parts, joints, openings: [], drawers: [] };
   }
   function nightstand(spec) {
@@ -6512,6 +6559,7 @@ body.ph-open .porch::after { display: none; }
     const sideT = st.sideThickness, topT = st.topThickness;
     const base = st.toeKick ? 90 : 0;
     const sp = spec.wood.species;
+    const ds = doorSpace(spec);
     const sideH = o.height - topT;
     const bodyH = sideH - base; // interior case height above the toe space
     const innerW = o.width - 2 * sideT;
@@ -6543,8 +6591,8 @@ body.ph-open .porch::after { display: none; }
     const available = bodyH * 0.6;
     const zone = {
       clearW: innerW, railLen: innerW,
-      yTop: o.height - topT, zFront: o.depth / 2,
-      interiorDepth: o.depth - 10, available,
+      yTop: o.height - topT, zFront: o.depth / 2 - ds.recess,
+      interiorDepth: o.depth - 10 - ds.recess, available,
       overlayMaxW: innerW + Math.min(20, sideT), x: 0,
       railJointTargets: [{ id: 'side_1', x: -innerW / 2 }, { id: 'side_2', x: innerW / 2 }],
       sideInnerX: innerW / 2, gearFrontSetback: RAIL_T,
@@ -6556,12 +6604,45 @@ body.ph-open .porch::after { display: none; }
     const shelfZoneTop = o.height - topT - bank, shelfZoneBottom = base + 19;
     for (let i = 1; i <= st.shelfCount; i++) {
       const y = shelfZoneBottom + (shelfZoneTop - shelfZoneBottom) * i / (st.shelfCount + 1);
-      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, st.shelfThickness, o.depth - 30, 0, y, 5,
+      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, st.shelfThickness, o.depth - 30 - ds.recess, 0, y, 5 - ds.recess / 2,
         { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -innerW / 2, y, z: 0 } });
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: innerW / 2, y, z: 0 } });
     }
+    addDoors(spec, parts, joints, {
+      openW: innerW, openTop: shelfZoneTop, openBottom: shelfZoneBottom,
+      zFront: o.depth / 2, caseOuterW: o.width, sideT, sp
+    });
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+  }
+  const DOOR_REVEAL = 2;
+  const DOOR_OVERLAY_LAP = 12;   // how far an overlay door laps the case edge
+  const DOOR_T = 19;             // panel stock; a door thinner than this racks in its own frame
+  function doorSpace(spec) {
+    const d = spec.doors;
+    if (!d || !d.count) return { none: true, recess: 0 };
+    return { none: false, recess: d.style === 'inset' ? DOOR_T + DOOR_REVEAL : 0 };
+  }
+  function addDoors(spec, parts, joints, zone) {
+    const d = spec.doors;
+    if (!d || !d.count) return;
+    const inset = d.style === 'inset';
+    const openH = zone.openTop - zone.openBottom;
+    if (openH < 120 || zone.openW < 120) return;   // nothing worth hanging a door on
+    const totalW = inset ? zone.openW - 2 * DOOR_REVEAL : Math.min(zone.caseOuterW, zone.openW + 2 * DOOR_OVERLAY_LAP);
+    const leafW = d.count === 2 ? (totalW - (inset ? DOOR_REVEAL : 0)) / 2 : totalW;
+    const leafH = inset ? openH - 2 * DOOR_REVEAL : openH + 2 * DOOR_OVERLAY_LAP;
+    const zDoor = inset ? zone.zFront - DOOR_T / 2 : zone.zFront + DOOR_T / 2;
+    const yDoor = zone.openBottom + openH / 2;
+    for (let i = 1; i <= d.count; i++) {
+      const x = d.count === 2
+        ? (i === 1 ? -1 : 1) * (leafW / 2 + (inset ? DOOR_REVEAL / 2 : 0))
+        : 0;
+      parts.push(part(`door_${i}`, `door_${Math.round(leafW)}x${Math.round(leafH)}`, 'door',
+        d.count === 2 ? (i === 1 ? 'Left door' : 'Right door') : 'Door',
+        leafW, leafH, DOOR_T, x, yDoor, zDoor,
+        { material: spec.wood.species, explode: { x: d.count === 2 ? (i === 1 ? -0.6 : 0.6) : 0, y: 0, z: 1.2 } }));
+    }
   }
   function customBuild(spec) {
     const parts = [], joints = [];
@@ -7496,6 +7577,39 @@ body.ph-open .porch::after { display: none; }
           : 'Joinery and bracing elements give this piece good resistance to side-to-side wobble.',
         fixes, factors: rack.factors
       });
+    }
+    if (spec.doors && BB.HW) {
+      const doors = parts.filter(p => p.role === 'door');
+      const hinge = BB.HW.HINGES[spec.hardware && spec.hardware.hinge] || BB.HW.HINGES.euro_cup;
+      let worst = null;
+      for (const dp of doors) {
+        const kg = BB.HW.panelWeightKg(dp.size.w, dp.size.h, dp.size.d, dp.material);
+        const n = BB.HW.doorHingeCount(dp.size.h, kg);
+        const capacity = hinge.capacityKgPair * (n / 2);
+        const ratio = capacity > 0 ? kg / capacity : Infinity;
+        if (!worst || ratio > worst.ratio) worst = { part: dp, kg, n, capacity, ratio };
+      }
+      if (worst) {
+        const over = worst.ratio > 1;
+        const fixes = [];
+        if (over) {
+          const style = spec.doors.style;
+          const stronger = Object.values(BB.HW.HINGES)
+            .filter(h => (h.fronts || []).includes(style) && h.capacityKgPair > hinge.capacityKgPair)
+            .sort((a, b) => a.capacityKgPair - b.capacityKgPair)[0];
+          if (stronger) fixes.push({ id: 'hinge-up', label: `Hang it on ${stronger.label.toLowerCase()}`, patch: { hardware: { hinge: stronger.key } } });
+          if (spec.doors.count === 1) fixes.push({ id: 'door-pair', label: 'Split it into a pair of doors', patch: { doors: { count: 2 } } });
+        }
+        checks.push({
+          id: 'hinge', title: 'Door hinges', status: over ? 'advisory' : 'pass',
+          value: `${U().fmtWeight(worst.kg)} on ${worst.n} × ${hinge.label.toLowerCase()}`,
+          threshold: `≤ ${U().fmtWeight(worst.capacity)} for ${worst.n} hinges (${U().fmtWeight(hinge.capacityKgPair)} per pair)`,
+          explain: over
+            ? `This door outweighs the hinges carrying it. An over-loaded hinge does not fail all at once — the door drops a millimetre, catches on the case, and the screws work loose in the stile from there.`
+            : `${worst.n} hinges is what this door's height and weight ask for, and ${hinge.label.toLowerCase()} carries it with room to spare.`,
+          fixes
+        });
+      }
     }
     {
       const legs = custom
@@ -8752,6 +8866,32 @@ body.ph-open .porch::after { display: none; }
       }
       items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
+    const doorParts = model.parts.filter(p => p.role === 'door');
+    if (doorParts.length && BB.HW) {
+      const hinge = BB.HW.HINGES[spec.hardware && spec.hardware.hinge] || BB.HW.HINGES.euro_cup;
+      for (const dp of doorParts) {
+        const kg = BB.HW.panelWeightKg(dp.size.w, dp.size.h, dp.size.d, dp.material);
+        const n = BB.HW.doorHingeCount(dp.size.h, kg);
+        items.push({
+          kind: 'hardware', label: hinge.label, qty: n,
+          detail: `${dp.name.toLowerCase()} — ${U().fmtWeight(kg)} of door, ${hinge.fronts.includes('inset') && spec.doors.style === 'inset' ? 'inset' : 'overlay'} hung`,
+          price: hp('hinge_' + hinge.key, hinge.price) * n
+        });
+        items.push({
+          kind: 'hardware', label: 'Door catch (magnetic, with strike)', qty: 1,
+          detail: `${dp.name.toLowerCase()} — a door with no catch swings open on its own`,
+          price: hp('catch_magnetic', 2)
+        });
+      }
+      const pStyle = BB.HW.PULLS[spec.hardware && spec.hardware.pull];
+      if (pStyle && pStyle.key !== 'none_touch') {
+        items.push({
+          kind: 'hardware', label: pStyle.label, qty: doorParts.length,
+          detail: `one per door — ${doorParts.length === 2 ? 'mounted on the meeting stiles, mirrored' : 'on the opening stile'}`,
+          price: hp('pull_' + pStyle.key, pStyle.price) * doorParts.length
+        });
+      }
+    }
     if (opts.integrity && opts.integrity.antiTip) {
       items.push({ kind: 'hardware', label: 'Anti-tip wall anchor kit (strap + wall screws) — REQUIRED', qty: 1, detail: 'tall or top-heavy: anchor to a stud before loading', price: hp('antitip_kit', 7) });
     }
@@ -8838,6 +8978,37 @@ body.ph-open .porch::after { display: none; }
         pullText, ids('pull'), { drawer: d.index }));
     }
   }
+  function doorSteps(spec, model, out) {
+    const doors = model.parts.filter(p => p.role === 'door');
+    if (!doors.length || !BB.HW) return;
+    const len = mm => U().fmtLength(mm);
+    const drill = mm => U().fmtDrill(mm);   // bores are bit sizes (audit M-01/D-05)
+    const hinge = BB.HW.HINGES[spec.hardware && spec.hardware.hinge] || BB.HW.HINGES.euro_cup;
+    const inset = spec.doors.style === 'inset';
+    const d0 = doors[0];
+    const kg = BB.HW.panelWeightKg(d0.size.w, d0.size.h, d0.size.d, d0.material);
+    const n = BB.HW.doorHingeCount(d0.size.h, kg);
+    const ids = doors.map(p => p.id);
+    let boringText;
+    if (hinge.boring && hinge.boring.cupDia) {
+      const cb = BB.HW.cupBoringFor(inset ? 0 : DOOR_OVERLAY_LAP_MM);
+      boringText = `Bore the ${cb.cupDia} mm cups ${len(cb.cupDepth)} deep — a ${cb.cupDia} mm Forstner, not the nearest inch bit; this is metric hardware — set ${len(cb.tbMM)} from the door's hinge edge to the cup's NEAR side, on ${cb.plateMM} mm plates` +
+        (cb.inRange ? '' : ` (note: no standard plate lands this overlay inside the ${len(hinge.boring.tbMin)}–${len(hinge.boring.tbMax)} straight-arm window, so expect to buy a cranked arm rather than move the bore)`) +
+        `. A drill press with a fence and a stop beats a jig here: every cup on every door must be the same distance from the edge, or the doors will not line up with each other however much you adjust them afterwards.`;
+    } else {
+      boringText = `Mark the ${hinge.label.toLowerCase()} leaf positions off ONE story stick for every door and every stile — matched pairs, not measured twice.` +
+        (hinge.boring && hinge.boring.gainDepth ? ` Cut the gains ${hinge.boring.gainDepth} deep: deeper binds the door and springs the screws.` : '');
+    }
+    out.push(step('doors_fit', doors.length > 1 ? 'Fit the doors, then take them off again' : 'Fit the door, then take it off again',
+      `${n} × ${hinge.label.toLowerCase()} per door — ${U().fmtWeight(kg)} of door and ${len(d0.size.h)} of height is what sets that count, not the look of it. ` +
+      boringText + ' ' +
+      (inset
+        ? `Inset doors are fitted by planing to the opening, not by cutting to a number: aim for a ${len(2)} reveal all round and check it with the door IN the opening, shimmed on playing cards. The reveal is the whole job — an even gap reads as fine work and an uneven one is the first thing anybody sees. Fit in the season you are in and remember which way it will move: a door fitted tight in a damp August binds every August after.`
+        : `Overlay doors forgive the opening but not each other: hang both, then adjust until the gap down the middle is even and the bottom edges line up across the pair. That centre gap is the only reference anyone looks at.`) +
+      ` Then unscrew the doors and set them aside — they get finished off the case, and go back on last.`,
+      ids));
+  }
+  const DOOR_OVERLAY_LAP_MM = 12;
   function sandingStep(spec, out) {
     const fin = K.FINISHES.find(f => f.key === spec.finish);
     const prep = fin.prep || { grits: [120, 180] };
@@ -9075,6 +9246,7 @@ body.ph-open .porch::after { display: none; }
         'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer'
         + (t === 'custom' ? '; if it can’t back onto a wall, rethink placement — the tip risk is real.' : '.'), []));
     }
+    doorSteps(spec, model, out);
     safetyStep(spec, model, integrity, opts.stockPlan, out);
     sandingStep(spec, out);
     finishingStep(spec, out);
@@ -9990,6 +10162,7 @@ BlueprintBuddyImport.build
     ['b', 'backPanel'], ['k', 'toeKick']
   ];
   const STR = ['none', 'h', 'box'];
+  const HNG = ['euro_cup', 'compact_ff', 'butt_brass', 'no_mortise', 'piano', 'soss_invisible', 'knife_pivot', 'pivot_offset', 'strap_t'];
   function encodePart(p) {
     const r = p.rot || { x: 0, y: 0, z: 0 };
     const arr = [
@@ -10031,6 +10204,10 @@ BlueprintBuddyImport.build
       w.s.sy = spec.structure.stretcherHeight;
     }
     w.d = spec.drawers ? [spec.drawers.count, ix(FRONT, spec.drawers.frontStyle, 0), ix(RUN, spec.drawers.runner, 0)] : 0;
+    if (spec.doors) {
+      w.dr = [spec.doors.count, ix(FRONT, spec.doors.style, 1)];
+      if (spec.hardware && spec.hardware.hinge && spec.hardware.hinge !== 'euro_cup') w.hh = ix(HNG, spec.hardware.hinge, 0);
+    }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
       w.p = spec.custom.parts.map(encodePart);
@@ -10088,7 +10265,10 @@ BlueprintBuddyImport.build
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
       finish: at(FIN, w.f, 'wipe_poly'),
-      hardware: { pull: at(PUL, w.hp, 'bar_pull') },
+      hardware: { pull: at(PUL, w.hp, 'bar_pull'), hinge: at(HNG, w.hh, 'euro_cup') },
+      doors: Array.isArray(w.dr) && w.dr.length
+        ? { count: w.dr[0], style: at(FRONT, w.dr[1], 'overlay') }
+        : null,
       drawers: Array.isArray(w.d) && w.d.length
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
         : null,
@@ -10120,6 +10300,9 @@ BlueprintBuddyImport.build
     if (w.m !== undefined) patch.wood = { species: at(SPC, w.m, undefined) };
     if (w.ms !== undefined) { patch.wood = patch.wood || {}; patch.wood.sheetSpecies = at(SPC, w.ms, undefined); }
     if (w.s !== undefined) patch.structure = decodeStructure(w.s);
+    if (w.dr !== undefined) patch.doors = Array.isArray(w.dr) && w.dr.length
+      ? { count: w.dr[0], style: at(FRONT, w.dr[1], 'overlay') } : null;
+    if (w.hh !== undefined) { patch.hardware = patch.hardware || {}; patch.hardware.hinge = at(HNG, w.hh, undefined); }
     if (Array.isArray(w.j)) patch.joinery = { frame: at(JNT, w.j[0], undefined), case: at(JNT, w.j[1], undefined), box: at(JNT, w.j[2], undefined) };
     else if (w.j && typeof w.j === 'object') {
       patch.joinery = {};
@@ -10197,10 +10380,11 @@ BlueprintBuddyImport.build
     `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
     'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
+    `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
-    'Mechanisms (hinge/lift-off/fold/slide/door) NOT expressible — all JNT are permanent except kd_bolt (tool-removable). For openable asks build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
+    'Mechanisms (hinge/lift-off/fold/slide) NOT expressible IN THE NOVEL GRAMMAR — every JNT is permanent except kd_bolt (tool-removable). Template doors ("dr") are the sole exception; a novel composition still cannot hinge anything. Otherwise build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
     'Everything must STAND ON THE FLOOR — hanging/wall/ceiling mounting does not exist (airborne parts are force-grounded); for such asks build the nearest floor-standing design and say so in "e", or ask.',
     'REPLY SHAPES (minified JSON only, no prose, no fences): 1) REFINEMENT — ONLY the changed keys plus "e" (1-2 sentences, ≤500 chars — complete sentences, disclosures included), e.g. {"o":{"h":650},"e":"Lowered 100 mm"}. Partial-object forms: o:{w,d,h} j:{f,c,b} d:{c,f,r} s:{...}. "d":0 removes drawers. 2) NEW DESIGN — {"N":{full spec},"e":"..."}. 3) QUESTION — {"q":"...","a":["opt1","opt2","opt3"]} (2-3 short tappable answers). 4) ANSWER — {"i":"2-5 concrete sentences"} when the user asks for advice or explanation needing NO spec change; the app already renders full plans (cut list, stock, BOM, assembly, integrity) from the spec — point at those tabs rather than reciting numbers.'
   ].join('\n');
@@ -10217,7 +10401,7 @@ BlueprintBuddyImport.build
     return digest;
   }
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR, HNG,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };
@@ -10359,8 +10543,8 @@ BlueprintBuddyImport.build
     '\\b(?:it|its|mine)\\b' +
     '|\\b(?:this|that|these|those)\\s+' + PIECE_NOUN + '\\b' +
     '|\\bmy\\s+(?:own\\s+|current\\s+|existing\\s+)?' + PIECE_NOUN + '\\b');
-  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, or stretchers to brace the legs) and I’ll build it to standard proportions.';
-  const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A bookshelf', 'A desk in white oak'];
+  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, doors, or stretchers to brace the legs) and I’ll build it to standard proportions.';
+  const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A cabinet with doors', 'A desk in white oak'];
   const OUT_OF_SCOPE = [
     [/\bbeds?\b|\bbed[\s-]?frames?\b|\bheadboards?\b|\bbunks?\b|\bmurphy\b|\bcribs?\b|\bmattress(?:es)?\b/,
       'Beds are outside what I build — nothing here is sized to carry a mattress.', null],
@@ -10370,8 +10554,8 @@ BlueprintBuddyImport.build
       'Wall-hung and floating shelves are past what I build — everything I make stands on its own legs.', 'A bookshelf'],
     [/\bdressers?\b|\barmoires?\b|\bwardrobes?\b|\bcredenzas?\b|\bhutch(?:es)?\b|\bvanit(?:y|ies)\b/,
       'A dresser-sized case is the cabinet template here — same carcass, same drawer bank.', 'A cabinet with three drawers'],
-    [/\bdoors?\b|\blids?\b/,
-      'Doors and lids are past what I build yet — open cases and drawers are what I can draw.', null]
+    [/\blids?\b/,
+      'Lids are past what I build yet — nothing here opens upward. A case with doors is what I can draw.', 'A cabinet with doors']
   ];
   const VAGUE_WANT = /\b(?:something|anything|a piece|furniture)\s+(?:for|that)\b/;
   function capabilityAsk(t) {
@@ -10530,6 +10714,31 @@ BlueprintBuddyImport.build
           kind: 'question',
           question: `Stretchers tie the legs of a frame, and a ${landing} has no legs — its stiffness comes from the case instead: a back panel fastened all round, and shelves housed in dados rather than screwed.`,
           options: ['Add a back panel', 'Dado the shelves', 'Make it a desk']
+        };
+      }
+    }
+    {
+      const canDoor = ['cabinet', 'bookshelf'].includes(landing);
+      const wantsDoors = /\bdoors?\b|\bclose(d)? (it |the )?(front|case)\b|\bwith a front\b/.test(t);
+      const wantsNone = /\b(no|remove|without|drop|delete|lose|open) (the )?doors?\b|\bopen (case|front)\b|\bdoorless\b/.test(t);
+      if (wantsNone && canDoor) { set('doors', null); notes.push('doors removed'); }
+      else if (wantsDoors && canDoor) {
+        const single = /\b(one|single|1)\s+door\b/.test(t);
+        const inset = /\binset\b|\bflush\b/.test(t);
+        set('doors.count', single ? 1 : 2);
+        set('doors.style', inset ? 'inset' : 'overlay');
+        notes.push((single ? 'a door' : 'a pair of doors') + (inset ? ', inset' : ''));
+        const insetOnlyHinge = /\bbutt hinge|\bbrass hinge|\bno[- ]mortise\b|\bknife hinge|\bpivot hinge/.test(t);
+        if (insetOnlyHinge && !inset) { set('doors.style', 'inset'); notes.push('inset (the hinge you named only hangs inset doors)'); }
+        if (/\bbutt hinge|\bbrass hinge/.test(t)) { set('hardware.hinge', 'butt_brass'); notes.push('brass butt hinges'); }
+        else if (/\bno[- ]mortise\b/.test(t)) { set('hardware.hinge', 'no_mortise'); notes.push('no-mortise hinges'); }
+        else if (/\bknife hinge|\bpivot hinge/.test(t)) { set('hardware.hinge', 'knife_pivot'); notes.push('knife hinges'); }
+        else if (/\beuro|\bconcealed|\bcup hinge|\bhidden hinge/.test(t)) { set('hardware.hinge', 'euro_cup'); notes.push('concealed cup hinges'); }
+      } else if ((wantsDoors || wantsNone) && /\bdoors?\b/.test(t)) {
+        return {
+          kind: 'question',
+          question: `Doors need a case front to close, and a ${landing} has none — its front is legs and air. A cabinet or a bookshelf can take them.`,
+          options: ['Make it a cabinet', 'A bookshelf', 'A walnut nightstand with two drawers']
         };
       }
     }
@@ -12075,7 +12284,7 @@ BlueprintBuddyImport.build
         humid && /humid indoor swing/.test(humid.text), humid ? 'humid named' : 'step missing', 'humid named');
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2400-token ceiling', tk <= 2400 && tk > 800, tk + ' tokens', '≤ 2400'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, then the M-22 budget digest
+      test('hardening', 'system prompt under the 2500-token ceiling', tk <= 2500 && tk > 800, tk + ' tokens', '≤ 2500'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, then X-07's stretcher and door/hinge keys
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
       const mode = Store.persistenceMode();
@@ -17347,6 +17556,27 @@ BlueprintBuddyImport.build
     if (s.drawers && (s.meta.template === 'nightstand' || s.meta.template === 'cabinet')) {
       body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
         v => live({ drawers: { count: v } }), () => done()));
+    }
+    if (['cabinet', 'bookshelf'].includes(s.meta.template)) {
+      const cur = s.doors ? String(s.doors.count) : 'none';
+      body.append(paramSelect('Doors', [['none', 'None (open front)'], ['1', 'One door'], ['2', 'A pair']], cur,
+        v => {
+          merge({ doors: v === 'none' ? null : { count: +v, style: (s.doors && s.doors.style) || 'overlay' } }, 'manual');
+          renderAdjustBody();
+        }));
+      if (s.doors) {
+        body.append(paramSeg('Door style', [['overlay', 'Overlay'], ['inset', 'Inset']], s.doors.style,
+          v => { merge({ doors: { style: v } }, 'manual'); renderAdjustBody(); }));
+        if (BB.HW) {
+          const opts = Object.values(BB.HW.HINGES)
+            .filter(h => (h.fronts || []).includes(s.doors.style))
+            .map(h => [h.key, h.label]);
+          if (opts.length > 1) {
+            body.append(paramSelect('Hinge', opts, s.hardware.hinge,
+              v => { merge({ hardware: { hinge: v } }, 'manual'); renderAdjustBody(); }));
+          }
+        }
+      }
     }
     if (['table', 'desk', 'bench'].includes(s.meta.template)) {
       body.append(paramSelect('Leg bracing', [['none', 'None'], ['h', 'H-stretcher'], ['box', 'Box stretcher']],

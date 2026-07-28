@@ -425,6 +425,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sideT = st.sideThickness, shT = st.shelfThickness;
     const innerW = o.width - 2 * sideT;
     const sp = spec.wood.species;
+    // The declared depth is the whole piece, door included — see doorSpace().
+    const ds = doorSpace(spec);
 
     [[-1, 1], [1, 2]].forEach(([s, i]) => {
       parts.push(part(`side_${i}`, 'side', 'side', 'Side', sideT, o.height, o.depth, s * (o.width / 2 - sideT / 2), o.height / 2, 0,
@@ -437,7 +439,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const n = st.shelfCount;
     for (let i = 1; i <= n; i++) {
       const y = y0 + (y1 - y0) * i / (n + 1);
-      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, shT, o.depth - 20, 0, y, 10, { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
+      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, shT, o.depth - 20 - ds.recess, 0, y, 10 - ds.recess / 2, { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -(o.width / 2 - sideT), y, z: 0 } });
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: (o.width / 2 - sideT), y, z: 0 } });
     }
@@ -455,6 +457,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
+    // The whole front is the opening on a bookshelf — a glazed or panelled
+    // bookcase door is ordinary furniture, and the case is already there.
+    addDoors(spec, parts, joints, {
+      openW: innerW, openTop: o.height - shT, openBottom: shT + 40,
+      zFront: o.depth / 2, caseOuterW: o.width, sideT, sp
+    });
     return { parts, joints, openings: [], drawers: [] };
   }
 
@@ -529,6 +537,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sideT = st.sideThickness, topT = st.topThickness;
     const base = st.toeKick ? 90 : 0;
     const sp = spec.wood.species;
+    // The declared depth is the whole piece, door included — see doorSpace().
+    const ds = doorSpace(spec);
     // Sides run floor to underside of top: the case stands on its own sides
     // (with the toe board bracing the front), never on a lone 19 mm plinth.
     const sideH = o.height - topT;
@@ -568,8 +578,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const available = bodyH * 0.6;
     const zone = {
       clearW: innerW, railLen: innerW,
-      yTop: o.height - topT, zFront: o.depth / 2,
-      interiorDepth: o.depth - 10, available,
+      yTop: o.height - topT, zFront: o.depth / 2 - ds.recess,
+      interiorDepth: o.depth - 10 - ds.recess, available,
       overlayMaxW: innerW + Math.min(20, sideT), x: 0,
       railJointTargets: [{ id: 'side_1', x: -innerW / 2 }, { id: 'side_2', x: innerW / 2 }],
       // Case sides run flush with the opening: runners land straight on them.
@@ -584,12 +594,90 @@ var BB = globalThis.BB = globalThis.BB || {};
     const shelfZoneTop = o.height - topT - bank, shelfZoneBottom = base + 19;
     for (let i = 1; i <= st.shelfCount; i++) {
       const y = shelfZoneBottom + (shelfZoneTop - shelfZoneBottom) * i / (st.shelfCount + 1);
-      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, st.shelfThickness, o.depth - 30, 0, y, 5,
+      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, st.shelfThickness, o.depth - 30 - ds.recess, 0, y, 5 - ds.recess / 2,
         { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -innerW / 2, y, z: 0 } });
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: innerW / 2, y, z: 0 } });
     }
+    // Doors close whatever the drawer bank left: the shelf zone is the door
+    // opening, which is why this reads the same two numbers the shelves do.
+    addDoors(spec, parts, joints, {
+      openW: innerW, openTop: shelfZoneTop, openBottom: shelfZoneBottom,
+      zFront: o.depth / 2, caseOuterW: o.width, sideT, sp
+    });
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+  }
+
+  /* ---------------- doors (X-07) ----------------
+   * A door is a panel and a swing. The panel is geometry and belongs here;
+   * the swing is hardware and belongs to BB.HW, which already carried the
+   * hinge catalog, the count rule, and the cup boring solver as a READY
+   * stratum waiting for exactly this.
+   *
+   * Two styles, and the difference is entirely in where the panel sits:
+   *   inset    the door lives INSIDE the opening, its own thickness behind
+   *            the case front, with a reveal of air all round. The reveal is
+   *            the whole difficulty of an inset door and the reason it reads
+   *            as fine work — it has to stay even as the door moves.
+   *   overlay  the door sits ON the front and covers the case edge. Easier,
+   *            forgiving, and what a euro cup hinge is built around.
+   *
+   * DOOR_REVEAL is a shop number, not a style choice: a 2 mm gap is what a
+   * seasonal swing leaves you when the door is fitted in an average season.
+   */
+  const DOOR_REVEAL = 2;
+  const DOOR_OVERLAY_LAP = 12;   // how far an overlay door laps the case edge
+  const DOOR_T = 19;             // panel stock; a door thinner than this racks in its own frame
+
+  /* An INSET door needs its recess kept clear. Everything inside the case —
+   * the shelves, and the drawer bank's front plane — is set back by the door
+   * thickness plus its reveal, or the door closes into the shelf edges.
+   *
+   * An OVERLAY door needs nothing: it stands proud of the case front, which
+   * is the convention this codebase already follows for overlay drawer
+   * fronts and pulls (spec.js PROUD_ROLES, 60 mm allowance). The declared
+   * depth is the CARCASS, and applied fronts sit in front of it — so a door
+   * is measured the same way a drawer front already is, rather than
+   * inventing a second rule for the same face of the same cabinet.
+   */
+  function doorSpace(spec) {
+    const d = spec.doors;
+    if (!d || !d.count) return { none: true, recess: 0 };
+    return { none: false, recess: d.style === 'inset' ? DOOR_T + DOOR_REVEAL : 0 };
+  }
+
+  function addDoors(spec, parts, joints, zone) {
+    const d = spec.doors;
+    if (!d || !d.count) return;
+    const inset = d.style === 'inset';
+    const openH = zone.openTop - zone.openBottom;
+    if (openH < 120 || zone.openW < 120) return;   // nothing worth hanging a door on
+
+    // Inset: the leaf is the opening less a reveal all round, split between
+    // leaves (with a reveal down the meeting stile too). Overlay: the leaf
+    // laps the case edge, so it is WIDER than the opening.
+    const totalW = inset ? zone.openW - 2 * DOOR_REVEAL : Math.min(zone.caseOuterW, zone.openW + 2 * DOOR_OVERLAY_LAP);
+    const leafW = d.count === 2 ? (totalW - (inset ? DOOR_REVEAL : 0)) / 2 : totalW;
+    const leafH = inset ? openH - 2 * DOOR_REVEAL : openH + 2 * DOOR_OVERLAY_LAP;
+    // Inset sits flush with the case front; overlay stands proud of it.
+    const zDoor = inset ? zone.zFront - DOOR_T / 2 : zone.zFront + DOOR_T / 2;
+    const yDoor = zone.openBottom + openH / 2;
+
+    for (let i = 1; i <= d.count; i++) {
+      const x = d.count === 2
+        ? (i === 1 ? -1 : 1) * (leafW / 2 + (inset ? DOOR_REVEAL / 2 : 0))
+        : 0;
+      parts.push(part(`door_${i}`, `door_${Math.round(leafW)}x${Math.round(leafH)}`, 'door',
+        d.count === 2 ? (i === 1 ? 'Left door' : 'Right door') : 'Door',
+        leafW, leafH, DOOR_T, x, yDoor, zDoor,
+        { material: spec.wood.species, explode: { x: d.count === 2 ? (i === 1 ? -0.6 : 0.6) : 0, y: 0, z: 1.2 } }));
+      /* The hinge is NOT in the joint list, and that is deliberate: joints
+       * here are permanent wood-to-wood connections that the cut list gives
+       * allowances for and the racking model scores. A hinge is a mechanism —
+       * it carries no racking, takes no cut allowance, and lives in the BOM
+       * with the rest of the hardware. Recording it as a joint would credit
+       * the case with stiffness a swinging door does not provide. */
+    }
   }
 
   /* ---------------- custom (novel) compositions ----------------

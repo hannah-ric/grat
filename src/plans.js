@@ -253,6 +253,41 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
+    /* Door hardware (X-07). Counts come from the same BB.HW rule the hinge
+     * check uses, so the BOM and the integrity panel can never disagree
+     * about how many hinges this door needs — and the hanging step below
+     * prints the same number again from the same call. One rule, three
+     * surfaces; the alternative is the classic defect where the plan drills
+     * three cups and the shopping list buys two hinges. */
+    const doorParts = model.parts.filter(p => p.role === 'door');
+    if (doorParts.length && BB.HW) {
+      const hinge = BB.HW.HINGES[spec.hardware && spec.hardware.hinge] || BB.HW.HINGES.euro_cup;
+      for (const dp of doorParts) {
+        const kg = BB.HW.panelWeightKg(dp.size.w, dp.size.h, dp.size.d, dp.material);
+        const n = BB.HW.doorHingeCount(dp.size.h, kg);
+        items.push({
+          kind: 'hardware', label: hinge.label, qty: n,
+          detail: `${dp.name.toLowerCase()} — ${U().fmtWeight(kg)} of door, ${hinge.fronts.includes('inset') && spec.doors.style === 'inset' ? 'inset' : 'overlay'} hung`,
+          price: hp('hinge_' + hinge.key, hinge.price) * n
+        });
+        // The door needs a way to be pulled and something to stop it closing
+        // past flush. Both are real parts a build cannot do without.
+        items.push({
+          kind: 'hardware', label: 'Door catch (magnetic, with strike)', qty: 1,
+          detail: `${dp.name.toLowerCase()} — a door with no catch swings open on its own`,
+          price: hp('catch_magnetic', 2)
+        });
+      }
+      const pStyle = BB.HW.PULLS[spec.hardware && spec.hardware.pull];
+      if (pStyle && pStyle.key !== 'none_touch') {
+        items.push({
+          kind: 'hardware', label: pStyle.label, qty: doorParts.length,
+          detail: `one per door — ${doorParts.length === 2 ? 'mounted on the meeting stiles, mirrored' : 'on the opening stile'}`,
+          price: hp('pull_' + pStyle.key, pStyle.price) * doorParts.length
+        });
+      }
+    }
+
     // No shelf-pin line: every template shelf is JOINED to the sides (the
     // model, cut list, and structural engine all treat it as fixed), so pins
     // would be phantom hardware nothing installs (audit FE-C1/H-02). Pins
@@ -378,6 +413,63 @@ var BB = globalThis.BB = globalThis.BB || {};
         pullText, ids('pull'), { drawer: d.index }));
     }
   }
+
+  /* Hanging the doors (X-07). Placed before sanding for a reason a first-time
+   * door-hanger learns the hard way: doors are fitted, marked, and then taken
+   * OFF again to finish, because a door finished in place glues itself shut
+   * at the reveal and its hinge screws bury themselves in cured film.
+   *
+   * Every number here comes from BB.HW — the same call the BOM and the
+   * integrity check make — so the count you drill for is the count you
+   * bought and the count the engine rated. */
+  function doorSteps(spec, model, out) {
+    const doors = model.parts.filter(p => p.role === 'door');
+    if (!doors.length || !BB.HW) return;
+    // Display boundary: mm in, formatted text out, exactly once and here.
+    const len = mm => U().fmtLength(mm);
+    const drill = mm => U().fmtDrill(mm);   // bores are bit sizes (audit M-01/D-05)
+    const hinge = BB.HW.HINGES[spec.hardware && spec.hardware.hinge] || BB.HW.HINGES.euro_cup;
+    const inset = spec.doors.style === 'inset';
+    const d0 = doors[0];
+    const kg = BB.HW.panelWeightKg(d0.size.w, d0.size.h, d0.size.d, d0.material);
+    const n = BB.HW.doorHingeCount(d0.size.h, kg);
+    const ids = doors.map(p => p.id);
+
+    /* Cup boring is SOLVED from the designed overlay, not looked up: the
+     * boring distance and the overlay are two ends of one equation, which is
+     * why a cup bored "about 5 mm" from the edge gives an overlay nobody
+     * asked for. cupBoring() reports when the answer falls outside what a
+     * straight arm can do, and then the fix is a different plate, not a
+     * wilder bore. */
+    let boringText;
+    if (hinge.boring && hinge.boring.cupDia) {
+      // Overlay 0 for an inset door: the leaf laps nothing, it sits in the
+      // hole. The plate is solved, not assumed — see cupBoringFor().
+      const cb = BB.HW.cupBoringFor(inset ? 0 : DOOR_OVERLAY_LAP_MM);
+      // The cup is a METRIC callout in both unit systems, deliberately: a
+      // 35 mm cup hinge takes a 35 mm Forstner, and the nearest imperial bit
+      // is one you can buy and cannot seat the hinge with. Same exemption
+      // the SketchUp exports carry for real millimetre geometry.
+      boringText = `Bore the ${cb.cupDia} mm cups ${len(cb.cupDepth)} deep — a ${cb.cupDia} mm Forstner, not the nearest inch bit; this is metric hardware — set ${len(cb.tbMM)} from the door's hinge edge to the cup's NEAR side, on ${cb.plateMM} mm plates` +
+        (cb.inRange ? '' : ` (note: no standard plate lands this overlay inside the ${len(hinge.boring.tbMin)}–${len(hinge.boring.tbMax)} straight-arm window, so expect to buy a cranked arm rather than move the bore)`) +
+        `. A drill press with a fence and a stop beats a jig here: every cup on every door must be the same distance from the edge, or the doors will not line up with each other however much you adjust them afterwards.`;
+    } else {
+      boringText = `Mark the ${hinge.label.toLowerCase()} leaf positions off ONE story stick for every door and every stile — matched pairs, not measured twice.` +
+        (hinge.boring && hinge.boring.gainDepth ? ` Cut the gains ${hinge.boring.gainDepth} deep: deeper binds the door and springs the screws.` : '');
+    }
+
+    out.push(step('doors_fit', doors.length > 1 ? 'Fit the doors, then take them off again' : 'Fit the door, then take it off again',
+      `${n} × ${hinge.label.toLowerCase()} per door — ${U().fmtWeight(kg)} of door and ${len(d0.size.h)} of height is what sets that count, not the look of it. ` +
+      boringText + ' ' +
+      (inset
+        ? `Inset doors are fitted by planing to the opening, not by cutting to a number: aim for a ${len(2)} reveal all round and check it with the door IN the opening, shimmed on playing cards. The reveal is the whole job — an even gap reads as fine work and an uneven one is the first thing anybody sees. Fit in the season you are in and remember which way it will move: a door fitted tight in a damp August binds every August after.`
+        : `Overlay doors forgive the opening but not each other: hang both, then adjust until the gap down the middle is even and the bottom edges line up across the pair. That centre gap is the only reference anyone looks at.`) +
+      ` Then unscrew the doors and set them aside — they get finished off the case, and go back on last.`,
+      ids));
+  }
+  // The overlay a cup hinge is solved against; the panel laps the case edge
+  // by this much, so it is the same number addDoors() builds the leaf from.
+  const DOOR_OVERLAY_LAP_MM = 12;
 
   /* Sanding + finishing schedule from the finish catalog (audit F-S3-3). */
   function sandingStep(spec, out) {
@@ -711,6 +803,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         'This piece is tall, top-heavy, or tips with its drawers open: fasten the anti-tip strap to the top rear and screw the wall side into a stud (not just drywall). Do this before loading any shelf or drawer'
         + (t === 'custom' ? '; if it can’t back onto a wall, rethink placement — the tip risk is real.' : '.'), []));
     }
+    // Before sanding, deliberately: the doors come back OFF to be finished.
+    doorSteps(spec, model, out);
     safetyStep(spec, model, integrity, opts.stockPlan, out);
     sandingStep(spec, out);
     finishingStep(spec, out);

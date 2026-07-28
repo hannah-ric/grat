@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 5,
+  "specVersion": 6,
   "meta": {
    "name": "Sideboard Cabinet",
    "template": "cabinet",
@@ -37,13 +37,15 @@
   },
   "finish": "danish_oil",
   "hardware": {
-   "pull": "bar_pull"
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
   },
   "drawers": {
    "count": 2,
    "frontStyle": "overlay",
    "runner": "side_mount_slides"
   },
+  "doors": null,
   "custom": null
  },
  "validation": {

@@ -1,0 +1,70 @@
+{
+  "why": "The current-version anchor (v6), and the corpus's only design with DOORS. Doors arrived with X-07; a case saved with them must still open with them, while the v5 and earlier fixtures prove the reverse — a case saved before them opens OPEN rather than silently gaining a front. Also the only fixture carrying the dr/hh wire keys, which are written only when doors exist.",
+  "version": 6,
+  "kind": "spec",
+  "expect": {
+    "template": "cabinet",
+    "name": "Shaker Cabinet with Doors",
+    "species": "cherry",
+    "units": "in",
+    "minParts": 10
+  },
+  "expectAfterMigration": {
+    "specVersion": 6,
+    "doors.count": 2,
+    "doors.style": "inset",
+    "hardware.hinge": "butt_brass"
+  },
+  "spec": {
+    "specVersion": 6,
+    "meta": {
+      "name": "Shaker Cabinet with Doors",
+      "template": "cabinet",
+      "level": "intermediate",
+      "units": "in"
+    },
+    "overall": {
+      "width": 812.8,
+      "depth": 457.2,
+      "height": 914.4
+    },
+    "wood": {
+      "species": "cherry",
+      "sheetSpecies": "baltic_birch"
+    },
+    "structure": {
+      "topThickness": 25,
+      "legThickness": 70,
+      "apronHeight": 90,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 1,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": true,
+      "stretcher": "none",
+      "stretcherHeight": 280
+    },
+    "joinery": {
+      "frame": "pocket_screws",
+      "case": "dado",
+      "box": "pocket_screws"
+    },
+    "finish": "wipe_poly",
+    "hardware": {
+      "pull": "knob_turned_wood",
+      "hinge": "butt_brass"
+    },
+    "drawers": {
+      "count": 2,
+      "frontStyle": "inset",
+      "runner": "side_mount_slides"
+    },
+    "doors": {
+      "count": 2,
+      "style": "inset"
+    },
+    "custom": null
+  }
+}
