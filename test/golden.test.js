@@ -201,6 +201,46 @@ const CORPUS = [
       wood: { species: 'pine' },
       bed: { size: 'twin', headboardHeight: 0, platformHeight: 300 }
     }
+  },
+
+  /* ---- doored casework completion (roadmap item 4, 2026-07): a tall
+   * two-door inset armoire (imperial) — full-height leaves, four hinges by
+   * the chart, catches top AND bottom (leaf ≥ 1500), door:sag passing on
+   * the tall spread, and the honest red-oak reveal-movement advisory the
+   * class teaches instead of hiding. And a boundary sideboard (metric):
+   * a single door asked across 1400 mm is split by the class guard, the
+   * resulting leaves are wider than tall (the Blum chart rule fires as a
+   * frozen door:sag advisory), and flat-sawn beech movement outruns the
+   * overlay meeting adjustment — honest advisories, not tuned passes.
+   * The sideboard is additionally a frozen HONEST-FAIL (ash-bookshelf
+   * doctrine): its 19 mm shelf and 25 mm top genuinely sag over the
+   * 1.36 m clear span under the books preset + creep — sag:top_1 and
+   * sag:shelf_1 fail, the verdict is fail, and that is the point. Don't
+   * "fix" it. */
+  {
+    name: 'oak-armoire-pair-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Oak Armoire', template: 'cabinet', level: 'intermediate', units: 'in' },
+      overall: { width: 914.4, depth: 508, height: 1905 },
+      wood: { species: 'red_oak' },
+      structure: { shelfCount: 3, toeKick: true, backPanel: true, topThickness: 25, sideThickness: 18 },
+      drawers: null,
+      doors: { count: 2, style: 'inset' },
+      finish: 'danish_oil'
+    }
+  },
+  {
+    name: 'beech-sideboard-doors-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Beech Sideboard', template: 'cabinet', level: 'beginner', units: 'mm' },
+      overall: { width: 1400, depth: 450, height: 750 },
+      wood: { species: 'beech' },
+      structure: { shelfCount: 1, toeKick: true, backPanel: true },
+      drawers: null,
+      doors: { count: 1, style: 'overlay' }
+    }
   }
 ];
 

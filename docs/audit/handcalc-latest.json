@@ -264,5 +264,82 @@
     "engine": 3.5002915451895045,
     "errPct": 0,
     "pass": true
+  },
+  {
+    "name": "door leaf mass geometry × SG (kg)",
+    "hand": 9.048099059999998,
+    "engine": 9.04809906,
+    "errPct": 1.9632376122551544e-14,
+    "pass": true
+  },
+  {
+    "name": "door hinge spread (mm)",
+    "hand": 1562,
+    "engine": 1562,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "door droop amplification w/s",
+    "hand": 0.2746478873239437,
+    "engine": 0.275,
+    "errPct": 0.12820512820512803,
+    "pass": true
+  },
+  {
+    "name": "door free-edge droop (mm)",
+    "hand": 0.13732394366197184,
+    "engine": 0.137,
+    "errPct": 0.2358974358974364,
+    "pass": true
+  },
+  {
+    "name": "door hinge couple F = W·g·w/2s (N)",
+    "hand": 12.189127532976759,
+    "engine": 12.2,
+    "errPct": 0.08919807421676312,
+    "pass": true
+  },
+  {
+    "name": "door seasonal swing (mm)",
+    "hand": 6.33204,
+    "engine": 6.33204,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "door reveal closure (mm)",
+    "hand": 6.33204,
+    "engine": 6.33204,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "catch count per tall leaf",
+    "hand": 2,
+    "engine": 2,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "catch swing demand (N)",
+    "hand": 2.219046294465,
+    "engine": 2.219,
+    "errPct": 0.0020862325006749407,
+    "pass": true
+  },
+  {
+    "name": "catch margin (×)",
+    "hand": 17.68327235798411,
+    "engine": 17.68,
+    "errPct": 0.018505386999999884,
+    "pass": true
+  },
+  {
+    "name": "hinge count (height band vs weight)",
+    "hand": 4,
+    "engine": 4,
+    "errPct": 0,
+    "pass": true
   }
 ]

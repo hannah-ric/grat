@@ -280,12 +280,17 @@ var BB = globalThis.BB = globalThis.BB || {};
           detail: `${dp.name.toLowerCase()} — ${U().fmtWeight(kg)} of door, ${hinge.fronts.includes('inset') && spec.doors.style === 'inset' ? 'inset' : 'overlay'} hung`,
           price: hp('hinge_' + hinge.key, hinge.price) * n
         });
-        // The door needs a way to be pulled and something to stop it closing
-        // past flush. Both are real parts a build cannot do without.
+        // The door needs a way to be pulled and something to stop it swinging
+        // open. The keeper is load-rated hardware now (roadmap item 4): type
+        // and count come from BB.HW.catchSpec — the same pure function the
+        // door:catch check rates and the fitting step installs, so the label,
+        // the count, and the rating can never disagree.
+        const cs = BB.HW.catchSpec(kg, dp.size.h, spec.hardware && spec.hardware.pull);
         items.push({
-          kind: 'hardware', label: 'Door catch (magnetic, with strike)', qty: 1,
-          detail: `${dp.name.toLowerCase()} — a door with no catch swings open on its own`,
-          price: hp('catch_magnetic', 2)
+          kind: 'hardware', label: cs.label + (cs.count > 1 ? ' (top + bottom)' : ''), qty: cs.count,
+          detail: `${dp.name.toLowerCase()} — ${U().fmtWeight(cs.holdKg)} hold class, ${cs.marginRatio}× over the computed swing demand` +
+            (cs.substituted ? '; touch latch declined — past ~4 kg the pop-out spring loses, so this front needs a pull after all' : ''),
+          price: hp('catch_' + cs.key, cs.price) * cs.count
         });
       }
       const pStyle = BB.HW.PULLS[spec.hardware && spec.hardware.pull];
@@ -468,18 +473,28 @@ var BB = globalThis.BB = globalThis.BB || {};
         (hinge.boring && hinge.boring.gainDepth ? ` Cut the gains ${hinge.boring.gainDepth} deep: deeper binds the door and springs the screws.` : '');
     }
 
+    /* The keeper comes from the same pure function the BOM buys and the
+     * door:catch check rates (BB.HW.catchSpec) — one rule, three surfaces. */
+    const cs = BB.HW.catchSpec(kg, d0.size.h, spec.hardware && spec.hardware.pull);
+    const catchText = cs.count === 2
+      ? ` Fit ${cs.count} × ${cs.label.toLowerCase()} per door — one at the TOP and one at the BOTTOM of the free stile, so both free corners are held flat against seasonal twist on a leaf this tall.`
+      : ` Fit a ${cs.label.toLowerCase()} per door at the free stile${cs.substituted ? ' — the touch latch was declined (past ~4 kg the pop-out spring loses), so this front keeps a pull' : ''}.`;
+
     out.push(step('doors_fit', doors.length > 1 ? 'Fit the doors, then take them off again' : 'Fit the door, then take it off again',
       `${n} × ${hinge.label.toLowerCase()} per door — ${U().fmtWeight(kg)} of door and ${len(d0.size.h)} of height is what sets that count, not the look of it. ` +
       boringText + ' ' +
       (inset
         ? `Inset doors are fitted by planing to the opening, not by cutting to a number: aim for a ${len(2)} reveal all round and check it with the door IN the opening, shimmed on playing cards. The reveal is the whole job — an even gap reads as fine work and an uneven one is the first thing anybody sees. Fit in the season you are in and remember which way it will move: a door fitted tight in a damp August binds every August after.`
         : `Overlay doors forgive the opening but not each other: hang both, then adjust until the gap down the middle is even and the bottom edges line up across the pair. That centre gap is the only reference anyone looks at.`) +
+      catchText +
       ` Then unscrew the doors and set them aside — they get finished off the case, and go back on last.`,
       ids));
   }
   // The overlay a cup hinge is solved against; the panel laps the case edge
-  // by this much, so it is the same number addDoors() builds the leaf from.
-  const DOOR_OVERLAY_LAP_MM = 12;
+  // by this much, so it is the same number addDoors() builds the leaf from —
+  // both read the casework class contract (classes.js CASE_GEOM).
+  const DOOR_OVERLAY_LAP_MM = BB.Classes && BB.Classes.get('casework')
+    ? BB.Classes.get('casework').geom.DOOR_OVERLAY_LAP : 12;
 
   /* Sanding + finishing schedule from the finish catalog (audit F-S3-3). */
   function sandingStep(spec, out) {

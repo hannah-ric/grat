@@ -367,6 +367,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         HW.doorHingeCount(899, 1) === 2 && HW.doorHingeCount(901, 1) === 3 &&
         HW.doorHingeCount(1601, 1) === 4 && HW.doorHingeCount(600, 8) === 3,
         [HW.doorHingeCount(899, 1), HW.doorHingeCount(901, 1), HW.doorHingeCount(1601, 1), HW.doorHingeCount(600, 8)].join('/'), '2/3/4/3');
+      // Catch selection (doored casework, roadmap item 4): magnetic default,
+      // roller past 4 kg, top+bottom past 1500 tall, touch latch declined
+      // past its own 4 kg spring cap with the substitution carried.
+      const c1 = HW.catchSpec(3, 900, 'bar_pull'), c2 = HW.catchSpec(9, 1700, 'bar_pull'), c3 = HW.catchSpec(6, 900, 'none_touch');
+      test('hardware', 'catchSpec: type, count, and the touch-latch spring cap are code-owned',
+        c1.key === 'magnetic' && c1.count === 1 && c2.key === 'roller_catch' && c2.count === 2 &&
+        c3.key === 'magnetic' && c3.substituted === true,
+        [c1.key + '×' + c1.count, c2.key + '×' + c2.count, c3.key + (c3.substituted ? '(sub)' : '')].join('/'),
+        'magnetic×1/roller_catch×2/magnetic(sub)');
       // Gas strut hand calc: 6.8 kg lid, 450 deep, defaults → 1.3·W·g·(225/90)
       // = 3.25·W·g ≈ 216.8 N — over the 200 N class on one strut, honest;
       // split across two on a 700-wide lid → 108.4 N → 120 N class.

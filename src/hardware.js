@@ -17,9 +17,15 @@
  *   READY — selection rules with no geometry yet (lifts and stays): tested
  *          code awaiting the lids workstream. Their wire enums are
  *          deliberately NOT minted until a consumer exists.
- *   REFERENCE — the teaching layer (catches, locks, wall hanging, feet,
- *          and the traditional no-hardware solutions), searchable in the
- *          Shop Reference, several with 3D inspector models.
+ *   REFERENCE — the teaching layer (locks, wall hanging, feet, and the
+ *          traditional no-hardware solutions), searchable in the Shop
+ *          Reference, several with 3D inspector models. Catches graduated
+ *          to LIVE with the doored-casework completion (roadmap item 4):
+ *          catchSpec selects type and count as a pure function of the
+ *          corrected leaf, the BOM buys it, the door:catch check rates it,
+ *          and the fitting step installs it — one rule, three surfaces.
+ *          No new wire enum was needed: catch intent derives entirely from
+ *          existing keys (door geometry + the pull style).
  *
  * All mm, N, kg, N·m. {mm} tokens render via BB.Units.fmtTemplate.
  * Capacity fields are conservative class ratings, not brand promises.
@@ -599,6 +605,54 @@ var BB = globalThis.BB = globalThis.BB || {};
     return M4_LENGTHS.find(l => l >= need) || M4_LENGTHS[M4_LENGTHS.length - 1];
   };
 
+  /* Catch selection (LIVE since the doored-casework completion, roadmap
+   * item 4): type and count are a pure function of the corrected leaf —
+   * the model proposes nothing here.
+   *
+   * Demand is the out-of-plumb swing force: a case leaning 3° toward its
+   * doors (sin 3° ≈ 0.05 — a documented DERIVATION; no standard rates
+   * residential door catches) lets each leaf swing itself open, so the
+   * catches must hold F = m·g·0.05, shared across the catches on the leaf,
+   * with the repo's 1.5× gate. Hold ratings are the catalog rows' holdKg
+   * class values.
+   *
+   * Type: magnetic is the default keeper; past 4 kg of leaf the roller
+   * catch takes over (the catalog's "bigger doors and slightly out-of-true
+   * cases" row — 4 kg is the same spring cap the touch latch publishes as
+   * its failure line, reused as the one weight step). A handleless front
+   * (pull style none_touch) NEEDS a touch latch to open at all — but past
+   * ~4 kg the pop-out spring loses (the catalog row's own failure note),
+   * so a heavier handleless leaf is substituted an honest magnetic catch
+   * and the substitution is carried on the result (`substituted: true`),
+   * exactly the pullSpec honesty contract: the BOM, the check, and the
+   * step can never disagree about what is actually fitted.
+   *
+   * Count: one per leaf; leaves ≥ 1500 mm tall take one top AND one
+   * bottom, so both free corners are held flat against seasonal twist
+   * (shop practice for tall doors — derivation, stated). */
+  const CATCH_TALL_MM = 1500;
+  const CATCH_STEP_KG = 4;
+  const CATCH_PLUMB_SIN = 0.05; // sin 3° ≈ 0.0523, taken at 0.05
+  function catchSpec(leafKg, leafHMM, pullStyleKey) {
+    const count = leafHMM >= CATCH_TALL_MM ? 2 : 1;
+    let cat, substituted = false;
+    if (pullStyleKey === 'none_touch') {
+      if (leafKg <= CATCH_STEP_KG) cat = CATCHES.touch_latch;
+      else { cat = CATCHES.magnetic; substituted = true; }
+    } else {
+      cat = leafKg > CATCH_STEP_KG ? CATCHES.roller_catch : CATCHES.magnetic;
+    }
+    const demandN = leafKg * GRAV * CATCH_PLUMB_SIN / count;
+    const holdN = cat.holdKg * GRAV;
+    return {
+      key: cat.key, label: cat.label, price: cat.price, count,
+      holdKg: cat.holdKg, holdN: Math.round(holdN * 10) / 10,
+      demandN: Math.round(demandN * 1000) / 1000,
+      marginRatio: Math.round((holdN / demandN) * 100) / 100,
+      substituted
+    };
+  }
+
   /* Slide picker: by computed load, ask, and fit. The 34 kg class stays
    * the default; heavier computed loads climb the family. */
   function slidePick(loadKg, opts) {
@@ -660,7 +714,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     HINGES, PULLS, PULL_CTC_SERIES, SLIDES, LIFTS, CATCHES, LOCKS,
     SHELF_SUPPORT, TABLE_BED, WALL_HANG, FEET_MISC, TRADITIONAL, GATES,
     panelWeightKg, doorHingeCount, cupBoring, cupBoringFor, gasStrut, lidStay, powerFactor,
-    pullSpec, pullScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
+    pullSpec, pullScrewLenMM, catchSpec, slidePick, ruleJoint, drawerVerticalClearance,
     digestLine
   };
 })();

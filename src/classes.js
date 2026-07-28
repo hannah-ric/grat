@@ -677,6 +677,179 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   });
 
+  /* =========================================================================
+   * CASEWORK — carcass pieces (bookshelf, nightstand, cabinet), the retrofit
+   * that completes roadmap item 4 (doored casework, "smallest distance to
+   * sound"). Like frame_table, nothing here invents a number: every artifact
+   * points at code that already owned it — the audited sag/strength beam
+   * checks, F2057/STURDY open-drawer tipping, the movement engine, and the
+   * X-07 door system (hinge catalog, count rule, cup boring) — plus the
+   * three closures this contract shipped with: door droop over the hinge
+   * couple (door:sag), reveal survival under seasonal movement
+   * (door:reveal), and catches as load-rated, code-selected hardware
+   * (door:catch, BB.HW.catchSpec).
+   * ========================================================================= */
+  const CASE_GEOM = {
+    /* Door-system constants (X-07), single-sourced here since this contract:
+     * spec.js reads the split cap, parametric.js cuts the leaves from the
+     * reveal/lap/thickness, plans.js solves the cup boring from the same lap
+     * — so the checks and the geometry can never use two different reveals.
+     *   DOOR_REVEAL      2 mm of fitted air per gap in an average season —
+     *                    a shop number, not a style choice (X-07).
+     *   DOOR_OVERLAY_LAP how far an overlay leaf laps the case edge.
+     *   DOOR_T           slab panel stock; thinner racks in its own plane.
+     *   DOOR_MAX_SINGLE_W a single leaf past 600 mm becomes a pair. The
+     *                    same 600 the Blum-class hinge charts are valid to
+     *                    (ea.blum.com "Number of hinges", verified 2026-07:
+     *                    counts "valid for door widths of up to 600 mm") —
+     *                    the correction guard and the chart share one cap. */
+    DOOR_REVEAL: 2,
+    DOOR_OVERLAY_LAP: 12,
+    DOOR_T: 19,
+    DOOR_MAX_SINGLE_W: 600,
+    /* Hinge layout: outermost hinges sit ~100 mm from the door ends (shop
+     * practice; the drop-leaf canon in BB.HW uses the same 75–100 band).
+     * The spread between them is the arm the gravity couple resolves over. */
+    HINGE_END_INSET: 100,
+    /* Design hinge-line settlement, 0.5 mm — a documented DERIVATION (no
+     * hinge maker publishes a settlement figure): the take-up every hung
+     * door shows as its top-hinge screws bed in and arm clearance closes,
+     * taken as a quarter of the fitted reveal so a leaf with droop
+     * amplification ≤ 1 spends at most half its reveal over its life. */
+    HINGE_SETTLE_MM: 0.5,
+    /* Euro cup hinges adjust ±2 mm on side and height at the plate (Blum
+     * CLIP top published spec, verified-approximate 2026-07) — the
+     * restorable budget an overlay pair's meeting gap can be re-centred
+     * within after the doors move. */
+    HINGE_ADJUST_MM: 2,
+    /* Hinge spread s between the outermost hinge centres. A continuous
+     * (piano) hinge carries the whole edge — its "spread" is the full
+     * leaf height and it escapes the two-point couple entirely. */
+    hingeSpread(hinge, leafH) {
+      if (hinge && hinge.countRule === 'fullLength') return Math.max(120, leafH - 20);
+      return Math.max(120, leafH - 2 * this.HINGE_END_INSET);
+    },
+    /* Slab-door droop model (door:sag). A slab door cannot rack out of
+     * square — the panel is its own shear web; frame-and-panel doors rack
+     * at frame joints that do not exist here. What drops a slab door's free
+     * corner is the hinge couple: weight W at w/2 from the hinge line
+     * resolves as a horizontal force couple over the spread s (the gate
+     * formula, F = W·g·w/(2s)), and every millimetre the top fixing yields
+     * reads as w/s millimetres at the free edge — pure geometry. Droop is
+     * priced at the design settlement above. Width > height additionally
+     * flags the Blum-class chart rule ("doors should have a height that is
+     * greater than their width" — ea.blum.com, verified 2026-07), which a
+     * full-length hinge escapes. */
+    doorDroop(hinge, leafW, leafH, leafKg) {
+      const s = this.hingeSpread(hinge, leafH);
+      const amp = leafW / s;
+      const full = !!(hinge && hinge.countRule === 'fullLength');
+      return {
+        spreadMM: s,
+        ampRatio: Math.round(amp * 1000) / 1000,
+        droopMM: Math.round(this.HINGE_SETTLE_MM * amp * 1000) / 1000,
+        coupleN: Math.round((leafKg * 9.81 * leafW) / (2 * s) * 10) / 10,
+        widerThanTall: !full && leafW > leafH
+      };
+    },
+    /* Seasonal swing of a slab leaf across its grain (door:reveal). Grain
+     * runs with the leaf's long dimension, so the cross-grain width is the
+     * short one; coefficients are the Wood Handbook values the movement
+     * engine already uses (K.movementMM, same ΔMC). Sheet stock is exempt
+     * exactly as the move: checks exempt it. */
+    doorSwingMM(leafW, leafH, speciesKey, dMC) {
+      const sp = K.WOOD_SPECIES[speciesKey];
+      if (!sp || sp.sheet) return 0;
+      return K.movementMM(Math.min(leafW, leafH), speciesKey, 'tangential', dMC);
+    }
+  };
+
+  register({
+    key: 'casework',
+    label: 'Casework (bookshelves, nightstands, cabinets — doored or open)',
+    templates: ['cabinet', 'bookshelf', 'nightstand'],
+    geom: CASE_GEOM,
+    family: {
+      rules: [
+        { path: 'overall.width', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.depth', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.height', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.topThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.sideThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.shelfThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.shelfCount', ownedBy: 'Spec.SHELF_COUNT clamp + shelf-clearance decrement (not a DIM_RULES length — shelves are counted, not measured)' }
+      ],
+      couplings: [
+        { id: 'door_split', rule: 'a single door leaf > 600 mm becomes a pair — the Blum-class hinge charts are valid to 600 and the swing radius past it fits no room; the guard and the chart share one cap', enforcedBy: 'Spec.correctSpec door block (X-07) + doorNotes disclosure' },
+        { id: 'one_front_plane', rule: 'drawers and doors on one case share one front style — an overlay drawer front stands proud of exactly the face an inset door sits behind; the doors win and the change is told', enforcedBy: 'Spec.correctSpec drawer block' },
+        { id: 'inset_recess', rule: 'inset doors push everything inside the case (shelves, drawer-bank front plane) back by door thickness + reveal, or the door closes into the shelf edges', enforcedBy: 'Parametric.doorSpace' },
+        { id: 'hinge_fits_style', rule: 'the hinge STYLE must be able to hang the door style (catalog `fronts`) — a knife hinge on an overlay door is not a preference, it is a hinge that cannot be fitted', enforcedBy: 'Spec.correctSpec hinge gate (X-07b)' },
+        { id: 'drawer_opening_floor', rule: 'drawer count decrements until every opening clears 80 mm (below it an opening barely clears a hand)', enforcedBy: 'Spec.correctSpec + K.ERGONOMICS drawer_min_height' },
+        { id: 'shelf_clearance', rule: 'shelf count decrements until every shelf clears its neighbours by shelfThickness + 20 — overlapping shelves are rogue geometry', enforcedBy: 'Spec.correctSpec shelf decrement' }
+      ]
+    },
+    humanFactors: [
+      { key: 'shelf_depth_books', label: 'Shelf depth for books', min: 250, max: 320, unit: 'mm', source: 'K.ERGONOMICS shelf_depth_books (trade paperbacks need 230; art books want 320+)' },
+      { key: 'nightstand_height', label: 'Nightstand height', min: 550, max: 700, unit: 'mm', source: 'K.ERGONOMICS nightstand_height (within 50 of the mattress top)' },
+      { key: 'counter_height', label: 'Cabinet counter height', min: 860, max: 940, unit: 'mm', source: 'K.ERGONOMICS counter_height (standard kitchen counter 900 to the finished top)' },
+      { key: 'drawer_max_width', label: 'Drawer width per slide pair', min: 0, max: 750, unit: 'mm', source: 'K.ERGONOMICS drawer_max_width (beyond 750 boxes rack on their slides; use two banks)' }
+    ],
+    loadCases: [
+      { id: 'shelf_books', label: 'Shelves under books', magnitude: '60 kg/m', apply: 'uniform along every shelf, sustained', direction: 'gravity', duration: 'sustained (×2 creep, Wood Handbook ch. 4)', acceptance: 'long-term sag ≤ L/300; bending margin ≥ 1 at MOR/4', source: 'BIFMA X5.9 shelf load 40 lb/ft (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' },
+      { id: 'open_drawer_pull', label: 'Child-weight pull on an open drawer', magnitude: '22.7 kg (50 lb) at the top drawer front, every drawer open ⅔', apply: 'front of the highest open drawer, unit empty', direction: 'gravity at the drawer lever', duration: 'transient abuse case', acceptance: 'moment margin ≥ 1 to stand, ≥ 1.5 to skip the anchor; clothing-storage heights below 1.5 make the wall anchor a mandatory BOM line', source: 'ASTM F2057 / STURDY Act test mass (audit F-S0-1)', traceability: 'standard' },
+      { id: 'door_gravity', label: 'Door leaf on its hinges', magnitude: 'leaf weight = geometry × species SG (computed, never guessed)', apply: 'hinge group, vertical', direction: 'gravity', duration: 'sustained', acceptance: 'weight ≤ capacityKgPair × pairs at the chart-derived count', source: 'Blum-class hinge count chart (height bands + weight rule; ea.blum.com "Number of hinges", verified 2026-07) with catalog class ratings', traceability: 'standard' },
+      { id: 'door_droop_couple', label: 'Slab-door droop over the hinge couple', magnitude: 'F = W·g·w/(2s) horizontal per outermost hinge; droop = settlement × w/s at the free edge', apply: 'top hinge fixing', direction: 'horizontal, in the door plane', duration: 'sustained', acceptance: 'droop ≤ half the fitted reveal clean, ≤ the whole reveal hard; width ≤ height unless the hinge is full-length', source: 'documented derivation (gate-hinge statics; arithmetic in test/handcalc.js) + the Blum chart rule for the width gate', traceability: 'derivation' },
+      { id: 'reveal_movement', label: 'Reveal survival under seasonal movement', magnitude: 'swing = cross-grain width × coefficient × ΔMC per leaf; closure at the reveal = count × swing/2 (fitted mid-season, hinge edge pinned)', apply: 'meeting/latch reveal', direction: 'across the grain', duration: 'seasonal cycle', acceptance: 'closure ≤ the fitted air (inset reveal, or the ±2 mm plate adjustment on overlay pairs) — beyond it the plan teaches the fitting-season discipline instead of staying silent', source: 'Wood Handbook ch. 13 coefficients via K.movementMM (same ΔMC as the move: checks); the closure model is a documented derivation', traceability: 'derivation' },
+      { id: 'catch_hold', label: 'Catch holding an out-of-plumb door', magnitude: 'F = m·g·sin(3°) ≈ m·g·0.05 shared across the catches on the leaf', apply: 'catch strike, horizontal', direction: 'door swing', duration: 'sustained', acceptance: 'catalog hold rating ≥ 1.5× demand; touch latches refuse leaves past 4 kg (the spring cap on the catalog row)', source: 'documented derivation (a case leaning 3° swings its own doors open; no standard rates residential catches — arithmetic in test/handcalc.js)', traceability: 'derivation' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'shelf / bottom → side', required: ['dado', 'rabbet', 'sliding_dovetail', 'butt_screws', 'pocket_screws', 'dowels', 'biscuits'], prohibited: ['edge_glue'], reason: 'the shelf end reaction runs into the sides — housed joints (dado/rabbet/sliding dovetail) carry it in bearing and the level matrix gates the rest; edge glue is a panel operation, not a shelf housing. The joint-adequacy check prices whatever is chosen.' },
+        { connection: 'back → case', required: ['rabbet'], prohibited: ['edge_glue'], reason: 'the back sits in rabbets on the case edges: it is the shear panel that squares the case and multiplies the racking score ×1.5 — a nailed-on flush back does neither.' },
+        { connection: 'solid top → case', required: ['butt_screws'], prohibited: ['edge_glue'], reason: 'a solid top must move across its grain — screws in slotted/oversize holes, never a cross-grain glue line (movement check + FE-H1).' },
+        { connection: 'door → case', required: [], prohibited: [], reason: 'not a wood-to-wood joint: a hinge is a mechanism — it carries no racking credit, takes no cut allowance, and lives in the BOM (X-07). The door system checks (hinge, door:sag, door:reveal, door:catch) own its physics.' }
+      ]
+    },
+    failureModes: [
+      { id: 'shelf_sag', mode: 'shelf sags under books + creep', checkIds: ['sag:'], fixture: 'frozen ash-bookshelf-metric honest-fail (19 mm shelves; do not "fix" it) + audit F-S2-1 family', realWorld: 'the smile every long bookshelf grows' },
+      { id: 'member_rupture', mode: 'shelf or top passes deflection but fails in bending', checkIds: ['str:'], fixture: 'audit KB-2 (MDF fails where MDF fails)', realWorld: 'cracked shelves under boxed storage' },
+      { id: 'racking', mode: 'case racks side-to-side without a back or housed shelves', checkIds: ['rack'], fixture: 'unit racking sections (back panel ×1.5, dados ×1.15)', realWorld: 'parallelogram bookcases' },
+      { id: 'tipping', mode: 'tall case tips when top-loaded', checkIds: ['tip'], fixture: 'audit M-18 (anchor rollup) + handcalc [8]', realWorld: 'tall narrow cases going over' },
+      { id: 'open_drawer_tip', mode: 'open drawers + a child’s weight tip the case', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit F-S0-1', realWorld: 'the dresser scenario F2057 exists for' },
+      { id: 'slide_overload', mode: 'drawer contents exceed the slide rating', checkIds: ['slide:'], conditional: true, fixture: 'audit F-S3-6', realWorld: 'flat-spotted rollers, dropped drawers' },
+      { id: 'movement_split', mode: 'solid panel captured cross-grain splits with the seasons', checkIds: ['move:'], fixture: 'audit F-S2-3', realWorld: 'split sides at the back-panel screws' },
+      { id: 'joint_overload', mode: 'weakest case joint below its load share', checkIds: ['joints'], fixture: 'audit KB-1 / G5', realWorld: 'shelves torn out of their dados' },
+      { id: 'leg_buckle', mode: 'slender nightstand legs bow under load', checkIds: ['slender'], conditional: true, fixture: 'unit slenderness sections', realWorld: 'spindly nightstands' },
+      { id: 'hinge_overload', mode: 'door outweighs the hinges carrying it', checkIds: ['hinge'], conditional: true, fixture: 'audit X-07b (heavy hickory door; fix clears it)', realWorld: 'doors that drop, drag, and pull their screws' },
+      { id: 'door_droop', mode: 'slab door droops at the free edge on the hinge couple (wide-short leaves worst)', checkIds: ['door:sag'], conditional: true, fixture: 'audit CASE-2 (wider-than-tall leaf; full-length-hinge fix clears)', realWorld: 'doors rubbing their bottom reveal away' },
+      { id: 'reveal_loss', mode: 'seasonal movement of slab leaves eats the fitted reveal', checkIds: ['door:reveal'], conditional: true, fixture: 'audit CASE-3 (red-oak inset pair vs plywood pass)', realWorld: 'inset doors that bind every August' },
+      { id: 'door_unlatched', mode: 'door with no (or an overwhelmed) catch swings open', checkIds: ['door:catch'], conditional: true, fixture: 'audit CASE-4 (BOM = check = step; touch latch declined past 4 kg)', realWorld: 'cabinet doors standing open; handleless fronts that will not pop' },
+      { id: 'oversize_single_door', mode: 'a single door too wide to hang is asked for', guard: 'Spec.correctSpec splits a > 600 mm single into a pair (X-07) and doorNotes discloses it', checkIds: ['door:sag'], fixture: 'audit CASE-5 + X-07b split assertions', realWorld: 'sagging oversize doors with room-filling swings' },
+      { id: 'ergonomic_miss', mode: 'case dimension outside the human-factors band', checkIds: ['ergo_'], conditional: true, fixture: 'audit CASE-5 (out-of-band nightstand height is named)', realWorld: 'shelves too shallow for the books they were built for' }
+    ],
+    hardware: [
+      { id: 'door_hinges', item: 'hinge style from the catalog (euro cup default); count from the height-band + weight rule', when: 'every door', capacity: 'capacityKgPair class ratings per catalog row', matchedTo: 'the hinge check — leaf weight (geometry × SG) vs count × pair capacity; BOM, drilling step, and check all call BB.HW.doorHingeCount' },
+      { id: 'door_catches', item: 'magnetic / roller catch or touch latch, selected and counted by BB.HW.catchSpec', when: 'every door (two per leaf ≥ 1500 mm tall — both free corners held flat)', capacity: 'holdKg class ratings per catalog row; touch latch refuses leaves past 4 kg (spring cap)', matchedTo: 'door:catch out-of-plumb swing demand at ≥ 1.5×; BOM count = check count = fitting step' },
+      { id: 'drawer_slides', item: 'slide family picked by computed load (BB.HW.slidePick)', when: 'drawer runner = slides', capacity: '22–100 kg class ratings', matchedTo: 'slide: check — interior litres × storage density vs the picked class; BOM buys the same pick' },
+      { id: 'antitip', item: 'anti-tip wall anchor kit', when: 'tip or tip_f2057 below gate', capacity: 'per kit rating', matchedTo: 'tipping checks (mandatory BOM line when they fire, audit M-18)' },
+      { id: 'pulls', item: 'pull style intent; CTC snapped into the industry series', when: 'doors and drawers', capacity: 'n/a (reach hardware)', matchedTo: 'BB.HW.pullSpec — label and bore count can never disagree (audit FE-H5)' }
+    ],
+    assembly: {
+      sequence: ['mill and label every part', 's1 (join the case: top/bottom/shelves between the sides, clamped square)', 'back panel into its rabbets (squares the case)', 'running gear and banks', 'doors_fit (fit, mark, then OFF again to finish)', 'finish'],
+      jigs: ['dado/rabbet setup blocks cut from the actual shelf stock', 'drill press fence + stop for cup bores — every cup the same distance from the edge', 'story stick for hinge and runner heights (mark all case parts together)'],
+      checks: ['equal diagonals across the case before the back goes on', 'back panel seats fully in its rabbets — no rock', 'reveal even all round with the door shimmed on playing cards', 'doors come OFF again before finishing (a door finished in place glues itself shut at the reveal)']
+    },
+    refusals: [
+      { id: 'no_doors_off_case', shape: 'doors on templates with no case front (tables, desks, benches, beds, wall shelves — and the nightstand, whose front is its drawer bank)', reason: 'a door needs a case front to close against; there is nothing to hang one on', surface: 'Spec.correctSpec DOOR_TEMPLATES gate + doorNotes + SCHEMA_DOC ("dr" = cabinet/bookshelf only)' },
+      { id: 'no_sliding_glazed', shape: 'sliding, tambour, or glazed doors', reason: 'sliding/tambour are mechanisms the model cannot express (the mechanism doctrine; template swing doors are the sole hinge exception) and glass is not a stocked material — the grooved-slider and tambour setouts live in the Shop Reference as teaching, not generated geometry', surface: 'SCHEMA_DOC mechanism doctrine + BB.HW.TRADITIONAL (reference stratum)' },
+      { id: 'no_wall_hung_case', shape: 'wall-hung cabinets', reason: 'the cantilever couple of a loaded cabinet outruns the hobby fixing model — wall-hung CASEWORK is named future work on the wall_mounted foundation (03-wall-mounted.md); everything in this class stands on the floor', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule + wall_mounted no_heavy_cantilever refusal' }
+    ],
+    fixtures: {
+      golden: ['advanced-cabinet-imperial', 'walnut-nightstand-2drawer-imperial', 'ash-bookshelf-metric', 'oak-armoire-pair-imperial', 'beech-sideboard-doors-metric'],
+      bad: ['audit CASE-1 contract + coverage', 'audit CASE-2 droop arithmetic + wider-than-tall', 'audit CASE-3 reveal survival vs movement', 'audit CASE-4 catch selection = BOM = step', 'audit CASE-5 refusals, split guard disclosure, ergonomics', 'frozen ash-bookshelf-metric honest-fail']
+    }
+  });
+
   BB.Classes = {
     register, get, all, forTemplate, validateContract, runChecklist,
     DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED

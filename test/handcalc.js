@@ -525,6 +525,77 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   row('bed headboard post stress (MPa)', sigmaH, hb.data.stressMPa);
 }
 
+/* =========================================================================
+ * 15. DOORED CASEWORK (roadmap item 4) — droop, reveal, catches, by hand.
+ *    Fixture: the armoire golden in metric — cabinet 900×500×1900, sides 18,
+ *    top 25, toe kick 90, back panel, 3 shelves, NO drawers, red oak,
+ *    inset pair, euro cup hinges.
+ *
+ *    Leaf geometry by hand: innerW = 900 − 2×18 = 864. Opening bottom =
+ *    toe 90 + bottom 19 = 109; opening top = 1900 − 25 = 1875 (no drawer
+ *    bank) → openH = 1766. Inset: totalW = 864 − 2×2 = 860; leafW =
+ *    (860 − 2)/2 = 429; leafH = 1766 − 2×2 = 1762; t = 19.
+ * ========================================================================= */
+{
+  const { spec, model } = pipeline({
+    meta: { name: 'HC armoire', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true, topThickness: 25, sideThickness: 18 },
+    drawers: null, doors: { count: 2, style: 'inset' }
+  });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const door = model.parts.find(p => p.role === 'door');
+
+  /* Leaf mass: volume = 0.429 × 1.762 × 0.019 = 0.01436255 m³;
+   * red oak SG 0.63 → density 630 kg/m³ → m = 9.0484 kg. */
+  const kgHand = 0.429 * 1.762 * 0.019 * 630;
+  const sag = integ.checks.find(c => c.id === 'door:sag');
+  console.log(`\n[23] Door leaf: 429 × 1762 × 19 red oak → m = 0.429×1.762×0.019×630 = ${kgHand.toFixed(4)} kg`);
+  row('door leaf mass geometry × SG (kg)', kgHand, sag.data.leafKg);
+
+  /* Droop over the hinge couple: spread s = 1762 − 2×100 = 1562 mm;
+   * amplification w/s = 429/1562 = 0.274648; droop at the 0.5 mm design
+   * settlement = 0.137324 mm; couple F = m·g·w/(2s) =
+   * 9.0487 × 9.81 × 429 / (2 × 1562) = 12.19 N. */
+  const sHand = 1762 - 2 * 100;
+  const ampHand = 429 / sHand;
+  const droopHand = 0.5 * ampHand;
+  const coupleHand = kgHand * 9.81 * 429 / (2 * sHand);
+  console.log(`[24] Droop: s = ${sHand}; w/s = ${ampHand.toFixed(6)}; droop = 0.5 × w/s = ${droopHand.toFixed(4)} mm; F = ${kgHand.toFixed(4)}×9.81×429/(2×${sHand}) = ${coupleHand.toFixed(3)} N`);
+  row('door hinge spread (mm)', sHand, sag.data.spreadMM, 0.001);
+  row('door droop amplification w/s', ampHand, sag.data.ampRatio, 0.2);
+  row('door free-edge droop (mm)', droopHand, sag.data.droopMM, 0.3);
+  row('door hinge couple F = W·g·w/2s (N)', coupleHand, sag.data.coupleN, 0.5);
+
+  /* Reveal survival: cross-grain width = min(429, 1762) = 429; red oak
+   * ct = 0.00369; temperate ΔMC = 4% → swing = 429 × 0.00369 × 4 =
+   * 6.3320 mm per leaf. Fitted mid-season with the hinge edge pinned,
+   * half the swing arrives at each meeting edge: closure = 2 × swing/2 =
+   * 6.3320 mm vs the 2 mm fitted meeting reveal — the honest advisory. */
+  const rev = integ.checks.find(c => c.id === 'door:reveal');
+  const swingHand = 429 * K.WOOD_SPECIES.red_oak.ct * K.CLIMATE_DMC.temperate;
+  console.log(`[25] Reveal: swing = 429 × ${K.WOOD_SPECIES.red_oak.ct} × ${K.CLIMATE_DMC.temperate} = ${swingHand.toFixed(4)} mm; closure = 2 × swing/2 = ${swingHand.toFixed(4)} vs 2 mm reveal`);
+  row('door seasonal swing (mm)', swingHand, rev.data.swingMM);
+  row('door reveal closure (mm)', 2 * swingHand / 2, rev.data.closureMM);
+
+  /* Catches: 1762 ≥ 1500 → two per leaf (top + bottom). Demand =
+   * m·g·sin3° ≈ m·g·0.05 shared: 9.0487 × 9.81 × 0.05 / 2 = 2.2192 N.
+   * Roller catch (leaf > 4 kg) holds 4 kg = 39.24 N → margin 17.68×. */
+  const cat = integ.checks.find(c => c.id === 'door:catch');
+  const demandHand = kgHand * 9.81 * 0.05 / 2;
+  const marginHand = (4 * 9.81) / demandHand;
+  console.log(`[26] Catch: demand = ${kgHand.toFixed(4)}×9.81×0.05/2 = ${demandHand.toFixed(4)} N; hold 4×9.81 = 39.24 N; margin ${marginHand.toFixed(2)}×`);
+  row('catch count per tall leaf', 2, cat.data.countPerDoor, 0.001);
+  row('catch swing demand (N)', demandHand, cat.data.demandN, 0.5);
+  row('catch margin (×)', marginHand, cat.data.marginRatio, 0.5);
+
+  /* Hinge count: height band(1762 ≤ 2000) = 4; weight rule =
+   * max(2, ceil(9.0487/3.5)) = 3 → count = max(4, 3) = 4. */
+  const nHand = Math.max(4, Math.max(2, Math.ceil(kgHand / 3.5)));
+  console.log(`[27] Hinges: band(1762) = 4; ceil(${kgHand.toFixed(2)}/3.5) = ${Math.ceil(kgHand / 3.5)}; count = ${nHand}`);
+  row('hinge count (height band vs weight)', nHand, BB.HW.doorHingeCount(door.size.h, sag.data.leafKg), 0.001);
+}
+
 const fails = rows.filter(r => !r.pass);
 console.log(`\nworksheet: ${rows.length - fails.length}/${rows.length} agree`);
 for (const f of fails) console.log(`  DISAGREE: ${f.name} (hand ${f.hand} vs engine ${f.engine})`);
