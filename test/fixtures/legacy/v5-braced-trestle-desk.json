@@ -1,0 +1,62 @@
+{
+  "why": "The current-version anchor (v5), and the corpus's only braced frame. Stretchers arrived with X-07; a design saved with them must still open with them, and the v4 fixtures alongside this one prove the reverse — that a design saved BEFORE them opens unbraced rather than silently gaining a rail. Also the only fixture carrying the sx/sy wire keys, which are written only when a stretcher exists.",
+  "version": 5,
+  "kind": "spec",
+  "expect": {
+    "template": "desk",
+    "name": "Braced Trestle Desk",
+    "species": "ash",
+    "units": "in",
+    "drawers": null,
+    "minParts": 12
+  },
+  "expectAfterMigration": {
+    "specVersion": 6,
+    "structure.stretcher": "h",
+    "structure.stretcherHeight": 300,
+    "doors": null
+  },
+  "spec": {
+    "specVersion": 5,
+    "meta": {
+      "name": "Braced Trestle Desk",
+      "template": "desk",
+      "level": "intermediate",
+      "units": "in"
+    },
+    "overall": {
+      "width": 1524,
+      "depth": 863.6,
+      "height": 736.6
+    },
+    "wood": {
+      "species": "ash",
+      "sheetSpecies": "baltic_birch"
+    },
+    "structure": {
+      "topThickness": 25,
+      "legThickness": 70,
+      "apronHeight": 90,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 0,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": false,
+      "stretcher": "h",
+      "stretcherHeight": 300
+    },
+    "joinery": {
+      "frame": "dowels",
+      "case": "butt_screws",
+      "box": "pocket_screws"
+    },
+    "finish": "wipe_poly",
+    "hardware": {
+      "pull": "bar_pull"
+    },
+    "drawers": null,
+    "custom": null
+  }
+}

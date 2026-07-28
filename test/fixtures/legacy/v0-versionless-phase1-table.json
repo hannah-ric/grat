@@ -2,7 +2,13 @@
   "why": "A Phase-1-shaped saved design: no specVersion, no custom section, no wood.sheetSpecies, no hardware block. This is the oldest thing a real user can still have in localStorage. spec.js treats a missing specVersion as 3, so the 3 -> 4 migration must run on it.",
   "version": null,
   "kind": "spec",
-  "expectAfterMigration": { "specVersion": 4, "custom": null, "wood.sheetSpecies": "baltic_birch" },
+  "expectAfterMigration": {
+    "specVersion": 6,
+    "custom": null,
+    "wood.sheetSpecies": "baltic_birch",
+    "structure.stretcher": "none",
+    "doors": null
+  },
   "expect": {
     "template": "table",
     "name": "Kitchen Table",
@@ -12,15 +18,37 @@
     "minParts": 8
   },
   "spec": {
-    "meta": { "name": "Kitchen Table", "template": "table", "level": "beginner", "units": "in" },
-    "overall": { "width": 1524, "depth": 863.6, "height": 736.6 },
-    "wood": { "species": "white_oak" },
-    "structure": {
-      "topThickness": 25, "legThickness": 70, "apronHeight": 90, "apronThickness": 20,
-      "apronInset": 12, "shelfCount": 0, "shelfThickness": 19, "sideThickness": 18,
-      "backPanel": true, "toeKick": false
+    "meta": {
+      "name": "Kitchen Table",
+      "template": "table",
+      "level": "beginner",
+      "units": "in"
     },
-    "joinery": { "frame": "pocket_screws", "case": "butt_screws", "box": "pocket_screws" },
+    "overall": {
+      "width": 1524,
+      "depth": 863.6,
+      "height": 736.6
+    },
+    "wood": {
+      "species": "white_oak"
+    },
+    "structure": {
+      "topThickness": 25,
+      "legThickness": 70,
+      "apronHeight": 90,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 0,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": false
+    },
+    "joinery": {
+      "frame": "pocket_screws",
+      "case": "butt_screws",
+      "box": "pocket_screws"
+    },
     "finish": "wipe_poly"
   }
 }

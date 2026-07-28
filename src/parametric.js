@@ -341,7 +341,82 @@ var BB = globalThis.BB = globalThis.BB || {};
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
 
+    addStretchers(spec, parts, joints, { lx, lz, legT, sp });
+
     return { parts, joints, openings: [], drawers: [] };
+  }
+
+  /* ---------------- stretchers (X-07) ----------------
+   * Leg-to-leg bracing low on the frame. Two styles, both real furniture:
+   *
+   *   h    two side stretchers running front-to-back, tied at their
+   *        midpoints by one long centre stretcher. The trestle/desk answer —
+   *        it braces the frame without a rail across the foot well.
+   *   box  the perimeter: four stretchers, leg to leg all the way round.
+   *        Stiffer, and the traditional look on benches and hall tables;
+   *        the long rails are where your feet go, so it earns its footroom
+   *        cost only if you want the bracing.
+   *
+   * Section is code-owned, not another knob: a stretcher carries almost no
+   * bending — its job is triangulation and shortening the leg's unbraced
+   * length — so it is cut from the apron's own stock thickness at a fraction
+   * of the apron's height. One stock thickness, one setup, no new stock line.
+   *
+   * The centre stretcher of an `h` meets the side stretchers on their FACE,
+   * not their end, which is a different joint from every apron-to-leg joint
+   * in the frame: end grain into a long-grain face. That is why it takes the
+   * frame joint's own type but is called out separately in the plan.
+   */
+  const STRETCHER_H_RATIO = 0.65;   // of apron height
+  const STRETCHER_H_MIN = 40, STRETCHER_H_MAX = 90;
+
+  function stretcherSection(st) {
+    return {
+      h: Math.max(STRETCHER_H_MIN, Math.min(STRETCHER_H_MAX, Math.round(st.apronHeight * STRETCHER_H_RATIO))),
+      t: st.apronThickness
+    };
+  }
+
+  function addStretchers(spec, parts, joints, frame) {
+    const st = spec.structure;
+    if (!st.stretcher || st.stretcher === 'none') return;
+    const { lx, lz, legT, sp } = frame;
+    const sec = stretcherSection(st);
+    const y = st.stretcherHeight;
+    const fj = spec.joinery.frame;
+    // Leg-face to leg-face: the stretcher spans the gap, it does not run past
+    // the legs. Same arithmetic the aprons use, at the legs' own centres.
+    const spanX = 2 * lx - legT, spanZ = 2 * lz - legT;
+
+    const addRail = (id, name, w, h, d, x, yy, z, ex) =>
+      parts.push(part(id, `stretcher_${Math.round(Math.max(w, d))}`, 'stretcher', name, w, h, d, x, yy, z,
+        { material: sp, explode: ex }));
+
+    if (st.stretcher === 'box') {
+      [[-lz, 1], [lz, 2]].forEach(([z, i]) => {
+        addRail(`stretcher_long_${i}`, 'Long stretcher', spanX, sec.h, sec.t, 0, y, z, { x: 0, y: -0.5, z: Math.sign(z) });
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y, z } });
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y, z } });
+      });
+    }
+
+    // Both styles carry the pair of side stretchers; `box` adds the long
+    // pair above, `h` adds the single centre tie below.
+    [[-lx, 1], [lx, 2]].forEach(([x, i]) => {
+      addRail(`stretcher_side_${i}`, 'Side stretcher', sec.t, sec.h, spanZ, x, y, 0, { x: Math.sign(x), y: -0.5, z: 0 });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y, z: -lz } });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y, z: lz } });
+    });
+
+    if (st.stretcher === 'h') {
+      // Centre tie runs leg-line to leg-line, landing on the INNER faces of
+      // the two side stretchers — hence the section thickness taken off each
+      // end rather than the leg thickness.
+      const centreLen = 2 * lx - sec.t;
+      addRail('stretcher_centre_1', 'Centre stretcher', centreLen, sec.h, sec.t, 0, y, 0, { x: 0, y: -0.5, z: 0 });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_1', pos: { x: -lx + sec.t / 2, y, z: 0 } });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_2', pos: { x: lx - sec.t / 2, y, z: 0 } });
+    }
   }
 
   function bookshelf(spec) {
@@ -350,6 +425,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sideT = st.sideThickness, shT = st.shelfThickness;
     const innerW = o.width - 2 * sideT;
     const sp = spec.wood.species;
+    // The declared depth is the whole piece, door included — see doorSpace().
+    const ds = doorSpace(spec);
 
     [[-1, 1], [1, 2]].forEach(([s, i]) => {
       parts.push(part(`side_${i}`, 'side', 'side', 'Side', sideT, o.height, o.depth, s * (o.width / 2 - sideT / 2), o.height / 2, 0,
@@ -362,7 +439,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const n = st.shelfCount;
     for (let i = 1; i <= n; i++) {
       const y = y0 + (y1 - y0) * i / (n + 1);
-      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, shT, o.depth - 20, 0, y, 10, { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
+      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, shT, o.depth - 20 - ds.recess, 0, y, 10 - ds.recess / 2, { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -(o.width / 2 - sideT), y, z: 0 } });
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: (o.width / 2 - sideT), y, z: 0 } });
     }
@@ -380,6 +457,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     joints.push({ type: spec.joinery.case, a: 'top_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: o.height - shT / 2, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_1', pos: { x: -(o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
     joints.push({ type: spec.joinery.case, a: 'bottom_1', b: 'side_2', pos: { x: (o.width / 2 - sideT), y: shT / 2 + 40, z: 0 } });
+    // The whole front is the opening on a bookshelf — a glazed or panelled
+    // bookcase door is ordinary furniture, and the case is already there.
+    addDoors(spec, parts, joints, {
+      openW: innerW, openTop: o.height - shT, openBottom: shT + 40,
+      zFront: o.depth / 2, caseOuterW: o.width, sideT, sp
+    });
     return { parts, joints, openings: [], drawers: [] };
   }
 
@@ -454,6 +537,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sideT = st.sideThickness, topT = st.topThickness;
     const base = st.toeKick ? 90 : 0;
     const sp = spec.wood.species;
+    // The declared depth is the whole piece, door included — see doorSpace().
+    const ds = doorSpace(spec);
     // Sides run floor to underside of top: the case stands on its own sides
     // (with the toe board bracing the front), never on a lone 19 mm plinth.
     const sideH = o.height - topT;
@@ -493,8 +578,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const available = bodyH * 0.6;
     const zone = {
       clearW: innerW, railLen: innerW,
-      yTop: o.height - topT, zFront: o.depth / 2,
-      interiorDepth: o.depth - 10, available,
+      yTop: o.height - topT, zFront: o.depth / 2 - ds.recess,
+      interiorDepth: o.depth - 10 - ds.recess, available,
       overlayMaxW: innerW + Math.min(20, sideT), x: 0,
       railJointTargets: [{ id: 'side_1', x: -innerW / 2 }, { id: 'side_2', x: innerW / 2 }],
       // Case sides run flush with the opening: runners land straight on them.
@@ -509,12 +594,90 @@ var BB = globalThis.BB = globalThis.BB || {};
     const shelfZoneTop = o.height - topT - bank, shelfZoneBottom = base + 19;
     for (let i = 1; i <= st.shelfCount; i++) {
       const y = shelfZoneBottom + (shelfZoneTop - shelfZoneBottom) * i / (st.shelfCount + 1);
-      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, st.shelfThickness, o.depth - 30, 0, y, 5,
+      parts.push(part(`shelf_${i}`, 'shelf', 'shelf', 'Shelf', innerW, st.shelfThickness, o.depth - 30 - ds.recess, 0, y, 5 - ds.recess / 2,
         { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_1', pos: { x: -innerW / 2, y, z: 0 } });
       joints.push({ type: spec.joinery.case, a: `shelf_${i}`, b: 'side_2', pos: { x: innerW / 2, y, z: 0 } });
     }
+    // Doors close whatever the drawer bank left: the shelf zone is the door
+    // opening, which is why this reads the same two numbers the shelves do.
+    addDoors(spec, parts, joints, {
+      openW: innerW, openTop: shelfZoneTop, openBottom: shelfZoneBottom,
+      zFront: o.depth / 2, caseOuterW: o.width, sideT, sp
+    });
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+  }
+
+  /* ---------------- doors (X-07) ----------------
+   * A door is a panel and a swing. The panel is geometry and belongs here;
+   * the swing is hardware and belongs to BB.HW, which already carried the
+   * hinge catalog, the count rule, and the cup boring solver as a READY
+   * stratum waiting for exactly this.
+   *
+   * Two styles, and the difference is entirely in where the panel sits:
+   *   inset    the door lives INSIDE the opening, its own thickness behind
+   *            the case front, with a reveal of air all round. The reveal is
+   *            the whole difficulty of an inset door and the reason it reads
+   *            as fine work — it has to stay even as the door moves.
+   *   overlay  the door sits ON the front and covers the case edge. Easier,
+   *            forgiving, and what a euro cup hinge is built around.
+   *
+   * DOOR_REVEAL is a shop number, not a style choice: a 2 mm gap is what a
+   * seasonal swing leaves you when the door is fitted in an average season.
+   */
+  const DOOR_REVEAL = 2;
+  const DOOR_OVERLAY_LAP = 12;   // how far an overlay door laps the case edge
+  const DOOR_T = 19;             // panel stock; a door thinner than this racks in its own frame
+
+  /* An INSET door needs its recess kept clear. Everything inside the case —
+   * the shelves, and the drawer bank's front plane — is set back by the door
+   * thickness plus its reveal, or the door closes into the shelf edges.
+   *
+   * An OVERLAY door needs nothing: it stands proud of the case front, which
+   * is the convention this codebase already follows for overlay drawer
+   * fronts and pulls (spec.js PROUD_ROLES, 60 mm allowance). The declared
+   * depth is the CARCASS, and applied fronts sit in front of it — so a door
+   * is measured the same way a drawer front already is, rather than
+   * inventing a second rule for the same face of the same cabinet.
+   */
+  function doorSpace(spec) {
+    const d = spec.doors;
+    if (!d || !d.count) return { none: true, recess: 0 };
+    return { none: false, recess: d.style === 'inset' ? DOOR_T + DOOR_REVEAL : 0 };
+  }
+
+  function addDoors(spec, parts, joints, zone) {
+    const d = spec.doors;
+    if (!d || !d.count) return;
+    const inset = d.style === 'inset';
+    const openH = zone.openTop - zone.openBottom;
+    if (openH < 120 || zone.openW < 120) return;   // nothing worth hanging a door on
+
+    // Inset: the leaf is the opening less a reveal all round, split between
+    // leaves (with a reveal down the meeting stile too). Overlay: the leaf
+    // laps the case edge, so it is WIDER than the opening.
+    const totalW = inset ? zone.openW - 2 * DOOR_REVEAL : Math.min(zone.caseOuterW, zone.openW + 2 * DOOR_OVERLAY_LAP);
+    const leafW = d.count === 2 ? (totalW - (inset ? DOOR_REVEAL : 0)) / 2 : totalW;
+    const leafH = inset ? openH - 2 * DOOR_REVEAL : openH + 2 * DOOR_OVERLAY_LAP;
+    // Inset sits flush with the case front; overlay stands proud of it.
+    const zDoor = inset ? zone.zFront - DOOR_T / 2 : zone.zFront + DOOR_T / 2;
+    const yDoor = zone.openBottom + openH / 2;
+
+    for (let i = 1; i <= d.count; i++) {
+      const x = d.count === 2
+        ? (i === 1 ? -1 : 1) * (leafW / 2 + (inset ? DOOR_REVEAL / 2 : 0))
+        : 0;
+      parts.push(part(`door_${i}`, `door_${Math.round(leafW)}x${Math.round(leafH)}`, 'door',
+        d.count === 2 ? (i === 1 ? 'Left door' : 'Right door') : 'Door',
+        leafW, leafH, DOOR_T, x, yDoor, zDoor,
+        { material: spec.wood.species, explode: { x: d.count === 2 ? (i === 1 ? -0.6 : 0.6) : 0, y: 0, z: 1.2 } }));
+      /* The hinge is NOT in the joint list, and that is deliberate: joints
+       * here are permanent wood-to-wood connections that the cut list gives
+       * allowances for and the racking model scores. A hinge is a mechanism —
+       * it carries no racking, takes no cut allowance, and lives in the BOM
+       * with the rest of the hardware. Recording it as a joint would credit
+       * the case with stiffness a swinging door does not provide. */
+    }
   }
 
   /* ---------------- custom (novel) compositions ----------------
@@ -574,5 +737,5 @@ var BB = globalThis.BB = globalThis.BB || {};
     return m;
   }
 
-  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
+  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights, stretcherSection };
 })();

@@ -112,7 +112,40 @@ const log = m => console.log('  · ' + m);
   const beats = [];
   for (const f of [0, 0.15, 0.3, 0.6, 0.75, 1]) {
     await scrollFrac(A.page, f);
-    await A.page.waitForFunction(fr => Math.abs(BB.Porch._state.p - fr) < 0.06, f, { timeout: 25000 });
+    /* Same assertion, same budget — but a bare waitForFunction timeout throws
+     * an eight-line TimeoutError with an empty `log` and kills the run, which
+     * is the least actionable failure a suite can produce. This one hung once
+     * on CI and passed on a re-run of BYTE-IDENTICAL src, and the log said
+     * only "Timeout 25000ms exceeded" — no p, no scroll position, no way to
+     * tell a slow frame from a dead rAF loop.
+     *
+     * Measured headroom is 25.6× (worst convergence 975 ms against 25 s), so
+     * a timeout here is a HANG, not slowness, and raising the number would
+     * hide it rather than fix it. Instead the failure now reports the state
+     * it was waiting on, so the next occurrence is diagnosable from the log
+     * alone: whether p moved at all, whether the page actually scrolled, and
+     * whether requestAnimationFrame is still ticking. */
+    try {
+      await A.page.waitForFunction(fr => Math.abs(BB.Porch._state.p - fr) < 0.06, f, { timeout: 25000 });
+    } catch (e) {
+      const diag = await A.page.evaluate(async () => {
+        const porch = document.getElementById('porch');
+        const rafTicked = await new Promise(res => {
+          const t = setTimeout(() => res(false), 1000);
+          requestAnimationFrame(() => { clearTimeout(t); res(true); });
+        });
+        return {
+          p: BB.Porch && BB.Porch._state ? BB.Porch._state.p : 'no _state',
+          mode: BB.Porch ? BB.Porch.mode : 'no Porch',
+          beat: porch ? porch.dataset.beat : 'no #porch',
+          scrollY: Math.round(scrollY),
+          scrollMax: porch ? Math.round(porch.offsetHeight - innerHeight) : -1,
+          rafTicked
+        };
+      }).catch(err => ({ evaluateFailed: String(err).slice(0, 120) }));
+      ok(false, `scrub never reached p≈${f} within 25 s — ${JSON.stringify(diag)}`);
+      break; // the remaining fractions would all fail the same way
+    }
     beats.push(await A.page.evaluate(() => ({
       beat: document.getElementById('porch').dataset.beat,
       draft: BB.Porch._state.swCur.draft, dims: BB.Porch._state.swCur.dims,

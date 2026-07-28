@@ -2772,5 +2772,281 @@ section('D-05 bores are bit sizes, gaps are fractions, decimals are for toleranc
   Units.set({ system: 'metric', precision: 16, dual: false });
 }
 
+/* ================= X-07a: stretchers as first-class frame bracing =================
+ * The audit's X-07 registered doors, stretchers, desk drawers, chairs, beds
+ * and wall-mounted pieces as outside LIVE geometry. This section covers the
+ * stretcher half: it exists, it is refused where it makes no sense, it
+ * changes the numbers the engine reports, and — the part worth guarding —
+ * it lands in the build order it actually belongs to.
+ */
+section('X-07a stretchers: geometry, refusal, and the numbers they move');
+{
+  const braced = style => pipeline({
+    meta: { name: 'Braced', template: 'table', level: 'beginner', units: 'in' },
+    overall: { width: 1524, depth: 863.6, height: 736.6 },
+    structure: { stretcher: style, stretcherHeight: 280 }
+  });
+
+  // --- the geometry exists and is connected ---
+  const none = braced('none'), h = braced('h'), box = braced('box');
+  eq(none.model.parts.filter(p => p.role === 'stretcher').length, 0, 'an unbraced table has no stretchers');
+  eq(h.model.parts.filter(p => p.role === 'stretcher').length, 3, 'an H is two sides plus one centre tie');
+  eq(box.model.parts.filter(p => p.role === 'stretcher').length, 4, 'a box stretcher is four rails');
+  for (const [label, r] of [['h', h], ['box', box]]) {
+    eq(r.report.errors.length, 0, `${label}: builds with no blocking validation error`);
+    // Every stretcher must be jointed to something, or it is a floating part
+    // the buildability audit should already have caught.
+    for (const p of r.model.parts.filter(x => x.role === 'stretcher')) {
+      ok(r.model.joints.some(j => j.a === p.id || j.b === p.id), `${label}: ${p.id} is jointed into the frame`);
+    }
+  }
+
+  // --- refused where there is nothing to brace ---
+  for (const t of ['bookshelf', 'cabinet', 'nightstand', 'custom']) {
+    const r = Spec.correctSpec({ meta: { name: 'X', template: t, level: 'beginner' }, structure: { stretcher: 'box' } });
+    eq(r.structure.stretcher, 'none', `${t}: a stretcher is refused — there is no leg-and-apron frame to tie`);
+  }
+
+  // --- the height is clamped to the piece, not just to the bounds table ---
+  {
+    // A bench is 457 mm tall; the flat DIM_RULES default of 280 would put the
+    // rail inside the apron. Correction has to know the difference.
+    const b = Spec.correctSpec({
+      meta: { name: 'B', template: 'bench', level: 'beginner' },
+      overall: { width: 1219.2, depth: 381, height: 457.2 },
+      structure: { topThickness: 32, apronHeight: 80, stretcher: 'h', stretcherHeight: 600 }
+    });
+    const apronUnderside = 457.2 - 32 - 80;
+    ok(b.structure.stretcherHeight < apronUnderside,
+      `bench stretcher is clamped under the apron (${b.structure.stretcherHeight} < ${apronUnderside})`);
+    ok(b.structure.stretcherHeight >= 100, 'and stays clear of the floor');
+    const m = Parametric.build(b);
+    const str = m.parts.find(p => p.role === 'stretcher');
+    const apron = m.parts.find(p => p.role === 'apron');
+    ok(str.pos.y + str.size.h / 2 < apron.pos.y - apron.size.h / 2,
+      'the built stretcher does not collide with the built apron');
+  }
+
+  // --- the engine's numbers actually move ---
+  {
+    const rackOf = r => Structural.computeIntegrity(r.spec, r.model, {}).checks.find(c => c.id === 'rack');
+    ok(rackOf(box).value !== rackOf(none).value, 'bracing changes the racking score');
+    // Slenderness is MEASURED off the stretcher, not assumed: raising the
+    // rail toward the middle of the leg must lower the worst L/t, because
+    // the governing segment is the longer of the two the brace leaves.
+    const slender = (style, y) => {
+      const r = pipeline({
+        meta: { name: 'S', template: 'table', level: 'beginner', units: 'in' },
+        overall: { width: 1524, depth: 863.6, height: 900 },
+        structure: { legThickness: 32, stretcher: style, stretcherHeight: y }
+      });
+      const c = Structural.computeIntegrity(r.spec, r.model, {}).checks.find(x => x.id === 'slender');
+      return { c, r };
+    };
+    const low = slender('h', 120), mid = slender('h', 430);
+    const ratio = c => parseFloat(String(c.value).match(/=\s*([\d.]+)/)[1]);
+    ok(ratio(mid.c) < ratio(low.c),
+      `a stretcher nearer the middle of the leg braces it better (${ratio(mid.c)} < ${ratio(low.c)})`);
+    ok(/stretcher-braced/.test(mid.c.value), 'and the check says the number was measured, not assumed');
+
+    // The offered fix must actually clear the check — the H-07 rule.
+    const bare = slender('none', 280);
+    eq(bare.c.status, 'advisory', 'precondition: a 32 mm leg at 900 mm is slender');
+    const fix = bare.c.fixes.find(f => f.id === 'stretcher');
+    ok(!!fix, 'a slender leg is offered bracing as a fix');
+    const fixed = Spec.correctSpec(Spec.deepMerge(bare.r.spec, fix.patch));
+    const after = Structural.computeIntegrity(fixed, Parametric.build(fixed), {}).checks.find(x => x.id === 'slender');
+    eq(after.status, 'pass', 'and applying that fix clears the check');
+  }
+
+  // --- build order: a stretcher is not a bolt-on step ---
+  {
+    for (const [style, r] of [['h', h], ['box', box]]) {
+      const steps = Plans.assembly(r.spec, r.model);
+      const stretcherIds = r.model.parts.filter(p => p.role === 'stretcher').map(p => p.id);
+      const placed = new Set();
+      for (const s of steps) for (const id of (s.partIds || [])) if (stretcherIds.includes(id)) placed.add(id);
+      eq(placed.size, stretcherIds.length, `${style}: every stretcher appears in a build step`);
+      // The side stretchers tie the same leg pair as the short aprons, so
+      // they belong to the end-frame glue-up. Fitted later, they cannot be
+      // fitted at all without taking the base apart.
+      const s1 = steps.find(s => s.id === 's1');
+      ok((s1.partIds || []).includes('stretcher_side_1'),
+        `${style}: the side stretchers go into the end frames, not a later step`);
+      const all = steps.map(s => s.title + ' ' + s.text).join(' ');
+      ok(/stretcher/i.test(all), `${style}: the plan actually mentions them`);
+    }
+    // The H's centre tie is end grain into a face — a different joint from
+    // every other one in the base, and the plan has to say so.
+    const s2 = Plans.assembly(h.spec, h.model).find(s => s.id === 's2');
+    ok(/end grain/i.test(s2.text), 'the H centre tie is called out as end grain into a face');
+  }
+
+  // --- the wire stays byte-identical for unbraced designs ---
+  {
+    const plain = Spec.correctSpec({ meta: { name: 'P', template: 'table', level: 'beginner' } });
+    const w = Codec.encode(plain);
+    ok(w.s.sx === undefined && w.s.sy === undefined,
+      'an unbraced design writes no stretcher keys — every pre-X-07 share code encodes as it always did');
+    const wb = Codec.encode(h.spec);
+    ok(wb.s.sx !== undefined && wb.s.sy !== undefined, 'a braced design does carry them');
+    const back = Codec.decode(wb);
+    eq(back.structure.stretcher, 'h', 'and they survive the round trip');
+    eq(back.structure.stretcherHeight, h.spec.structure.stretcherHeight, 'height survives too');
+    // A patch must never carry the default along and silently un-brace a piece.
+    const patch = Codec.decodePartial({ s: { t: 30 } });
+    ok(!patch.structure || patch.structure.stretcher === undefined,
+      'a structure PATCH does not smuggle stretcher:none into a braced design');
+  }
+}
+
+/* ================= X-07b: doors + hinges on casework =================
+ * The second X-07 family. Doors are the case half of the finding, and they
+ * are the first consumer of hardware.js's READY hinge stratum — the count
+ * rule, the cup-boring solver, and the panel-weight capacity check all
+ * existed and had never been called by anything.
+ */
+section('X-07b doors: geometry, the hinge rule, and one source for the count');
+{
+  const cased = (tpl, doors, extra) => pipeline(Object.assign({
+    meta: { name: 'D', template: tpl, level: 'intermediate', units: 'in' }, doors
+  }, extra || {}));
+
+  // --- every reachable configuration builds ---
+  for (const tpl of ['cabinet', 'bookshelf']) {
+    for (const style of ['overlay', 'inset']) {
+      for (const count of [1, 2]) {
+        const r = cased(tpl, { count, style });
+        eq(r.report.errors.length, 0,
+          `${tpl}/${style}/${count}: builds clean${r.report.errors.length ? ' — ' + r.report.errors.map(e => e.id).join(', ') : ''}`);
+        ok(r.model.parts.filter(p => p.role === 'door').length >= 1, `${tpl}/${style}/${count}: has door parts`);
+      }
+    }
+  }
+
+  // --- refused where there is no case front ---
+  for (const t of ['table', 'desk', 'bench', 'nightstand', 'custom']) {
+    const s = Spec.correctSpec({ meta: { name: 'X', template: t, level: 'beginner' }, doors: { count: 2, style: 'overlay' } });
+    eq(s.doors, null, `${t}: doors are refused — there is no case front to close`);
+  }
+
+  // --- a single door too wide to hang becomes a pair ---
+  {
+    const wide = Spec.correctSpec({
+      meta: { name: 'W', template: 'cabinet', level: 'beginner' },
+      overall: { width: 1400, depth: 457.2, height: 914.4 }, doors: { count: 1, style: 'overlay' }
+    });
+    eq(wide.doors.count, 2, 'a 1400 mm single door is split into a pair rather than built to sag');
+    const narrow = Spec.correctSpec({
+      meta: { name: 'N', template: 'cabinet', level: 'beginner' },
+      overall: { width: 500, depth: 400, height: 800 }, doors: { count: 1, style: 'overlay' }
+    });
+    eq(narrow.doors.count, 1, 'and a 500 mm one is left alone');
+  }
+
+  // --- the hinge must be able to hang the style it is given ---
+  {
+    const s = Spec.correctSpec({
+      meta: { name: 'H', template: 'cabinet', level: 'beginner' },
+      doors: { count: 2, style: 'overlay' }, hardware: { hinge: 'knife_pivot' }
+    });
+    ok(BB.HW.HINGES[s.hardware.hinge].fronts.includes('overlay'),
+      `a knife hinge (inset only) is replaced on an overlay door — got ${s.hardware.hinge}`);
+    const s2 = Spec.correctSpec({
+      meta: { name: 'H2', template: 'cabinet', level: 'beginner' },
+      doors: { count: 2, style: 'inset' }, hardware: { hinge: 'butt_brass' }
+    });
+    eq(s2.hardware.hinge, 'butt_brass', 'and a hinge that DOES suit the style is left alone');
+  }
+
+  // --- drawers and doors share one front plane, so one style ---
+  {
+    const s = Spec.correctSpec({
+      meta: { name: 'M', template: 'cabinet', level: 'beginner' },
+      doors: { count: 2, style: 'inset' }, drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }
+    });
+    eq(s.drawers.frontStyle, 'inset',
+      'an overlay drawer front cannot share a case front with an inset door — the doors win');
+  }
+
+  // --- ONE hinge count, reaching three surfaces ---
+  {
+    const r = cased('bookshelf', { count: 2, style: 'overlay' });
+    const integ = Structural.computeIntegrity(r.spec, r.model, {});
+    const bom = Plans.bom(r.spec, r.model, { integrity: integ });
+    const steps = Plans.assembly(r.spec, r.model, integ, {});
+
+    const door = r.model.parts.find(p => p.role === 'door');
+    const kg = BB.HW.panelWeightKg(door.size.w, door.size.h, door.size.d, door.material);
+    const n = BB.HW.doorHingeCount(door.size.h, kg);
+    ok(n >= 2, `precondition: a ${Math.round(door.size.h)} mm door needs at least 2 hinges (${n})`);
+
+    const bomHinges = bom.items.filter(i => /hinge/i.test(i.label));
+    ok(bomHinges.length > 0, 'hinges appear in the BOM');
+    eq(bomHinges[0].qty, n, 'the BOM buys exactly the hinges the rule computed');
+    const hangStep = steps.find(s => s.id === 'doors_fit');
+    ok(!!hangStep, 'there is a step that hangs the doors');
+    ok(hangStep.text.includes(String(n)), `and it drills for the same count (${n}) the BOM bought`);
+    const hinge = integ.checks.find(c => c.id === 'hinge');
+    ok(!!hinge, 'and the integrity panel rates that same door');
+    ok(hinge.value.includes(String(n)), 'against the same hinge count');
+  }
+
+  // --- an over-heavy door is caught, and the offered fix clears it ---
+  {
+    // A tall, wide, dense single door: hickory is the heaviest species here.
+    const r = cased('bookshelf', { count: 1, style: 'overlay' }, {
+      overall: { width: 900, depth: 320, height: 2000 },
+      wood: { species: 'hickory' }, hardware: { hinge: 'no_mortise' }
+    });
+    const c = Structural.computeIntegrity(r.spec, r.model, {}).checks.find(x => x.id === 'hinge');
+    ok(!!c, 'a heavy door still gets a hinge check');
+    if (c.status === 'advisory') {
+      ok(c.fixes.length > 0, 'an over-loaded door is offered a remedy, never left as a bare complaint');
+      const fixed = Spec.correctSpec(Spec.deepMerge(r.spec, c.fixes[0].patch));
+      const after = Structural.computeIntegrity(fixed, Parametric.build(fixed), {}).checks.find(x => x.id === 'hinge');
+      eq(after.status, 'pass', `and applying "${c.fixes[0].label}" clears it`);
+    }
+  }
+
+  // --- the cup bore is metric, and the PLATE is what gets solved ---
+  {
+    const solved = BB.HW.cupBoringFor(12);
+    ok(solved.inRange, `a 12 mm overlay is solved into the straight-arm window (bore ${solved.tbMM} on a ${solved.plateMM} mm plate)`);
+    ok(solved.tbMM >= 3 && solved.tbMM <= 7, 'the bore stays in its window; the plate is the free variable');
+    Units.set({ system: 'imperial', precision: 16, dual: false });
+    const r = cased('cabinet', { count: 2, style: 'overlay' });
+    const step = Plans.assembly(r.spec, r.model, Structural.computeIntegrity(r.spec, r.model, {}), {}).find(s => s.id === 'doors_fit');
+    // A 35 mm cup hinge takes a 35 mm Forstner. Rendering that as an inch
+    // fraction names a bit you can buy and cannot seat the hinge with.
+    ok(/35 mm cup/.test(step.text), 'the cup diameter stays metric in imperial display');
+    ok(/35 mm Forstner/.test(step.text), 'and says so explicitly, because the nearest inch bit is the wrong bit');
+    Units.set({ system: 'metric', precision: 16, dual: false });
+  }
+
+  // --- doors are fitted, then removed to be finished ---
+  {
+    const r = cased('cabinet', { count: 2, style: 'inset' });
+    const steps = Plans.assembly(r.spec, r.model, Structural.computeIntegrity(r.spec, r.model, {}), {});
+    const iHang = steps.findIndex(s => s.id === 'doors_fit');
+    const iFinish = steps.findIndex(s => s.id === 'finish');
+    ok(iHang >= 0 && iFinish > iHang, 'the doors are hung before finishing, not after');
+    ok(/take (them|it) off|unscrew the doors/i.test(steps[iHang].text),
+      'and the step says to take them off again — a door finished in place glues itself shut at the reveal');
+  }
+
+  // --- wire compatibility ---
+  {
+    const plain = Spec.correctSpec({ meta: { name: 'P', template: 'cabinet', level: 'beginner' } });
+    const w = Codec.encode(plain);
+    ok(w.dr === undefined && w.hh === undefined,
+      'an open case writes no door keys — every pre-X-07 share code encodes as it always did');
+    const withDoors = cased('cabinet', { count: 2, style: 'inset' });
+    const back = Codec.decode(Codec.encode(withDoors.spec));
+    eq(back.doors.count, 2, 'a door count survives the round trip');
+    eq(back.doors.style, 'inset', 'and so does the style');
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

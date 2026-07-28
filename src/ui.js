@@ -2701,6 +2701,47 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
         v => live({ drawers: { count: v } }), () => done()));
     }
+    /* Doors (X-07). Only where there is a case front to close; correction
+     * refuses them elsewhere, so offering the control elsewhere would be a
+     * knob that does nothing. The hinge picker lists only hinges that can
+     * physically hang THIS door style — the catalog's own `fronts` field,
+     * the same one correction enforces, so the control can never propose
+     * something correctSpec will overrule. */
+    if (['cabinet', 'bookshelf'].includes(s.meta.template)) {
+      const cur = s.doors ? String(s.doors.count) : 'none';
+      body.append(paramSelect('Doors', [['none', 'None (open front)'], ['1', 'One door'], ['2', 'A pair']], cur,
+        v => {
+          merge({ doors: v === 'none' ? null : { count: +v, style: (s.doors && s.doors.style) || 'overlay' } }, 'manual');
+          renderAdjustBody();
+        }));
+      if (s.doors) {
+        body.append(paramSeg('Door style', [['overlay', 'Overlay'], ['inset', 'Inset']], s.doors.style,
+          v => { merge({ doors: { style: v } }, 'manual'); renderAdjustBody(); }));
+        if (BB.HW) {
+          const opts = Object.values(BB.HW.HINGES)
+            .filter(h => (h.fronts || []).includes(s.doors.style))
+            .map(h => [h.key, h.label]);
+          if (opts.length > 1) {
+            body.append(paramSelect('Hinge', opts, s.hardware.hinge,
+              v => { merge({ hardware: { hinge: v } }, 'manual'); renderAdjustBody(); }));
+          }
+        }
+      }
+    }
+    /* Leg bracing (X-07). Only on the templates the frame builder builds —
+     * correction refuses a stretcher anywhere else, so offering it would be
+     * a control that silently does nothing. The height knob appears only
+     * once there is something to position, and its ceiling is the apron:
+     * dimBounds reads the same DIM_RULES correction clamps against, and
+     * correction narrows it further against this piece's actual leg. */
+    if (['table', 'desk', 'bench'].includes(s.meta.template)) {
+      body.append(paramSelect('Leg bracing', [['none', 'None'], ['h', 'H-stretcher'], ['box', 'Box stretcher']],
+        s.structure.stretcher || 'none',
+        v => { merge({ structure: { stretcher: v } }, 'manual'); renderAdjustBody(); }));
+      if (s.structure.stretcher && s.structure.stretcher !== 'none') {
+        body.append(dim('Stretcher height', 'structure.stretcherHeight', ...dimBounds('structure.stretcherHeight', 100, 600)));
+      }
+    }
     body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));
     body.append(paramSelect('Finish', K.FINISHES.map(f => [f.key, f.label]), s.finish,

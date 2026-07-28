@@ -396,4 +396,32 @@ X-07 (doors, stretchers, desk drawers, chairs, beds) remains a geometry workstre
 
 ---
 
-*Audit probes executed against `dist/index.html` built from commit `7cc8572`; no source changed by the audit itself. Phases 0–4 implemented and verified on this branch as recorded in §7, §8 and §9.*
+## 10. X-07 status — the geometry workstream
+
+X-07 registered six families as outside LIVE geometry: **doors, stretchers, desk drawers, chairs, beds, and wall-mounted pieces.** It is the one finding that is a workstream rather than a fix, so it is being worked one family at a time, each landing complete — geometry, structural consequences, plans, wire format, migration, controls, tests — before the next begins.
+
+### Landed
+
+| Family | What shipped |
+|---|---|
+| **Stretchers** | `structure.stretcher` (`none`/`h`/`box`) + `stretcherHeight` on table/desk/bench. Section is code-owned off the apron's stock. The engine gained a real measurement: leg slenderness had treated bracing as a flat `× 0.6` on any piece owning a shelf or rail, and now takes the **longer segment a brace at a known height leaves** — which is why brace-at-the-middle and brace-near-the-floor differ, and the reason the height is a knob at all. Bracing became a fix that clears the check (L/t 27.3 advisory → 18.6 pass) instead of advice. Racking gains a style-dependent multiplier. Stretchers are folded into the glue-up they belong to rather than given a step: each ties the same leg pair as an apron already in a sub-assembly, and fitted later cannot be fitted without dismantling the base. |
+| **Doors + hinges** | `doors {count, style}` on cabinet/bookshelf, `hardware.hinge` as style intent beside the pull. First consumer of `hardware.js`'s READY hinge stratum — `doorHingeCount`, `cupBoring`, `panelWeightKg` were written, tested, and had never been called. §1 is LIVE; only lifts and stays remain READY. One hinge count reaches the BOM, the hanging step, and the integrity check from a single call. A too-wide single door becomes a pair; a hinge that cannot hang the style is replaced from the catalog's own `fronts` field; drawers and doors on one case share one front plane and therefore one style. |
+
+### Found while implementing
+
+- **A 35 mm cup hinge takes a 35 mm Forstner.** Rendering the bore as an inch fraction in imperial display names a bit you can buy that will not seat the hinge you own. Cup diameters are a metric callout in both unit systems now — the same deliberate exemption the CAD exports carry for real millimetre geometry.
+- **The mounting plate is the free variable, not the bore.** A 12 mm overlay on a 0 mm plate wants a 1 mm boring distance, which no hinge does; the same overlay on a standard 3 mm plate lands the bore at 4 mm, mid-window. `cupBoringFor()` solves the plate from the standard series rather than reporting the bore as out of range.
+- **An overlay door must follow the same convention as an overlay drawer front.** Making the carcass give up depth to the door quietly shortened the base and pushed a marginal cabinet over the F2057 tipping line. `PROUD_ROLES` had already settled this question for drawer fronts and pulls; a door is the same class of object on the same face, and inventing a second rule for it produced a false failure.
+- **`buildBank()` does not fit a desk.** Its rail-and-opening stack is carcass machinery — `RAIL_H` 60 plus an 80 mm minimum opening needs ~200 mm, where a desk apron is 90. A desk drawer is not a one-line reuse: it is a single opening whose rail IS the front apron, and it needs its own geometry. Worth knowing before the next attempt starts by assuming otherwise.
+
+### Compatibility
+
+`specVersion` 5 and 6, each with a migration and a corpus fixture, so the v5 fixture is itself a real migration step. A design saved before stretchers opens **unbraced**; a case saved before doors opens **open**. New wire keys ride only on designs that use them, so every pre-X-07 share code encodes to the same bytes — and a structure *patch* deliberately omits the defaults, or an unrelated edit would silently un-brace a piece. Both golden refreezes are three lines per file: version stamp and new fields, with no geometry, cut list, integrity, stock, BOM, or step moving on any frozen design.
+
+### Still open
+
+Desk drawers, wall-mounted pieces, chairs, and beds. The last two are new templates with real load paths and are each comparable in size to the two above combined: a chair carries a seated person through the rear-leg-to-seat-rail joint (the joint that actually fails on chairs), and a bed needs mattress dimensions as a single source in `knowledge.js`, slat sizing and spacing, and a centre-support rule for queen and larger. `LOAD_PRESETS.seating` (BIFMA X5.4, 136 kg), `french_cleat`, `WALL_HANG` and `keyhole_bed` are already in place as groundwork.
+
+---
+
+*Audit probes executed against `dist/index.html` built from commit `7cc8572`; no source changed by the audit itself. Phases 0–4 implemented and verified on this branch as recorded in §7, §8 and §9; X-07's geometry workstream is tracked in §10.*

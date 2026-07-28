@@ -251,8 +251,8 @@ var BB = globalThis.BB = globalThis.BB || {};
    * names only what the geometry actually produces: "workbench" buys a work
    * TABLE at workbench height — the laminated top and the vise are not built,
    * so the list must never offer "a workbench" as a thing that comes out. */
-  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, or drawers) and I’ll build it to standard proportions.';
-  const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A bookshelf', 'A desk in white oak'];
+  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, doors, or stretchers to brace the legs) and I’ll build it to standard proportions.';
+  const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A cabinet with doors', 'A desk in white oak'];
 
   /* Pieces people genuinely ask for that this tool does not build. Each row is
    * what it matched, the plain sentence that says so, and the nearest thing
@@ -269,8 +269,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       'Wall-hung and floating shelves are past what I build — everything I make stands on its own legs.', 'A bookshelf'],
     [/\bdressers?\b|\barmoires?\b|\bwardrobes?\b|\bcredenzas?\b|\bhutch(?:es)?\b|\bvanit(?:y|ies)\b/,
       'A dresser-sized case is the cabinet template here — same carcass, same drawer bank.', 'A cabinet with three drawers'],
-    [/\bdoors?\b|\blids?\b/,
-      'Doors and lids are past what I build yet — open cases and drawers are what I can draw.', null]
+    // Doors LEFT this list with X-07 — they are built on cabinets and
+    // bookshelves now. Lids did not: nothing in the model lifts, and the
+    // hardware for them is still the READY stratum.
+    [/\blids?\b/,
+      'Lids are past what I build yet — nothing here opens upward. A case with doors is what I can draw.', 'A cabinet with doors']
   ];
   /* An unnamed want is still a design intent ("something for my entryway"),
    * so it belongs on the capability list. The want has to point at a place or
@@ -428,6 +431,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       set('structure.shelfCount', spec.structure.shelfCount + 1); notes.push('shelf');
     }
 
+    /* Back panel and dado'd shelves: the two things a CARCASS does instead of
+     * stretchers, and the engine already offers both as one-tap fixes off the
+     * racking check. Until now neither had any chat vocabulary at all — so a
+     * user could tap the fix in the Safety panel and not ask for the same
+     * thing in words, which is the sort of split the audit's X-03 was about.
+     * Both are gated on the case joint's own level rules, so asking for a
+     * dado as a beginner is refused by correction the same way it always is. */
+    if (/\bback panel\b|\bpanel(l)?ed back\b|\bclose the back\b/.test(t)) {
+      const off = /\b(no|without|remove|drop|delete|lose|open)\b[\w\s]{0,12}\bback\b/.test(t);
+      set('structure.backPanel', !off);
+      notes.push(off ? 'back panel removed' : 'back panel');
+    }
+    if (/\bdado(e|'|’)?s?\b|\bhoused? (the )?shel(f|ves)\b/.test(t)) {
+      set('joinery.case', 'dado'); notes.push('dado-housed shelves');
+    }
+
     // Drawers. Honesty first (audit FE-H10): the code strips drawers from
     // templates without openings, so the parser must never ack one there.
     // Drawer fields judge the template the patch actually LANDS on (audit
@@ -462,6 +481,74 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (/\bwood(en)? runners?\b/.test(t)) { set('drawers.runner', 'wood_runners'); notes.push('wood runners'); }
         if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) { set('drawers.runner', 'side_mount_slides'); notes.push('side-mount slides'); }
         if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
+      }
+    }
+
+    /* Stretcher intent (X-07). Style only — the app owns the section, the
+     * joints, and where the rail can legally sit on the leg. "wobbly" and
+     * "racks" are in here because that is what people actually type when
+     * they mean "brace it"; the integrity panel offers the same fix from
+     * the other direction, off the slenderness check. */
+    {
+      const canBrace = ['table', 'desk', 'bench'].includes(landing);
+      const wantsBrace = /\bstretchers?\b|\bcross[- ]?brace|\bbrace (it|the (legs?|base|frame))\b|\b(wobbl|rack)\w*\b/.test(t);
+      const wantsNone = /\b(no|remove|without|drop|delete|lose) (the )?stretchers?\b|\bunbraced\b/.test(t);
+      if (wantsNone && canBrace) { set('structure.stretcher', 'none'); notes.push('stretchers removed'); }
+      else if (wantsBrace && canBrace) {
+        // Box only when the shape is named; H is the default because it
+        // keeps the foot well clear, which is what most people want and
+        // never think to ask for until they kick the rail.
+        const box = /\bbox\b|\bperimeter\b|\ball (four|4) sides\b|\bsquare\b/.test(t);
+        set('structure.stretcher', box ? 'box' : 'h');
+        notes.push(box ? 'box stretcher' : 'H-stretcher');
+      } else if ((wantsBrace || wantsNone) && /\bstretchers?\b/.test(t)) {
+        /* Named the part explicitly on a piece that cannot take one. This
+         * returns rather than notes: an empty patch falls through to the
+         * generic "I didn't catch a change I can make there", which is
+         * exactly the wrong-fallback defect X-04 was about — the user named
+         * a real furniture part and would get a shrug. The alternative
+         * offered is the engine's own answer for a carcass, the same one
+         * the racking check recommends, so the two never disagree. */
+        return {
+          kind: 'question',
+          question: `Stretchers tie the legs of a frame, and a ${landing} has no legs — its stiffness comes from the case instead: a back panel fastened all round, and shelves housed in dados rather than screwed.`,
+          options: ['Add a back panel', 'Dado the shelves', 'Make it a desk']
+        };
+      }
+    }
+
+    /* Door intent (X-07). Style and count are the ask; the hinge, its count,
+     * its boring and its capacity are all code's. "Doors" on a piece with no
+     * case is answered specifically rather than shrugged at — the same rule
+     * the stretcher block above follows. */
+    {
+      const canDoor = ['cabinet', 'bookshelf'].includes(landing);
+      const wantsDoors = /\bdoors?\b|\bclose(d)? (it |the )?(front|case)\b|\bwith a front\b/.test(t);
+      const wantsNone = /\b(no|remove|without|drop|delete|lose|open) (the )?doors?\b|\bopen (case|front)\b|\bdoorless\b/.test(t);
+      if (wantsNone && canDoor) { set('doors', null); notes.push('doors removed'); }
+      else if (wantsDoors && canDoor) {
+        const single = /\b(one|single|1)\s+door\b/.test(t);
+        const inset = /\binset\b|\bflush\b/.test(t);
+        set('doors.count', single ? 1 : 2);
+        set('doors.style', inset ? 'inset' : 'overlay');
+        notes.push((single ? 'a door' : 'a pair of doors') + (inset ? ', inset' : ''));
+        // Hinge STYLE only, and only when named. Everything else is code's.
+        /* An inset-only hinge names the door style by implication. Without
+         * this the ask contradicts itself — correction would keep the
+         * overlay default and swap the hinge straight back out, silently
+         * discarding the one piece of hardware the user actually named. */
+        const insetOnlyHinge = /\bbutt hinge|\bbrass hinge|\bno[- ]mortise\b|\bknife hinge|\bpivot hinge/.test(t);
+        if (insetOnlyHinge && !inset) { set('doors.style', 'inset'); notes.push('inset (the hinge you named only hangs inset doors)'); }
+        if (/\bbutt hinge|\bbrass hinge/.test(t)) { set('hardware.hinge', 'butt_brass'); notes.push('brass butt hinges'); }
+        else if (/\bno[- ]mortise\b/.test(t)) { set('hardware.hinge', 'no_mortise'); notes.push('no-mortise hinges'); }
+        else if (/\bknife hinge|\bpivot hinge/.test(t)) { set('hardware.hinge', 'knife_pivot'); notes.push('knife hinges'); }
+        else if (/\beuro|\bconcealed|\bcup hinge|\bhidden hinge/.test(t)) { set('hardware.hinge', 'euro_cup'); notes.push('concealed cup hinges'); }
+      } else if ((wantsDoors || wantsNone) && /\bdoors?\b/.test(t)) {
+        return {
+          kind: 'question',
+          question: `Doors need a case front to close, and a ${landing} has none — its front is legs and air. A cabinet or a bookshelf can take them.`,
+          options: ['Make it a cabinet', 'A bookshelf', 'A walnut nightstand with two drawers']
+        };
       }
     }
 

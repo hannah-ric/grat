@@ -10,10 +10,13 @@
  *
  * Three strata, honestly separated:
  *   LIVE — consumed by today's geometry (drawer slides, pulls, shelf pins,
- *          wooden-runner fitting, the outdoor-hardware advisory).
- *   READY — selection rules with no geometry yet (door hinges, lifts,
- *          stays): tested code awaiting the doors/lids workstream. Their
- *          wire enums are deliberately NOT minted until a consumer exists.
+ *          wooden-runner fitting, the outdoor-hardware advisory, and — since
+ *          X-07 — door hinges: the count rule, the cup boring solver, and the
+ *          panel-weight capacity check all now have a consumer, so the HNG
+ *          wire enum is minted and hinges appear in the BOM).
+ *   READY — selection rules with no geometry yet (lifts and stays): tested
+ *          code awaiting the lids workstream. Their wire enums are
+ *          deliberately NOT minted until a consumer exists.
  *   REFERENCE — the teaching layer (catches, locks, wall hanging, feet,
  *          and the traditional no-hardware solutions), searchable in the
  *          Shop Reference, several with 3D inspector models.
@@ -30,13 +33,21 @@ var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
 
-  /* ---------------- §1 Hinges (READY: awaits the doors workstream) ---- */
+  /* ---------------- §1 Hinges (LIVE on doors since X-07) -------------- */
   const HINGES = {
     euro_cup: {
       key: 'euro_cup', label: '35 mm concealed cup hinge', price: 4.5,
       fronts: ['overlay', 'inset'], opening: 110, softCloseAvail: true,
       capacityKgPair: 7, countRule: 'doorHinges',
-      boring: { cupDia: 35, cupDepth: 13, tbMin: 3, tbMax: 7, tbDefault: 5, plateSetback: 37, maxDoorT: 26 },
+      /* plateHeights is the standard mounting-plate series. The overlay a
+       * hinge achieves is set by the plate as much as by the bore, so the
+       * plate is the free variable to solve for — the bore stays in its
+       * 3–7 mm window and the PLATE changes to suit the overlay, which is
+       * the way round the hardware is designed to be used.
+       * cupDia stays a metric callout everywhere: a 35 mm cup hinge needs a
+       * 35 mm Forstner, and "1 3/8 in" is a bit you can buy that will not
+       * seat the hinge you own. */
+      boring: { cupDia: 35, cupDepth: 13, tbMin: 3, tbMax: 7, tbDefault: 5, plateSetback: 37, maxDoorT: 26, plateHeights: [0, 3, 6, 9] },
       bestFor: 'Cabinet doors of every kind — 3-axis adjustable after hanging, soft-close available, invisible when closed.',
       failure: 'Cup bored too far from the edge robs the opening angle and drags the door on the carcass — respect the 3 to 7 mm boring distance.'
     },
@@ -212,7 +223,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   };
 
-  /* ---------------- §4 Lift & stay hardware (READY: awaits lids) ------ */
+  /* ---------------- §4 Lift & stay hardware (READY: awaits lids) ------
+   * Still the only READY stratum: nothing in the model lifts yet. */
   const LIFTS = {
     gas_strut: {
       key: 'gas_strut', label: 'Gas strut', price: 9, forceClassesN: [50, 80, 100, 120, 150, 200], countRule: 'gasStrut',
@@ -492,7 +504,27 @@ var BB = globalThis.BB = globalThis.BB || {};
     const b = HINGES.euro_cup.boring;
     const raw = overlayMM - 11 + (plateHeightMM || 0);
     const tb = Math.min(b.tbMax, Math.max(b.tbMin, Math.round(raw * 10) / 10));
-    return { tbMM: tb, inRange: raw >= b.tbMin && raw <= b.tbMax, cupDia: b.cupDia, cupDepth: b.cupDepth, plateSetback: b.plateSetback };
+    return { tbMM: tb, inRange: raw >= b.tbMin && raw <= b.tbMax, cupDia: b.cupDia, cupDepth: b.cupDepth, plateSetback: b.plateSetback, plateMM: plateHeightMM || 0 };
+  }
+
+  /* Solve the PLATE for a designed overlay, instead of leaving it at zero and
+   * reporting that the bore is out of range. A 12 mm overlay on a 0 mm plate
+   * wants a 1 mm boring distance, which no hinge does — but the same overlay
+   * on a standard 3 mm plate lands the bore at 4 mm, dead in the window. The
+   * plate is the adjustable part; the bore is not. Returns the first standard
+   * plate that puts the bore in range, and falls back to the closest one with
+   * inRange:false so the caller can say so honestly. */
+  function cupBoringFor(overlayMM) {
+    const heights = (HINGES.euro_cup.boring.plateHeights || [0]);
+    let best = null;
+    for (const h of heights) {
+      const r = cupBoring(overlayMM, h);
+      if (r.inRange) return r;
+      const b = HINGES.euro_cup.boring;
+      const miss = Math.min(Math.abs(overlayMM - 11 + h - b.tbMin), Math.abs(overlayMM - 11 + h - b.tbMax));
+      if (!best || miss < best.miss) best = { miss, r };
+    }
+    return best.r;
   }
 
   /* Gas strut moment balance: F_total = 1.3 × W·g × (Lcg / d),
@@ -627,7 +659,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   BB.HW = {
     HINGES, PULLS, PULL_CTC_SERIES, SLIDES, LIFTS, CATCHES, LOCKS,
     SHELF_SUPPORT, TABLE_BED, WALL_HANG, FEET_MISC, TRADITIONAL, GATES,
-    panelWeightKg, doorHingeCount, cupBoring, gasStrut, lidStay, powerFactor,
+    panelWeightKg, doorHingeCount, cupBoring, cupBoringFor, gasStrut, lidStay, powerFactor,
     pullSpec, pullScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
     digestLine
   };
