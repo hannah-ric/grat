@@ -1704,8 +1704,522 @@ async function testTruncationExhaustion() {
     'ui.js adopts the failed exchange into state.turns on error');
 }
 
+/* ============================================================================
+ * V-03 — the spec-migration promise, locked to a fixture corpus.
+ *
+ * CLAUDE.md states the contract plainly: "a saved design must never fail to
+ * open; add a migration rather than changing the schema in place." Before this
+ * block the only related assertion round-tripped a CURRENT design, so the
+ * promise held by luck: correctSpec back-fills every missing default, which
+ * hides whether the migration registry ran at all.
+ *
+ * The corpus lives in test/fixtures/legacy/ as data, not code, for one
+ * reason: adding migration 4 -> 5 must cost a maintainer a NEW FIXTURE, not an
+ * edited assertion. The coverage guard below enforces exactly that — every
+ * version with a registered migration, and the current version, must have a
+ * fixture, or this suite goes red.
+ *
+ * A fixture is one JSON file:
+ *   why                  prose — why this shape of old design is worth keeping
+ *   version              the schema version of the payload (null = versionless)
+ *   kind                 "spec" (a saved design) | "share" (a frozen BB4: code)
+ *   spec | shareCode     the payload
+ *   expectAfterMigration path -> value asserted on migrateSpec's OUTPUT, so a
+ *                        registered migration is proved to have RUN, not merely
+ *                        to have not thrown
+ *   expect               what must survive all the way through the pipeline
+ * ==========================================================================*/
+const LEGACY_DIR = path.join(__dirname, 'fixtures', 'legacy');
+const LEGACY = fs.readdirSync(LEGACY_DIR).filter(f => f.endsWith('.json')).sort()
+  .map(file => Object.assign({ file }, JSON.parse(fs.readFileSync(path.join(LEGACY_DIR, file), 'utf8'))));
+
+/* migrateSpec reads a missing specVersion as 3 (spec.js) — that rule is itself
+ * part of the contract, so versionless fixtures are measured against 3. */
+const effectiveVersion = fx => (fx.version == null ? 3 : fx.version);
+/* Is there an unbroken chain of registered migrations from v to current? */
+function migrationChainReaches(v) {
+  let cur = v, guard = 0;
+  while (cur < Spec.SPEC_VERSION && guard++ < 32) {
+    if (!Spec.migrations[cur]) return false;
+    cur++;
+  }
+  return cur === Spec.SPEC_VERSION;
+}
+
+section('V-03 · migration registry: the corpus covers every registered migration');
+{
+  // An empty or mis-globbed directory would make every loop below pass
+  // vacuously — the exact "green suite that tests nothing" failure mode.
+  ok(LEGACY.length >= 10, `the legacy corpus is populated — ${LEGACY.length} fixtures found`);
+  ok(LEGACY.some(f => f.kind === 'share'), 'the corpus includes frozen share codes, not only saved specs');
+  ok(LEGACY.some(f => f.version == null), 'the corpus includes a version-less (pre-Phase-4) design');
+
+  // THE forcing function. Register migration 4 -> 5 and this fails until a v4
+  // fixture exists; bump SPEC_VERSION and it fails until a current-version
+  // fixture exists. Neither can be satisfied by editing an assertion.
+  for (const v of Object.keys(Spec.migrations).map(Number).sort((a, b) => a - b)) {
+    ok(LEGACY.some(f => effectiveVersion(f) === v),
+      `migration ${v} -> ${v + 1} is registered, so the corpus must carry a specVersion ${v} fixture to exercise it`);
+  }
+  ok(LEGACY.some(f => f.version === Spec.SPEC_VERSION),
+    `the corpus carries a fixture stamped at the current SPEC_VERSION (${Spec.SPEC_VERSION}) — today's saves are tomorrow's legacy designs`);
+
+  // The registry must not contain a migration that overshoots or stalls.
+  for (const [from, fn] of Object.entries(Spec.migrations)) {
+    const out = fn({ meta: { template: 'table' } });
+    eq(out.specVersion, Number(from) + 1, `migration ${from} -> ${Number(from) + 1} stamps exactly one version forward`);
+  }
+  // A version-less spec is read as v3 — the rule the whole corpus rests on.
+  eq(Spec.migrateSpec({ meta: { template: 'table' } }).specVersion, Spec.SPEC_VERSION,
+    'a spec with no specVersion is treated as v3 and migrated to current');
+  // Never throws, never returns nothing, whatever it is handed.
+  for (const junk of [null, undefined, 'nope', 42, [], { specVersion: 999 }, { specVersion: 'x' }]) {
+    let threw = false;
+    try { Spec.migrateSpec(junk); } catch (e) { threw = true; }
+    ok(!threw, `migrateSpec survives ${JSON.stringify(junk)} without throwing — opening a saved design must never be the thing that fails`);
+  }
+}
+
+section('V-03 · legacy design corpus: every old saved design and share code still opens');
+{
+  for (const fx of LEGACY) {
+    const label = fx.file;
+    let raw = null;
+
+    if (fx.kind === 'share') {
+      // Frozen BB4: codes double as the lock on codec.js's append-only enum
+      // tables: reorder SPC/JNT/FIN/RUN and these decode to other furniture.
+      const res = Codec.fromShareCode(fx.shareCode);
+      ok(!res.error && res.spec, `${label}: the frozen share code still decodes${res.error ? ' — ' + res.error : ''}`);
+      if (!res.spec) continue;
+      raw = res.spec;
+      eq(raw.specVersion, fx.version, `${label}: the decoded wire declares the version the fixture claims`);
+    } else {
+      ok(fx.spec && typeof fx.spec === 'object', `${label}: carries a spec payload`);
+      if (!fx.spec) continue;
+      raw = JSON.parse(JSON.stringify(fx.spec));
+      const declared = raw.specVersion === undefined ? null : raw.specVersion;
+      eq(declared, fx.version, `${label}: the fixture's declared version matches its payload`);
+    }
+
+    /* --- the migration registry itself --- */
+    const migrated = Spec.migrateSpec(JSON.parse(JSON.stringify(raw)));
+    if (migrationChainReaches(effectiveVersion(fx))) {
+      // The real V-03 assertion: the migration RAN. correctSpec would land on
+      // the current version regardless, which is precisely why asserting it
+      // downstream proves nothing about the registry.
+      eq(migrated.specVersion, Spec.SPEC_VERSION,
+        `${label}: migrateSpec walked the registry from v${effectiveVersion(fx)} to current`);
+    }
+    for (const [dotted, want] of Object.entries(fx.expectAfterMigration || {})) {
+      const got = dotted.split('.').reduce((o, k) => (o == null ? o : o[k]), migrated);
+      eq(got, want, `${label}: the migration repaired "${dotted}"`);
+    }
+
+    /* --- the promise: it opens, builds, validates, and plans --- */
+    const spec = Spec.correctSpec(JSON.parse(JSON.stringify(raw)));
+    eq(spec.specVersion, Spec.SPEC_VERSION, `${label}: the corrected spec carries the current version`);
+    const model = Parametric.build(spec);
+    const report = Spec.validate(spec, model);
+    eq(report.errors.length, 0,
+      `${label}: opens with no blocking validation error${report.errors.length ? ' — ' + report.errors.map(e => e.id).join(', ') : ''}`);
+
+    const cut = Plans.cutList(spec, model);
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const stock = Packing.planStock(spec, model, cut, {});
+    const bom = Plans.bom(spec, model, { integrity: integ, stock });
+    const steps = Plans.assembly(spec, model, integ, { stockPlan: stock });
+
+    ok(model.parts.length > 0, `${label}: builds geometry`);
+    ok(cut.length > 0 && cut.every(r => r.qty > 0 && r.L > 0 && r.W > 0 && r.T > 0),
+      `${label}: produces a cut list with a real quantity and three real dimensions on every row`);
+    ok(Number(bom.total) > 0, `${label}: produces a priced bill of materials`);
+    ok(steps.length > 0 && steps[steps.length - 1].id === 'finish',
+      `${label}: produces an assembly sequence that ends in finishing`);
+    // Opening is the promise; PASSING is not. An old design may well fail
+    // today's physics — that is an honest verdict, not a load failure.
+    ok(['pass', 'advisory', 'anchor', 'fail'].includes(integ.summary.verdict),
+      `${label}: structural integrity returns a known verdict (got ${integ.summary.verdict})`);
+    // Reopening the reopened design must be a fixed point, or every save/load
+    // cycle would drift the geometry.
+    eq(Spec.correctSpec(JSON.parse(JSON.stringify(spec))), spec, `${label}: reopening the migrated design is idempotent`);
+
+    /* --- what the design MEANT has to survive the upgrade --- */
+    const E = fx.expect || {};
+    const has = k => Object.prototype.hasOwnProperty.call(E, k);
+    if (has('template')) eq(spec.meta.template, E.template, `${label}: template survives`);
+    if (has('name')) eq(spec.meta.name, E.name, `${label}: name survives`);
+    if (has('species')) eq(spec.wood.species, E.species, `${label}: solid species survives`);
+    if (has('sheetSpecies')) eq(spec.wood.sheetSpecies, E.sheetSpecies, `${label}: sheet species survives`);
+    if (has('units')) eq(spec.meta.units, E.units, `${label}: display units survive`);
+    if (has('finish')) eq(spec.finish, E.finish, `${label}: finish survives`);
+    if (has('pull')) eq(spec.hardware.pull, E.pull, `${label}: pull style survives`);
+    if (has('joinery')) eq(spec.joinery, E.joinery, `${label}: joinery survives`);
+    if (has('overall')) eq(spec.overall, E.overall, `${label}: overall dimensions survive`);
+    if (has('shelfCount')) eq(spec.structure.shelfCount, E.shelfCount, `${label}: shelf count survives`);
+    if (has('drawers')) {
+      if (E.drawers === null) ok(!spec.drawers, `${label}: carries no drawer bank`);
+      else eq(spec.drawers && spec.drawers.count, E.drawers, `${label}: drawer count survives`);
+    }
+    if (has('customParts')) eq(spec.custom && spec.custom.parts.length, E.customParts, `${label}: novel-grammar parts survive`);
+    if (has('customConnections')) eq(spec.custom && spec.custom.connections.length, E.customConnections, `${label}: novel-grammar connections survive`);
+    if (has('minParts')) ok(model.parts.length >= E.minParts, `${label}: builds at least ${E.minParts} parts (got ${model.parts.length})`);
+  }
+}
+
+/* ============================================================================
+ * V-04 — exports are structurally validated, not substring-sniffed.
+ *
+ * Every export assertion in this suite used to be "does the file contain this
+ * string". That cannot distinguish a valid document from a truncated one, an
+ * unbalanced one, or one whose design name broke out of its element — so a
+ * malformed export shipped green. test/lib/format-check.js parses each format
+ * as the format it claims to be. Structure is asserted, never byte counts:
+ * the golden corpus already owns the numbers.
+ * ==========================================================================*/
+const FC = require('./lib/format-check.js');
+
+section('V-04 · the export validators can themselves fail (a lock that cannot fail is not a lock)');
+{
+  ok(FC.parseXML('<?xml version="1.0"?><!-- c --><a x="1" y=\'2\'><b/>text &amp; more</a>').ok, 'XML checker accepts a well-formed document');
+  ok(!FC.parseXML('<a><b></a>').ok, 'XML checker rejects a mismatched end tag');
+  ok(!FC.parseXML('<a><b></b>').ok, 'XML checker rejects an unclosed element');
+  ok(!FC.parseXML('<a></a><b></b>').ok, 'XML checker rejects a second root element');
+  ok(!FC.parseXML('<a>Smith & Sons</a>').ok, 'XML checker rejects a bare ampersand — the signature of an unescaped design name');
+  ok(!FC.parseXML('<a href=x/>').ok, 'XML checker rejects an unquoted attribute value');
+  ok(!FC.parseXML('<a x="1" x="2"/>').ok, 'XML checker rejects a duplicate attribute');
+  ok(!FC.parseXML('<a><b>').ok, 'XML checker rejects a truncated document');
+  ok(!FC.parseSVG('<html xmlns="http://www.w3.org/2000/svg"></html>').ok, 'SVG checker rejects a non-svg root');
+  ok(!FC.parseSVG('<svg></svg>').ok, 'SVG checker rejects a missing xmlns');
+
+  ok(FC.checkRuby('module A\n def self.b\n x = 1 if true\n end\nend\n').ok, 'Ruby checker accepts a balanced module (and ignores a trailing modifier "if")');
+  ok(!FC.checkRuby('module A\n def self.b\n end\n').ok, 'Ruby checker rejects a module with no end');
+  ok(!FC.checkRuby('x = "never closed\n').ok, 'Ruby checker rejects an unterminated string literal');
+  ok(!FC.checkRuby('foo(bar\n').ok, 'Ruby checker rejects an unclosed paren');
+  ok(FC.checkRuby('# a "quote" in a comment\nx = 1\n').ok, 'Ruby checker does not mistake a comment for code');
+
+  ok(!!FC.findLeak('length: undefined mm'), 'leak detector catches a stringified undefined');
+  ok(!FC.findLeak('length: 42 mm'), 'leak detector is quiet on clean output');
+
+  // The injection detector has to survive both ways round: it must fire on a
+  // real handler and stay silent on the escaped text that looks like one.
+  ok(!!FC.findMarkupInjection('<p><img src=x onerror=alert(1)></p>'), 'injection detector catches an inline event handler');
+  ok(!!FC.findMarkupInjection('<div><script>alert(1)</script></div>'), 'injection detector catches a <script> element');
+  ok(!!FC.findMarkupInjection('<a href="javascript:alert(1)">x</a>'), 'injection detector catches a javascript: URL');
+  ok(!!FC.findMarkupInjection('<a href="&#106;avascript:alert(1)">x</a>'), 'injection detector catches an entity-obfuscated javascript: URL');
+  ok(!FC.findMarkupInjection('<title>&lt;img src=x onerror=alert(1)&gt;</title>'), 'injection detector is silent on a correctly escaped payload in text');
+  ok(!FC.findMarkupInjection('<meta name="description" content="&lt;img src=x onerror=alert(1)&gt;">'), 'injection detector is silent on a correctly escaped payload inside an attribute value');
+
+  // GLB container: build a real one, then break it three ways.
+  const { spec, model } = pipeline({ meta: { name: 'GLB Probe', template: 'table' } });
+  const good = new Uint8Array(BB.GLTF.toGLB(spec, model));
+  ok(FC.checkGLB(good).ok, 'GLB checker accepts a real export');
+  ok(!FC.checkGLB(good.slice(0, good.length - 64)).ok, 'GLB checker rejects a truncated file (declared length no longer matches)');
+  const badMagic = good.slice(); badMagic[0] = 0x00;
+  ok(!FC.checkGLB(badMagic).ok, 'GLB checker rejects a broken magic');
+  const badChunk = good.slice(); new DataView(badChunk.buffer).setUint32(12, 999999, true);
+  ok(!FC.checkGLB(badChunk).ok, 'GLB checker rejects a chunk that claims more bytes than remain');
+  ok(!FC.checkGLTF({ asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 7 }], meshes: [] }).ok,
+    'glTF graph checker rejects a node pointing at a mesh that does not exist');
+}
+
+section('V-04 · every export parses as its own format, across three shapes of design');
+{
+  /* Three designs, because a format bug can hide in geometry: a frame piece
+   * (legs + aprons only), a case piece with drawers and metal hardware, and a
+   * novel-grammar piece whose parts are ROTATED — the only path that emits
+   * <polygon> hulls, quaternion node rotations, and conjugated matrices. */
+  const DESIGNS = [
+    ['frame piece (table)', { meta: { name: 'Frame & Rail Table', template: 'table' } }],
+    ['case piece with drawers (nightstand)', {
+      meta: { name: 'Case Nightstand', template: 'nightstand', level: 'intermediate' },
+      drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+    }],
+    ['novel piece with rotated parts (custom)', Spec.defaultSpec('custom')]
+  ];
+  const fmt = v => BB.Units.fmtLength(v);
+  const ORIGIN = 'https://blueprint.example.app/';
+
+  for (const [what, raw] of DESIGNS) {
+    const { spec, model } = pipeline(JSON.parse(JSON.stringify(raw)));
+
+    /* --- COLLADA (.dae) --- */
+    const dae = Exports.toDAE(spec, model);
+    const x = FC.parseXML(dae);
+    ok(x.ok, `${what}: .dae is well-formed XML${x.ok ? '' : ' — ' + x.errors.slice(0, 3).join('; ')}`);
+    eq(x.root, 'COLLADA', `${what}: .dae root element is <COLLADA>`);
+    ok(/<COLLADA[^>]+xmlns="http:\/\/www\.collada\.org\/2005\/11\/COLLADASchema"/.test(dae), `${what}: .dae declares the COLLADA namespace`);
+    ok(/<COLLADA[^>]+version="1\.4\.\d+"/.test(dae), `${what}: .dae declares a 1.4 schema version`);
+    // Structure, not counts: one <node> per part, and every node's geometry
+    // and material reference must resolve inside the same document.
+    eq(x.tags.get('node'), model.parts.length, `${what}: one <node> per built part`);
+    const geomIds = new Set([...dae.matchAll(/<geometry id="([^"]+)"/g)].map(m => m[1]));
+    const matIds = new Set([...dae.matchAll(/<material id="([^"]+)"/g)].map(m => m[1]));
+    const geomRefs = [...dae.matchAll(/<instance_geometry url="#([^"]+)"/g)].map(m => m[1]);
+    const matRefs = [...dae.matchAll(/<instance_material symbol="m" target="#([^"]+)"/g)].map(m => m[1]);
+    ok(geomRefs.length === model.parts.length && geomRefs.every(id => geomIds.has(id)), `${what}: every instance_geometry resolves to a <geometry> in the file`);
+    ok(matRefs.length === model.parts.length && matRefs.every(id => matIds.has(id)), `${what}: every instance_material resolves to a <material> in the file`);
+    ok(/<instance_visual_scene url="#Scene"\/>/.test(dae) && /<visual_scene id="Scene"/.test(dae), `${what}: the <scene> resolves to the visual scene`);
+    // float_array count attributes must match the values actually written —
+    // a mismatch is the classic silently-corrupt mesh.
+    for (const m of dae.matchAll(/<float_array id="[^"]+" count="(\d+)">([^<]*)<\/float_array>/g)) {
+      eq(m[2].trim().split(/\s+/).length, Number(m[1]), `${what}: a float_array writes exactly the count it declares`);
+    }
+    ok(!FC.findLeak(dae), `${what}: .dae carries no stringified undefined/NaN${FC.findLeak(dae) ? ' — ' + FC.findLeak(dae).context : ''}`);
+
+    /* --- elevation + sheet SVGs (both take the formatter argument) --- */
+    for (const view of ['front', 'side', 'top']) {
+      const svg = BB.Drafting.elevationSVG(spec, model, view, fmt);
+      const r = FC.parseSVG(svg);
+      ok(r.ok, `${what}: ${view} elevation is well-formed SVG${r.ok ? '' : ' — ' + r.errors.slice(0, 3).join('; ')}`);
+      ok(r.elements > 3, `${what}: ${view} elevation actually draws something (${r.elements} elements)`);
+      ok(!FC.findLeak(svg), `${what}: ${view} elevation carries no stringified undefined/NaN`);
+      // The animatable variant is a second code path through the same emitter.
+      const anim = BB.Drafting.elevationSVG(spec, model, view, fmt, { animatable: true });
+      ok(FC.parseSVG(anim).ok, `${what}: ${view} elevation stays well-formed with animatable linework`);
+    }
+    const sheet = BB.Drafting.sheetSVG(spec, model, fmt, { origin: ORIGIN });
+    const rs = FC.parseSVG(sheet);
+    ok(rs.ok, `${what}: drawing sheet is well-formed SVG${rs.ok ? '' : ' — ' + rs.errors.slice(0, 3).join('; ')}`);
+    // Count the elevations semantically, by their class, rather than counting
+    // <svg> elements: the sheet wraps each elevation in a positioning <svg>,
+    // so a raw tag count is really an assertion about layout and would fire
+    // spuriously the day the sheet is laid out differently.
+    eq(rs.attrs.filter(a => a.split(/\s+/).includes('bb-elevation')).length, 3,
+      `${what}: the drawing sheet carries exactly three elevations`);
+    ok(!FC.findLeak(sheet), `${what}: drawing sheet carries no stringified undefined/NaN`);
+    // Print/server rendering swaps CSS variables for fixed ink — the swap must
+    // not disturb well-formedness, and it is what the issued blueprint ships.
+    ok(FC.parseSVG(Exports.printSVG(sheet)).ok, `${what}: the print-colour sheet is still well-formed SVG`);
+    ok(!/var\(--/.test(Exports.printSVG(sheet)), `${what}: the print-colour sheet resolves every CSS variable`);
+
+    /* --- glTF binary (.glb) --- */
+    const glb = BB.GLTF.toGLB(spec, model);
+    const g = FC.checkGLB(glb);
+    ok(g.ok, `${what}: .glb is a valid GLB container${g.ok ? '' : ' — ' + g.errors.slice(0, 3).join('; ')}`);
+    eq(g.declaredLength, g.actualLength, `${what}: .glb header length equals the real byte length`);
+    const bin = g.chunks.find(c => c.type === 0x004E4942);
+    ok(g.chunks.length === 2 && bin, `${what}: .glb carries exactly a JSON chunk and a BIN chunk`);
+    const graph = FC.checkGLTF(g.json, bin && bin.length);
+    ok(graph.ok, `${what}: the glTF JSON graph resolves every index${graph.ok ? '' : ' — ' + graph.errors.slice(0, 3).join('; ')}`);
+    eq(g.json.nodes.length, model.parts.length, `${what}: one glTF node per built part`);
+    eq(g.json.scenes[0].nodes.length, model.parts.length, `${what}: the scene references every node`);
+    ok(g.json.meshes.length > 0 && g.json.meshes.length <= model.parts.length, `${what}: meshes are deduplicated, never invented (${g.json.meshes.length} for ${model.parts.length} parts)`);
+    eq(g.json.buffers[0].byteLength, bin ? bin.length : -1, `${what}: the declared buffer length matches the BIN chunk`);
+
+    /* --- SketchUp Ruby (.rb) --- */
+    const rb = Exports.toRuby(spec, model);
+    const rr = FC.checkRuby(rb);
+    ok(rr.ok, `${what}: .rb is syntactically plausible Ruby${rr.ok ? '' : ' — ' + rr.errors.slice(0, 3).join('; ')}`);
+    ok(/^module BlueprintBuddyImport$/m.test(rb) && /^BlueprintBuddyImport\.build$/m.test(rb), `${what}: .rb defines and then invokes the import module`);
+    ok(rb.includes('model.start_operation') && rb.includes('model.commit_operation') && rb.includes('model.abort_operation'),
+      `${what}: .rb wraps the build in one undo operation with an abort path`);
+    const xf = rb.match(/Geom::Transformation\.new\(\[[^\]]+\]\)/g) || [];
+    eq(xf.length, model.parts.length, `${what}: one placement transformation per part`);
+    ok(xf.every(t => t.split(',').length === 16 && !/NaN|undefined/.test(t)), `${what}: every transformation is 16 finite numbers`);
+    ok(!FC.findLeak(rb), `${what}: .rb carries no stringified undefined/NaN`);
+
+    /* --- CSV (RFC 4180) --- */
+    const cut = Plans.cutList(spec, model);
+    const csv = Exports.toCSV(spec, cut, { origin: ORIGIN });
+    const lines = csv.split('\r\n').filter(Boolean);
+    ok(lines.length === cut.length + 2, `${what}: CSV writes a header, one row per cut-list line, and the footer`);
+    for (const line of lines) {
+      // RFC 4180: quotes inside a quoted field are doubled, so an even count.
+      eq((line.match(/"/g) || []).length % 2, 0, `${what}: every CSV row has balanced quoting`);
+    }
+    ok(!FC.findLeak(csv), `${what}: CSV carries no stringified undefined/NaN`);
+  }
+}
+
+/* ============================================================================
+ * V-05 — hostile design names, locked.
+ *
+ * Design names travel between users inside share codes, which makes them
+ * attacker-controlled input to a renderer someone else is looking at. Two
+ * separate facts have to hold, and neither was asserted anywhere:
+ *
+ *   1. The codec is NOT a sanitiser. It is a lossless transport, and it must
+ *      stay one — a codec that quietly strips markup would corrupt legitimate
+ *      names and, worse, would encourage callers to trust its output.
+ *   2. Therefore every RENDERER escapes, independently, at the point of
+ *      output. That is where the security boundary lives.
+ *
+ * The browser half — importing a hostile share code into the running app and
+ * proving no script executes and no element is created — belongs to a
+ * Playwright suite; this block locks the server-side and pure-JS halves.
+ * ==========================================================================*/
+section('V-05 · a hostile design name: the codec carries it, every renderer escapes it');
+{
+  // Short enough to survive correctSpec's 60-character name clamp intact —
+  // a payload that gets truncated would make the assertions below weaker
+  // than they look.
+  const HOSTILE = '<img src=x onerror=alert(1)>&"\'<script>1</script>';
+  ok(HOSTILE.length <= 60, 'the hostile payload fits inside the name clamp, so it is tested whole');
+
+  const spec = Spec.correctSpec({
+    meta: { name: HOSTILE, template: 'nightstand', level: 'intermediate' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  eq(spec.meta.name, HOSTILE, 'correction preserves the name verbatim — correction is not sanitisation');
+
+  /* --- 1. the codec is a lossless transport, by design --- */
+  const code = Codec.toShareCode(spec);
+  const back = Codec.fromShareCode(code);
+  ok(!back.error && back.spec, 'a share code carrying a hostile name still decodes');
+  eq(back.spec.meta.name, HOSTILE, 'the name survives toShareCode -> fromShareCode byte-identical (the codec is not a sanitiser)');
+  eq(Codec.decode(Codec.encode(spec)).meta.name, HOSTILE, 'encode/decode are exact inverses over a hostile name too');
+
+  const model = Parametric.build(spec);
+  const fmt = v => BB.Units.fmtLength(v);
+  const cut = Plans.cutList(spec, model);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const stock = Packing.planStock(spec, model, cut, {});
+  const bom = Plans.bom(spec, model, { integrity: integ, stock });
+  const steps = Plans.assembly(spec, model, integ, { stockPlan: stock });
+
+  /* --- 2. every renderer escapes, and stays well-formed while doing it --- */
+  // Well-formedness is the assertion that cannot be faked: if the name had
+  // broken out of its text node or attribute, the document would not parse.
+  const sheet = BB.Drafting.sheetSVG(spec, model, fmt, { origin: 'https://blueprint.example.app/' });
+  const rs = FC.parseSVG(sheet);
+  ok(rs.ok, `drawing sheet with a hostile name is still well-formed SVG${rs.ok ? '' : ' — ' + rs.errors.slice(0, 3).join('; ')}`);
+  ok(!rs.tags.has('script') && !rs.tags.has('img'), 'no <script> or <img> element was created by the name');
+  ok(rs.texts.map(FC.decodeEntities).some(t => t.includes(HOSTILE)), 'the name is present, whole, as TEXT — escaped, not stripped');
+
+  const dae = Exports.toDAE(spec, model);
+  const rd = FC.parseXML(dae);
+  ok(rd.ok, `.dae with a hostile name is still well-formed XML${rd.ok ? '' : ' — ' + rd.errors.slice(0, 3).join('; ')}`);
+  ok(!rd.tags.has('script') && !rd.tags.has('img'), '.dae: the name created no elements');
+  ok(rd.attrs.map(FC.decodeEntities).some(a => a.includes(HOSTILE)), '.dae: the name rides whole inside an escaped attribute');
+
+  const html = Exports.printHTML(spec, model, cut, bom, steps, stock, { origin: 'https://blueprint.example.app/' });
+  ok(!/<script/i.test(html) && !/<img/i.test(html), 'print sheet: the name opens no tag');
+  ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'), 'print sheet: the name is HTML-escaped');
+
+  // Ruby string literals are their own escaping regime.
+  const rb = Exports.toRuby(spec, model);
+  ok(FC.checkRuby(rb).ok, '.rb with a hostile name is still syntactically plausible Ruby');
+  ok(rb.includes('\\"'), '.rb escapes double quotes inside its string literals');
+  ok(!/[^\\]"[^,)\].;\s]*<script/.test(rb), '.rb: the name never terminates its string literal early');
+  /* KNOWN GAP — reported to the V-04/V-05 hand-off, deliberately NOT asserted
+   * here because it FAILS today and this suite must not be weakened into
+   * something that passes. exports.js's rb() escapes backslash and quote only,
+   * so a design name containing a NEWLINE escapes the `# Blueprint Buddy —
+   * "<name>"` comment on line 1 and lands a second, uncommented line of Ruby in
+   * a file whose own header tells the user to paste it into SketchUp's Ruby
+   * Console. Names ride share codes between users, so the payload is
+   * attacker-supplied. Reproduce with meta.name = 'X\nsystem %w[id].first\n# '.
+   * The assertion to add the moment rb() (or correctSpec's name clamp) strips
+   * control characters:
+   *
+   *   const inj = Spec.correctSpec({ meta: { name: 'X\nsystem %w[id].first\n# ', template: 'table' } });
+   *   ok(!/[\r\n]/.test(Exports.toRuby(inj, Parametric.build(inj)).split('\n')[0].slice(2)),
+   *     '.rb: a design name can never break out of the header comment');
+   */
+
+  /* --- 3. the server-rendered surfaces escape independently --- */
+  // api/_sheets.js has its own esc(); it must never rely on the client's.
+  const Pipeline = require('../api/_pipeline.js');
+  const Sheets = require('../api/_sheets.js');
+  const evaluated = Pipeline.evaluate({
+    meta: { name: HOSTILE, template: 'nightstand', level: 'intermediate' },
+    drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  eq(evaluated.spec.meta.name, HOSTILE, 'the server pipeline receives the hostile name intact');
+  const derived = Pipeline.derive(evaluated.BB, evaluated.spec, evaluated.model);
+  const meta = {
+    id: 'bp_<script>alert(3)</script>', revision: 1, issued: '2026-07-27',
+    link: 'https://blueprint.example.app/#d=' + code, origin: 'https://blueprint.example.app/', specHash: 'deadbeef'
+  };
+  const full = Object.assign({ BB: evaluated.BB, spec: evaluated.spec, model: evaluated.model }, derived);
+  for (const [surface, doc] of [['sheet set', Sheets.sheetSet(full, meta)], ['1:1 templates', Sheets.templateSet(full, meta)]]) {
+    // Two assertions that together PROVE escaping, where a substring search
+    // for "onerror=" proves nothing: the raw tag must be absent, the entity
+    // form must be present, and no tag may carry a handler attribute.
+    ok(!/<img\b/i.test(doc) && !/<script\b/i.test(doc), `${surface}: the payload's angle brackets never open a tag`);
+    ok(doc.includes('&lt;img src=x onerror=alert(1)&gt;'), `${surface}: the payload is present in entity-encoded form — escaped, not stripped`);
+    const bad = FC.findMarkupInjection(doc);
+    ok(!bad, `${surface}: no element in the document carries an injected handler or script${bad ? ` — ${bad.reason}: ${bad.at}` : ''}`);
+  }
+}
+
+/* The one async assertion in this file: awaited by the closing IIFE below so
+ * its failures are counted before the process exits. */
+let sharePageProbe = null;
+section('V-05 · the public share page escapes attacker-supplied names');
+{
+  // GET /api/blueprint?share=… is session-less, public, cached, and rendered
+  // from a code one user hands another. It is the highest-value server XSS
+  // surface in the product, so it gets driven end-to-end through the handler.
+  const HOSTILE = '<img src=x onerror=alert(1)>&"\'<script>1</script>';
+  const blueprint = require('../api/blueprint.js');
+  const spec = Spec.correctSpec({ meta: { name: HOSTILE, template: 'table' } });
+  const code = Codec.toShareCode(spec);
+  const req = {
+    url: '/api/blueprint?share=' + encodeURIComponent(code), method: 'GET',
+    headers: { host: 'app.example.com', 'x-forwarded-proto': 'https' }, socket: {}
+  };
+  const res = {
+    statusCode: 200, headers: {}, body: '',
+    setHeader(k, v) { this.headers[k.toLowerCase()] = v; },
+    end(s) { this.body = s || ''; this.done = true; }
+  };
+  sharePageProbe = blueprint(req, res).then(() => {
+    eq(res.statusCode, 200, 'the public share page renders');
+    ok(!/<img\b/i.test(res.body) && !/<script\b/i.test(res.body), "share page: the payload's angle brackets never open a tag");
+    ok(res.body.includes('&lt;img src=x onerror=alert(1)&gt;'), 'share page: the payload is present in entity-encoded form — escaped, not stripped');
+    ok(/<title>&lt;img/.test(res.body), 'share page: the name is escaped inside <title> too');
+    const bad = FC.findMarkupInjection(res.body);
+    ok(!bad, `share page: no element carries an injected handler or script${bad ? ` — ${bad.reason}: ${bad.at}` : ''}`);
+  }).catch(e => ok(false, 'the public share handler threw instead of rendering — ' + e.message));
+}
+
+section('V-05 · __proto__ in a share code leaves Object.prototype clean');
+{
+  /* Spec.deepMerge assigns straight into its destination, so an own
+   * "__proto__" key reaching correctSpec is a live prototype-pollution vector.
+   * The ONLY thing standing between a share code and that vector is the
+   * codec's whitelist: decode() reads named keys and builds a fresh object.
+   * These assertions therefore lock the whitelist itself — they are the guard,
+   * not a decoration on one. */
+  const canary = ['bbPolluted', 'bbPolluted2', 'bbPolluted3'];
+  const clean = () => canary.every(k => ({})[k] === undefined && Object.prototype[k] === undefined);
+  const b64url = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  const payloads = [
+    ['top-level __proto__', { v: 4, n: 'x', t: 0, __proto__: { bbPolluted: 'yes' } }],
+    ['nested in the structure block', { v: 4, n: 'x', t: 0, s: { __proto__: { bbPolluted2: 'yes' }, t: 25 } }],
+    ['constructor.prototype', { v: 4, n: 'x', t: 0, constructor: { prototype: { bbPolluted3: 'yes' } } }]
+  ];
+  for (const [what, wire] of payloads) {
+    // JSON.parse is what creates an OWN "__proto__" property — an object
+    // literal would invoke the setter instead, and test nothing.
+    const code = 'BB4:' + b64url(JSON.stringify(wire));
+    const res = Codec.fromShareCode(code);
+    ok(!res.error && res.spec, `${what}: the code still decodes to a design`);
+    if (res.spec) {
+      const built = Spec.correctSpec(res.spec);
+      Parametric.build(built);
+    }
+    ok(clean(), `${what}: Object.prototype is untouched after import`);
+    // The whitelist is the guard, so assert it directly: nothing unknown
+    // survives decode.
+    const decoded = Codec.decode(JSON.parse(JSON.stringify(wire)));
+    ok(!Object.prototype.hasOwnProperty.call(decoded, '__proto__'), `${what}: decode() never copies an own __proto__ key onto the spec`);
+    eq(Object.keys(decoded).sort(), ['custom', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'specVersion', 'structure', 'wood'],
+      `${what}: decode() emits exactly the spec schema and nothing else`);
+  }
+  // The partial-merge path (AI refinement diffs) rides the same whitelist.
+  const patch = Codec.decodePartial(JSON.parse('{"o":{"h":650},"__proto__":{"bbPolluted":"yes"}}'));
+  ok(patch && patch.overall && patch.overall.height === 650, 'a refinement diff still applies its real change');
+  ok(clean(), 'a refinement diff carrying __proto__ leaves Object.prototype clean');
+  for (const k of canary) { delete Object.prototype[k]; }
+}
+
 /* ---------------- the in-app self-test suite, headless ---------------- */
 (async () => {
+  if (sharePageProbe) await sharePageProbe;
   await testKeylessProxyState();
   await testNamePhrasing();
   await testBareExplainCoercion();

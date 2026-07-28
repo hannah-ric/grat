@@ -1,0 +1,29 @@
+{
+  "why": "The canonical v3 saved design — a two-drawer nightstand carrying every field the v3 schema had. The 3 -> 4 migration is registered, so this fixture proves the registry actually runs and that a drawer bank survives the upgrade intact.",
+  "version": 3,
+  "kind": "spec",
+  "expectAfterMigration": { "specVersion": 4, "custom": null, "wood.sheetSpecies": "baltic_birch" },
+  "expect": {
+    "template": "nightstand",
+    "name": "Heirloom Nightstand",
+    "species": "walnut",
+    "units": "in",
+    "drawers": 2,
+    "shelfCount": 1,
+    "minParts": 8
+  },
+  "spec": {
+    "specVersion": 3,
+    "meta": { "name": "Heirloom Nightstand", "template": "nightstand", "level": "intermediate", "units": "in" },
+    "overall": { "width": 500, "depth": 400, "height": 600 },
+    "wood": { "species": "walnut" },
+    "structure": {
+      "topThickness": 20, "legThickness": 45, "apronHeight": 80, "apronThickness": 20,
+      "apronInset": 12, "shelfCount": 1, "shelfThickness": 19, "sideThickness": 18,
+      "backPanel": true, "toeKick": false
+    },
+    "joinery": { "frame": "dowels", "case": "dado", "box": "locking_rabbet" },
+    "finish": "hardwax_oil",
+    "drawers": { "count": 2, "frontStyle": "inset", "runner": "side_mount_slides" }
+  }
+}

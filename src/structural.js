@@ -62,6 +62,52 @@ var BB = globalThis.BB = globalThis.BB || {};
     const biggest = K.SOLID_THICKNESS[K.SOLID_THICKNESS.length - 1];
     return biggest > h ? { t: biggest, partial: true } : null;
   }
+  /* House wording for a fix that helps but does not finish the job. The
+   * thickness fix has said this since G15; every fix says it the same way. */
+  const PARTIAL_LIMIT = ' (partial fix — still over the limit)';
+  const PARTIAL_MARGIN = ' (partial fix — still under the margin)';
+  /* Verdicts, single-sourced so a fix is judged by exactly the code that
+   * judges the check. ONE rule governs every tappable fix: it must move the
+   * check's verdict UP, and a fix that would leave it failing is never
+   * offered — a fix that does not fix is worse than no fix. */
+  const sagStatus = r => r <= 1 ? 'pass' : r <= 1.5 ? 'advisory' : 'fail';
+  const strStatus = m => m >= 1.25 ? 'pass' : m >= 1 ? 'advisory' : 'fail';
+  const jointStatus = m => m >= 1.5 ? 'pass' : m >= 1 ? 'advisory' : 'fail';
+  const RANK = { fail: 0, advisory: 1, pass: 2 };
+  const better = (a, b) => RANK[a] > RANK[b];
+  const worse = (a, b) => RANK[a] < RANK[b];
+  /* The OTHER code-owned answer to a sagging or over-stressed member: a
+   * stiffer species, no new geometry (B-fixes-1). Solved against the failing
+   * check exactly like the thickness fix — sag scales 1/E and the bending
+   * margin scales with MOR, so every candidate's outcome is closed form.
+   * Sheet goods are excluded: plywood and MDF are not solid-wood substitutes
+   * (and a wood.species patch never touches a part cut from a sheet). */
+  const solidSpecies = () => Object.values(K.WOOD_SPECIES).filter(w => !w.sheet);
+  const STIFFEST_FIRST = solidSpecies().sort((a, b) => b.moe - a.moe).map(w => w.key);
+  const STRONGEST_FIRST = solidSpecies().sort((a, b) => b.mor - a.mor).map(w => w.key);
+  /* `focus` names the check this fix will be OFFERED ON — 'sag' or 'str' —
+   * because the two checks of one surface are judged separately: a species
+   * that rescues the bending margin but leaves the shelf sagging belongs on
+   * the strength check only. The candidate must lift the focused verdict and
+   * may never drop the other one. */
+  function solveSpeciesFix(curKey, sagRatio, stress, allow, focus) {
+    const cur = speciesOf(curKey);
+    const finite = stress > 0 && isFinite(stress);
+    const s0 = sagStatus(sagRatio), t0 = strStatus(finite ? allow / stress : Infinity);
+    if ((focus === 'str' ? t0 : s0) === 'pass') return null;
+    for (const key of (focus === 'str' ? STRONGEST_FIRST : STIFFEST_FIRST)) {
+      if (key === curKey) continue; // never offer the species already in the design
+      const c = speciesOf(key);
+      const s1 = sagStatus(sagRatio * (cur.moe / c.moe));
+      const t1 = strStatus(finite ? (c.mor / SAFETY_FACTOR) / stress : Infinity);
+      /* Stiffer is not automatically stronger: Douglas-fir out-stiffens ash
+       * and breaks sooner. A candidate never trades one verdict for the other. */
+      if (worse(s1, s0) || worse(t1, t0)) continue;
+      if (!better(focus === 'str' ? t1 : s1, focus === 'str' ? t0 : s0)) continue;
+      return { key, label: c.label, partial: (focus === 'str' ? t1 : s1) !== 'pass' };
+    }
+    return null;
+  }
   // All display text routes through BB.Units — the check math stays SI.
   const U = () => BB.Units;
   const fmtFine = x => U().fmtSmall(x);      // sag / movement / margins: decimal in
@@ -134,6 +180,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     french_cleat:     { rackPts: 3.0, capN: 1500 },
     kd_bolt:          { rackPts: 4.5, capN: 1800 }
   };
+  /* Upgrade vocabulary for the tappable joint fix, strongest answer first.
+   * The head four are the historical order (unchanged, so template designs
+   * keep the joint they were already offered); the tail is what a shop
+   * reaches for when level or part geometry rules the head out. CURATED,
+   * not a raw capN sort: only joints that ATTACH one part to another belong
+   * here — an edge glue-up makes a panel wider and a biscuit is an alignment
+   * aid, so neither is ever the answer to a joint that is pulling apart.
+   * Level (K.jointsForLevel) and pair-kind gating apply on top. */
+  const JOINT_UPGRADES = [
+    'mortise_tenon', 'dado', 'dowels', 'pocket_screws',
+    'through_dovetail', 'half_lap', 'bridle', 'box_joint', 'loose_tenon',
+    'half_blind_dovetail', 'kd_bolt', 'staked_tenon', 'sliding_dovetail',
+    'cross_lap', 'miter_spline', 'locking_rabbet', 'rabbet'
+  ];
 
   /* ---------------- beam formulas (exact, SI: N, mm, MPa) ---------------- */
   const I_rect = (b, h) => (b * h * h * h) / 12;
@@ -480,7 +540,6 @@ var BB = globalThis.BB = globalThis.BB || {};
      * span; the TOP is a plate strip spanning between the aprons. Everything
      * else stays a plain single-span (or cantilever) beam. */
     let worstSagRatio = 0, worstSag = null;
-    const sagStatus = r => r <= 1 ? 'pass' : r <= 1.5 ? 'advisory' : 'fail';
     /* Strength checks judge each member with ITS OWN species (msp): template
      * parts share the primary species, so nothing changes for them, but an
      * MDF or plywood surface is now judged with MDF/ply numbers — the
@@ -492,13 +551,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       const margin = stress > 0 ? allow / stress : Infinity;
       checks.push({
         id, title: `Strength — ${label}`,
-        status: margin >= 1.25 ? 'pass' : margin >= 1 ? 'advisory' : 'fail',
+        status: strStatus(margin),
         value: `bending stress ${stress.toFixed(1)} MPa · margin ${margin === Infinity ? '∞' : margin.toFixed(1) + '×'}`,
         threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${msp.mor} MPa ÷ safety factor ${SAFETY_FACTOR})`,
         explain: margin >= 1 ? `Comfortably below the breaking stress of ${msp.label} with the standard ×${SAFETY_FACTOR} wood safety factor.`
           : `The “${preset.label}” load brings this part too close to breaking stress.`,
         fixes: margin < 1.25 ? fixes : []
       });
+    };
+    /* A `wood.species` patch moves only the parts that INHERIT the primary
+     * species — a slab explicitly cut from plywood or walnut is untouched by
+     * it, so the fix is never offered against one. */
+    const withSpecies = (base, memberKey, sagRatio, stress, allow, focus) => {
+      if (memberKey !== spec.wood.species) return base;
+      const sol = solveSpeciesFix(spec.wood.species, sagRatio, stress, allow, focus);
+      if (!sol) return base;
+      return base.concat([{
+        id: 'species-' + sol.key,
+        label: `Switch to ${sol.label.toLowerCase()}${sol.partial ? PARTIAL_LIMIT : ''}`,
+        patch: { wood: { species: sol.key } }
+      }]);
     };
     for (const s of surfaces) {
       const preset = LOAD_PRESETS[s.presetKey];
@@ -507,6 +579,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       const ssp = speciesOf(materialSpeciesKey(s.part, spec));
       const Es = ssp.moe * 1000; // GPa -> MPa
       const fixes = [];
+      /* The governing beam for THIS surface (strip or plain span), carried
+       * out to the overhang check so its fix is judged on real numbers. */
+      let surfKey = materialSpeciesKey(s.part, spec), surfStress = 0, surfAllow = 0;
       const sIsSheet = !!(K.WOOD_SPECIES[s.part.material] && K.WOOD_SPECIES[s.part.material].sheet);
       /* G15: the thickness fix is solved AGAINST the failing check (first
        * stock that passes, or an honest partial step) — so it is built after
@@ -515,7 +590,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (sIsSheet) return null; // sheet stock tops out — the remedy is structure, not a phantom thickness
         const solved = solveThicknessFix(s.h, sagRatio, stress, allow);
         if (!solved) return null;
-        const suffix = solved.partial ? ' (partial fix — still over the limit)' : '';
+        const suffix = solved.partial ? PARTIAL_LIMIT : '';
         if (!custom) {
           if (s.part.role === 'top' && TABLE_LIKE.includes(t)) return { id: 'thick-top', label: `Thicken top to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { topThickness: solved.t } } };
           if (!s.apron) return { id: 'thick-shelf', label: `Thicken to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { shelfThickness: solved.t } } };
@@ -524,10 +599,6 @@ var BB = globalThis.BB = globalThis.BB || {};
         const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: solved.t } } : p);
         return { id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(solved.t)}${suffix}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } };
       };
-      if (K.WOOD_SPECIES.hard_maple.moe > sp.moe * 1.1 && spec.wood.species !== 'hard_maple') {
-        fixes.push({ id: 'maple', label: 'Switch to hard maple', patch: { wood: { species: 'hard_maple' } } });
-      }
-
       if (s.apron) {
         /* (a) Apron beam over the leg-to-leg span. Each of the pair carries
          * half the spread load. The point load's worst position is directly
@@ -544,17 +615,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.apron.span }; }
         const apFixes = [...fixes];
         if (spec.structure.apronHeight < 160) apFixes.unshift({ id: 'tall-apron', label: `Deepen aprons to ${fmtLen(Math.min(160, spec.structure.apronHeight + 30))}`, patch: { structure: { apronHeight: Math.min(160, spec.structure.apronHeight + 30) } } });
+        const apStress = Ia > 0 ? (M * (s.apron.h / 2)) / Ia : Infinity;
+        const apAllow = sp.mor / SAFETY_FACTOR;
         checks.push({
           id: 'sag:apron:' + s.id, title: `Sag — aprons under ${s.label.toLowerCase()}`,
           status: sagStatus(ratio),
           value: `predicted sag ${fmtFine(sag)} over the ${fmtLen(s.apron.span)} apron span`,
           threshold: `≤ ${fmtFine(limit)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
           explain: `The aprons are the beams: each ${fmtLen(s.apron.b)} × ${fmtLen(s.apron.h)} apron carries half the spread load and, worst case, ¾ of the point load (the attached top shares the rest across). Sustained loads include ×${CREEP_FACTOR} creep.`,
-          fixes: ratio > 1 ? apFixes : [],
+          fixes: ratio > 1 ? withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'sag') : [],
           data: { sagMM: sag, limitMM: limit, spanMM: s.apron.span },
           prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(s.apron.span)} mm, half the spread load per apron` }
         });
-        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset, apFixes, sp);
+        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset,
+          withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'str'), sp);
 
         /* (b) Top as a plate strip between the aprons. Point loads act at the
          * strip midspan; spread loads contribute their tributary share. */
@@ -573,19 +647,22 @@ var BB = globalThis.BB = globalThis.BB || {};
         const limS = s.strip.span / SAG_LIMIT_RATIO;
         const rS = sagS / limS;
         if (rS > worstSagRatio) { worstSagRatio = rS; worstSag = { id: s.id, sag: sagS, limit: limS, span: s.strip.span }; }
-        const tFixS = thicknessFix(rS, Is > 0 ? (MS * (s.h / 2)) / Is : Infinity, ssp.mor / SAFETY_FACTOR);
+        const stressS = Is > 0 ? (MS * (s.h / 2)) / Is : Infinity;
+        const allowS = ssp.mor / SAFETY_FACTOR;
+        const tFixS = thicknessFix(rS, stressS, allowS);
         if (tFixS) fixes.unshift(tFixS); // top thickness governs the strip, not the aprons
+        surfKey = materialSpeciesKey(s.part, spec); surfStress = stressS; surfAllow = allowS;
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label} between aprons`,
           status: sagStatus(rS),
           value: `predicted sag ${fmtFine(sagS)} across the ${fmtLen(s.strip.span)} between aprons`,
           threshold: `≤ ${fmtFine(limS)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
           explain: `${ssp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}), checked as a ${fmtLen(s.strip.bEff)}-wide strip spanning between the aprons.`,
-          fixes: rS > 1 ? fixes : [],
+          fixes: rS > 1 ? withSpecies(fixes, surfKey, rS, stressS, allowS, 'sag') : [],
           data: { sagMM: sagS, limitMM: limS, spanMM: s.strip.span },
           prov: { rule: `plate strip: span ${Math.round(s.strip.span)} mm between apron faces, effective width min(top, span/2 + 100) = ${Math.round(s.strip.bEff)} mm, I = ${Math.round(Is).toLocaleString()} mm⁴` }
         });
-        strengthCheck('str:' + s.id, s.label, MS, s.h, Is, preset, fixes, ssp);
+        strengthCheck('str:' + s.id, s.label, MS, s.h, Is, preset, withSpecies(fixes, surfKey, rS, stressS, allowS, 'str'), ssp);
       } else {
         const I = I_rect(s.b, s.h);
         const cases = loadCasesFor(s.presetKey, s.span, s.model);
@@ -594,19 +671,22 @@ var BB = globalThis.BB = globalThis.BB || {};
         const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
         if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.span }; }
-        const tFix = thicknessFix(ratio, I > 0 ? (M * (s.h / 2)) / I : Infinity, ssp.mor / SAFETY_FACTOR);
+        const stressB = I > 0 ? (M * (s.h / 2)) / I : Infinity;
+        const allowB = ssp.mor / SAFETY_FACTOR;
+        const tFix = thicknessFix(ratio, stressB, allowB);
         if (tFix) fixes.unshift(tFix);
+        surfKey = materialSpeciesKey(s.part, spec); surfStress = stressB; surfAllow = allowB;
         checks.push({
           id: 'sag:' + s.id, title: `Sag — ${s.label}`,
           status: sagStatus(ratio),
           value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(s.span)} ${s.model === 'cant' ? 'cantilever' : 'span'}`,
           threshold: `≤ ${fmtFine(limit)} (${s.model === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
           explain: `${ssp.label} at ${fmtLen(s.h)} thick under the “${preset.label}” preset (${presetDetail(s.presetKey)}). Stiffness comes from MOE (${ssp.moe} GPa) and thickness cubed.${crept ? ` Sustained load: includes ×${CREEP_FACTOR} creep (Wood Handbook ch. 4).` : ''}`,
-          fixes: ratio > 1 ? fixes : [],
+          fixes: ratio > 1 ? withSpecies(fixes, surfKey, ratio, stressB, allowB, 'sag') : [],
           data: { sagMM: sag, limitMM: limit, spanMM: s.span },
           prov: { rule: `sag = Σ load cases (5wL⁴/384EI and friends${crept ? `, sustained cases ×${CREEP_FACTOR} creep` : ''}) with E = ${ssp.moe} GPa, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, L = ${Math.round(s.span)} mm` }
         });
-        strengthCheck('str:' + s.id, s.label, M, s.h, I, preset, fixes, ssp);
+        strengthCheck('str:' + s.id, s.label, M, s.h, I, preset, withSpecies(fixes, surfKey, ratio, stressB, allowB, 'str'), ssp);
       }
 
       if (s.over > 0 && s.kind === 'top') {
@@ -621,7 +701,9 @@ var BB = globalThis.BB = globalThis.BB || {};
           value: `edge deflection ${fmtFine(sagO)} on a ${fmtLen(s.over)} overhang`,
           threshold: `≤ ${fmtFine(limO)} (L/${CANT_LIMIT_RATIO}) under a ${U().fmtPointLoad(LOAD_PRESETS.worktop.kgEdge)} lean`,
           explain: 'Cantilever case: a person leaning at the worst edge position.',
-          fixes: rO > 1 ? fixes : [],
+          // Judged on the OVERHANG's own ratio — a species that rescues the
+          // main span may do nothing visible out at the free edge.
+          fixes: rO > 1 ? withSpecies(fixes, surfKey, rO, surfStress, surfAllow, 'sag') : [],
           data: { sagMM: sagO, limitMM: limO, spanMM: s.over }
         });
       }
@@ -707,7 +789,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         const newParts = spec.custom.parts.map(p => p.id === m.id ? { ...p, dim: { ...p.dim, [key]: tNew } } : p);
         return {
           id: 'deep-' + m.id,
-          label: `Deepen ${m.id} to ${fmtLen(tNew)}${partial ? ' (partial fix — still over the limit)' : ''}`,
+          label: `Deepen ${m.id} to ${fmtLen(tNew)}${partial ? PARTIAL_LIMIT : ''}`,
           patch: { custom: { parts: newParts, connections: spec.custom.connections } }
         };
       };
@@ -780,9 +862,10 @@ var BB = globalThis.BB = globalThis.BB || {};
           if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: m.id, sag, limit, span }; }
           const srcs = [...new Set(rec.from)];
           const mFixes = [];
+          const allowM = msp.mor / SAFETY_FACTOR;
+          const stressM = I > 0 ? (M * (h / 2)) / I : Infinity;
+          const mKey = materialSpeciesKey(m, spec);
           {
-            const allowM = msp.mor / SAFETY_FACTOR;
-            const stressM = I > 0 ? (M * (h / 2)) / I : Infinity;
             if (ratio > 1 || allowM / stressM < 1.25) {
               const mf = deepenFix(m, h, ratio, stressM, allowM);
               if (mf) mFixes.push(mf);
@@ -794,11 +877,12 @@ var BB = globalThis.BB = globalThis.BB || {};
             value: `predicted ${crept ? 'long-term ' : ''}sag ${fmtFine(sag)} over a ${fmtLen(span)} ${mdl === 'cant' ? 'cantilever' : 'span'}`,
             threshold: `≤ ${fmtFine(limit)} (${mdl === 'cant' ? `L/${CANT_LIMIT_RATIO} at the free end` : U().fmtSagRate(SAG_LIMIT_RATIO)})`,
             explain: `${m.name} carries the load from ${srcs.join(', ')} — a ${fmtLen(b)} × ${fmtLen(h)} ${msp.label} section spanning ${fmtLen(span)} between its own supports.${crept ? ` Sustained share includes ×${CREEP_FACTOR} creep.` : ''}`,
-            fixes: ratio > 1 ? mFixes : [],
+            fixes: ratio > 1 ? withSpecies(mFixes, mKey, ratio, stressM, allowM, 'sag') : [],
             data: { sagMM: sag, limitMM: limit, spanMM: span },
             prov: { rule: `member beam: tributary load from ${srcs.join('+')}, I = bh³/12 = ${Math.round(I).toLocaleString()} mm⁴, ${mdl === 'cant' ? 'cantilever' : 'span'} ${Math.round(span)} mm` }
           });
-          strengthCheck('str:mbr:' + m.id, `${m.name} (supporting member)`, M, h, I, { label: 'carried' }, mFixes, msp);
+          strengthCheck('str:mbr:' + m.id, `${m.name} (supporting member)`, M, h, I, { label: 'carried' },
+            withSpecies(mFixes, mKey, ratio, stressM, allowM, 'str'), msp);
           const R = mdl === 'cant' ? total : total / 2; // worst end reaction
           memberChecks.push({ part: m, supports: sup, R });
         }
@@ -1040,10 +1124,67 @@ var BB = globalThis.BB = globalThis.BB || {};
       let weakest = null;
       let surfGroups = 0, coupleRoots = 0; // custom coverage tally (G2 honesty)
       const specParts = custom ? new Map(((spec.custom && spec.custom.parts) || []).map(p => [p.id, p])) : null;
+      /* Every margin the check weighs, recorded so a proposed joint upgrade
+       * can be re-rated against ALL of them (B-fixes-2) — a fix that lifts
+       * the named joint while another one still fails is not a fix. Each
+       * entry carries the joints that make up its capacity (`group`), how
+       * they combine (min for a single load path, sum for a couple), and the
+       * demand they carry; the margins themselves stay exactly as computed. */
+      const entries = [];
+      const connKey = c => (c.a < c.b ? c.a + '|' + c.b : c.b + '|' + c.a);
+      const isScrewed = j => j === 'butt_screws' || j === 'pocket_screws';
+      const marginUnder = (e, swap) => {
+        let cap = e.combine === 'sum' ? 0 : Infinity;
+        for (const g of e.group) {
+          const nj = swap.get(g.key) || g.joint;
+          const eff = (JOINT_RATING[nj] || JOINT_RATING.butt_screws).capN * (g.eg && isScrewed(nj) ? 0.67 : 1);
+          cap = e.combine === 'sum' ? cap + eff : Math.min(cap, eff);
+        }
+        return (cap * sgF) / e.per;
+      };
+      /* Mirror of correctCustom's pair-kind rule (spec.js): correction
+       * replaces a joint whose kinds don't fit the pair with the level
+       * default, so a fix that ignored the rule would land as a DOWNGRADE. */
+      const STICKS = ['post', 'rail', 'cylinder'];
+      const pairAccepts = (j, a, b) => {
+        const def = K.JOINERY[j];
+        if (!def || def.external) return false; // a french cleat fastens to the building, not to a part
+        const pa = specParts && specParts.get(a), pb = specParts && specParts.get(b);
+        if (!pa || !pb) return false;
+        const aS = STICKS.includes(pa.primitive), bS = STICKS.includes(pb.primitive);
+        const kinds = aS && bS ? ['frame'] : (aS || bS) ? ['frame', 'case'] : ['case', 'panel', 'box'];
+        return def.kinds.some(k => kinds.includes(k));
+      };
+      /* Build the patch that puts joint `j` where the weak margin is:
+       *  - template slot (the :upjoint path): the slot's joinery key;
+       *  - custom grammar: the connections that MAKE this margin, rewritten
+       *    in place (parts untouched) — every one that is weaker than `j` and
+       *    can physically take it. Returns the patch plus the key→joint map
+       *    the re-rating above reads, or null when nothing would change. */
+      const swapFor = (e, j) => {
+        const map = new Map();
+        if (e.slot) {
+          if (!K.jointAllowed(j, level, e.slot)) return null;
+          map.set(e.slot, j);
+          return { map, patch: { joinery: { [e.slot]: j } } };
+        }
+        const cap = JOINT_RATING[j].capN;
+        for (const g of e.group) {
+          const eff = (JOINT_RATING[g.joint] || JOINT_RATING.butt_screws).capN * (g.eg && isScrewed(g.joint) ? 0.67 : 1);
+          if (eff >= cap) continue;
+          if (!pairAccepts(j, g.a, g.b)) continue;
+          map.set(g.key, j);
+        }
+        if (!map.size) return null;
+        const conns = ((spec.custom && spec.custom.connections) || []).map(c =>
+          map.has(connKey(c)) ? { ...c, joint: j } : c);
+        return { map, patch: { custom: { parts: (spec.custom && spec.custom.parts) || [], connections: conns } } };
+      };
       for (const s of surfaces) {
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
         let demand = null, apron = false; // G5: apron end reaction overrides N/count
+        const group = []; // the joints this margin is made of (fix re-rating)
         if (custom) {
           const conns = ((spec.custom && spec.custom.connections) || []).filter(c => c.a === s.id || c.b === s.id);
           if (!conns.length) continue;
@@ -1059,6 +1200,7 @@ var BB = globalThis.BB = globalThis.BB || {};
             if (eg) capC *= 0.67;
             capGroup += capC * sgF;
             if (capC < minCap) { minCap = capC; joint = c.joint; endGrain = !!eg; }
+            group.push({ key: connKey(c), a: c.a, b: c.b, joint: c.joint, eg: !!eg });
           }
           where = s.id;
           /* G2: a cantilevered surface's real failure mode is the ROOT MOMENT,
@@ -1072,9 +1214,9 @@ var BB = globalThis.BB = globalThis.BB || {};
             coupleRoots++;
             const T = s._M / (0.67 * s.h);
             const mC = capGroup / T;
-            if (!weakest || mC < weakest.margin) {
-              weakest = { margin: mC, joint, where: `${s.id} cantilever root`, per: T, cap: capGroup, slot: null, endGrain: false, couple: true, h: s.h };
-            }
+            const eC = { margin: mC, joint, where: `${s.id} cantilever root`, per: T, cap: capGroup, slot: null, endGrain: false, couple: true, h: s.h, group, combine: 'sum' };
+            entries.push(eC);
+            if (!weakest || mC < weakest.margin) weakest = eC;
           }
         } else if (TABLE_LIKE.includes(t)) {
           if (s.part.role === 'top') {
@@ -1102,7 +1244,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         const cap = rating.capN * sgF * (endGrain ? 0.67 : 1);
         const per = demand != null ? demand : N / count;
         const margin = cap / per;
-        if (!weakest || margin < weakest.margin) weakest = { margin, joint, where, per, cap, slot, endGrain, apron };
+        if (!custom) group.push({ key: slot, joint, eg: false });
+        const entry = { margin, joint, where, per, cap, slot, endGrain, apron, group, combine: 'min' };
+        entries.push(entry);
+        if (!weakest || margin < weakest.margin) weakest = entry;
       }
       /* G1: load-path connections — every member-to-support joint is checked
        * with the member's end reaction as demand, so a joinery change on the
@@ -1119,19 +1264,35 @@ var BB = globalThis.BB = globalThis.BB || {};
           const eg = !!(screwed && pa && pb && (BB.Spec.endGrainBearing(pa, pb) || BB.Spec.endGrainBearing(pb, pa)));
           const cap = rating.capN * sgF * (eg ? 0.67 : 1);
           const margin = cap / mc.R;
-          if (!weakest || margin < weakest.margin) {
-            weakest = { margin, joint: cn.joint, where: `${mc.part.id}–${q.id}`, per: mc.R, cap, slot: null, endGrain: eg };
-          }
+          const entry = { margin, joint: cn.joint, where: `${mc.part.id}–${q.id}`, per: mc.R, cap, slot: null, endGrain: eg,
+            group: [{ key: connKey(cn), a: cn.a, b: cn.b, joint: cn.joint, eg }], combine: 'min' };
+          entries.push(entry);
+          if (!weakest || margin < weakest.margin) weakest = entry;
         }
       }
       if (weakest) {
         const jLabel = k => K.JOINERY[k] ? K.JOINERY[k].label.toLowerCase() : k;
         const fixes = [];
         if (weakest.margin < 1.5) {
-          const stronger = ['mortise_tenon', 'dado', 'dowels', 'pocket_screws'].find(j =>
-            allowed.includes(j) && (JOINT_RATING[j].capN > (JOINT_RATING[weakest.joint] || JOINT_RATING.butt_screws).capN) &&
-            (!weakest.slot || K.jointAllowed(j, level, weakest.slot)));
-          if (stronger && weakest.slot) fixes.push({ id: 'upjoint', label: `Upgrade ${weakest.where} to ${jLabel(stronger)}`, patch: { joinery: { [weakest.slot]: stronger } } });
+          const s0 = jointStatus(weakest.margin);
+          const curCap = (JOINT_RATING[weakest.joint] || JOINT_RATING.butt_screws).capN;
+          for (const j of JOINT_UPGRADES) {
+            if (!allowed.includes(j)) continue;            // the level matrix is never crossed
+            if (!JOINT_RATING[j] || JOINT_RATING[j].capN <= curCap) continue;
+            const swap = swapFor(weakest, j);
+            if (!swap) continue;
+            // Re-rate EVERY recorded margin under the patch, not just this one.
+            let worstM = Infinity;
+            for (const e of entries) worstM = Math.min(worstM, marginUnder(e, swap.map));
+            const s1 = jointStatus(worstM);
+            if (!better(s1, s0)) continue;
+            fixes.push({
+              id: 'upjoint',
+              label: `Upgrade ${weakest.where} to ${jLabel(j)}${s1 === 'pass' ? '' : PARTIAL_MARGIN}`,
+              patch: swap.patch
+            });
+            break;
+          }
         }
         /* The explain names exactly what was examined (G2): on customs only
          * the load-surface groups, cantilever roots, and load-path support

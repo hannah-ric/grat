@@ -18,6 +18,52 @@ var BB = globalThis.BB = globalThis.BB || {};
   };
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+  /* ---------------- client error reporting ----------------
+   * The server has had one structured line per failure since E-08; the
+   * browser had none, so a total client-side crash produced no signal at all
+   * and the operator could not know it was happening. This is the sending
+   * half: fire-and-forget, never throws, never blocks, and NEVER carries
+   * design content — a message, a location, and a stack, nothing else. On an
+   * origin with no /api route the POST simply fails and is swallowed, which
+   * is the same "everything optional degrades" contract as auth and billing.
+   * The cap is per page-load, not per minute: a crash loop must not turn the
+   * reporter into the flood. */
+  const REPORT_CAP = 8;
+  let reportsSent = 0;
+  const reportedOnce = new Set();
+  function reportClientError(kind, err, extra) {
+    try {
+      if (reportsSent >= REPORT_CAP) return;
+      const e = err || {};
+      const message = String((e && (e.message || e.reason)) || e || 'unknown').slice(0, 300);
+      // Identical repeats (a render loop throwing every frame) count once.
+      const dedupe = kind + '|' + message;
+      if (reportedOnce.has(dedupe)) return;
+      reportedOnce.add(dedupe);
+      reportsSent++;
+      const body = {
+        kind: kind === 'unhandledrejection' ? 'unhandledrejection' : 'error',
+        message,
+        source: String((extra && extra.source) || kind || '').slice(0, 200),
+        line: (extra && Number(extra.line)) || 0,
+        col: (extra && Number(extra.col)) || 0,
+        stack: String((e && e.stack) || '').slice(0, 2000)
+      };
+      fetch('/api/clientlog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        keepalive: true // survives the unload a fatal error often triggers
+      }).catch(() => { /* reporting is best-effort by definition */ });
+    } catch (e2) { /* a reporter that throws is worse than silence */ }
+  }
+  window.addEventListener('error', ev => {
+    reportClientError('error', ev.error || { message: ev.message }, { source: ev.filename, line: ev.lineno, col: ev.colno });
+  });
+  window.addEventListener('unhandledrejection', ev => {
+    reportClientError('unhandledrejection', ev.reason || { message: 'unhandled rejection' }, {});
+  });
+
   /* ---------------- state ---------------- */
   const state = {
     spec: null, model: null, report: null,
@@ -96,7 +142,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     fx = fx || {};
     const wrap = el('div', 'ledger');
     const head = el('div', 'ledger-head');
-    head.append(el('h3', 'kicker', esc(title)));
+    head.append(el('h2', 'kicker', esc(title)));
     if (sums && sums.length) {
       const strip = el('span', 'ledger-sum counter');
       sums.forEach((s, i) => {
@@ -355,6 +401,44 @@ var BB = globalThis.BB = globalThis.BB || {};
    * gated at all — same C-01 contract as billing before the pivot. */
   function signedIn() { return !!Store.auth().user; }
   function anonGated() { return billingConfigured(Store.auth()) && !signedIn(); }
+
+  /* Ask the SERVER whether the design on screen is already paid for.
+   *
+   * `state.blueprint` used to be pure client memory — set only when this tab
+   * performed the issuance, or restored from a saved project record. Nothing
+   * ever asked the server, though the server has held the answer all along
+   * at bb:{uid}:bphash:{chargeHash}. So a customer who issued a blueprint
+   * and then reloaded, or opened the same design on a second device, was
+   * shown the paywall on a design they had already bought.
+   *
+   * GET /api/blueprint?owned=BB4:… is a pure read: it decodes, evaluates,
+   * hashes, and looks up. It cannot charge. Failures are silent by design —
+   * an unreachable probe leaves the local state exactly as it was, which is
+   * the pre-existing behaviour, so this can only ever unlock, never lock. */
+  let ownershipProbe = 0;
+  async function probeOwnership() {
+    if (!billingConfigured(Store.auth()) || !signedIn() || !state.spec) return;
+    if (designCredited()) return;                 // already known to be ours
+    const seq = ++ownershipProbe;                 // a later design wins the race
+    const key = materialKey(state.spec);
+    try {
+      const code = Codec.toShareCode(state.spec);
+      const r = await fetch('/api/blueprint?owned=' + encodeURIComponent(code), { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (seq !== ownershipProbe || !data || !data.owned) return;
+      // Re-check the spec has not moved under us while the request was out.
+      if (materialKey(state.spec) !== key) return;
+      state.blueprint = {
+        id: data.id,
+        windowEndsAt: data.windowEndsAt,
+        revision: data.revision,
+        issuedKeys: [key]
+      };
+      scheduleAutosave();  // the record rides the project from here on
+      renderAll();         // locks lift, the export hint flips to "issued"
+    } catch (e) { /* offline or no route: keep whatever we already knew */ }
+  }
   /* Client-side mirror of api/_pipeline.js chargeHash semantics: the material
    * identity of the design — meta.name and meta.units are display-only. Used
    * ONLY for display gating; the server recomputes the real hash. */
@@ -379,12 +463,38 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (bp.issuedKeys && bp.issuedKeys.includes(materialKey(state.spec))) return true;
     return !!(bp.windowEndsAt && Date.now() < bp.windowEndsAt);
   }
-  /* Cut / Buy / Assemble read as previews until the design is credited. */
-  function planLocked() {
-    if (!billingConfigured(Store.auth())) return false;
-    if (!state.cut.length) return false;
-    return !designCredited();
+  /* ---------------- one entitlement answer ----------------
+   * Every gate, lock glyph, tooltip, menu hint, and CTA in the app reads
+   * from HERE. They used to be written as static copy at their own call
+   * sites, which is why they could — and did — contradict each other: the
+   * export menu said a blueprint was "issued" to an anonymous visitor, the
+   * Build button showed a lock while its tooltip said the feature was
+   * "included", and "Issue blueprint — 1 credit" was offered at a zero
+   * balance the server answers with 402. Derived state cannot disagree with
+   * itself. Pure read of Store/Billing/state — safe to call during render.
+   *
+   * `nextAction` is the single question a surface should ask:
+   *   'none'   nothing is gated (unconfigured origin) or the design is owned
+   *   'signin' configured origin, no session — the wall is free to pass
+   *   'issue'  signed in with a credit to spend
+   *   'buy'    signed in with no credit — issuing WOULD 402 */
+  function entitlementState() {
+    const a = Store.auth();
+    const configured = billingConfigured(a);
+    const signedIn = !!a.user;
+    const balance = BB.Billing.credits();          // number, or null when unknown
+    const designIssued = designCredited();
+    const hasPlan = state.cut.length > 0;
+    const nextAction = !configured || designIssued ? 'none'
+      : !signedIn ? 'signin'
+        : (balance === null || balance > 0) ? 'issue' : 'buy';
+    return {
+      configured, signedIn, balance, designIssued, hasPlan, nextAction,
+      // Cut / Buy / Assemble read as previews until the design is credited.
+      planLocked: configured && hasPlan && !designIssued
+    };
   }
+  function planLocked() { return entitlementState().planLocked; }
 
   /* Chat-surface sign-in prompt (AI is behind sign-in; the first credit is
    * free). Buttons, not links, so it works with keyboard focus in the log. */
@@ -480,7 +590,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       scheduleAutosave();
       const spent = data.charged ? ' One credit was used.' : data.cached ? ' This exact design was already issued — no credit was used.' : ' Refinement included — no credit was used.';
       botSay(`Blueprint ${data.id} issued (rev ${data.revision}).${spent} The sheet set, all exports, and Build mode are unlocked for this design; re-download free anytime from Export.`, []);
-      if (opts.then === 'build') enterBuildMode();
+      if (opts.then === 'build') enterBuildMode({ acknowledged: true });
       else if (opts.then && opts.then.export) doExport(opts.then.export);
       else window.open('/api/blueprint?id=' + encodeURIComponent(data.id) + '&format=sheets', '_blank', 'noopener');
     } catch (e) {
@@ -554,24 +664,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         ${balanceChip}`;
       area.append(row);
       const billingBtn = el('button', '', '<span>Buy credits</span><span class="hint">one credit = one blueprint</span>');
-      billingBtn.setAttribute('role', 'menuitem');
       billingBtn.onclick = () => BB.Billing.open();
       area.append(billingBtn);
       if (a.billing && a.billing.plan === 'pro') {
         // Grandfathered subscribers keep their portal (legacy, honored).
         const manageBtn = el('button', '', '<span>Manage subscription</span><span class="hint">legacy Pro plan</span>');
-        manageBtn.setAttribute('role', 'menuitem');
         manageBtn.onclick = () => BB.Billing.manage();
         area.append(manageBtn);
       }
       const out = el('button', '', '<span>Sign out</span><span class="hint">this device</span>');
-      out.setAttribute('role', 'menuitem');
       out.onclick = () => { window.location.href = Store.logoutUrl; };
       area.append(out);
     } else {
       for (const p of a.providers) {
         const b = el('button', '', `<span>Sign in with ${esc(PROVIDER_LABELS[p] || p)}</span><span class="hint">free credit + sync</span>`);
-        b.setAttribute('role', 'menuitem');
         b.onclick = () => { window.location.href = Store.loginUrl(p); };
         area.append(b);
       }
@@ -579,7 +685,6 @@ var BB = globalThis.BB = globalThis.BB || {};
       // manager support); the menu routes there rather than inlining a form.
       if (a.passwordAuth) {
         const em = el('button', '', '<span>Sign in with email</span><span class="hint">free credit + sync</span>');
-        em.setAttribute('role', 'menuitem');
         em.onclick = () => { location.hash = '#signin'; };
         area.append(em);
       }
@@ -587,7 +692,6 @@ var BB = globalThis.BB = globalThis.BB || {};
       // the wall, not only at it.
       if (configured) {
         const plans = el('button', '', '<span>Credits &amp; pricing</span><span class="hint">one credit = one blueprint</span>');
-        plans.setAttribute('role', 'menuitem');
         plans.onclick = () => BB.Billing.open();
         area.append(plans);
       }
@@ -705,8 +809,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (box) syncScrollableTable(box);
     }
   });
+  /* Every horizontally scrolling table is built HERE, so none can be created
+   * without being keyboard-reachable: a region that scrolls but cannot take
+   * focus hides its overflow from anyone without a pointer, and the cut list
+   * and buying plan are exactly the tables that overflow on a phone. */
+  function scrollBox() {
+    const box = el('div', 'table-scroll');
+    // tabindex ONLY. A landmark role here would demand a unique accessible
+    // name per box and turn a scrolling wrapper into a navigation target; the
+    // requirement is simply that a keyboard can reach and scroll it.
+    box.tabIndex = 0;
+    return box;
+  }
+
   function wireScrollableTables(root) {
     root.querySelectorAll('.table-scroll').forEach(box => {
+      // A region that scrolls must be reachable by the keyboard, or its
+      // overflow is simply unreadable without a pointer — the cut list and the
+      // buying plan are exactly the tables that overflow on a phone. Given a
+      // name too, so it announces as more than "group".
+      if (!box.hasAttribute('tabindex')) box.tabIndex = 0;
       syncScrollableTable(box);
       if (!box.dataset.scrollObserved) {
         box.dataset.scrollObserved = '1';
@@ -763,7 +885,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       wrap.append(el('h2', '', 'Cut list — in your blueprint'));
       const partCount = state.cut.reduce((s, r) => s + r.qty, 0);
       wrap.append(el('p', 'txt-muted', `${state.cut.length} distinct parts, ${partCount} pieces total, joinery allowances included. Exact dimensions are issued with the blueprint.`));
-      const box = el('div', 'table-scroll');
+      const box = scrollBox();
       const rows = state.cut.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${r.qty}</td><td class="num preview-locked" aria-label="dimension included in the blueprint">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td class="num preview-locked">${lockGlyph}</td><td>${esc(K.WOOD_SPECIES[r.material] ? K.WOOD_SPECIES[r.material].label : r.material)}</td></tr>`).join('');
       box.innerHTML = `<table><thead><tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thick</th><th>Material</th></tr></thead><tbody>${rows}</tbody></table>`;
       wrap.append(box);
@@ -814,11 +936,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
       cta.append(form);
     } else {
-      const balance = BB.Billing.credits();
-      cta.innerHTML = `<p>One credit issues this design as a complete blueprint — sheet set, exact cut list, stock plan, joinery setout, assembly, every export, and the shop companion. Refine it free for ${BB.Billing.WINDOW_DAYS} days; re-download forever.${balance !== null ? ` You have ${balance} credit${balance === 1 ? '' : 's'}.` : ''}</p>`;
-      const b = el('button', 'btn primary', 'Issue blueprint — 1 credit');
-      b.onclick = () => issueBlueprint({});
-      cta.append(b);
+      const ent = entitlementState();
+      const balance = ent.balance;
+      const haveLine = balance !== null ? ` You have ${balance} credit${balance === 1 ? '' : 's'}.` : '';
+      cta.innerHTML = `<p>One credit issues this design as a complete blueprint — sheet set, exact cut list, stock plan, joinery setout, assembly, every export, and the shop companion. Refine it free for ${BB.Billing.WINDOW_DAYS} days; re-download forever.${haveLine}</p>`;
+      // At a zero balance, offering "Issue blueprint — 1 credit" is offering
+      // an action the server answers with 402. Ask for what is actually
+      // needed next.
+      if (ent.nextAction === 'buy') {
+        const buy = el('button', 'btn primary', 'Get a credit');
+        buy.onclick = () => BB.Billing.open();
+        cta.append(buy);
+      } else {
+        const b = el('button', 'btn primary', 'Issue blueprint — 1 credit');
+        b.onclick = () => issueBlueprint({});
+        cta.append(b);
+      }
       const more = el('button', 'btn ghost small', 'About credits');
       more.onclick = () => BB.Billing.open();
       cta.append(more);
@@ -856,10 +989,20 @@ var BB = globalThis.BB = globalThis.BB || {};
           : 'This design passes the required strength checks.';
     const money = v => '$' + Math.round(v);
     const int = v => String(Math.round(v));
+    // One cost story: the BOM total (boards + hardware + glue + finish) is
+    // what the build actually costs, and it is the number Buy headlines.
+    const bomTotal = state.bomData && state.bomData.items.length ? state.bomData.total
+      : (plan ? plan.totalCost : null);
     const cards = [
       { label: 'Parts to cut', value: int(partCount), count: partCount, fmt: int, go: 'cut', aria: 'Open the cut list' },
       { label: 'Boards to buy', value: plan && plan.errors.length ? '—' : int(boards), count: plan && plan.errors.length ? null : boards, fmt: int, go: 'stock', aria: 'Open the buying plan' },
-      { label: 'Estimated cost', value: plan ? money(plan.totalCost) : '—', count: plan ? plan.totalCost : null, fmt: money, go: 'stock', aria: 'Open buying and pricing' },
+      // The all-in number, matching "Estimated materials cost" on Buy. This
+      // tile used to show plan.totalCost — the boards-and-sheets subtotal —
+      // under the label "Estimated cost", so Overview and the adjacent Buy
+      // tab quoted two different prices for the same design ($290 vs
+      // $326.92) with nothing to tell them apart. Boards alone still have a
+      // home: Buy labels that one "Purchasable stock total".
+      { label: 'Estimated cost', value: bomTotal != null ? money(bomTotal) : '—', count: bomTotal, fmt: money, go: 'stock', aria: 'Open buying and pricing — boards, hardware, and finish' },
       { label: 'Safety', value: verdict === 'anchor' ? 'ANCHOR REQUIRED' : verdict.toUpperCase(), stamp: verdict, go: 'integrity', aria: 'Open the safety report' }
     ];
     const grid = el('div', 'overview-grid');
@@ -879,7 +1022,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       b.onclick = () => selectTab(c.go);
       grid.append(b);
     }
-    root.append(el('h3', '', 'Overview'));
+    root.append(el('h2', '', 'Overview'));
     // The safety line as a spec plate (§9.4) — every value a live read.
     const checks = state.integrity.checks;
     const plate = el('div', 'spec-plate overview-verdict');
@@ -1053,7 +1196,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (cascade) { Motion.auto(list); list.dataset.cascaded = '1'; }
       return;
     }
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     const rows = state.cut.map((r, i) => `<tr data-motion="cascade">
       <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
       <td class="num">${dim(r, r.L, i, 'length')}</td><td class="num">${dim(r, r.W, i, 'width')}</td><td class="num">${dim(r, r.T, i, 'thickness')}</td>
@@ -1105,7 +1248,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
 
     // shopping list
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     // composite stock names ("Cherry 1×6 × 6 ft (3/4 × 5 1/2 in)") are
     // machine values — the whole cell goes mono (B-03)
     const shopRows = plan.shopping.map(s => `<tr data-motion="cascade"><td class="mv">${esc(s.label)}</td><td class="num">${s.qty}</td><td class="num">${esc(s.unit)}</td><td class="num">$${s.cost.toFixed(2)}</td></tr>`).join('');
@@ -1228,7 +1371,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     compareBtn.onclick = openSpecies;
     root.append(compareBtn);
     root.append(el('div', '', '&nbsp;'));
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     // labels and detail strings carry lengths and per-unit prices — mono
     // machine-value cells (B-03)
     const rows = state.bomData.items.map(i => `<tr data-motion="cascade">
@@ -1283,6 +1426,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('jointCutaway').setAttribute('aria-pressed', 'false');
   }
 
+  /* The human name for a joinery key, for use when a step introduces more than
+   * one and the buttons have to say which is which. */
+  function jointLabel(type) {
+    const j = K.JOINERY[type];
+    return j ? j.label.toLowerCase() : String(type || '').replace(/_/g, ' ');
+  }
+
   function whyJointHTML(type) {
     const j = K.JOINERY[type];
     if (!j) return '';
@@ -1326,17 +1476,38 @@ var BB = globalThis.BB = globalThis.BB || {};
       item.dataset.motion = 'cascade';
       const num = el('div', 'step-num');
       const body = el('div', 'step-body');
-      const jointType = s.joints && s.joints.length ? s.joints[0].type : null;
-      body.innerHTML = `<h4>${esc(s.title)}</h4><p>${esc(s.text)}</p>` +
-        (jointType ? `<div>${whyJointHTML(jointType)}</div>` : '');
-      if (jointType) {
-        const j0 = s.joints[0];
-        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) + '<span>Inspect joint in 3D</span>');
+      /* Every DISTINCT fastening the step introduces gets its own explanation
+       * and its own way into the 3D close-up — not just the first one. A
+       * nightstand's "connect with back apron and rails" step carries six
+       * joints and used to teach exactly one of them (audit D-04).
+       *
+       * `jointInfo` is the plan's own account of what each fastening ACTUALLY
+       * is: for a solid top floating on figure-8s the model still records the
+       * nominal `butt_screws`, so reading `joints[0].type` taught a joint the
+       * plan does not use (audit D-03). Hardware fastenings describe
+       * themselves in the step text and have no joinery article to open, so
+       * they are named, not linked. Falls back to the raw joints when the
+       * plan layer has not supplied descriptors. */
+      const info = (s.jointInfo && s.jointInfo.length) ? s.jointInfo
+        : (s.joints || []).map(j => ({ type: j.type, effective: j.type, hardware: false, a: j.a, b: j.b }));
+      const seen = new Set();
+      const distinct = info.filter(d => {
+        const k = d.effective || d.type;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      body.innerHTML = `<h3>${esc(s.title)}</h3><p>${esc(s.text)}</p>` +
+        distinct.filter(d => !d.hardware).map(d => `<div>${whyJointHTML(d.type)}</div>`).join('');
+      for (const d of distinct) {
+        if (d.hardware) continue; // hardware is described in the step, not in the joinery library
+        const inspect = el('button', 'btn small ghost joint-inspect', BB.Icons.svg('ruler', 13) +
+          `<span>Inspect ${distinct.filter(x => !x.hardware).length > 1 ? esc(jointLabel(d.type)) + ' ' : ''}joint in 3D</span>`);
         inspect.onclick = e => {
           e.stopPropagation();
-          openJointInspector(jointType,
-            state.model.parts.find(p => p.id === j0.a),
-            state.model.parts.find(p => p.id === j0.b));
+          openJointInspector(d.type,
+            state.model.parts.find(p => p.id === d.a),
+            state.model.parts.find(p => p.id === d.b));
         };
         body.append(inspect);
       }
@@ -1373,7 +1544,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const integ = state.integrity;
     const overall = integ.summary.verdict; // engine rollup (audit M-18): fail > anchor > advisory > pass
     const beginner = state.spec.meta.level === 'beginner';
-    root.append(el('h3', '', 'Safety'));
+    root.append(el('h2', '', 'Safety'));
     const summary = el('div', 'integrity-summary');
     summary.innerHTML = `<span class="stamp ${overall}">${overall === 'anchor' ? 'anchor required' : overall}</span>
       <span class="integrity-plain">${overall === 'pass'
@@ -1387,8 +1558,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (once) Motion.settle(summary.querySelector('.stamp'));
     // Failing checks never hide — and neither does a check that mandates the
     // wall anchor (audit M-18): plain card, above the fold, at every level.
-    for (const c of integ.checks.filter(x => x.status === 'fail' || x.anchor)) {
-      const card = checkCard(c, { full: !beginner });
+    // Advisories join them: the summary says "with notes worth reading below"
+    // and, until now, there was nothing below — every note sat inside the
+    // collapsed details, so a passing design's Safety tab rendered as a
+    // headline and a disclosure triangle and nothing else.
+    const surfaced = integ.checks.filter(x => x.status === 'fail' || x.anchor || x.status === 'advisory');
+    for (const g of groupChecks(surfaced)) {
+      const card = checkCard(g.check, { full: !beginner, count: g.count, subjects: g.subjects });
       root.append(card);
       if (once) Motion.reveal(card);
     }
@@ -1398,7 +1574,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     details.open = !beginner;
     root.append(details);
     const target = details;
-    target.append(el('p', 'lede', `${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory — exact numbers, thresholds, and the design basis.`));
+    // The appendix is the COMPLETE report — every check including the ones
+    // surfaced above, each with its threshold and full engineering
+    // explanation — so say that, rather than leaving the repeat looking
+    // accidental.
+    target.append(el('p', 'lede', `All ${integ.checks.length} checks · ${integ.summary.fails} fail · ${integ.summary.advisories} advisory — the ones above in full, the passing ones too, plus exact thresholds and the design basis.`));
 
     // climate preference drives ΔMC in the movement math
     const climate = el('div', 'climate-row');
@@ -1445,21 +1625,75 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* One check, two depths: plain (title + what it means + fixes) for the
    * surfaced beginner card; full adds the exact value, threshold, and creep/
    * duty factors. The fix buttons are identical in both. */
+  /* Four identical shelves that fail identically are ONE problem with four
+   * instances, not four problems. Checks collapse when their status, measured
+   * value, threshold, and explanation all match — i.e. when the engine
+   * computed literally the same result — and the card then names the group
+   * ("Sag — Shelf 1–4"). Anything that differs in any of those fields stays
+   * its own card, so nothing is ever merged away. Order is preserved. */
+  function groupChecks(checks) {
+    const out = [], byKey = new Map();
+    for (const c of checks) {
+      const key = [c.status, c.value, c.threshold, c.explain, (c.fixes || []).map(f => f.label).join('|')].join('\u0000');
+      const hit = byKey.get(key);
+      if (hit) { hit.count++; hit.subjects.push(c.title); continue; }
+      const entry = { check: c, count: 1, subjects: [c.title] };
+      byKey.set(key, entry);
+      out.push(entry);
+    }
+    return out;
+  }
+
+  /* "Sag — Shelf 1", "Sag — Shelf 4" → "Sag — Shelf 1–4". Falls back to a
+   * plain count when the titles do not share a stem, so this can never
+   * invent a range that isn't there. */
+  function groupTitle(subjects) {
+    if (subjects.length < 2) return subjects[0] || '';
+    const m = subjects.map(s => /^(.*?)(\d+)\s*$/.exec(s));
+    if (m.every(Boolean) && new Set(m.map(x => x[1])).size === 1) {
+      const nums = m.map(x => Number(x[2])).sort((a, b) => a - b);
+      const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+      if (contiguous) return `${m[0][1]}${nums[0]}–${nums[nums.length - 1]}`;
+    }
+    return `${subjects[0]} (and ${subjects.length - 1} more)`;
+  }
+
+  /* "Sag — Shelf 1–4" → "Shelf 1–4"; "Joint adequacy" → "This joint". The
+   * plain tier leads with the thing at risk, so two failing checks never read
+   * as the same sentence twice. */
+  function checkSubject(title) {
+    const t = String(title || '');
+    const dash = t.indexOf('—');
+    const tail = dash >= 0 ? t.slice(dash + 1).trim() : '';
+    if (tail) return tail.charAt(0).toUpperCase() + tail.slice(1);
+    return t ? 'This part' : 'This part';
+  }
+
   function checkCard(c, opts) {
     const full = !opts || opts.full !== false;
+    const count = (opts && opts.count) || 1;
+    const title = count > 1 ? groupTitle(opts.subjects) : c.title;
     const card = el('div', 'check-card' + (c.status === 'fail' ? ' fail' : ''));
     // The plain tier speaks builder, not engineer: what went wrong and that a
     // one-tap fix exists. The engine's full explanation (creep factors, exact
     // values, thresholds) stays one fold away in "See engineering details".
     // Anchor-mandating tipping checks (audit M-18) already explain themselves
     // in plain language — the generic load sentence would be wrong for them.
+    // Beginners get a line that NAMES the part, not the identical anonymous
+    // paragraph four sagging shelves used to share. Specificity comes from the
+    // subject plus the measured value rendered directly above — never from the
+    // engine's own `explain`, which carries creep factors and ΔMC and belongs
+    // one fold down (the beginner-first-layer rule the smoke suite enforces).
+    const subject = checkSubject(title);
     const plainLine = c.anchor
       ? c.explain
-      : 'This part would not safely carry its expected load as designed. '
-      + (c.fixes && c.fixes.length ? 'Any fix below solves it, or ask the chat for a different approach.' : 'Ask the chat for a different approach.');
-    card.innerHTML = `<div class="check-head"><h4>${esc(c.title)}</h4><span class="stamp ${c.status}">${c.status}</span></div>` +
-      (full ? `<div class="check-value">${esc(c.value)}</div>
-        <div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
+      : `${subject} would not safely carry the load this design is checked against.`
+      + (c.fixes && c.fixes.length ? ' Any fix below solves it, or ask the chat for a different approach.' : ' Ask the chat for a different approach.');
+    card.innerHTML = `<div class="check-head"><h3>${esc(title)}${count > 1 ? `<span class="check-count">${count} parts, same result</span>` : ''}</h3><span class="stamp ${c.status}">${c.status}</span></div>` +
+      // The measured value earns its place at every level: "predicted sag
+      // 4.4 mm over the 862 mm span" is the reason to trust the verdict.
+      `<div class="check-value">${esc(c.value)}</div>` +
+      (full ? `<div class="check-threshold">threshold: ${esc(c.threshold)}</div>` : '') +
       `<p class="check-explain">${full ? esc(c.explain) : esc(plainLine)}</p>` +
       (full && c.factors ? `<div class="check-factors">${c.factors.map(f => `<div><span>${esc(f.label)}</span><span>${f.mult ? '× ' + f.mult : '+' + f.pts}</span></div>`).join('')}</div>` : '');
     if (c.fixes && c.fixes.length) {
@@ -1520,7 +1754,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function renderReference(root) {
     syncReferenceTabForQuery();
-    root.append(el('h3', '', 'Shop reference'));
+    root.append(el('h2', '', 'Shop reference'));
     const search = el('input', 'ref-search');
     search.type = 'search';
     search.placeholder = 'Search species, joints, screws, finishes…';
@@ -1589,7 +1823,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     body.textContent = '';
     const q = state.refQuery.trim().toLowerCase();
     const hit = (...xs) => referenceHit(q, ...xs);
-    const scroll = el('div', 'table-scroll');
+    const scroll = scrollBox();
     let rows = '', head = '';
     if (state.refTab === 'wood') {
       head = '<th>Species</th><th class="num">Janka</th><th class="num">MOE GPa</th><th class="num">MOR MPa</th><th class="num">SG</th><th class="num">Move ct/1%MC</th><th class="num">Cost</th><th>Character</th>';
@@ -1611,7 +1845,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         <td>${esc(r.appliesTo.join(', '))}</td>
         <td class="txt-small txt-muted">${esc(Units.fmtTemplate(r.note))}</td></tr>`).join('');
     } else if (state.refTab === 'joinery') {
-      head = '<th>Joint</th><th></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
+      head = '<th>Joint</th><th><span class="sr-only">3D view</span></th><th>Strength</th><th>Difficulty</th><th>Level</th><th>Best for</th><th>Failure to avoid</th><th>Tools</th>';
       rows = Object.values(K.JOINERY).filter(j => hit(j.label, j.bestFor, j.failure, j.tools.join(' '))).map(j => `<tr>
         <td><strong>${esc(j.label)}</strong></td>
         <td><button type="button" class="btn small ghost joint-demo" data-joint="${esc(j.key)}" title="See this joint in 3D">${BB.Icons.svg('ruler', 13)} 3D</button></td>
@@ -1625,7 +1859,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // The hardware repository: when, why, how, where — quantities and
       // ratings are computed by code (BB.HW rules), the table teaches the
       // rest. Rows with a 3D button open a dimensioned inspector view.
-      head = '<th>Hardware</th><th></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
+      head = '<th>Hardware</th><th><span class="sr-only">3D view</span></th><th>Class / spec</th><th>When &amp; why</th><th>Watch for</th>';
       const HW = BB.HW;
       const view3d = { euro_cup: 'hw_cup_hinge', drop_leaf: 'hw_rule_joint', rule_joint_ref: 'hw_rule_joint', pivot_pin_hinge: 'hw_pivot_pin', tambour: 'hw_tambour', sawtooth_supports: 'hw_sawtooth', sawtooth: 'hw_sawtooth', undermount_45: 'hw_undermount' };
       const groups = [
@@ -1740,20 +1974,24 @@ var BB = globalThis.BB = globalThis.BB || {};
    * outcome of a real send. Never an optimistic guess. */
   function setAIState(mode, detail) {
     const label = mode === 'online' ? 'AI online'
-      : mode === 'offline' ? 'Offline · basic edits'
-        : mode === 'unconfigured' ? 'AI not configured'
-          : 'AI · checking…';
+      : mode === 'signedout' ? 'Sign in to design with AI'
+        : mode === 'offline' ? 'Offline · basic edits'
+          : mode === 'unconfigured' ? 'AI not configured'
+            : 'AI · checking…';
     const barLabel = mode === 'online' ? 'Online'
-      : mode === 'offline' ? 'Offline'
-        : mode === 'unconfigured' ? 'AI not configured'
-          : '…';
+      : mode === 'signedout' ? 'Sign in for AI'
+        : mode === 'offline' ? 'Offline'
+          : mode === 'unconfigured' ? 'AI not configured'
+            : '…';
     const title = detail || (mode === 'online'
       ? 'Connected to the design service — full natural-language design and photo input.'
-      : mode === 'offline'
-        ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
-        : mode === 'unconfigured'
-          ? 'The server has no AI key configured — a deploy issue, not your connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser.'
-          : 'Checking the design service…');
+      : mode === 'signedout'
+        ? 'The design service is running — sign in free to design with AI. Plain-language edits (sizes, wood, drawers) work right now through the built-in parser.'
+        : mode === 'offline'
+          ? 'No AI connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser; photos need the service.'
+          : mode === 'unconfigured'
+            ? 'The server has no AI key configured — a deploy issue, not your connection. Plain-language edits (sizes, wood, drawers) still work through the built-in parser.'
+            : 'Checking the design service…');
     const badge = $('aiBadge');
     if (badge) {
       badge.dataset.state = mode;
@@ -1778,6 +2016,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     try {
       const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       if (r.status === 400) { setAIState('online'); return; }               // proxy present, key configured
+      if (r.status === 401) {                                               // proxy present and healthy — we are signed out
+        // The old code let this fall through to "offline", so every
+        // signed-out visitor on a fully working deploy was told the AI was
+        // unreachable at the exact moment they might have signed up. The
+        // route answering 401 is positive evidence the service is THERE.
+        setAIState(claudeHost ? 'online' : 'signedout');
+        return;
+      }
       if (r.status === 503) {                                               // proxy present, no key (L-14)
         setAIState(claudeHost ? 'online' : 'unconfigured');
         return;
@@ -1899,7 +2145,13 @@ var BB = globalThis.BB = globalThis.BB || {};
    * the previous notes — the custom composition is unchanged). */
   function correctionNotesFor(reply, baseSpec, appliedSpec) {
     if (reply.kind === 'new') return Spec.correctionNotes(reply.spec, appliedSpec);
-    if (reply.kind === 'diff' && reply.patch && reply.patch.custom) {
+    // EVERY diff, not just the ones carrying custom geometry. This used to be
+    // gated to `patch.custom` because grounding was the only note that
+    // existed; now that correctSpec reports its clamps, level downgrades,
+    // species substitutions, and dropped features, the ordinary refinement
+    // ("make it 4 m wide", "use mortise and tenon", "make it wenge") is
+    // exactly the case that must not stay silent.
+    if (reply.kind === 'diff' && reply.patch) {
       return Spec.correctionNotes(Spec.deepMerge(baseSpec, reply.patch), appliedSpec);
     }
     return null;
@@ -2325,9 +2577,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
 
     if (s.meta.template !== 'custom') {
-      body.append(dim('Width', 'overall.width', 250, 2400));
-      body.append(dim('Depth', 'overall.depth', 200, 1200));
-      body.append(dim('Height', 'overall.height', 120, 2400));
+      body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
+      body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
+      body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
     } else {
       body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
@@ -2381,6 +2633,39 @@ var BB = globalThis.BB = globalThis.BB || {};
    * Anonymous visitors get it opened automatically (chat is behind sign-in,
    * and "small edits work" is the anonymous tier's promise). */
   function adjustRailOpen() { return !$('adjustRail').hidden; }
+  /* Which joinery slots a template is actually BUILT with. Derived by
+   * building every template with a distinct sentinel joint per slot and
+   * reading back which types reached the model (parametric.js decides this):
+   * frame drives legs/aprons/rails, case drives carcass and shelves, box
+   * drives drawer boxes. Offering a slot a piece never uses would be a
+   * control that quietly does nothing. Novel pieces carry a joint per
+   * connection instead, so they are steered through chat. */
+  const JOINERY_SLOTS = {
+    table: ['frame'], desk: ['frame'], bench: ['frame'],
+    bookshelf: ['case'],
+    nightstand: ['frame', 'case', 'box'],
+    cabinet: ['frame', 'case', 'box'],
+    custom: []
+  };
+  const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
+
+  /* Thickness knobs worth a control: exactly the ones the structural engine's
+   * own one-tap fixes reach for. A user who can see a FAIL should be able to
+   * steer out of it without going through chat — which, on a configured
+   * origin, is behind sign-in. */
+  const THICKNESS_KNOBS = [
+    { path: 'structure.topThickness', label: 'Top thickness', when: s => s.meta.template !== 'bookshelf' },
+    { path: 'structure.shelfThickness', label: 'Shelf thickness', when: s => (s.structure.shelfCount || 0) > 0 },
+    { path: 'structure.legThickness', label: 'Leg thickness', when: s => JOINERY_SLOTS[s.meta.template] && JOINERY_SLOTS[s.meta.template].includes('frame') }
+  ];
+
+  /* Bounds come from the ONE table correctSpec clamps against, so a slider can
+   * never offer a value the pipeline silently refuses. */
+  function dimBounds(path, fallbackMin, fallbackMax) {
+    const r = Spec.DIM_RULES && Spec.DIM_RULES[path];
+    return r ? [r.min, r.max] : [fallbackMin, fallbackMax];
+  }
+
   function renderAdjustBody() {
     const body = $('adjustBody');
     if (!body) return;
@@ -2395,9 +2680,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         () => done());
     };
     if (s.meta.template !== 'custom') {
-      body.append(dim('Width', 'overall.width', 250, 2400));
-      body.append(dim('Depth', 'overall.depth', 200, 1200));
-      body.append(dim('Height', 'overall.height', 120, 2400));
+      body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
+      body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
+      body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
+      // Thicknesses were chat-only, and chat is behind sign-in on a
+      // configured origin — so the knobs the integrity fixes themselves reach
+      // for were unreachable to exactly the people who needed them.
+      for (const k of THICKNESS_KNOBS) {
+        if (!k.when(s)) continue;
+        body.append(dim(k.label, k.path, ...dimBounds(k.path, 12, 100)));
+      }
     } else {
       body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: dimensions are refined through the chat — code re-validates the whole structure on every change.</span>'));
     }
@@ -2413,8 +2705,61 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));
     body.append(paramSelect('Finish', K.FINISHES.map(f => [f.key, f.label]), s.finish,
       v => { merge({ finish: v }, 'manual'); renderAdjustBody(); }));
+    // Joinery was reachable only through chat, so on a configured origin a
+    // signed-out user could not change a joint at all — and the skill level
+    // silently refused any joint above it (audit X-03/JR-1). Each slot lists
+    // only joints that are legal for that slot AND for this skill level, so
+    // the control cannot propose something correctSpec will overrule.
+    const allowed = K.jointsForLevel(s.meta.level);
+    for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
+      const opts = Object.values(K.JOINERY)
+        .filter(j => j.kinds.includes(slot) && allowed.includes(j.key))
+        .map(j => [j.key, j.label]);
+      if (opts.length < 2) continue; // a list of one is not a choice
+      body.append(paramSelect(SLOT_LABEL[slot], opts, s.joinery[slot],
+        v => { merge({ joinery: { [slot]: v } }, 'manual'); renderAdjustBody(); }));
+    }
     body.append(paramSeg('Skill level', [['beginner', 'Beginner'], ['intermediate', 'Intermediate'], ['advanced', 'Advanced']], s.meta.level,
-      v => { merge({ meta: { level: v } }, 'manual'); renderAdjustBody(); }));
+      v => { const from = s.meta.level; merge({ meta: { level: v } }, 'manual'); offerLevelJoinery(from, v); renderAdjustBody(); }));
+  }
+
+  /* Skill level was a ceiling and never a floor: setting "advanced" left a
+   * design on the beginner pocket screws it started with, so declaring
+   * yourself advanced changed nothing at all (audit X-02). Raising the level
+   * now OFFERS the joints it just unlocked, as tappable chips — the level
+   * still only ever gates, and the user still chooses. Code owns the joint;
+   * this proposes intent, exactly like the chat does. */
+  function offerLevelJoinery(from, to) {
+    const RANK = ['beginner', 'intermediate', 'advanced'];
+    if (RANK.indexOf(to) <= RANK.indexOf(from)) return; // lowering is a snap-down; correctionNotes already reports it
+    const s = state.spec;
+    const nowAllowed = K.jointsForLevel(to);
+    const wasAllowed = K.jointsForLevel(from);
+    const offers = [];
+    for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
+      const current = K.JOINERY[s.joinery[slot]];
+      // The strongest newly-unlocked joint valid for this slot, and only when
+      // it genuinely beats what the design already uses.
+      const best = Object.values(K.JOINERY)
+        .filter(j => j.kinds.includes(slot) && nowAllowed.includes(j.key) && !wasAllowed.includes(j.key))
+        .filter(j => !current || j.strength > current.strength)
+        .sort((a, b) => b.strength - a.strength)[0];
+      if (best) offers.push({ slot, joint: best });
+    }
+    if (!offers.length) return;
+    const m = chatMsg('bot', `<div class="bubble">${esc(RANK.indexOf(to) === 2 ? 'Advanced' : 'Intermediate')} unlocks stronger joinery. Want it on this piece?</div>`);
+    const row = el('div', 'answer-row');
+    for (const o of offers) {
+      const b = el('button', 'btn small', esc(`${SLOT_LABEL[o.slot]}: ${o.joint.label}`));
+      b.onclick = () => {
+        if (merge({ joinery: { [o.slot]: o.joint.key } }, 'manual', [`${SLOT_LABEL[o.slot].toLowerCase()} → ${o.joint.label}`])) {
+          b.disabled = true;
+          renderAdjustBody();
+        }
+      };
+      row.append(b);
+    }
+    m.append(row);
   }
   function setAdjustRail(open) {
     const rail = $('adjustRail');
@@ -2615,9 +2960,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (t.restoreTo && document.contains(t.restoreTo)) {
       t.restoreTo.focus();
       if (document.activeElement !== t.restoreTo) {
-        // Opener went inert with its closed menu — its menu button stands in.
+        // Opener went inert with its closed menu — its trigger stands in.
+        // Matched by the disclosure contract (aria-expanded + aria-controls),
+        // not by aria-haspopup: neither panel is a menu, so neither trigger
+        // may claim aria-haspopup="menu" — a selector for it matched nothing
+        // and dropped focus to <body> on every dialog closed from More.
         const wrap = t.restoreTo.closest('.menu-wrap');
-        const btn = wrap && wrap.querySelector('[aria-haspopup="menu"]');
+        const btn = wrap && wrap.querySelector(':scope > [aria-expanded][aria-controls]');
         if (btn) btn.focus();
       }
     }
@@ -2944,8 +3293,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const ok = commit(res.spec, 'import', ['imported from ' + (sourceLabel || 'share code')]);
     if (!ok) return { error: 'That design decoded but won’t build.' };
     state.engine.frame();
-    botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.`, []);
+    // Say what the revalidation FOUND. "revalidated" on its own reads as
+    // reassurance, and it was the only thing said even when the imported
+    // design failed four structural checks — someone else's design is
+    // exactly the case where the verdict must not be buried a tab away.
+    const integLine = Spec.integrityLine(state.integrity && state.integrity.summary, {});
+    botSay(`Imported “${state.spec.meta.name}” from a ${sourceLabel || 'share code'} — migrated to spec v${state.spec.specVersion} and revalidated.${integLine}`, []);
     offerPlanCta(); // an imported design gets the same explicit next step (C-03)
+    probeOwnership(); // an imported design may be one this account already issued
     return { ok: true };
   }
   function importShare() {
@@ -3025,7 +3380,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     const bestCost = best(c => c.cost), bestMove = best(c => c.movementMM), bestWeight = best(c => c.weightKg);
     const maxSag = Math.max(...cols.map(c => c.sagMargin || 0));
     const cell = (v, isBest, suffix) => `<td class="num${isBest ? ' species-best' : ''}">${v}${suffix || ''}</td>`;
-    wrap.innerHTML = `<table class="data"><thead><tr><th></th>${cols.map(c =>
+    wrap.innerHTML = `<table class="data"><thead><tr><th><span class="sr-only">Property</span></th>${cols.map(c =>
       `<th><button type="button" class="species-col-btn" data-sp="${c.key}" title="Use ${esc(c.label)}">${esc(c.label)} ${BB.Icons.svg('arrow', 12)}</button></th>`).join('')}</tr></thead><tbody data-motion-group>
       <tr data-motion="cascade"><td>Purchasable cost</td>${cols.map(c => cell('$' + c.cost.toFixed(2), c.cost === bestCost)).join('')}</tr>
       <tr data-motion="cascade"><td>Weight</td>${cols.map(c => cell(esc(Units.fmtWeight(c.weightKg)), c.weightKg === bestWeight)).join('')}</tr>
@@ -3105,7 +3460,79 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   const cutKey = Plans.cutKey; // shared with checklistKeys so keys, pruning, and progress agree
 
-  function enterBuildMode() {
+  /* The failing checks, in the words the engine already computed for them.
+   * One entry per distinct failure; identical parts (four shelves that all
+   * sag the same) collapse to one line with a count, because four copies of
+   * the same sentence reads as noise, not as four problems. */
+  function failingChecks() {
+    const checks = (state.integrity && state.integrity.checks) || [];
+    return checks.filter(c => c.status === 'fail');
+  }
+
+  /* Build mode is the wake-locked, full-screen shop companion: the surface a
+   * person reads WHILE holding a saw. Walking into it with a design the
+   * engine has just declared unsafe — silently, which is what used to happen
+   * — is the one failure in this product that can hurt someone. The verdict
+   * follows the user to the bench: acknowledge it, or don't go. */
+  function confirmBuildDespiteFail() {
+    const fails = failingChecks();
+    if (!fails.length) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const d = document.createElement('dialog');
+      // NOT `.spend-confirm` — that class identifies the billing spend dialog
+      // (smoke queries it by that name), and this dialog spends nothing.
+      d.className = 'pricing-dialog build-fail-confirm';
+      d.setAttribute('aria-labelledby', 'buildFailTitle');
+      const items = fails.slice(0, 6).map(c =>
+        `<li><strong>${esc(c.title)}</strong>${c.value ? ` — ${esc(c.value)}` : ''}</li>`).join('');
+      const more = fails.length > 6 ? `<li>…and ${fails.length - 6} more in the Safety tab.</li>` : '';
+      d.innerHTML = `<div class="pricing-shell">
+        <header class="pricing-head">
+          <span class="pricing-kicker verdict-fail">Does not pass</span>
+          <h2 id="buildFailTitle">This design fails ${fails.length} structural check${fails.length === 1 ? '' : 's'}</h2>
+          <p>Build mode is the shop companion — cutting diagrams and a checklist for the bench.
+          As designed, this piece would not safely carry the load it is checked against.</p>
+          <ul class="build-fail-list">${items}${more}</ul>
+          <p>The Safety tab has the numbers and one-tap fixes for each.</p>
+        </header>
+        <div class="spend-actions">
+          <button class="btn primary" data-build-fix>Show me the fixes</button>
+          <button class="btn" data-build-anyway>Build anyway</button>
+        </div>
+      </div>`;
+      document.body.append(d);
+      const done = value => { try { d.close(); } catch (e) { /* already closed */ } d.remove(); resolve(value); };
+      d.addEventListener('click', event => {
+        if (event.target === d || event.target.closest('[data-build-fix]')) {
+          done(false);
+          setMode('plan'); selectTab('integrity'); focusPanelHeading();
+        }
+        if (event.target.closest('[data-build-anyway]')) done(true);
+      });
+      d.addEventListener('cancel', () => done(false));
+      d.showModal();
+      const fix = d.querySelector('[data-build-fix]');
+      if (fix) fix.focus(); // the safe path takes the focus, not the override
+    });
+  }
+
+  /* Deliberately SYNCHRONOUS whenever no question needs asking. Build entry
+   * is a plain function everywhere else in the app and in the diagnostics
+   * entry point (`__bb.enterBuildMode()`), and callers act on the DOM it
+   * builds on the very next line. Only the failing-verdict path defers, and
+   * it re-enters through the same door once the user has answered. */
+  function enterBuildMode(opts) {
+    // The verdict gate comes FIRST: a design that fails is not a design you
+    // should be buying stock for, credited or not. `acknowledged` is set by
+    // the post-issuance hop (issueBlueprint({ then: 'build' })), where the
+    // user already answered this exact question moments ago and the design
+    // has not changed since — asking twice trains people to click through.
+    const needsAsking = !(opts && opts.acknowledged)
+      && state.integrity && state.integrity.summary && state.integrity.summary.verdict === 'fail';
+    if (needsAsking) {
+      confirmBuildDespiteFail().then(go => { if (go) enterBuildMode({ acknowledged: true }); });
+      return;
+    }
     // Build mode ships WITH the blueprint (credits pivot): a credited design
     // opens it outright; an uncredited one is offered the issue flow. On
     // unconfigured origins nothing is gated (C-01).
@@ -3119,11 +3546,33 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.bmTask = Number.isInteger(savedTask) ? savedTask : null;
     $('buildMode').hidden = false;
     $('bmName').textContent = state.spec.meta.name;
+    renderBuildVerdict();
     renderBuildChecklists();
     trapFocus($('buildMode')); // keyboard users land on the shop surface
     requestWakeLock();
     renderReadiness(); // Build takes aria-current in the mode nav
   }
+  /* A standing reminder at the bench for anything short of a clean pass.
+   * `fail` and `anchor` are the two verdicts that change what a person must
+   * physically DO, so they say so in the imperative; a plain advisory points
+   * back at Safety without shouting. A clean pass shows nothing at all. */
+  function renderBuildVerdict() {
+    const box = $('bmVerdict');
+    if (!box) return;
+    const sum = state.integrity && state.integrity.summary;
+    const verdict = sum && sum.verdict;
+    if (!verdict || verdict === 'pass') { box.hidden = true; box.textContent = ''; return; }
+    const fails = failingChecks();
+    const copy = verdict === 'fail'
+      ? { stamp: 'does not pass', text: `This design fails ${fails.length} structural check${fails.length === 1 ? '' : 's'} — ${fails.slice(0, 2).map(c => c.title).join(', ')}${fails.length > 2 ? ', and more' : ''}. You are building it as it stands.` }
+      : verdict === 'anchor'
+        ? { stamp: 'anchor required', text: 'This piece tips when loaded or opened: the wall anchor in your parts list is mandatory, not optional. Fit it before you load a shelf or drawer.' }
+        : { stamp: 'advisory', text: 'This design passes its strength checks with notes worth reading — see Safety in Plan mode.' };
+    box.hidden = false;
+    box.dataset.verdict = verdict;
+    box.innerHTML = `<span class="stamp ${esc(verdict)}">${esc(copy.stamp)}</span><span>${esc(copy.text)}</span>`;
+  }
+
   function exitBuildMode() {
     if (!state.buildMode) return;
     state.buildMode = false;
@@ -3552,13 +4001,30 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     };
   }
+  /* The Export menu's sheet-set row. Its hint used to be the literal word
+   * "issued" baked into the template, so it claimed the blueprint existed in
+   * every state — anonymous, signed out, zero credits. Now it says what is
+   * actually true of THIS design for THIS person. */
+  function renderExportGate() {
+    const hint = $('exportSheetsHint');
+    if (!hint) return;
+    const ent = entitlementState();
+    hint.textContent = !ent.configured ? 'sheets'
+      : ent.designIssued ? 'issued'
+        : ent.nextAction === 'signin' ? 'sign in'
+          : ent.nextAction === 'buy' ? 'needs a credit'
+            : '1 credit';
+  }
+
   function renderReadiness() {
     if (!state.integrity) return;
+    renderExportGate();
     const states = modeStates();
     // Build ships with the blueprint (credits pivot): the lock glyph + aria
     // announce the wall BEFORE the tap (X-04) — activation opens the issue
     // flow. On a providerless host there is no wall to announce (C-01).
-    const buildLocked = planLocked();
+    const ent = entitlementState();
+    const buildLocked = ent.planLocked;
     const lockEl = $('buildModeLock');
     if (lockEl) lockEl.hidden = !buildLocked;
     // One filled primary per screen (C-02): Build takes the rust fill only
@@ -3573,7 +4039,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       const current = m === 'build' ? state.buildMode : (!state.buildMode && state.mode === m);
       if (current) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
-      const aria = m === 'build' && buildLocked ? s.aria + ' — included with this design’s blueprint' : s.aria;
+      // The lock glyph and the words must agree. The old suffix read
+      // "— included with this design's blueprint" precisely WHEN the button
+      // was locked, i.e. it described ownership the visitor did not have,
+      // beside a padlock, on a button that opened anyway.
+      const gateSuffix = m !== 'build' || !buildLocked ? ''
+        : ent.nextAction === 'signin' ? ' — sign in free, then issue this design’s blueprint to unlock'
+          : ent.nextAction === 'buy' ? ' — unlocked by this design’s blueprint; you have no credits yet'
+            : ' — unlocked by issuing this design’s blueprint (1 credit)';
+      const aria = s.aria + gateSuffix;
       b.setAttribute('aria-label', aria);
       b.title = aria;
     }
@@ -3795,7 +4269,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     renderHistory();
     if (state.selected) openInspectorById(state.selected);
     if (adjustRailOpen()) renderAdjustBody();
-    if (state.buildMode) { $('bmName').textContent = state.spec.meta.name; renderBuildChecklists(); }
+    if (state.buildMode) { $('bmName').textContent = state.spec.meta.name; renderBuildVerdict(); renderBuildChecklists(); }
   }
 
   /* ---------------- boot ---------------- */
@@ -3826,10 +4300,54 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('moreBtn').innerHTML = `More ${icon('caret', 13)}`;
   }
 
+  /* A stand-in engine for browsers that cannot give us a WebGL context
+   * (blocklisted GPUs, hardware acceleration off, older tablets, a driver
+   * that crashed the tab). Everything downstream of correctSpec is a pure
+   * function of the spec — the cut list, stock plan, assembly steps, and
+   * safety report need no GPU — so a dead viewport must cost the viewport
+   * only, never the plans. A Proxy answers ANY method with a no-op, so an
+   * engine call added later can never resurrect the boot crash this
+   * replaces; the handful of methods whose RETURN value callers consume are
+   * spelled out. renderNow() returning undefined is safe: Store.makeThumb
+   * null-checks its source and the capture path is already try/caught. */
+  function nullEngine() {
+    const answers = {
+      getIsolated: () => null,
+      inPlayback: () => false,
+      stats: () => ({ geometries: 0, textures: 0, meshes: 0, materials: 0 }),
+      cameraPose: () => ({ theta: 0, phi: 0, dist: 0, minDist: 0 }),
+      renderNow: () => null
+    };
+    const noop = () => undefined;
+    return new Proxy({ unavailable: true }, {
+      get(target, prop) {
+        if (prop === 'unavailable') return true;
+        return Object.prototype.hasOwnProperty.call(answers, prop) ? answers[prop] : noop;
+      }
+    });
+  }
+
+  /* Say it once, in the viewport, in the same voice as the rest of the app:
+   * the 3D is gone, the plans are not. */
+  function markViewportUnavailable() {
+    document.body.dataset.view3d = 'unavailable';
+    const stage = $('stage');
+    if (stage && !$('view3dFallback')) {
+      const note = el('div', 'view3d-fallback');
+      note.id = 'view3dFallback';
+      note.setAttribute('role', 'status');
+      note.innerHTML = '<strong>3D preview isn’t available in this browser.</strong>' +
+        '<span>Your plans, cut list, and safety report below are unaffected — they never needed it.</span>';
+      stage.append(note);
+    }
+    const canvas = $('view3d');
+    if (canvas) canvas.hidden = true;
+  }
+
   async function boot() {
     applyIcons();
     const canvas = $('view3d');
-    state.engine = BB.Engine.create(canvas, {
+    const engineOpts = {
       reducedMotion: reduceMq.matches,
       onPick(part, info) {
         if (!part) {
@@ -3864,7 +4382,18 @@ var BB = globalThis.BB = globalThis.BB || {};
             `the dot you tapped sits ${jointWhere(joint.pos, state.model.bounds)}.`
         });
       }
-    });
+    };
+    // The ONE call in boot that can fail on hardware grounds. It used to be
+    // unguarded and third in the sequence, so a missing context aborted boot
+    // before the seed design ever committed: no chat, no plans, a stage stuck
+    // on the boot skeleton, and no message. Boot now continues either way.
+    try {
+      state.engine = BB.Engine.create(canvas, engineOpts);
+    } catch (e) {
+      state.engine = nullEngine();
+      markViewportUnavailable();
+      reportClientError('engine', e);
+    }
     reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
     mobileAdvisoryMq.addEventListener('change', () => {
       renderAdvisories(state.report);
@@ -3944,6 +4473,12 @@ var BB = globalThis.BB = globalThis.BB || {};
       projectCount = idx.length;
       if (!opened && idx.length) opened = !!(await loadProjectIntoApp(idx[0].id));
     } catch (e) { /* storage unavailable: fresh session */ }
+    // Ask the server what this account already owns — AFTER the design that
+    // will be on screen has settled (restored project, share link, or the
+    // seed), because the probe hashes the live spec. Deliberately not
+    // awaited: ownership can only ever unlock, so it is free to land late,
+    // and boot must never wait on the network.
+    probeOwnership();
     if (!opened) {
       const firstRun = fo => {
         const welcome = () => {
@@ -3959,7 +4494,12 @@ var BB = globalThis.BB = globalThis.BB || {};
           if (!(fo && fo.suppressOverture) && BB.Porch && BB.Porch.shouldOverture && BB.Porch.shouldOverture({
             seenOverture: !!state.prefs4.seenOverture,
             reduced: reduceMq.matches,
-            webgl: !!state.engine,
+            // `state.engine` is now always truthy — it falls back to a no-op
+            // stand-in when the browser has no WebGL context — so liveness
+            // must be asked, not inferred. The overture is a 3D performance;
+            // playing it into a dead viewport would swallow the welcome card
+            // that its onDone is responsible for landing.
+            webgl: !!state.engine && !state.engine.unavailable,
             skeletonGone: !$('bootSkeleton')
           })) {
             played = BB.Porch.overture(state.engine, { integrity: state.integrity, onDone: welcome });
@@ -4118,7 +4658,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       BB.JointView.setCutaway(on);
     };
     $('diagRerun').onclick = runDiagnostics;
-    $('buildModeBtn').onclick = enterBuildMode;
+    $('buildModeBtn').onclick = () => enterBuildMode();
     $('bmExit').onclick = exitBuildMode;
     $('bmTaskPrev').onclick = () => bmTaskGo(-1);
     $('bmTaskNext').onclick = () => bmTaskGo(1);
@@ -4162,11 +4702,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       document.addEventListener('click', e => {
         if (!m.contains(e.target) && e.target !== b) closeMenu(btnId, m);
       });
-      // Menu-button keyboard pattern: ArrowDown opens and enters the menu,
-      // arrows cycle the items, Escape (global handler) closes topmost.
+      // Keyboard accelerator over the panel: ArrowDown opens and enters it,
+      // arrows cycle the entries, Escape (global handler) closes the topmost.
+      // Tab is the baseline path — these are ordinary buttons in an ordinary
+      // group, not a roving-focus menu — and arrows are the shortcut on top.
       // Width-hidden entries (e.g. the phone-only Share/Import item) must not
       // catch keyboard focus: only items with a rendered box participate.
-      const items = () => [...m.querySelectorAll('[role="menuitem"]')].filter(x => x.getClientRects().length);
+      //
+      // Selected by FOCUSABLE rather than [role="menuitem"]: the panels carry
+      // no menuitems (neither is a role="menu" — see index.template.html), so
+      // a menuitem query matches nothing and silently kills arrow navigation.
+      const items = () => [...m.querySelectorAll(FOCUSABLE)].filter(x => x.getClientRects().length);
+      // Controls that own the arrow keys themselves — the precision <select>,
+      // the explode range. They are navigation TARGETS, but while one has
+      // focus its own arrow behaviour wins; stealing ArrowDown from a slider
+      // to move focus is how a menu breaks the controls it contains.
+      const ARROW_OWNER = 'select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"])';
       b.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
@@ -4176,6 +4727,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
       });
       m.addEventListener('keydown', e => {
+        if (e.target.matches && e.target.matches(ARROW_OWNER)) return;
         const list = items();
         if (!list.length) return;
         const i = list.indexOf(document.activeElement);
@@ -4193,7 +4745,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     const viewMenu = bindMenu('viewBtn', 'viewMenu');
     // Picking a dialog from More closes the menu; the units row stays open
     // so the seg gives instant feedback.
-    moreMenu.querySelectorAll('[role="menuitem"]').forEach(b => {
+    //
+    // This is the ONLY binding for [data-export], so the selector is load
+    // bearing: when the panel stopped being a role="menu", a leftover
+    // [role="menuitem"] query matched nothing and silently unwired every
+    // export in the product — sheet set, print, SVG, CSV, JSON, GLB, .rb,
+    // .dae — while the buttons stayed visible and clickable. Selected by
+    // structure now, which is what "entry" always meant here: the panel's own
+    // top-level buttons plus the Export group. Deliberately NOT the settings
+    // rows (.menu-row), whose segs must leave the panel open, and not
+    // #accountArea, which renders its own handlers after boot.
+    moreMenu.querySelectorAll(':scope > button, .menu-group button').forEach(b => {
       b.addEventListener('click', () => {
         closeMenu('moreBtn', moreMenu);
         if (b.dataset.export) { doExport(b.dataset.export); return; }

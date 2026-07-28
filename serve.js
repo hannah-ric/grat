@@ -79,6 +79,7 @@ const billing = require('./api/billing.js');
 const stripeWebhook = require('./api/stripe-webhook.js');
 const blueprint = require('./api/blueprint.js');
 const lead = require('./api/lead.js');
+const clientlog = require('./api/clientlog.js');
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
@@ -94,6 +95,7 @@ http.createServer((req, res) => {
   if (url.pathname === '/api/stripe-webhook') return stripeWebhook(req, res);
   if (url.pathname === '/api/blueprint') return blueprint(req, res);
   if (url.pathname === '/api/lead') return lead(req, res);
+  if (url.pathname === '/api/clientlog') return clientlog(req, res);
   if (url.pathname.startsWith('/b/')) { // public blueprint pages, same rewrite as vercel.json
     req.url = '/api/blueprint?share=' + encodeURIComponent(url.pathname.slice(3));
     return blueprint(req, res);

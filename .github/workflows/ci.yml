@@ -25,16 +25,224 @@ jobs:
       - name: Run the full test suite (unit + audit + golden + battery + server)
         run: npm test
 
-      - name: Hand-arithmetic verification worksheet (must stay 14/14)
+      # 16/16 today. CLAUDE.md still says 14/14 — verified stale at HEAD, not a
+      # regression; the count is however many sections the worksheet holds.
+      - name: Hand-arithmetic verification worksheet (every number computed twice)
         run: npm run test:handcalc
 
-      # dist/index.html is committed and must stay byte-identical to a fresh
-      # build — nothing else enforces this, and a stale bundle ships stale code.
-      - name: dist/index.html is in sync with src/
+      # pnpm-lock.yaml is committed (package-lock.json deliberately is not), so
+      # Vercel picks pnpm and deploys with `pnpm install --frozen-lockfile`,
+      # which REFUSES a lock that disagrees with package.json. Adding one
+      # devDependency without relocking therefore breaks production deploys
+      # while every check here stays green — no suite reads package.json, and
+      # this job never installs anything. Zero-dependency, no package manager.
+      - name: pnpm-lock.yaml is in sync with package.json
+        run: node scripts/check-lockfile.js
+
+      # Everything the build emits into dist/ is committed and must stay
+      # byte-identical to a fresh build — nothing else enforces this, and a
+      # stale bundle ships stale code. Scoped to the whole directory rather
+      # than index.html alone: the build emits siblings too (robots.txt, and
+      # the service worker), and a stale worker is the worst of them — it can
+      # keep serving an old app to someone at the bench. `git status` also
+      # catches a NEW emitted file that was never committed, which a `git
+      # diff` of a single path silently misses.
+      - name: dist/ is in sync with src/
         run: |
           node build.js
-          if ! git diff --quiet -- dist/index.html; then
-            echo "::error::dist/index.html is stale — run 'npm run build' and commit the result."
-            git --no-pager diff --stat -- dist/index.html
+          if [ -n "$(git status --porcelain -- dist/)" ]; then
+            echo "::error::dist/ is stale — run 'npm run build' and commit the result."
+            git --no-pager status --porcelain -- dist/
+            git --no-pager diff --stat -- dist/
             exit 1
           fi
+
+  # ---------------------------------------------------------------------------
+  # Why this is a SEPARATE job rather than six more steps above.
+  #
+  # About 35% of src/ — ui.js, porch.js, engine.js, motion.js, billing.js,
+  # jointview.js, provenance.js — is excluded from `npm test` by construction:
+  # it needs a DOM, Three.js and browser globals. The only way to cover it is to
+  # drive the built dist/index.html in a real browser, and that needs the
+  # Playwright devDependency plus a ~150 MB Chromium download — precisely the
+  # install the job above is proud of not needing.
+  #
+  # Keeping them apart preserves that property exactly: `test` stays plain Node
+  # with no `npm install` anywhere in it, and still reports in well under a
+  # minute while this job is still unpacking a browser. The two run in parallel
+  # (no `needs:`), and both are real gates — no continue-on-error, a failure
+  # here fails the check.
+  # ---------------------------------------------------------------------------
+  browser:
+    runs-on: ubuntu-latest
+    # Measured locally: smoke 222 s · porch 104 s · gating 46 s · nowebgl 9 s ·
+    # adjust 15 s · cloud 34 s = ~7.2 min, plus ~1 min for install and a cold
+    # browser download. A 2-core GitHub runner is roughly half the speed of that
+    # box, so ~17 min is the realistic worst case; 25 leaves headroom without
+    # being a joke.
+    # The cap is the real point: a Playwright suite that blocks on a modal or a
+    # never-resolving waitForFunction otherwise sits at GitHub's 6-hour default
+    # burning the account's minutes. That exact hang has happened here.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # Deliberately no `cache: npm`: package-lock.json is .gitignore'd, and
+          # setup-node's npm cache hard-errors when it can find no lockfile.
+          # The npm cache below is keyed on package.json instead.
+
+      # A suite that exists but is never run is the exact defect this job was
+      # added to end (audit finding V-01: four green Playwright suites that ran
+      # only when a human remembered). The check has two halves, because the
+      # first one alone left an obvious way through:
+      #
+      #   SCRIPTS  package.json is the register — every `test:*` script that
+      #     drives a *.playwright.js file must either get its own one-line
+      #     `run: npm run test:…` step below (that exact shape is what this
+      #     greps for, so a mention in a comment does not count) or be named in
+      #     SKIPPED with a reason. It also catches the reverse: a step or
+      #     SKIPPED entry naming a script package.json no longer has.
+      #
+      #   FILES    a test/*.playwright.js with no script at all was invisible
+      #     to the register — which is how test/diy-audit.playwright.js sat
+      #     there driving a #exportMenu the shell redesign deleted, never run,
+      #     never noticed. Every suite FILE must be reachable from a script, or
+      #     be declared in MANUAL below.
+      # This runs first because it needs nothing installed and fails in seconds.
+      - name: Every browser suite is wired into this job (or declared)
+        env:
+          # Browser suites deliberately NOT run here, space-separated, each with
+          # a reason. Empty today — every suite in package.json runs below, and
+          # anything new that appears there fails this step until it is wired in
+          # or listed here.
+          SKIPPED: ''
+          # Suite FILES with no npm script: manual instruments, not gates. Same
+          # standing as test/benchmark-shaker.js in CLAUDE.md — run by hand,
+          # produce a report rather than a verdict. Listing one here is a
+          # declaration that it is not a gate, not a promise that it still runs.
+          #   diy-audit — a click-through that writes screenshots and a findings
+          #     log into dist/. Not an asserting suite (it has no failure exit),
+          #     and it writes into dist/, which the dist-sync check above would
+          #     then flag. Known stale: it drives #exportMenu, removed in the
+          #     shell redesign.
+          MANUAL: 'test/diy-audit.playwright.js'
+        run: |
+          node -e '
+            const fs = require("fs");
+            const scripts = JSON.parse(fs.readFileSync("package.json", "utf8")).scripts || {};
+            const wf = fs.readFileSync(".github/workflows/ci.yml", "utf8");
+            const run = new Set([...wf.matchAll(/^\s*run:\s*npm run (test:[A-Za-z0-9:_-]+)\s*$/gm)].map(m => m[1]));
+            const skipped = new Set((process.env.SKIPPED || "").split(/\s+/).filter(Boolean));
+            const manual = new Set((process.env.MANUAL || "").split(/\s+/).filter(Boolean));
+            const suites = Object.keys(scripts).filter(k => /\.playwright\.js/.test(scripts[k]));
+            let bad = 0;
+            for (const k of suites) if (!run.has(k) && !skipped.has(k)) {
+              bad++;
+              console.log("::error file=package.json::browser suite \"" + k + "\" is not run by .github/workflows/ci.yml. Add a step that runs it, or list it in the browser job SKIPPED env with a reason.");
+            }
+            for (const k of [...run, ...skipped]) if (!scripts[k]) {
+              bad++;
+              console.log("::error file=.github/workflows/ci.yml::this workflow references \"" + k + "\" but package.json has no such script.");
+            }
+            // Half two: every suite FILE on disk must be reachable from a script.
+            const files = fs.readdirSync("test").filter(f => f.endsWith(".playwright.js")).map(f => "test/" + f);
+            const driven = new Set();
+            for (const k of Object.keys(scripts)) for (const m of scripts[k].matchAll(/(test\/[A-Za-z0-9._-]+\.playwright\.js)/g)) driven.add(m[1]);
+            for (const f of files) if (!driven.has(f) && !manual.has(f)) {
+              bad++;
+              console.log("::error file=" + f + "::this browser suite has no npm script, so nothing can run it. Add a test:* script and a step below, or list it in the browser job MANUAL env with a reason.");
+            }
+            for (const f of manual) if (!fs.existsSync(f)) {
+              bad++;
+              console.log("::error file=.github/workflows/ci.yml::MANUAL names \"" + f + "\", which does not exist.");
+            }
+            if (bad) process.exit(1);
+            const here = suites.filter(k => !skipped.has(k));
+            console.log(files.length + " browser suite files on disk; " + suites.length + " wired to scripts — run here: " + here.join(", ") +
+              (skipped.size ? " | deliberately skipped: " + [...skipped].join(", ") : "") +
+              (manual.size ? " | manual instruments: " + [...manual].join(", ") : ""));
+          '
+
+      - name: Cache the npm download cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('package.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      # --ignore-scripts skips Playwright's own postinstall browser fetch, so
+      # the cache below gets first refusal before anything is downloaded. It is
+      # also the install CLAUDE.md documents.
+      - name: Install the Playwright devDependency
+        run: npm install --ignore-scripts
+
+      # package.json floats playwright at ^1.49.1 and no lockfile is committed,
+      # so which browser build we need is only knowable after the install.
+      - name: Resolve the installed Playwright version
+        id: pw
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Chromium download
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          # Where Playwright resolves browsers when PLAYWRIGHT_BROWSERS_PATH is
+          # unset — which is the fallback every suite takes. They prefer
+          # /opt/pw-browsers/chromium, a path that exists only on the dev box;
+          # on a runner that fs.existsSync check fails and Playwright's own
+          # resolution wins, so this is the one directory that has to be
+          # populated and cached. `install chromium` fills it with all three
+          # pieces the suites need: chromium-<rev> (what smoke/porch launch via
+          # chromium.executablePath()), chromium_headless_shell-<rev> (what the
+          # others get from Playwright's default headless resolution) and ffmpeg.
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      # A cache hit restores the browser but not the apt-level shared libraries
+      # it links against — those are not in the cached directory — so on a hit
+      # we still install just the system deps.
+      - name: Install Chromium's system libraries
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # Each test:* script below runs `node build.js` itself (~0.5 s) before it
+      # opens a browser, so dist/index.html is guaranteed present and fresh for
+      # every suite; a separate build step would only add a seventh build.
+      - name: Smoke — the whole app driven end to end (291 assertions)
+        run: npm run test:smoke
+
+      - name: Porch — landing gate matrix, scrub, calculator, overture (81)
+        run: npm run test:porch
+
+      - name: Gating — the four entitlement states on a configured origin (37)
+        run: npm run test:gating
+
+      - name: No WebGL — the app with the GPU taken away (15)
+        run: npm run test:nowebgl
+
+      - name: Adjust — joinery slots, thickness knobs, skill level (21)
+        run: npm run test:adjust
+
+      # The 1:1 templates are the one artifact where a rendering error is a
+      # RULER error. This measures them against the page box in a real browser.
+      - name: Print — 1:1 template fidelity and page fit (34)
+        run: npm run test:print
+
+      # axe-core over every state the app really has, plus hand-rolled checks
+      # for the promises axe cannot know about (verdict capsules carry text,
+      # not colour alone; token contrast pairs; reduced motion; forced colors).
+      - name: Accessibility — axe sweep + the project's own commitments (171)
+        run: npm run test:a11y
+
+      # The only suite that boots the real serve.js rather than a static server.
+      # It needs no secrets and no network: BB_DEV_LOGIN=1 gives it a one-redirect
+      # fake provider and it points the store at a temp KV file it deletes after.
+      - name: Cloud — sign in, autosave, reload restore, sign out (11)
+        run: npm run test:cloud

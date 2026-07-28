@@ -1,0 +1,18 @@
+{
+  "why": "The shortest possible frozen share code — a template piece at every default, with the optional \"ms\" and \"hp\" keys absent. Absent-key defaults are exactly where a decoder regression hides, because the design still opens; it just quietly becomes a different design.",
+  "version": 4,
+  "kind": "share",
+  "shareCode": "BB4:eyJ2Ijo0LCJuIjoiU2hvcCBCZW5jaCIsInQiOjIsImwiOjAsInUiOjEsIm8iOlsxMjE5LjIsMzgxLDQ1Ny4yXSwibSI6NywicyI6eyJ0IjozMiwibCI6NjAsImEiOjgwLCJhdCI6MjAsImFpIjoxMiwiYyI6MCwic3QiOjE5LCJzZCI6MTgsImIiOjEsImsiOjB9LCJqIjpbMSwwLDFdLCJmIjowLCJkIjowfQ",
+  "expect": {
+    "template": "bench",
+    "name": "Shop Bench",
+    "species": "pine",
+    "sheetSpecies": "baltic_birch",
+    "pull": "bar_pull",
+    "units": "in",
+    "drawers": null,
+    "finish": "wipe_poly",
+    "overall": { "width": 1219.2, "depth": 381, "height": 457.2 },
+    "minParts": 6
+  }
+}

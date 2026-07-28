@@ -73,9 +73,30 @@ const CORPUS = [
     }
   },
   {
+    /* A FROZEN reference design, spelled out here on purpose. It used to be
+     * `Spec.defaultSpec('custom')`, which quietly coupled the golden corpus to
+     * a mutable product default: repairing that default (audit X-05, which
+     * moved its joints off end-grain screws) would have silently rewritten a
+     * frozen fixture. The corpus exists to hold behaviour still, so it carries
+     * its own composition — screwed, end-grain-bearing, and honestly failing
+     * joint adequacy, exactly as it was frozen. */
     name: 'custom-bench-metric',
     units: { system: 'metric', precision: 16, dual: false },
-    raw: Object.assign(Spec.defaultSpec('custom'), { meta: { name: 'Custom Bench', template: 'custom', level: 'beginner', units: 'mm' } })
+    raw: Object.assign(Spec.defaultSpec('custom'), {
+      meta: { name: 'Custom Bench', template: 'custom', level: 'beginner', units: 'mm' },
+      overall: { width: 1100, depth: 350, height: 468 },
+      custom: {
+        parts: [
+          { id: 'p1', role: 'seat', primitive: 'slab', dim: { l: 1100, w: 350, t: 38 }, pos: { x: 0, y: 449, z: 0 }, rot: null, grain: 'length', stock: 'solid', loadBearing: false, surface: 'seating' },
+          { id: 'p2', role: 'leg_panel', primitive: 'panel', dim: { l: 350, w: 430, t: 38 }, pos: { x: -475, y: 215, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' },
+          { id: 'p3', role: 'leg_panel', primitive: 'panel', dim: { l: 350, w: 430, t: 38 }, pos: { x: 475, y: 215, z: 0 }, rot: { x: 0, y: 90, z: 0 }, grain: 'length', stock: 'solid', loadBearing: true, surface: 'none' }
+        ],
+        connections: [
+          { a: 'p2', b: 'p1', joint: 'butt_screws' },
+          { a: 'p3', b: 'p1', joint: 'butt_screws' }
+        ]
+      }
+    })
   }
 ];
 

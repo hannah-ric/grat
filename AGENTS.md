@@ -14,22 +14,36 @@ a prompt, and never let model output write a dimension directly into state.
 ## Commands
 
 ```
-npm install --ignore-scripts   # only devDependency is Playwright (tests)
-npm run build                  # node build.js → dist/index.html (single file)
+npm install --ignore-scripts   # devDependencies: Playwright + axe-core (tests only)
+npm run build                  # node build.js → dist/index.html + robots.txt + sw.js
 npm run dev                    # build + serve on $PORT (3000) + watch + /api/chat proxy
 npm test                       # unit + audit + golden + battery + server + credits (node, no browser)
 npm run test:smoke             # build + drive the real app in headless Chromium
 npm run test:porch             # build + drive the landing (porch) in headless Chromium
+npm run test:gating            # the four entitlement states on a configured mock origin
+npm run test:nowebgl           # the app with the GPU taken away
+npm run test:adjust            # Adjust rail: joinery slots, thickness knobs, skill level
+npm run test:print             # 1:1 template fidelity against the real page box
+npm run test:a11y              # axe sweep + the project's own a11y commitments
+npm run test:cloud             # dev login → cloud autosave → reload restore
 npm run test:handcalc          # hand-arithmetic vs engine worksheet (audit asset)
 npm run test:battery           # live behavior battery (representative/boundary/adversarial)
 ```
 
+CI is two jobs: `test` (zero install, plain Node, plus a `dist/`-is-in-sync
+check) and `browser` (installs Playwright, runs every `test/*.playwright.js`
+as a real gate). The browser job's coverage guard works both ways — a
+`test:*` script driving a suite needs its own step or a `SKIPPED` entry, and
+a suite file on disk needs a script or a `MANUAL` entry. `BB_SW` controls
+the emitted service worker: `on` (default) / `off` / `tombstone`.
+
 Engineering-truth guardrails (2026 audit — see `docs/audit/`): behavior
 changes to physics, joinery allowances, packing, or exports must keep
 `test/audit.test.js` green and re-freeze `test/golden/` deliberately
-(`node test/golden.test.js --update`, then review the git diff). The AI
-digests are generated from the knowledge tables and self-tested — never
-hand-edit a digest string.
+(`node test/golden.test.js --update`, then review the git diff). A new
+`specVersion` migration needs a fixture in `test/fixtures/legacy/` — a saved
+design must never fail to open. The AI digests are generated from the
+knowledge tables and self-tested — never hand-edit a digest string.
 
 ## Layout
 

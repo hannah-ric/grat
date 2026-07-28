@@ -30,22 +30,34 @@ const ok = (cond, msg) => { if (cond) pass++; else { fail++; console.error('  âœ
     }),
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('serve.js never came up')), 30000);
-    server.stdout.on('data', d => { if (String(d).includes('Blueprint Buddy on')) { clearTimeout(t); resolve(); } });
-    server.stderr.on('data', d => process.stderr.write(d));
-  });
-
-  // Same launch recipe as the smoke suite (pre-provisioned Chromium).
-  const browser = await chromium.launch({
-    executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined,
-    args: ['--no-sandbox', '--enable-unsafe-swiftshader']
-  });
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const page = await ctx.newPage();
-  const base = `http://127.0.0.1:${PORT}`;
+  // The spawned server outlives every failure path unless something kills it.
+  // Boot timeouts and chromium.launch() failures both used to escape before
+  // the scenario's try block, leaving serve.js running: locally that is a
+  // stray process, but on a CI runner a leaked child holds the step's stdout
+  // pipe open and the step hangs until its timeout instead of failing fast.
+  let browser = null;
+  const cleanup = () => {
+    try { if (browser) browser.close(); } catch (e) { /* already gone */ }
+    try { server.kill(); } catch (e) { /* already gone */ }
+    try { fs.unlinkSync(kvFile); } catch (e) { /* gone */ }
+  };
+  process.on('exit', cleanup);
 
   try {
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('serve.js never came up')), 30000);
+      server.stdout.on('data', d => { if (String(d).includes('Blueprint Buddy on')) { clearTimeout(t); resolve(); } });
+      server.stderr.on('data', d => process.stderr.write(d));
+    });
+
+    // Same launch recipe as the smoke suite (pre-provisioned Chromium).
+    browser = await chromium.launch({
+      executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined,
+      args: ['--no-sandbox', '--enable-unsafe-swiftshader']
+    });
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await ctx.newPage();
+    const base = `http://127.0.0.1:${PORT}`;
     // 1. Anonymous boot: device persistence, sign-in offered in the menu.
     await page.goto(base + '/');
     await page.waitForFunction(() => globalThis.__bb && __bb.state.spec, null, { timeout: 30000 });
@@ -67,7 +79,17 @@ const ok = (cond, msg) => { if (cond) pass++; else { fail++; console.error('  âœ
       .then(r => r.json()).then(d => !!d.value && d.value.includes('Cloud Walnut Bench')), null, { timeout: 8000 });
     ok(true, 'autosave lands in the per-user cloud store');
     const kv = JSON.parse(fs.readFileSync(kvFile, 'utf8'));
-    ok(Object.keys(kv).every(k => k.startsWith('bb:dev:local:')), 'every stored key is namespaced to the user');
+    // Everything a user creates is namespaced bb:{uid}:â€¦ . The ONE documented
+    // exception is the signup-grant counter: bb:ipgrant:{hashed ip} deliberately
+    // lives outside every per-uid keyspace (CLAUDE.md, api/_credits.js) because
+    // its whole job is to cap grants per IP ACROSS accounts. This assertion
+    // predates that counter and had been failing ever since, so it is written
+    // as an allowlist rather than a prefix test: any key that is neither
+    // per-uid nor a known shared root is a real leak and fails here.
+    const SHARED_ROOTS = [/^bb:ipgrant:[0-9a-f]+$/, /^bb:leads(?::|$)/];
+    const stray = Object.keys(kv).filter(k => !k.startsWith('bb:dev:local:') && !SHARED_ROOTS.some(rx => rx.test(k)));
+    ok(!stray.length, `every stored key is per-user or a documented shared root (stray: ${JSON.stringify(stray)})`);
+    ok(Object.keys(kv).some(k => k.startsWith('bb:dev:local:')), 'the user\'s own documents are namespaced to them');
 
     // 4. Hard reload: the project comes back from the cloud.
     await page.goto(base + '/');
@@ -85,11 +107,9 @@ const ok = (cond, msg) => { if (cond) pass++; else { fail++; console.error('  âœ
   } catch (e) {
     fail++;
     console.error('  âœ— scenario crashed: ' + e.message);
+  } finally {
+    cleanup();
   }
-
-  await browser.close();
-  server.kill();
-  try { fs.unlinkSync(kvFile); } catch (e) { /* gone */ }
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

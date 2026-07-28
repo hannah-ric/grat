@@ -8,7 +8,9 @@
 2. **Browser drives** — `dist/index.html` in headless Chromium at 1440×900 and 390×844: arrival, Adjust, all five Plan tabs, share-code import of a known-failing design, playback, Build mode, species swaps, WebGL disabled, `localStorage` throwing, hostile share codes.
 3. **Production-shape drives** — a mock origin serving the real `/api/auth`, `/api/billing`, `/api/chat`, `/api/store`, `/api/blueprint` contracts across the four entitlement states a real visitor can occupy.
 
-Every quoted string is verbatim from a probe or the rendered DOM. **No source was changed.**
+Every quoted string is verbatim from a probe or the rendered DOM. **The audit pass itself changed no source.**
+
+> **Status:** Phases 0–4 of §5 have since been implemented on this branch. The findings below are preserved exactly as written at audit time so the record stays honest; **[§7](#7-implementation-status)**, **[§8](#8-phase-3--v-01-status)** and **[§9](#9-phase-4-status--depth-and-verification)** are the delta — what is fixed, what changed shape on contact with the code, and what remains.
 
 **Supersedes** the two working documents from this pass (live user-journey audit, coverage-gap audit), which are folded in here in full.
 **Relation to prior work:** [`AUDIT_REPORT.md`](../../AUDIT_REPORT.md) and [`docs/ui/capability-ux-audit.md`](../ui/capability-ux-audit.md) mapped this territory by reading the code. Findings marked **NEW** are not in either.
@@ -109,7 +111,7 @@ The largest cluster, and one architectural fact: **the only channel for "what ha
 |----|-----|---------|----------|
 | **X-01** | **P0** | **The possessive "my" blocks piece creation.** `ai.js:265` disqualifies a bare noun-phrase creation on `\b(it\|its\|this\|that\|my\|mine)\b`. *"a desk for my office"* → *"I didn't catch a change I can make there."*, while *"a desk for **the** office"* builds a desk. *"walnut nightstand for my bedroom"* returns `kind:"diff"` — it turns the **current table walnut** instead. Possessives are how people describe furniture. | **NEW** |
 | X-02 | P1 | **Skill level is a ceiling, never a floor.** `advanced` yields byte-identical joinery, steps, and word counts to `beginner` at template defaults (`pocket_screws / butt_screws / pocket_screws` at all three levels). `K.jointsForLevel` only gates. Declaring yourself advanced changes nothing. | **NEW** |
-| X-03 | P1 | **The entire non-chat control surface is five knobs.** The Adjust rail renders exactly Width, Depth, Height, Species (19 options), Finish. Joinery, skill level, shelf count, drawer count, and every thickness are chat-only — and chat is behind sign-in on a configured origin. | DOM query |
+| X-03 | P1 | **Joinery and every thickness are chat-only** — and chat is behind sign-in on a configured origin, so a signed-out user cannot change a joint at all. On the seed table the Adjust rail renders just five controls (Width, Depth, Height, Species, Finish). **Correction, made during implementation:** the original wording — "the entire non-chat control surface is five knobs" — was measured on a table and overstated the general case. Shelf count, drawer count, and skill level *are* already in the rail, but conditionally: shelf count only for bookshelf/cabinet (or an existing shelf), drawer count only for nightstand/cabinet. Five is the table's number, not the product's. The joinery and thickness half of the finding stands as written. | DOM query |
 | X-04 | P1 | **Two fallbacks, and the wrong one fires for real furniture.** Out-of-scope asks split between an honest capability list and a generic *"I didn't catch a change I can make there."* The generic one answers **"bed frame"**, **"floating wall shelf"**, **"something for my entryway"**. Mechanism (`ai.js:444`): `creationShaped` needs no possessive **and** (a creation verb **or** a leading article **or** a template word). | **NEW** |
 | X-05 | P1 | **The default custom piece ships a structural FAIL with zero fixes.** `defaultSpec('custom')` → `verdict: 'fail'` on joint adequacy (*"136 kg per joint vs 43 kg capacity"*), and the check's `fixes` array is **empty** — the one path that fails by default is the one with no one-tap remedy. | **NEW** |
 | X-06 | P2 | **"Workbench" is advertised but not delivered.** The capability list names it and offers *"A workbench"* as a chip; it maps to `table` with `topThickness: 25`, `legThickness: 70` at 910 mm. That is a table at bench height. | **NEW** |
@@ -271,4 +273,127 @@ Phase 4  Depth + verification     ← largest, least urgent; no user is blocked
 
 ---
 
-*Probes executed against `dist/index.html` built from commit `7cc8572`. Baseline suites green before and after; no source changed.*
+## 7. Implementation status
+
+Phases 0–2 are implemented on this branch. Every item below was verified by running the product, not by reading the diff.
+
+### Fixed
+
+| ID | What shipped |
+|----|--------------|
+| **F-01** | `BB.Engine.create` is guarded and boot continues. A `Proxy`-based stand-in engine absorbs **any** method call, so a call added later can never resurrect the crash; the handful of methods whose return value callers consume (`getIsolated`, `inPlayback`, `stats`, `cameraPose`, `renderNow`) answer explicitly. The viewport says *"3D preview isn't available in this browser — your plans below are unaffected"*. Locked by `test/nowebgl.playwright.js` (15 assertions) against a browser launched `--disable-webgl`. |
+| **G-01** | `probeAI` maps `401 → signedout`, a new badge state reading **"Sign in to design with AI"** with accent styling — the service is up, so it is an invitation, not a fault. Previously every signed-out visitor on a healthy deploy was told *"Offline · basic edits"*. |
+| **G-02** | New `GET /api/blueprint?owned=BB4:…` — a pure read (decode → evaluate → `chargeHash` → `bphash` lookup) that cannot charge. The client probes after the on-screen design settles and adopts the server's answer. A paid design no longer re-locks on reload or on a second device. |
+| **G-03 / G-04 / G-07** | One `entitlementState()` — `{ configured, signedIn, balance, designIssued, hasPlan, planLocked, nextAction }` — and every gate, lock glyph, tooltip, menu hint, and CTA now renders from it. The export hint is derived (`issued` / `sign in` / `needs a credit` / `1 credit`); the Build tooltip says how to unlock instead of claiming the feature is "included" beside a padlock; a zero balance offers **Get a credit**, not an issue the server answers with 402. |
+| **G-05** | Overview's "Estimated cost" now shows the BOM total, matching Buy. The boards-only subtotal keeps its own honest label, "Purchasable stock total". |
+| **G-06** | `test/gating.playwright.js` (37 assertions) drives all four entitlement states, each in its own context and mock origin so `billingConfigured()` cannot leak between them. |
+| **H-01** | A `fail` verdict gates Build behind an interstitial naming the failing checks, with **Show me the fixes** focused and **Build anyway** as the deliberate override; a verdict banner then stands at the bench for the whole build. Locked in `smoke.playwright.js`. |
+| **H-02 / H-03 / H-08 / H-09** | `correctionNotes()` grew from one branch to six, reporting joinery downgraded by level, dimensions clamped (naming **both** the asked-for and the applied value), species substituted (solid *and* sheet), shelf counts refused, and drawer banks dropped. `correctSpec` and the notes now read one shared `DIM_RULES` table, so they cannot drift. `ui.js` requests notes on **every** diff — previously only on `new` replies and custom patches, which is why an ordinary refinement stayed silent. |
+| **H-04** | Import calls the existing `Spec.integrityLine`, so a shared design that fails says so in chat instead of only *"revalidated"*. |
+| **H-05 / H-06** | Advisories surface above the fold (the summary promised "notes worth reading below" and there were none); the measured value renders at every level; identical checks group into one card ("Sag — Shelf 1–4 · 4 parts, same result"); the beginner line names the part instead of repeating one anonymous paragraph. |
+| **H-07** | Sag/strength failures offer a computed stiffer-species fix beside the thickness one, and joint-adequacy failures — which offered nothing at all — now offer a level-legal joint upgrade. |
+| **V-02** | `api/clientlog.js` + `window.onerror` / `unhandledrejection`. Allowlisted fields only, hard-truncated, per-page-load cap, `keepalive`, always `204`. |
+
+### Changed shape on contact with the code
+
+- **H-06 vs the beginner-jargon rule.** Using each check's own `explain` for beginners leaked creep/ΔMC into the first layer, which smoke rightly forbids. Specificity now comes from the part-named subject plus the always-visible measured value; the engine's prose stays one fold down.
+- **H-07 partial fixes.** The brief said never offer a fix that doesn't fully clear the check. The codebase already had an honest precedent (`Deepen … (partial fix — still over the limit)`), so the species fix follows it: on the frozen ash bookshelf it reads *"Switch to hickory (partial fix — still over the limit)"* rather than being suppressed.
+- **Sheet species on custom pieces.** Custom compositions genuinely cut sheet parts, so the sheet-species note fires there even though the dimension notes do not.
+- **`enterBuildMode` stays synchronous.** Making it `async` broke every caller that acts on the DOM on the next line — including the diagnostics entry point the smoke suite drives. Only the failing-verdict path defers, re-entering through the same door once answered.
+
+### Verification
+
+`unit 1256 · audit 625 · golden 6/6 · battery 50 · server 225 · credits 112 · smoke 291 · porch 81 · gating 37 · nowebgl 15 · handcalc 16/16`, **0 failures**, `test/golden/` untouched.
+
+Two notes for the record: `test/handcalc.js` reports **16/16**, not the 14/14 stated in `CLAUDE.md` — verified identical at `HEAD`, so that is stale documentation, not a change. And `test/smoke.playwright.js` gained assertions for the Build gate; its other Build entries pass `{ acknowledged: true }`, since those blocks test checklists and the pager, not the safety gate.
+
+## 8. Phase 3 + V-01 status
+
+### Fixed
+
+| ID | What shipped |
+|----|--------------|
+| **V-01** | `ci.yml` gains a second `browser` job — the first job is byte-identical, keeping its zero-install property. It runs all six browser suites as a real gate, caching npm and the Chromium download keyed on the *resolved* Playwright version. It carries a **coverage guard**: a `test:*` script whose command names a `.playwright.js` file must either have its own step or be listed in `SKIPPED` with a reason, and the workflow may not name a script that no longer exists. Verified in both directions locally — it passes on the real tree and correctly fails on a deliberately unwired suite. `timeout-minutes: 25`, sized from measured local wall-clock. |
+| **X-01** | The creation guard now matches genuine **back-references** only: bare `it/its/mine`, or `this/that/these/those` + a piece noun, or `my` + a *piece* noun. A possessive attached to a room, person, or purpose no longer blocks a build. *"a desk for my office"* builds a desk; *"walnut nightstand for my bedroom"* builds a nightstand instead of turning the current table walnut. |
+| **X-02** | Raising the skill level now **offers** the joints it unlocks, as tappable chips. The level still only ever gates — code owns the joint, the chip proposes intent, exactly like chat. Lowering the level pushes nothing and still snaps illegal joints back (now with a correction note). |
+| **X-03** | The Adjust rail gains joinery slot selects — filtered to joints legal for that slot *and* that skill level — plus top / shelf / leg thickness. Slots are shown only for templates that actually build with them (derived by building each template with a distinct sentinel joint per slot). Bounds are read from the exported `Spec.DIM_RULES`, the same table `correctSpec` clamps against, and the two surfaces that previously hardcoded those numbers now read it too. |
+| **X-04** | One honest fallback. Out-of-scope asks get a specific reason and the nearest expressible option as a chip — *"Beds are outside what I build — nothing here is sized to carry a mattress"*, *"Chairs and stools are outside what I build; a bench is the seating I can make"*. The edit-phrased answer is reserved for genuine edit attempts. Every chip the capability list offers is fed back through the parser in the battery and must build. |
+| **X-05** | `defaultSpec('custom')` ships **`advisory`**, not `fail`. The two connections moved from end-grain butt screws to a knockdown bolt — the only beginner-legal joint that carries a BIFMA seating load through two connections, and the same remedy the engine's own fix offers. Joint adequacy now passes at 1.70× against the 1.5× gate. |
+| **X-06** | The parser stops promising a workbench. "Workbench" survives only as a *height* (*"a table — a work table at workbench height included"*), the `"A workbench"` chip is gone, and the ack states the boundary: *"a sturdy table, not a laminated bench top with a vise, which is past what I can build."* The 45 mm `topThickness` ceiling makes a real bench top inexpressible, so this is resolved as copy honesty rather than a geometry claim. |
+| **X-08** | A refinement that names the piece renames it: *"dining table 8 feet long"* → *"Adjusted width 96 in, renamed 'Dining table 8 feet long'."* |
+
+### Found while implementing — not in the original audit
+
+- **`test/cloud.playwright.js` had a failing assertion at `HEAD`**, and had for some time: it asserted every KV key starts with `bb:{uid}:`, but the signup-grant counter `bb:ipgrant:{hashed ip}` is *documented* as living outside every per-uid keyspace. Rewritten as an allowlist — any key that is neither per-uid nor a known shared root now fails, which is **stricter** than the prefix test it replaces, not weaker.
+- **The same suite leaked its server.** `chromium.launch()` and the boot timeout both sat outside the `try`, so `server.kill()` was skipped on those paths. Locally that is a stray process; in CI a leaked child holds the step's stdout pipe and the step hangs until its timeout. Cleanup now runs on every path.
+- **The golden corpus was coupled to a mutable product default.** `custom-bench-metric` was defined as `Spec.defaultSpec('custom')`, so repairing that default (X-05) would have silently rewritten a *frozen* fixture. The composition is now spelled out inline — screwed, end-grain, honestly failing, exactly as frozen. All six goldens remain byte-identical.
+- **`CLAUDE.md`'s "handcalc must stay 14/14" is stale** — the worksheet is 16/16, verified identical at `HEAD`.
+
+### Correction to this audit
+
+X-03 originally read *"the entire non-chat control surface is five knobs."* That was measured on a table. Shelf count, drawer count, and skill level were already in the rail, conditionally. The finding is corrected in place in §3.4; the joinery-and-thickness half stood.
+
+### Verification
+
+`unit 1256 · audit 659 · golden 6/6 · battery 20 cases/110 · server 225 · credits 112 · handcalc 16/16 · smoke 291 · porch 81 · gating 37 · nowebgl 15 · adjust 21 · cloud 11` — **0 failures**, `test/golden/` untouched. Smoke was run three times to check for flakiness now that CI gates on it.
+
+### Still open
+
+Phases 4–5: plan depth (D-01…D-09 — frame templates at a third of casework density, custom step titles, the two `fine()` → `drill()` call sites) and the rest of verification (V-03 migration corpus, V-04 export structure, V-05 XSS lock, V-06 service worker, V-07 a11y tooling, V-08…V-11). X-07 (doors, stretchers, desk drawers, chairs, beds) remains a geometry workstream, not a copy fix.
+
+---
+
+## 9. Phase 4 status — depth and verification
+
+### Fixed
+
+| ID | What shipped |
+|----|--------------|
+| **D-01** | Frame templates were a sketch beside casework. Table / desk / bench go from **6 steps · 326 words to 8 steps · 930 words**: a stock-layout step that assigns the boards before a cut is made, a base flatness check (diagonals across the base, then sighting the four leg tops in one plane), clamp counts and cauls named per glue-up, seasonal-movement instruction at the top attachment computed from the species and the climate swing, and a dry-fit demanded before any glue. The exit criterion was casework-to-frame word ratio within 2×: **3.67× → 1.60×**. |
+| **D-02** | Every custom-composition step names its own parts instead of "connect the parts": 205 → 428 words over the same 6 steps. Locked by an audit section that fails on any step whose text does not name the parts its `partIds` list. |
+| **D-03** | `step.jointInfo` carries the **effective** fastening, not the nominal joint. A step whose joint was downgraded by skill level (or substituted by correction) used to print the joint the spec asked for while the fastener engine drilled the joint it actually got; the plan and the drilling instructions could disagree with each other on the same page. |
+| **D-04** | A step that introduces several distinct fastenings now explains **each** of them, grouped with a count — *"The same setout at all 4 long apron-to-leg joints."* The old code deduplicated by joint type and stopped at two, so a nightstand step carrying six joints described one. Grouping carries `samePair`, so nothing claims "all N x-to-y joints" when the joints do not in fact run between the same two parts. |
+| **D-05** | `fine()` → `drill()` at the two `plans.js` call sites, and the reveal at `:342` to `len()`. The rule — bores are bit sizes, gaps are fractions, decimals are for tolerance and computed movement only — is now regression-locked across **every** emitter rather than at the two sites that regressed, so it cannot come back a third time in a different file. |
+| **V-03** | `test/fixtures/legacy/` — 11 saved designs and share codes spanning versionless Phase-1 through current, including three that omit fields later migrations add. Two sections: one asserts the corpus covers **every** registered migration (a new migration with no fixture fails), the other opens all 11 and validates the result. The promise in `CLAUDE.md` — *"a saved design must never fail to open"* — had nothing executing it. |
+| **V-04** | `test/lib/format-check.js`: real structural validation for each export — XML well-formedness with tag balance for COLLADA, GLB magic/version/chunk-length arithmetic against the actual byte length plus JSON-chunk parse, CSV field-count agreement, Ruby balance. Applied across three shapes of design. **And the validators are themselves tested**: a section feeds each one deliberately corrupt input and fails if it passes, because a lock that cannot fail is not a lock. |
+| **V-05** | A hostile design name — `<img src=x onerror=alert(1)>` and friends — is carried byte-identical by the codec and escaped by every renderer: the studio, the sheet set, and the public share page. Two real vulnerabilities were found doing this and are recorded below. |
+| **V-06** | `src/sw.js` (186 lines), emitted as a `dist/` sibling by `build.js` under `BB_SW` (`on` default / `off` / `tombstone` → `src/sw-kill.js`, a worker that unregisters itself and clears its caches). Network-first for navigations with the cache as fallback, so a stale worker can never pin an old app; cache name is `bb-shell-<sha256(html)[0:12]>`, so a new build is a new cache. `/api/*` and `/b/:code` are never touched — a cached entitlement answer or a cached share page is exactly the bug the credits pivot cannot afford. |
+| **V-07** | `test/a11y.playwright.js` — 180 assertions. axe-core swept across the states the app really has (three modes, five plan sub-tabs, a **failing**-verdict design, six modal surfaces, both themes, mobile, the porch, forced-colors, reduced-motion), plus hand-rolled checks for the four commitments no generic ruleset knows: token-level contrast pairs, verdict capsules carrying text and not colour alone, the forced-colors opt-out register, and reduced-motion content parity. Every exclusion is declared in a register the axe options are **built from**, so an undeclared exclusion cannot exist. First run: **48 failures**, dominated by one token — `--muted` failed AA on all four light surfaces while `brand-system.md` §8 claimed every pair passed. |
+| **V-10** | `test/print.playwright.js` (34) measures the 1:1 templates against the real page box in a browser. It found a silent, self-certifying defect: 240 mm template strips in a 179.9 mm printable column — **clipped, not scaled**, while the 100 mm scale-check bar beside them still measured correct, so the artifact certified its own accuracy while being wrong. `api/_sheets.js` now derives the strip width from the narrowest paper it can land on (A4 portrait, 210 mm) less margins and printer slack, and declares `@page { size: letter }`. Shipped separately as `06f721b`. |
+
+### Two vulnerabilities, found while implementing V-05
+
+Both were reproduced end to end before being touched, and both are fixed at the single choke point rather than at the call site that exposed them.
+
+- **Prototype pollution through `POST /api/blueprint`.** `deepMerge` walked whatever keys its input had. `JSON.parse` creates a real own `__proto__` property, the endpoint accepts a raw `body.spec`, and `api/_pipeline.js` keeps its `vm` context warm between requests — so one poisoned merge outlived the request that caused it and reached the **next user's** plan. The codec path was never exposed (decode emits a fixed key set), which is exactly why it went unnoticed. `deepMerge` now skips `__proto__` / `constructor` / `prototype`.
+- **Remote code execution through a shared design name (SketchUp `.rb` export).** The Ruby escaper handled `\` and `"` only. The design name rides a share code between users byte-identical and is emitted inside real quoted strings — including `model.start_operation("Import <name>", true)`. Two ways out: a newline ended the statement, putting an uncommented `system` call on its own line; and `#{…}` interpolates, so `#{system(...)}` ran the moment the script did. The file's own header tells the reader to paste it into SketchUp's Ruby Console. Escaping now covers `#`, newlines, tabs and every control character.
+
+### Found while implementing — not in the original audit
+
+- **Dropping `role="menu"` unwired every export in the product.** `#moreMenu` claimed `role="menu"` while containing settings groups that are not menu items and implementing no roving-focus contract; it failed `aria-required-children`, so the roles came off. But **three** pieces of `ui.js` found their targets with `[role="menuitem"]` selectors, and all three silently matched nothing: the click binding that is the *only* wiring for `[data-export]` (sheet set, print, SVG, CSV, JSON, GLB, `.rb`, `.dae` — all visible, all enabled, all inert), the arrow-key navigation, and the close-the-panel-on-pick behaviour. A fourth, `releaseFocus`'s `[aria-haspopup="menu"]` fallback, dropped focus to `<body>` every time a dialog opened from the panel was closed. All four are selected by structure now, and each has a test that fails if the wiring goes away again: smoke **presses** an export entry and watches the export layer get called, rather than asserting the button exists.
+- **The V-01 coverage guard registered scripts, not files.** `test/diy-audit.playwright.js` had no npm script, so it was invisible to the guard — 944 lines driving a `#exportMenu` the shell redesign deleted. The guard now enumerates `test/*.playwright.js` on disk as well; a suite file must be reachable from a script or declared in a `MANUAL` register with a reason (its standing is the one `CLAUDE.md` already gives `test/benchmark-shaker.js`).
+- **`aria-haspopup` has no value that means "group".** Its legal values name a role — menu / listbox / tree / grid / dialog, with `true` defined as a synonym for menu — and axe validates that the attribute is *well-formed*, never that the thing it names has that role. Both shell popups are disclosures now (`aria-expanded` + `aria-controls`, no `aria-haspopup`), and the suite checks the trigger and its target agree **in both directions**, so "no `aria-haspopup`" cannot become the loophole.
+- **Three menu rows were labelled "Units and precision" regardless of contents** (Theme and Render included), and `#precisionRow` carried `role="group"` twice. Introduced while satisfying the menu's required-children rule; removed with the rule that required them, since each row is already named visually and each control inside already carries its own labelled group.
+- **Two source files were classified as binary by grep.** A literal `NUL` used as a map-key separator in `ui.js` (and two in the a11y suite) made ripgrep skip both files entirely — in a repo whose entire workflow is grep-driven. Written as `\u0000` escapes now: identical strings, plain-ASCII files.
+- **Adding one devDependency broke every deploy, with fifteen suites green.** `pnpm-lock.yaml` is committed (`package-lock.json` deliberately is not), so Vercel picks pnpm and deploys with `pnpm install --frozen-lockfile`, which refuses a lock that disagrees with `package.json`. Adding `axe-core` for V-07 without relocking failed every deployment on the branch with `ERR_PNPM_OUTDATED_LOCKFILE`, while `unit · audit · golden · battery · server · credits · handcalc` and all eight browser suites reported green — **no suite reads `package.json`, and CI never installs with pnpm**, so no signal existed short of deploying. This is §2’s thesis reappearing on a surface §2 never considered: the *repository* has contracts too, and they were as unguarded as `ui.js` was. Note also that the elimination pass that missed it was testing `vercel.json`’s `installCommand` — **a command Vercel never ran**, because the lockfile chooses the package manager and the package manager brings its own install semantics. `scripts/check-lockfile.js` now runs in the zero-install job and makes the same comparison `--frozen-lockfile` makes; per V-04’s rule, it was driven through all six outcomes (including an unparseable lockfile, which fails loudly rather than reporting agreement it never established) before being wired in.
+
+### Changed shape on contact with the code
+
+- **Two agent-reported failures were mis-specified assertions, not product bugs**, and were reproduced before being reported as such: `!/ onerror=/i.test(doc)` matched the correctly **escaped** `&lt;img src=x onerror=alert(1)&gt;`, and an SVG element count of 4 where 7 is right (root + 3 positioning wrappers + 3 elevations).
+- **Two smoke assertions encoded markup this phase deliberately changed**, and were rewritten to test the contract rather than the old shape: panel headings moved `h3` → `h2` (heading-order), so the ledger check reads `:is(h2, h3).kicker`; and `.brand-name` is visually clipped rather than `display: none` on phones, because `display: none` removed the document's only `<h1>` from the accessibility tree in every mobile state. The new assertion — occupies no header width **and** still carries its text as the `<h1>` — fails if either half regresses, where the old one would pass again the moment somebody reintroduced the defect.
+
+### Verification
+
+`unit 1741 · audit 788 · golden 6/6 · battery 20 cases/110 · server 225 · credits 112 · handcalc 16/16 · smoke 293 · porch 81 · gating 37 · nowebgl 15 · adjust 21 · print 34 · a11y 180 · cloud 11` — **0 failures**.
+
+`test/golden/` took its one deliberate refreeze: 2 files, 4 lines — the `layout` and `base_check` step IDs D-01 adds to the two frame fixtures. The corpus stores step **IDs**, not step text, which is why 600 words of new instruction moved nothing else. The a11y suite was run three times on a frozen build for flakiness: identical results each time.
+
+Verified on CI as well as locally, which is the point of V-01: `test` and `browser` both green on a GitHub runner — the `browser` job's first real executions, at 6m42s and 9m06s against a 25-minute cap — plus a green Vercel deployment, which is the one signal none of the suites can produce.
+
+### Still open
+
+X-07 (doors, stretchers, desk drawers, chairs, beds) remains a geometry workstream. D-06…D-09 (joint teaching in the 3D view), V-08, V-09 and V-11 are unstarted. The service worker ships but is not yet exercised by a browser suite — `BB_SW=off` is the escape hatch until it is.
+
+---
+
+*Audit probes executed against `dist/index.html` built from commit `7cc8572`; no source changed by the audit itself. Phases 0–4 implemented and verified on this branch as recorded in §7, §8 and §9.*

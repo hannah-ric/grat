@@ -1819,7 +1819,11 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
   // Custom path: the unconditional " Dry-fit before glue." suffix (ref4's
   // live bed rails: "…with knockdown bolts. Dry-fit before glue.").
   const cu = Spec.correctSpec(Spec.defaultSpec('custom'));
+  // A deliberately MIXED graph — one bolted connection, one glued-and-screwed
+  // one — so both wordings are exercised in a single assembly. (The shipped
+  // default is bolted throughout since X-05, hence the explicit second joint.)
   cu.custom.connections[0].joint = 'kd_bolt';
+  cu.custom.connections[1].joint = 'butt_screws';
   const cuModel = Parametric.build(cu);
   const cSteps = Plans.assembly(cu, cuModel, null, {});
   const kdStep = cSteps.find(s => /knockdown bolts/.test(s.text));
@@ -1988,6 +1992,784 @@ section('M-22 budget digest: species $/bd ft + the current design total reach th
   const sys = AI.systemPrompt(spec);
   const marker = sys.indexOf('--- current spec (wire format) ---');
   ok(sys.indexOf(line) > marker && marker > 0, 'budget line rides the per-call tail, after the cache-split marker');
+}
+
+/* ================= G10b: the OTHER silent corrections are disclosed too ================= */
+section('G10b correctionNotes names the joint, length, species and feature corrections silently made');
+{
+  const notes = raw => Spec.correctionNotes(raw, Spec.correctSpec(Spec.clone(raw)));
+  const one = (raw, what) => {
+    const n = notes(raw);
+    ok(n.length === 1, `${what} — exactly one note, got ${n.length}: ${JSON.stringify(n)}`);
+    return n[0] || '';
+  };
+
+  // 1. JOINERY GATED BY SKILL LEVEL. correctSpec swaps the joint for the
+  // level default and says nothing; a beginner asking for mortise & tenon
+  // built pocket screws believing they had cut tenons.
+  {
+    const n = one({ meta: { template: 'table', level: 'beginner' }, joinery: { frame: 'mortise_tenon' } }, 'beginner asking for M&T');
+    ok(/Mortise & tenon/.test(n), `the note uses the K label for the joint asked for — got "${n}"`);
+    ok(/Pocket screws/.test(n), `the note names the joint actually applied — got "${n}"`);
+    ok(/beginner/.test(n), `the note names the level that gated it — got "${n}"`);
+    ok(!/mortise_tenon|pocket_screws/.test(n), 'no raw enum keys leak into the note');
+
+    // Every gated slot, at every level that gates it.
+    const box = one({ meta: { template: 'nightstand', level: 'beginner' }, joinery: { box: 'half_blind_dovetail' } }, 'beginner asking for half-blind dovetails');
+    ok(/Half-blind dovetail/.test(box) && /drawer-box joinery/.test(box), `the box slot is named by its human label — got "${box}"`);
+    const mid = one({ meta: { template: 'table', level: 'intermediate' }, joinery: { frame: 'mortise_tenon' } }, 'intermediate asking for M&T');
+    ok(/intermediate/.test(mid) && /Dowel joint/.test(mid), `the intermediate downgrade names its own substitute — got "${mid}"`);
+
+    // A joint that never fits the slot (dado is case-only) is nonsense, not a
+    // level downgrade — correction still swaps it, but this note stays quiet.
+    eq(notes({ meta: { template: 'table', level: 'advanced' }, joinery: { frame: 'dado' } }), [], 'a kind-mismatched joint is not reported as a level downgrade');
+    eq(notes({ meta: { template: 'table', level: 'beginner' }, joinery: { frame: 'not_a_joint' } }), [], 'an unknown joint key is not reported as a level downgrade');
+    // A joint the level DOES allow is kept — nothing to disclose.
+    eq(notes({ meta: { template: 'table', level: 'advanced' }, joinery: { frame: 'mortise_tenon' } }), [], 'an allowed joint earns no note');
+  }
+
+  // 2. DIMENSIONS CLAMPED. The note must name BOTH the number asked for and
+  // the number applied — "the tool ignored you" is the part users never saw.
+  {
+    const w = one({ meta: { template: 'table', level: 'beginner' }, overall: { width: 4000 } }, 'a 4000 mm wide table');
+    ok(/width/.test(w), `the note names the field — got "${w}"`);
+    ok(/4000 mm/.test(w) && /2400 mm/.test(w), `the note names asked AND applied — got "${w}"`);
+    const t = one({ meta: { template: 'table', level: 'beginner' }, structure: { topThickness: 6 } }, 'a 6 mm table top');
+    ok(/top thickness/.test(t) && /6 mm/.test(t) && /12 mm/.test(t), `structure fields are reported the same way — got "${t}"`);
+
+    // The piece's own geometry can refuse an in-range value too: 70 mm legs
+    // are legal stock, but not under a 300 × 250 footprint.
+    const leg = one({ meta: { template: 'table', level: 'beginner' }, overall: { width: 300, depth: 250, height: 700 }, structure: { legThickness: 70 } }, 'legs too fat for the footprint');
+    ok(/leg thickness/.test(leg) && /70 mm/.test(leg) && /60 mm/.test(leg), `a geometric cap names both numbers — got "${leg}"`);
+
+    // Landing on stock is code buying a real board, not a refusal — quiet.
+    eq(notes({ meta: { template: 'table', level: 'beginner' }, structure: { topThickness: 30 } }), [], 'an in-range value that only snaps to stock earns no note');
+    eq(notes({ meta: { template: 'table', level: 'beginner' }, overall: { width: 1200 } }), [], 'an in-range width earns no note');
+
+    // Display boundary: lengths in notes render through BB.Units, once.
+    Units.set({ system: 'imperial', precision: 16, dual: false });
+    const imp = notes({ meta: { template: 'table', level: 'beginner' }, overall: { width: 4000 } })[0] || '';
+    ok(/157 1\/2 in/.test(imp) && /94 1\/2 in/.test(imp), `the clamp note re-renders imperial — got "${imp}"`);
+    ok(!/mm/.test(imp), 'no raw millimetre string escapes the units boundary');
+    Units.set({ system: 'metric', precision: 16, dual: false });
+  }
+
+  // 3. SPECIES SUBSTITUTED. An unstocked name, or sheet goods asked to be the
+  // solid lumber, both snap to the fallback with no word to the user.
+  {
+    const s = one({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'wenge' } }, 'an unstocked species');
+    ok(/wenge/.test(s), `the note names the species asked for — got "${s}"`);
+    ok(/Red Oak/.test(s), `the note names the species actually used — got "${s}"`);
+    const sheet = one({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'baltic_birch' } }, 'sheet goods asked to be solid');
+    ok(/sheet/i.test(sheet) && /Red Oak/.test(sheet), `sheet-as-solid is explained, not just swapped — got "${sheet}"`);
+    eq(notes({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'walnut' } }), [], 'a stocked solid species earns no note');
+  }
+
+  // 3b. SHELF COUNT REFUSED — two mechanisms, two meanings, and a count never
+  // crosses the units boundary.
+  {
+    // (a) the arbitrary product cap.
+    const cap = one({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 12, shelfThickness: 19 } }, 'twelve shelves asked of a tall case');
+    ok(/shelf count/.test(cap) && /12/.test(cap) && /8/.test(cap), `the cap note names asked AND the ceiling — got "${cap}"`);
+
+    // (b) the interesting one: the piece's OWN height cannot space them apart.
+    const fit = one({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 500 }, structure: { shelfCount: 8, shelfThickness: 32 } }, 'eight shelves in a 500 mm case');
+    ok(/8/.test(fit) && /6/.test(fit), `the spacing note names asked AND carried — got "${fit}"`);
+    ok(/height/.test(fit), `the spacing note blames the piece's height, not an arbitrary cap — got "${fit}"`);
+    ok(!/this tool builds|stops at/.test(fit), 'the spacing refusal is not worded as the product cap');
+
+    // Both at once chain honestly: 12 → the tool stops at 8 → the piece fits 6.
+    const both = notes({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 500 }, structure: { shelfCount: 12, shelfThickness: 32 } });
+    eq(both.length, 2, 'a count refused twice earns one note per mechanism');
+    ok(/12/.test(both[0]) && /8/.test(both[0]), `the cap note comes first — got "${both[0]}"`);
+    ok(/8/.test(both[1]) && /6/.test(both[1]), `the spacing note picks up where the cap left off — got "${both[1]}"`);
+
+    // Singular and zero read as English, not as templating.
+    const none = one({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 200 }, structure: { shelfCount: 1, shelfThickness: 32 } }, 'one shelf in a 200 mm case');
+    ok(/1 shelf\b/.test(none) && !/1 shelves/.test(none), `a single shelf is singular — got "${none}"`);
+    ok(/none/.test(none) && !/carries 0/.test(none), `zero shelves reads as "none" — got "${none}"`);
+
+    // A count is not a length: no unit ever appears, in either display system.
+    for (const system of ['metric', 'imperial']) {
+      Units.set({ system, precision: 16, dual: false });
+      const n = notes({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 12, shelfThickness: 19 } })[0] || '';
+      ok(/\(12\)/.test(n) && !/\bmm\b|\bin\b|\/|″/.test(n), `the count is a bare integer in ${system} — got "${n}"`);
+    }
+    Units.set({ system: 'metric', precision: 16, dual: false });
+
+    // Quiet when nothing was refused: a count that fits, and rounding.
+    eq(notes({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 4, shelfThickness: 19 } }), [], 'a shelf count that fits earns no note');
+    eq(notes({ meta: { template: 'bookshelf', level: 'beginner' }, overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 3.4, shelfThickness: 19 } }), [], 'rounding a fractional count is not a refusal');
+  }
+
+  // 3c. SHEET STOCK SUBSTITUTED. Same rule as the solid species, its own slot.
+  {
+    const s = one({ meta: { template: 'cabinet', level: 'beginner' }, wood: { sheetSpecies: 'marine_ply' } }, 'an unstocked ply');
+    ok(/marine ply/.test(s), `the note names the ply asked for — got "${s}"`);
+    ok(/Baltic Birch Ply/.test(s), `the note names the ply actually used — got "${s}"`);
+    ok(/sheet/i.test(s), `the note makes clear it is the SHEET stock that changed — got "${s}"`);
+    ok(!/the design is built in/.test(s), 'a sheet substitution never claims the solid wood changed');
+    const solidAsSheet = one({ meta: { template: 'cabinet', level: 'beginner' }, wood: { sheetSpecies: 'walnut' } }, 'lumber asked to be sheet stock');
+    ok(/Black Walnut/.test(solidAsSheet) && /solid lumber, not sheet stock/.test(solidAsSheet), `solid-as-sheet is explained — got "${solidAsSheet}"`);
+    eq(notes({ meta: { template: 'cabinet', level: 'beginner' }, wood: { sheetSpecies: 'mdf' } }), [], 'a stocked sheet good earns no note');
+
+    // One refused NAME standing in for both slots is one refusal — a user must
+    // never read it as a single wood being changed twice.
+    const merged = one({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'wenge', sheetSpecies: 'wenge' } }, 'the same unknown name in both slots');
+    ok(/wenge/.test(merged) && /Red Oak/.test(merged) && /Baltic Birch Ply/.test(merged), `the merged note names both replacements — got "${merged}"`);
+    // Two genuinely different asks stay two notes.
+    const two = notes({ meta: { template: 'table', level: 'beginner' }, wood: { species: 'wenge', sheetSpecies: 'marine_ply' } });
+    eq(two.length, 2, 'two different refused names stay two notes');
+
+    // Custom pieces DO cut sheet parts, so the sheet slot is reported there —
+    // unlike structure.*, which a custom composition never reads.
+    const cust = Spec.defaultSpec('custom');
+    cust.wood.sheetSpecies = 'marine_ply';
+    cust.structure.shelfCount = 12;
+    const cn = notes(cust);
+    eq(cn.length, 1, 'a custom piece reports its sheet stock and nothing structural');
+    ok(/sheet/i.test(cn[0] || ''), `the surviving custom note is the sheet one — got "${cn[0]}"`);
+  }
+
+  // 4. FEATURE DROPPED. Drawers on a template with no opening become null.
+  {
+    const d = one({ meta: { template: 'desk', level: 'beginner' }, drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' } }, 'drawers on a desk');
+    ok(/desk/.test(d), `the note names the template that refused them — got "${d}"`);
+    ok(/drawer/i.test(d), `the note names the dropped feature — got "${d}"`);
+    ok(/table/.test(one({ meta: { template: 'table', level: 'beginner' }, drawers: { count: 1 } }, 'drawers on a table')), 'the same holds for a table');
+    // Templates that DO carry drawers keep them — nothing was refused.
+    eq(notes({ meta: { template: 'nightstand', level: 'beginner' }, drawers: { count: 2 } }), [], 'a nightstand keeps its drawers, so earns no note');
+  }
+
+  // 5. NO CORRECTION → NO NOTE. Every shipped default round-trips silent, and
+  // the notes stay unique when several classes fire at once.
+  {
+    for (const t of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom']) {
+      eq(notes(Spec.defaultSpec(t)), [], `the ${t} default is corrected without a single note`);
+    }
+    const all = notes({
+      meta: { template: 'desk', level: 'beginner' }, overall: { width: 4000 },
+      wood: { species: 'wenge' }, joinery: { frame: 'mortise_tenon' }, drawers: { count: 1 }
+    });
+    eq(all.length, 4, 'four independent corrections produce four notes');
+    eq(new Set(all).size, all.length, 'notes are deduplicated');
+
+    // Never throws: the UI calls this with Spec.deepMerge(base, patch), so the
+    // raw spec arrives partial, sectionless, or full of junk values.
+    const good = Spec.correctSpec({ meta: { template: 'table', level: 'beginner' } });
+    for (const junk of [null, undefined, 42, 'x', {}, { meta: null }, { structure: 'no' }, { wood: { species: 5 } },
+      { joinery: { frame: {} } }, { drawers: true }, { overall: { width: NaN } }, { overall: { width: 'wide' } },
+      { structure: { shelfCount: 'many' } }, { structure: { shelfCount: NaN } }, { wood: { sheetSpecies: 5 } }, { wood: { sheetSpecies: '' } }]) {
+      let out = null, threw = false;
+      try { out = Spec.correctionNotes(junk, good); } catch (e) { threw = true; }
+      ok(!threw && Array.isArray(out), `junk raw spec ${JSON.stringify(junk)} returns an array without throwing`);
+    }
+    for (const cor of [null, undefined, 42, {}, { meta: null }]) {
+      let threw = false;
+      try { Spec.correctionNotes({ overall: { width: 4000 }, drawers: { count: 1 } }, cor); } catch (e) { threw = true; }
+      ok(!threw, `a junk corrected spec ${JSON.stringify(cor)} never throws`);
+    }
+    // Pure: neither argument is mutated.
+    const raw = { meta: { template: 'desk', level: 'beginner' }, overall: { width: 4000 }, drawers: { count: 1 } };
+    const before = JSON.stringify(raw);
+    Spec.correctionNotes(raw, Spec.correctSpec(Spec.clone(raw)));
+    eq(JSON.stringify(raw), before, 'correctionNotes never mutates the raw proposal');
+  }
+}
+
+/* ================= B-fixes: every failing check offers a fix that FIXES ================= */
+section('B-fixes stiffer-species and joint-upgrade fixes exist, and applying one lifts the check');
+{
+  const RANK = { fail: 0, advisory: 1, pass: 2 };
+  const integrityOf = raw => {
+    const r = pipeline(raw);
+    return { spec: r.spec, checks: Structural.computeIntegrity(r.spec, r.model, {}).checks };
+  };
+  const chk = (checks, id) => checks.find(c => c.id === id);
+  // Applying a fix = merging its patch through the normal correction pipeline.
+  const applied = (spec, fix, id) => chk(integrityOf(Spec.deepMerge(Spec.clone(spec), fix.patch)).checks, id);
+
+  /* ---- 1. the frozen honest-fail bookshelf: ash shelves sagging under books.
+   * The one-tap vocabulary used to be thickness ONLY; a stiffer species is
+   * the other answer that needs no new geometry. */
+  const ASH = {
+    meta: { name: 'Floor Bookshelf', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 },
+    wood: { species: 'ash', sheetSpecies: 'baltic_birch' },
+    structure: { shelfCount: 4, shelfThickness: 19, sideThickness: 19, backPanel: true, topThickness: 25 },
+    joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' }
+  };
+  const ash = integrityOf(ASH);
+  const ashSag = chk(ash.checks, 'sag:shelf_1');
+  ok(ashSag && ashSag.status === 'fail', 'ash-bookshelf-metric is still an honest FAIL (frozen case)');
+  ok(ashSag && ashSag.fixes.some(f => f.id === 'thick-shelf'), 'the thickness fix is still offered');
+  const wood = ashSag && ashSag.fixes.find(f => f.patch && f.patch.wood && f.patch.wood.species);
+  ok(wood, 'a sagging shelf now also offers a stiffer species — one-tap, no new geometry');
+  // The species is COMPUTED, not named: stiffest solid in the catalog, and
+  // never the one already in the design or a sheet good.
+  const solids = Object.values(K.WOOD_SPECIES).filter(w => !w.sheet);
+  const stiffest = solids.slice().sort((a, b) => b.moe - a.moe)[0];
+  const picked = wood && K.WOOD_SPECIES[wood.patch.wood.species];
+  ok(picked && !picked.sheet, 'the offered species is solid stock — a sheet good is not a solid-wood substitute');
+  ok(picked && picked.key !== 'ash', 'never offers the species the design already uses');
+  eq(picked && picked.key, stiffest.key, 'MOE-driven pick: the stiffest species that lifts the check');
+  ok(picked && picked.moe > K.WOOD_SPECIES.ash.moe, 'the pick is genuinely stiffer than what is in the design');
+  ok(wood && wood.label.toLowerCase().indexOf(picked.label.toLowerCase()) >= 0, 'the label names the species');
+  // THE test: applying it actually moves the check it claims to fix.
+  const ashAfter = applied(ash.spec, wood, 'sag:shelf_1');
+  ok(ashAfter && RANK[ashAfter.status] > RANK[ashSag.status],
+    `the species fix lifts the check it is offered on (${ashSag.status} → ${ashAfter && ashAfter.status})`);
+  ok(ashAfter && ashAfter.status !== 'fail', 'and never leaves the check failing');
+  // 14.9 GPa against 12.0 cannot fully clear a 1.53 ratio — say so, don't pretend.
+  ok(/partial fix/.test(wood.label) === (ashAfter.status !== 'pass'),
+    'a fix that only gets partway says so in the label, exactly like the thickness fix');
+  // The frozen case itself does not move: fixes are additive, verdicts are not.
+  for (const id of ['sag:shelf_1', 'sag:shelf_2', 'sag:shelf_3', 'sag:shelf_4']) {
+    ok(chk(ash.checks, id).status === 'fail', `${id} still fails — adding a fix changed no physics`);
+  }
+  near(chk(ash.checks, 'sag:shelf_1').data.sagMM, 4.407, 0.01, 'the frozen sag number is untouched');
+
+  // No failure, no upsell: a species fix is never offered on a passing check,
+  // and never offered to a design already built from the stiffest stock.
+  const stout = integrityOf(Object.assign({}, ASH, { structure: { shelfCount: 4, shelfThickness: 45, sideThickness: 25, backPanel: true, topThickness: 45 } }));
+  const stoutSag = chk(stout.checks, 'sag:shelf_1');
+  ok(stoutSag && stoutSag.status === 'pass' && stoutSag.fixes.length === 0, 'a passing shelf is offered nothing');
+  const hick = integrityOf(Object.assign({}, ASH, { wood: { species: stiffest.key, sheetSpecies: 'baltic_birch' } }));
+  const hickSag = chk(hick.checks, 'sag:shelf_1');
+  ok(hickSag && !hickSag.fixes.some(f => f.patch && f.patch.wood),
+    'nothing stiffer exists, so nothing is offered — never a fix that would not fix');
+
+  /* ---- 2. joint adequacy: the path that fails had no remedy.
+   * A beginner slab bench whose seat is screwed into the end grain of two leg
+   * panels — 136 kg per joint against 43 kg of capacity. This WAS
+   * defaultSpec('custom') verbatim; X-05 repaired the shipped default onto
+   * knockdown bolts, so the fixture now spells its failing joints out rather
+   * than depending on the product default staying broken. */
+  const screwedBench = () => Spec.deepMerge(Spec.defaultSpec('custom'), {
+    custom: {
+      connections: [
+        { a: 'p2', b: 'p1', joint: 'butt_screws' },
+        { a: 'p3', b: 'p1', joint: 'butt_screws' }
+      ]
+    }
+  });
+  const cus = integrityOf(screwedBench());
+  const jc = chk(cus.checks, 'joints');
+  ok(jc && jc.status === 'fail', 'an end-grain screwed slab bench still fails joint adequacy honestly');
+  ok(jc && jc.fixes.length > 0, 'a failing joint check now offers a remedy (it used to offer none)');
+  const up = jc && jc.fixes.find(f => f.id === 'upjoint');
+  ok(up, 'the remedy is the upjoint fix, same shape as the template path');
+  const newJoint = up && up.patch.custom.connections.find(c => c.joint !== 'butt_screws');
+  ok(newJoint, 'the custom patch rewrites the connections that carry the load');
+  const lvl = cus.spec.meta.level;
+  ok(newJoint && K.jointsForLevel(lvl).includes(newJoint.joint),
+    `the upgrade respects the ${lvl} level matrix — ${newJoint && newJoint.joint} is buildable at this level`);
+  ok(newJoint && K.JOINERY[newJoint.joint] && !K.JOINERY[newJoint.joint].external,
+    'and it joins two parts, not the building');
+  ok(up && up.label.indexOf(K.JOINERY[newJoint.joint].label.toLowerCase()) > 0, 'the label names the joint');
+  // THE test again: apply it and the check must lift.
+  const jAfter = applied(cus.spec, up, 'joints');
+  ok(jAfter && RANK[jAfter.status] > RANK[jc.status],
+    `the joint fix lifts the check (${jc.status} → ${jAfter && jAfter.status})`);
+  ok(jAfter && jAfter.status !== 'fail', 'and never leaves the joint check failing');
+  // Correction must KEEP the patched joint — a fix silently rewritten by the
+  // pair-kind or level gate would be a downgrade wearing a fix's label.
+  const fixedSpec = Spec.correctSpec(Spec.deepMerge(Spec.clone(cus.spec), up.patch));
+  ok(fixedSpec.custom.connections.every(c => c.joint === newJoint.joint),
+    'the correction pipeline keeps the upgraded joint (kind + level gates satisfied)');
+
+  // A beginner is never handed an advanced joint, whatever the physics wants.
+  const begAllowed = K.jointsForLevel('beginner');
+  for (const lv of ['beginner', 'intermediate', 'advanced']) {
+    const s = Spec.deepMerge(screwedBench(), { meta: { level: lv } });
+    const j = chk(integrityOf(s).checks, 'joints');
+    for (const f of (j ? j.fixes : [])) {
+      const c = f.patch.custom && f.patch.custom.connections.find(x => x.joint !== 'butt_screws');
+      ok(!c || K.jointsForLevel(lv).includes(c.joint), `${lv}: offered joint stays inside the level matrix`);
+      if (lv === 'beginner') ok(!c || begAllowed.includes(c.joint), 'beginner is never handed an advanced joint');
+    }
+  }
+}
+
+/* ================= X-05: the default custom piece is buildable, not a FAIL ================= */
+section('X-05 defaultSpec("custom") ships a sound piece, not a structural FAIL');
+{
+  /* The novel-geometry on-ramp used to hand every curious user a design that
+   * failed on arrival: a slab seat screwed into the end grain of two panel
+   * legs, 136 kg of BIFMA X5.4 seating load per joint against 43 kg of
+   * derated capacity. This section is the regression lock — the default must
+   * validate clean AND never present a failing verdict again. */
+  const raw = Spec.defaultSpec('custom');
+  const r = pipeline(raw);
+  const ig = Structural.computeIntegrity(r.spec, r.model, {});
+  const chk = id => ig.checks.find(c => c.id === id);
+
+  // ---- 1. it is still a novel composition, not a template in disguise ----
+  eq(r.spec.meta.template, 'custom', 'the default custom spec is on the custom template');
+  ok(r.spec.custom && r.spec.custom.parts.length >= 2,
+    `a composition of primitives — got ${r.spec.custom && r.spec.custom.parts.length} parts`);
+  ok(r.spec.custom.connections.length >= 1, 'with an explicit connection graph');
+  ok(r.spec.custom.parts.every(p => Spec.PRIMITIVES.includes(p.primitive)),
+    'every part is one of the grammar primitives');
+  ok(r.spec.custom.parts.some(p => p.rot && (p.rot.x || p.rot.y || p.rot.z)),
+    'and the graph exercises rotation — the thing templates cannot express');
+
+  // ---- 2. validation is clean ----
+  eq(r.report.errors.map(e => e.id), [], 'the default custom piece validates with zero errors');
+
+  // ---- 3. THE lock: it must never present a failing verdict ----
+  ok(ig.summary.verdict !== 'fail',
+    `the default custom piece is never presented failing — verdict ${ig.summary.verdict}`);
+  ok(ig.checks.every(c => c.status !== 'fail'),
+    `no individual check fails — ${ig.checks.filter(c => c.status === 'fail').map(c => `${c.id}: ${c.value}`).join('; ') || 'none'}`);
+  const joints = chk('joints');
+  ok(joints, 'joint adequacy is actually checked on the default (never skipped into silence)');
+  eq(joints && joints.status, 'pass', 'joint adequacy PASSES — the X-05 failure is gone');
+  ok(joints && joints.fixes.length === 0, 'a passing joint check is offered no remedy');
+
+  // ---- 4. it passes on the physics, not by dodging the load ----
+  // The seat is still tagged `seating`, so it is still weighed under the
+  // heaviest preset in the table. A future edit that quietly retags the
+  // surface to buy a pass must break here, not slip through.
+  const seat = r.spec.custom.parts.find(p => p.surface === 'seating');
+  ok(seat, 'the load surface is still declared, and still seating duty');
+  const surf = ig.surfaces.find(s => s.id === seat.id);
+  ok(surf && surf.presetKey === 'seating' && !surf.assumed,
+    `the seat is checked under the seating preset, declared not assumed — got ${surf && surf.presetKey}`);
+  ok(!ig.antiTip, 'and it stands on its own: no mandatory wall anchor');
+
+  // ---- 5. the joint is level-legal and survives correction unchanged ----
+  const level = r.spec.meta.level;
+  eq(level, 'beginner', 'the default level is still beginner');
+  const allowed = K.jointsForLevel(level);
+  for (const cn of r.spec.custom.connections) {
+    ok(allowed.includes(cn.joint), `${cn.a}→${cn.b}: ${cn.joint} is legal at ${level}`);
+    ok(K.JOINERY[cn.joint] && !K.JOINERY[cn.joint].external,
+      `${cn.a}→${cn.b}: ${cn.joint} joins two parts, never the building`);
+  }
+  // Correction must KEEP what defaultCustom set — a joint silently rewritten
+  // by the pair-kind or level gate would mean the default is a lie about
+  // itself, and the piece the user gets is not the piece the code declared.
+  eq(r.spec.custom.connections.map(c => c.joint), raw.custom.connections.map(c => c.joint),
+    'correction keeps the declared joints (pair-kind and level gates satisfied)');
+  const twice = Spec.correctSpec(Spec.clone(r.spec));
+  eq(twice.custom.connections, r.spec.custom.connections, 'and correction is idempotent on it');
+
+  // ---- 6. corrected, grounded, centred ----
+  near(r.spec.custom.parts.reduce((lo, p) => {
+    const size = Spec.customPartSize(p);
+    return Math.min(lo, ...BB.Geo.obbCorners(BB.Geo.partOBB({ size, pos: p.pos, rot: p.rot })).map(c => c[1]));
+  }, Infinity), 0, 0.05, 'the piece sits on the floor plane');
+  const ext = Spec.customExtents(r.spec.custom.parts);
+  near(r.spec.overall.width, ext.w, 0.05, 'overall width is the derived extent');
+  near(r.spec.overall.height, ext.h, 0.05, 'overall height is the derived extent');
+
+  // ---- 7. the derived layer produces a real, buildable plan ----
+  const cut = Plans.cutList(r.spec, r.model);
+  ok(cut.length >= 2, `the cut list has real parts — ${cut.length} lines`);
+  ok(cut.every(c => c.qty > 0 && c.L > 0 && c.W > 0 && c.T > 0), 'every cut-list line has positive quantity and dimensions');
+  const stock = Packing.planStock(r.spec, r.model, cut, {});
+  const bom = Plans.bom(r.spec, r.model, { integrity: ig, stock });
+  ok(bom.items.length > 0 && bom.total > 0, 'the BOM prices out');
+  ok(!bom.items.some(i => /anchor/i.test(i.label)), 'no wall anchor is bought for a piece that does not need one');
+  const steps = Plans.assembly(r.spec, r.model, ig, { stockPlan: stock });
+  ok(steps.length >= 4, `assembly has real steps — ${steps.length}`);
+  const partNames = cut.map(c => c.name.toLowerCase());
+  const key = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
+  const connKeys = new Set(r.spec.custom.connections.map(c => key(c.a, c.b)));
+  const joinSteps = steps.filter(s => (s.partIds || []).length === 2 && connKeys.has(key(s.partIds[0], s.partIds[1])));
+  eq(joinSteps.length, r.spec.custom.connections.length,
+    'every declared connection gets its own assembly step');
+  ok(joinSteps.every(s => partNames.some(n => (s.text || '').toLowerCase().includes(n))),
+    'each join step names the parts it joins');
+  const jointLabel = K.JOINERY[r.spec.custom.connections[0].joint].label.toLowerCase();
+  ok(joinSteps.some(s => (s.text || '').toLowerCase().includes(jointLabel) ||
+      (s.text || '').toLowerCase().includes(K.JOINERY[r.spec.custom.connections[0].joint].plural.toLowerCase())),
+    `the join steps teach the joint the spec declares (${jointLabel})`);
+
+  // ---- 8. the same piece survives a share-code round trip ----
+  const back = Spec.correctSpec(Codec.decode(Codec.encode(r.spec)));
+  eq(back.custom.connections.map(c => c.joint), r.spec.custom.connections.map(c => c.joint),
+    'the wire codec round-trips the default joints');
+  const igBack = Structural.computeIntegrity(back, Parametric.build(back), {});
+  ok(igBack.summary.verdict !== 'fail', 'and the round-tripped piece still never fails');
+}
+
+/* ================= D-01…D-05 (2026-07 strategic audit §3.5): plan depth =================
+ * Sections for test/audit.test.js. Uses the file's existing helpers:
+ * section(name), ok(cond,msg), eq(a,b,msg), near(a,b,tol,msg), pipeline(raw),
+ * and the destructured { Spec, Parametric, Plans, K, Structural, Packing, Fasteners, Units }.
+ * Every section restores metric display before it exits, like G10 does.
+ */
+
+/* ================= D-01: frame templates carry casework depth ================= */
+section('D-01 table / desk / bench plans are built, not sketched');
+{
+  // Build steps only — milling, glue-ups, thicknessing, safety, sanding and
+  // finishing are shared scaffolding and were never the finding.
+  const NON_BUILD = /^(mill|sand|finish|safety|glueup|lam|thickness|antitip)/;
+  const wordCount = s => (s || '').trim().split(/\s+/).filter(Boolean).length;
+  const planFor = (template, level, units) => {
+    Units.set({ system: units, precision: 16, dual: false });
+    const raw = Spec.defaultSpec(template);
+    raw.meta.level = level;
+    const r = pipeline(raw);
+    const ig = Structural.computeIntegrity(r.spec, r.model, {});
+    const cut = Plans.cutList(r.spec, r.model);
+    const stock = Packing.planStock(r.spec, r.model, cut, {});
+    const steps = Plans.assembly(r.spec, r.model, ig, { stockPlan: stock });
+    const build = steps.filter(s => !NON_BUILD.test(s.id));
+    return { r, steps, build, words: build.reduce((n, s) => n + wordCount(s.text), 0) };
+  };
+
+  const FRAME = ['table', 'desk', 'bench'];
+  const CASEWORK = ['bookshelf', 'nightstand', 'cabinet'];
+  for (const units of ['metric', 'imperial']) {
+    for (const level of ['beginner', 'intermediate', 'advanced']) {
+      const frame = FRAME.map(t => planFor(t, level, units));
+      const casework = CASEWORK.map(t => planFor(t, level, units));
+      const thinnestFrame = Math.min(...frame.map(p => p.words));
+      const densestCasework = Math.max(...casework.map(p => p.words));
+      // The audit's exit criterion: frame word count within 2× of casework.
+      // Before the fix this ratio was 943/151 = 6.2×.
+      ok(densestCasework / thinnestFrame <= 2,
+        `${units}/${level}: frame plans within 2× of casework — ${thinnestFrame} vs ${densestCasework} words (${(densestCasework / thinnestFrame).toFixed(2)}×)`);
+      // Steps, not just words: a frame base is layout, two glue-ups, a cure
+      // check, and the top — five, against the three the audit measured.
+      for (const p of frame) {
+        ok(p.build.length >= 5,
+          `${units}/${level}/${p.r.spec.meta.template}: ${p.build.length} build steps (was 3)`);
+      }
+    }
+  }
+
+  // The content the audit named as missing, checked by substance not length.
+  const t = planFor('table', 'intermediate', 'metric');
+  const byId = id => t.steps.find(s => s.id === id);
+  const glue = K.recommendGlue(t.r.spec).glue;
+  ok(byId('layout'), 'a frame base gets a leg-layout step before any joint is cut');
+  ok(byId('base_check'), 'a frame base gets an out-of-the-clamps / cure step');
+  ok(byId('s1') && byId('s2') && byId('s3'), 'the three original step ids survive (end frames, join, top)');
+
+  // Clamp order and clamp count, from the joinery layer — never hand-typed.
+  const clampText = Fasteners.frameClampSchedule(2).text;
+  ok(/one in line with each apron/i.test(clampText), 'the frame clamp rule is stated by the schedule, not the step');
+  ok(byId('s1').text.includes(clampText), 's1 carries the frame clamp schedule verbatim from BB.Fasteners');
+  ok(byId('s1').text.includes(String(Fasteners.frameClampSchedule(2).clamps)),
+    's1 states the computed clamp count');
+  ok(Fasteners.frameClampSchedule(1).clamps === 1 && Fasteners.frameClampSchedule(4).clamps === 4,
+    'frame clamps scale with rails, not with a 225 mm panel spacing (that is glueupSchedule)');
+
+  // Diagonals and winding, on a checked surface.
+  ok(/diagonals/i.test(byId('s1').text) && /diagonals/i.test(byId('s2').text),
+    'both base glue-ups demand a diagonal check');
+  ok(/wind|twist/i.test(byId('s1').text) && /one plane|twist/i.test(byId('s2').text),
+    'both base glue-ups demand a check for wind/twist');
+  ok(/flat|bench you have checked/i.test(byId('s1').text), 'the frames are checked on a known-flat surface');
+
+  // WHY two stages — read out of K.GLUES, so changing the glue changes the
+  // reasoning. Nothing here is a literal in plans.js.
+  ok(byId('s1').text.includes(String(glue.openMin)) && /open time/i.test(byId('s1').text),
+    `the two-stage reason cites the glue's own open time (${glue.openMin} min)`);
+  ok(byId('s1').text.includes(glue.label), 's1 names the glue the BOM buys, not "glue"');
+  ok(byId('s1').text.includes(String(glue.clampMin)) && byId('s2').text.includes(String(glue.clampMin)),
+    'both glue-ups state when the clamps come off (clampMin)');
+  ok(byId('base_check').text.includes(String(glue.cureHrs)) && /full strength/i.test(byId('base_check').text),
+    'the cure step states when the piece can be loaded (cureHrs)');
+  // A different glue must move those numbers — proof they are read, not typed.
+  const oily = pipeline(Spec.deepMerge(Spec.defaultSpec('table'), { meta: { units: 'mm' }, wood: { species: 'teak' } }));
+  const oilyGlue = K.recommendGlue(oily.spec).glue;
+  const oilySteps = Plans.assembly(oily.spec, oily.model, null, {});
+  ok(oilyGlue.key !== glue.key, 'an oily species selects a different glue');
+  ok(oilySteps.find(s => s.id === 's1').text.includes(String(oilyGlue.openMin)) &&
+     oilySteps.find(s => s.id === 's1').text.includes(oilyGlue.label),
+    `the two-stage reasoning follows the glue (${oilyGlue.label}, ${oilyGlue.openMin} min open)`);
+
+  // The top: how it is held and WHICH WAY it moves, from K.movementMM — the
+  // same function the integrity engine's movement check uses.
+  const top = t.r.model.parts.find(p => p.id === 'top_1');
+  const crossW = Math.min(top.size.w, top.size.d);
+  const mv = K.movementMM(crossW, t.r.spec.wood.species, 'tangential', K.CLIMATE_DMC.temperate);
+  Units.set({ system: 'metric', precision: 16, dual: false });
+  ok(byId('s3').text.includes(Units.fmtSmall(mv)),
+    `the top step states the computed seasonal travel (${Units.fmtSmall(mv)})`);
+  ok(byId('s3').text.includes(Units.fmtLength(crossW)), 'and the width it travels across');
+  ok(/across the grain|ACROSS the grain/.test(byId('s3').text) && /along its length/i.test(byId('s3').text),
+    'the top step names the direction of movement, not just its size');
+  ok(/never glue a solid top/i.test(byId('s3').text), 'the top is still never glued down');
+  // Climate reaches the frame top exactly as it reaches the drawer runners.
+  const humid = Plans.assembly(t.r.spec, t.r.model, null, { climate: 'humid' }).find(s => s.id === 's3');
+  const humidMv = K.movementMM(crossW, t.r.spec.wood.species, 'tangential', K.CLIMATE_DMC.humid);
+  ok(humid.text.includes(Units.fmtSmall(humidMv)) && humidMv > mv,
+    'a humid climate moves the number the top step prints');
+
+  // Knockdown frames say nothing about glue, clamps, or cure — G12 extended
+  // to every step the deeper plan added.
+  const kd = pipeline(Spec.deepMerge(Spec.defaultSpec('table'), { meta: { units: 'mm' }, joinery: { frame: 'kd_bolt' } }));
+  const kdSteps = Plans.assembly(kd.spec, kd.model, null, {});
+  const kdBuild = kdSteps.filter(s => !NON_BUILD.test(s.id));
+  // G12, extended to every step the deeper plan added: a step that MAKES a
+  // knockdown joint may not instruct glue or clamps.
+  ok(kdBuild.filter(s => (s.joints || []).some(j => j.type === 'kd_bolt'))
+    .every(s => !/glue|clamp/i.test(s.text)),
+    'no step that makes a knockdown joint mentions glue or clamps');
+  // …and the cure step has no glue schedule to give: nothing is glued.
+  const kdCure = kdSteps.find(s => s.id === 'base_check');
+  ok(kdCure && !/minutes in the clamps|full strength|squeeze-out/i.test(kdCure.text),
+    'a knockdown base gets no clamp-off / cure schedule — there is no glue in it');
+  ok(kdCure && /re-snug|bolts/i.test(kdCure.text),
+    'it gets the knockdown truth instead: bolts get re-snugged after the first season');
+  ok(kdBuild.reduce((n, s) => n + wordCount(s.text), 0) > 400,
+    'the knockdown frame plan is deep too, not just the glued one');
+  Units.set({ system: 'metric', precision: 16, dual: false });
+}
+
+/* ================= D-02: custom connection steps are told apart ================= */
+section('D-02 every custom connection step names its own parts');
+{
+  const cu = pipeline(Spec.defaultSpec('custom'));
+  const steps = Plans.assembly(cu.spec, cu.model, null, {});
+  const conn = steps.filter(s => /^c\d+$/.test(s.id));
+  eq(conn.length, cu.spec.custom.connections.length, 'one step per declared connection');
+  eq(new Set(conn.map(s => s.title)).size, conn.length,
+    `connection step titles are unique — got ${JSON.stringify(conn.map(s => s.title))}`);
+  for (const s of conn) {
+    ok(s.partIds.every(id => s.title.includes(id)),
+      `the title identifies which parts it joins — "${s.title}"`);
+  }
+  // The body reached casework density: dry run, clamp/bolt order, square
+  // check, and the joint's own setout (which the "mill" step used to eat).
+  const words = s => (s.text || '').trim().split(/\s+/).filter(Boolean).length;
+  ok(conn.every(s => words(s) >= 60),
+    `every connection step is a real instruction — ${conn.map(words).join(', ')} words (was ~15)`);
+  ok(/stand the WHOLE piece up loose/i.test(conn[0].text),
+    'the first connection demands a whole-piece dry run — a novel piece has no template behind it');
+  ok(conn.every(s => (s.joints || []).length > 0),
+    'every connection step owns its joints (the mill step no longer swallows them)');
+  ok(conn.every(s => (s.jointInfo || []).length > 0 && s.text.includes(s.jointInfo[0].text)),
+    'every connection step carries the joint setout from the fastener engine');
+  ok(steps.find(s => s.id === 'mill').joints.length === 0,
+    'the "mill and label" step claims no joints — it makes none');
+
+  // Glued connections carry the glue window; bolted ones carry none (G12).
+  const glued = Spec.correctSpec(Spec.defaultSpec('custom'));
+  glued.custom.connections.forEach(c => { c.joint = 'butt_screws'; });
+  const gModel = Parametric.build(glued);
+  const gConn = Plans.assembly(glued, gModel, null, {}).filter(s => /^c\d+$/.test(s.id));
+  const gGlue = K.recommendGlue(glued).glue;
+  ok(gConn.every(s => /clamp ACROSS the joint line/i.test(s.text)),
+    'glued connections state the clamp direction');
+  ok(gConn.every(s => s.text.includes(String(gGlue.openMin)) && s.text.includes(String(gGlue.clampMin)) && s.text.includes(String(gGlue.cureHrs))),
+    'glued connections carry the glue open / clamp / cure window from K.GLUES');
+  ok(gConn.every(s => /square/i.test(s.text)), 'glued connections demand a square check');
+  ok(gConn[gConn.length - 1].text !== gConn[0].text, 'the first and last connection steps do not read identically');
+}
+
+/* ================= D-03: a step teaches the fastening it actually makes ================= */
+section('D-03 step.jointInfo carries the EFFECTIVE fastening, not the nominal joint');
+{
+  ok(typeof Fasteners.stepJoints === 'function', 'BB.Fasteners.stepJoints exists');
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const steps = Plans.assembly(ns.spec, ns.model, null, {});
+  const s4 = steps.find(s => s.id === 's4');
+  // The bug, verbatim: the text says figure-8s, the joint records say butt
+  // screws, and "Why this joint?" reads the joint records.
+  ok(s4.joints.length && s4.joints.every(j => j.type === 'butt_screws'),
+    'the nominal joint record is unchanged (step.joints is untouched)');
+  ok(s4.jointInfo && s4.jointInfo.length === 1, 'the top step describes exactly one fastening');
+  const d = s4.jointInfo[0];
+  eq(d.type, 'butt_screws', 'jointInfo keeps the nominal joinery key');
+  eq(d.effective, 'figure8', 'jointInfo names what the plan actually specifies');
+  eq(d.hardware, true, 'and flags it as hardware, not joinery');
+  eq(d.label, 'Figure-8 fasteners', 'with a display label the UI can render as-is');
+  eq(d.a, 'top_1', 'descriptor carries the attached part');
+  ok(ns.model.parts.some(p => p.id === d.b), 'descriptor carries a real mate part');
+  ok(/figure-8/i.test(d.text) && s4.text.includes(d.text), 'the setout line is the step\'s own');
+  ok(!K.JOINERY[d.effective], 'an effective hardware key is deliberately not a JOINERY key');
+
+  // The same override on a frame template's top.
+  const tb = pipeline({ meta: { name: 'T', template: 'table', level: 'beginner', units: 'mm' } });
+  const ts3 = Plans.assembly(tb.spec, tb.model, null, {}).find(s => s.id === 's3');
+  ok(ts3.jointInfo.every(x => x.effective === 'figure8' && x.hardware),
+    'a table top floats on figure-8s in the metadata too');
+
+  // Where there is NO override, effective === type and hardware is false —
+  // the descriptor must not invent a divergence.
+  const bs = pipeline({
+    meta: { name: 'BS', template: 'bookshelf', level: 'beginner', units: 'mm' },
+    overall: { width: 900, depth: 300, height: 1800 }, structure: { shelfCount: 4, backPanel: true }
+  });
+  const bsSteps = Plans.assembly(bs.spec, bs.model, null, {});
+  for (const s of bsSteps) {
+    for (const x of (s.jointInfo || [])) {
+      if (x.hardware) continue;
+      eq(x.effective, x.type, `${s.id}: an un-overridden joint reports itself`);
+      eq(x.label, K.JOINERY[x.type].label, `${s.id}: joinery labels come from K.JOINERY`);
+    }
+  }
+  // Bookshelf tops are CAPTURED between the sides — no figure-8 anywhere
+  // (the FE-H1 rule, now visible in the metadata).
+  ok(!bsSteps.some(s => (s.jointInfo || []).some(x => x.effective === 'figure8')),
+    'a captured bookshelf top is fixed casework — no phantom figure-8s in jointInfo');
+}
+
+/* ================= D-04: every distinct fastening a step makes is described ================= */
+section('D-04 multi-joint steps describe every fastening, grouped with a count');
+{
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'mm' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const s2 = Plans.assembly(ns.spec, ns.model, null, {}).find(s => s.id === 's2');
+  // The finding: s2 carries 6 joints and printed the back apron's setout only.
+  ok(s2.joints.length >= 6, `the rail step still carries all its joints (${s2.joints.length})`);
+  ok(/back apron/i.test(s2.text), 'the back apron setout is there (it always was)');
+  ok(/drawer rail/i.test(s2.text), 'and the front drawer rails are described too (they were not)');
+  ok(s2.jointInfo.length >= 3, `every distinct fastening gets a descriptor (${s2.jointInfo.length})`);
+  ok(s2.jointInfo.every(d => s2.text.includes(d.text)),
+    'every descriptor\'s setout line reaches the step text');
+  // Grouped, not repeated: identical fastenings collapse with a count, the
+  // way the cut list groups identical parts.
+  ok(s2.jointInfo.every(d => d.count >= 1) && s2.jointInfo.reduce((n, d) => n + d.count, 0) >= s2.joints.length,
+    'the descriptor counts account for every joint in the step');
+  const seenText = new Set();
+  ok(s2.jointInfo.every(d => (seenText.has(d.text) ? false : (seenText.add(d.text), true))),
+    'no setout line is printed twice in one step');
+
+  // Cabinet toe kick: two butt-screwed joints into DIFFERENT mates. Deduping
+  // by joint type printed one and hid the other.
+  const cab = pipeline({
+    meta: { name: 'Cab', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 800, depth: 450, height: 900 },
+    structure: { toeKick: true, backPanel: true, shelfCount: 1 },
+    drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }
+  });
+  const cs = Plans.assembly(cab.spec, cab.model, null, {});
+  const kick = cs.find(s => s.id === 's4');
+  if (kick && kick.joints.length > 1) {
+    ok(kick.jointInfo.length >= 2, 'the toe-kick step describes both of its fastenings');
+    ok(new Set(kick.jointInfo.map(x => x.b)).size >= 2, 'and they land in different mates');
+  }
+  // The carcass glue-up fastens four different members — all four described.
+  const cs1 = cs.find(s => s.id === 's1');
+  ok(cs1.jointInfo.length >= 2 && cs1.jointInfo.some(x => x.type === 'butt_screws' || x.type === 'pocket_screws'),
+    `the carcass step describes more than one fastening (${cs1.jointInfo.length})`);
+
+  // The count is derived from the step's FULL joint list, so it can never
+  // understate the bench work even where step.joints is capped at 8.
+  for (const s of cs) {
+    ok((s.joints || []).length <= 8, `${s.id}: step.joints stays capped at 8 (unchanged contract)`);
+    if (s.jointInfo) {
+      ok(s.jointInfo.reduce((n, d) => n + d.count, 0) >= s.joints.length,
+        `${s.id}: descriptor counts cover at least the capped joint list`);
+    }
+  }
+  // And no joint is claimed by two steps — FE-H6 still holds through all this.
+  const claimed = new Set();
+  let dup = false;
+  for (const s of cs) for (const j of (s.joints || [])) {
+    const k = `${j.type}|${j.a}|${j.b}`;
+    if (claimed.has(k)) dup = true;
+    claimed.add(k);
+  }
+  ok(!dup, 'no joint is claimed by two steps');
+}
+
+/* ================= D-05: the drill / length / small rule, locked ================= */
+section('D-05 bores are bit sizes, gaps are fractions, decimals are for tolerance only');
+{
+  Units.set({ system: 'imperial', precision: 16, dual: false });
+  // The two verbatim regressions from the audit.
+  const ns = pipeline({
+    meta: { name: 'NS', template: 'nightstand', level: 'intermediate', units: 'in' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' }
+  });
+  const nsSteps = Plans.assembly(ns.spec, ns.model, null, {});
+  const pull = nsSteps.find(s => s.id === 'dr1_pull');
+  ok(!/0\.2 in/.test(pull.text), `the pull bore is no longer "0.2 in" — got "${pull.text.slice(0, 90)}"`);
+  ok(pull.text.includes(Units.fmtDrill(5)), `the pull bore is a real bit size (${Units.fmtDrill(5)})`);
+  const front = nsSteps.find(s => s.id === 'dr1_front');
+  ok(!/0\.08 in/.test(front.text), 'the inset reveal is no longer "0.08 in"');
+  ok(front.text.includes(Units.fmtLength(2)), `a reveal is a shim gap in fractions (${Units.fmtLength(2)})`);
+  // The step and the BOM must quote the same bore — they disagreed before.
+  const bom = Plans.bom(ns.spec, ns.model, {});
+  const pullRow = bom.items.find(i => i.kind === 'hardware' && /pull|knob/i.test(i.label));
+  if (pullRow && /bore/i.test(pullRow.detail)) {
+    ok(pullRow.detail.includes(Units.fmtDrill(5)) === pull.text.includes(Units.fmtDrill(5)),
+      'the pull bore reads identically in the step and the BOM');
+  }
+  // Touch latch travel is a gap you set, not a drill size.
+  const touch = pipeline({
+    meta: { name: 'Touch', template: 'nightstand', level: 'advanced', units: 'in' },
+    overall: { width: 500, depth: 400, height: 600 },
+    drawers: { count: 1, frontStyle: 'inset', runner: 'side_mount_slides', pull: 'none_touch' }
+  });
+  const tSteps = Plans.assembly(touch.spec, touch.model, null, {});
+  const tPull = tSteps.find(s => /_pull$/.test(s.id));
+  if (tPull && /travel/i.test(tPull.text)) {
+    ok(!/\d+\.\d+ in/.test(tPull.text), `latch travel carries no decimal inch — got "${tPull.text}"`);
+  }
+
+  /* The lock. Every string the plan layer emits, across every template and
+   * level, in imperial: a decimal inch is legal ONLY where the value really
+   * is a tolerance or a computed movement (units.js's fmtSmall domain). A
+   * bore, a reveal, a setback, or a screw position appearing as "0.19 in"
+   * fails here — which is what let D-05 through the first M-01 pass. */
+  // Deliberately narrow: "clearance" alone is NOT a licence, because a
+  // clearance HOLE is a drill callout. Only the genuinely-decimal domain.
+  const TOLERANCE_CONTEXT = /(per side|of vertical clearance|travels about|seasonal movement|\bsag\b|\bkerf\b)/i;
+  const offenders = [];
+  for (const template of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom']) {
+    for (const level of ['beginner', 'intermediate', 'advanced']) {
+      const raw = Spec.defaultSpec(template);
+      raw.meta.level = level;
+      raw.meta.units = 'in';
+      if (raw.drawers) {
+        raw.drawers = {
+          count: 2,
+          frontStyle: level === 'beginner' ? 'inset' : 'overlay',
+          runner: level === 'advanced' ? 'undermount_slides' : (level === 'intermediate' ? 'wood_runners' : 'side_mount_slides')
+        };
+      }
+      const r = pipeline(raw);
+      const ig = Structural.computeIntegrity(r.spec, r.model, {});
+      const cut = Plans.cutList(r.spec, r.model);
+      const stock = Packing.planStock(r.spec, r.model, cut, {});
+      const b = Plans.bom(r.spec, r.model, { integrity: ig, stock });
+      const steps = Plans.assembly(r.spec, r.model, ig, { stockPlan: stock });
+      let all = '';
+      for (const s of steps) all += ' ' + s.text;
+      for (const i of b.items) all += ' ' + i.label + ' ' + (i.detail || '');
+      for (const row of Fasteners.detailRows(r.spec, r.model)) all += ' ' + row.text;
+      for (const row of cut) all += ' ' + row.name + ' ' + (row.note || '');
+      // Sentence-scoped so a neighbouring sentence's wording can never
+      // launder a bad callout.
+      for (const sentence of all.split(/[.;]\s+/)) {
+        if (!/\b\d+\.\d+ in\b/.test(sentence)) continue;
+        if (!TOLERANCE_CONTEXT.test(sentence)) {
+          offenders.push(`${template}/${level}: "${sentence.trim().slice(0, 100)}"`);
+        }
+      }
+    }
+  }
+  ok(offenders.length === 0,
+    `no decimal inch outside the tolerance/movement domain — offenders: ${offenders.slice(0, 4).join(' | ')}`);
+
+  // And positively: the fastener engine's own callouts are bit sizes and its
+  // positions are fractions.
+  const tb = pipeline({ meta: { name: 'T', template: 'bookshelf', level: 'beginner', units: 'in' },
+    overall: { width: 800, depth: 280, height: 1100 }, structure: { shelfCount: 2, backPanel: true } });
+  const lay = Fasteners.layoutForJoint(tb.spec, tb.model, tb.model.joints.find(j => j.type === 'butt_screws'));
+  ok(/Pilot \d+\/\d+ in/.test(lay.text), `pilots are fractional bit sizes — got "${lay.text}"`);
+  ok(!/centered \d+\.\d+ in/.test(lay.text), 'screw positions are fractions, not decimal inches');
+
+  Units.set({ system: 'metric', precision: 16, dual: false });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

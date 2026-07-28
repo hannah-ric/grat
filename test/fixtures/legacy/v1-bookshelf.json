@@ -1,0 +1,27 @@
+{
+  "why": "An explicitly stamped specVersion 1 design. No migration is registered for 1, so migrateSpec returns it untouched and the promise is kept downstream by correctSpec's default back-fill. Recorded here so the day a 1 -> 2 migration is added, this fixture proves it runs.",
+  "version": 1,
+  "kind": "spec",
+  "expect": {
+    "template": "bookshelf",
+    "name": "Study Shelves",
+    "species": "poplar",
+    "units": "in",
+    "drawers": null,
+    "shelfCount": 3,
+    "minParts": 6
+  },
+  "spec": {
+    "specVersion": 1,
+    "meta": { "name": "Study Shelves", "template": "bookshelf", "level": "beginner", "units": "in" },
+    "overall": { "width": 914.4, "depth": 304.8, "height": 1828.8 },
+    "wood": { "species": "poplar" },
+    "structure": {
+      "topThickness": 25, "legThickness": 70, "apronHeight": 90, "apronThickness": 20,
+      "apronInset": 12, "shelfCount": 3, "shelfThickness": 25, "sideThickness": 18,
+      "backPanel": true, "toeKick": false
+    },
+    "joinery": { "frame": "pocket_screws", "case": "dado", "box": "pocket_screws" },
+    "finish": "danish_oil"
+  }
+}
