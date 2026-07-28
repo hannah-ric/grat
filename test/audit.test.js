@@ -2137,9 +2137,13 @@ section('G10b correctionNotes names the joint, length, species and feature corre
 
   // 4. FEATURE DROPPED. Drawers on a template with no opening become null.
   {
-    const d = one({ meta: { template: 'desk', level: 'beginner' }, drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' } }, 'drawers on a desk');
-    ok(/desk/.test(d), `the note names the template that refused them — got "${d}"`);
+    // Desks GAINED apron drawers with the frame_table extension (2026-07) —
+    // the refusal note now belongs to templates with no opening at all.
+    const d = one({ meta: { template: 'bench', level: 'beginner' }, drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' } }, 'drawers on a bench');
+    ok(/bench/.test(d), `the note names the template that refused them — got "${d}"`);
     ok(/drawer/i.test(d), `the note names the dropped feature — got "${d}"`);
+    eq(notes({ meta: { template: 'desk', level: 'beginner' }, drawers: { count: 1 } })
+      .filter(n => /drawer bank was dropped/.test(n)), [], 'a desk KEEPS its pencil drawers — no refusal note');
     ok(/table/.test(one({ meta: { template: 'table', level: 'beginner' }, drawers: { count: 1 } }, 'drawers on a table')), 'the same holds for a table');
     // Templates that DO carry drawers keep them — nothing was refused.
     eq(notes({ meta: { template: 'nightstand', level: 'beginner' }, drawers: { count: 2 } }), [], 'a nightstand keeps its drawers, so earns no note');
@@ -2151,8 +2155,10 @@ section('G10b correctionNotes names the joint, length, species and feature corre
     for (const t of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom']) {
       eq(notes(Spec.defaultSpec(t)), [], `the ${t} default is corrected without a single note`);
     }
+    // bench, not desk: desks keep their drawers now (frame_table extension),
+    // so the drawer-refusal note needs a template with no opening at all.
     const all = notes({
-      meta: { template: 'desk', level: 'beginner' }, overall: { width: 4000 },
+      meta: { template: 'bench', level: 'beginner' }, overall: { width: 4000 },
       wood: { species: 'wenge' }, joinery: { frame: 'mortise_tenon' }, drawers: { count: 1 }
     });
     eq(all.length, 4, 'four independent corrections produce four notes');

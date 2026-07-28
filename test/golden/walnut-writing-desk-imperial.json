@@ -1,0 +1,707 @@
+{
+ "spec": {
+  "specVersion": 7,
+  "meta": {
+   "name": "Writing Desk",
+   "template": "desk",
+   "level": "intermediate",
+   "units": "in"
+  },
+  "overall": {
+   "width": 1320.8,
+   "depth": 660.4,
+   "height": 736.6
+  },
+  "wood": {
+   "species": "walnut",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 25,
+   "legThickness": 70,
+   "apronHeight": 110,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false,
+   "stretcher": "none",
+   "stretcherHeight": 280
+  },
+  "joinery": {
+   "frame": "dowels",
+   "case": "butt_screws",
+   "box": "locking_rabbet"
+  },
+  "finish": "hardwax_oil",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": {
+   "count": 2,
+   "frontStyle": "inset",
+   "runner": "wood_runners"
+  },
+  "doors": null,
+  "custom": null,
+  "seat": null
+ },
+ "validation": {
+  "errors": [],
+  "advisories": []
+ },
+ "cutList": [
+  {
+   "name": "Top",
+   "qty": 1,
+   "L": 1320.8,
+   "W": 660.4,
+   "T": 25,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Drawer bottom",
+   "qty": 2,
+   "L": 507.4,
+   "W": 436,
+   "T": 6,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Long apron",
+   "qty": 1,
+   "L": 1110.8,
+   "W": 110,
+   "T": 20,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Leg",
+   "qty": 4,
+   "L": 711.6,
+   "W": 70,
+   "T": 70,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Short apron",
+   "qty": 2,
+   "L": 450.4,
+   "W": 110,
+   "T": 20,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Lower drawer rail",
+   "qty": 1,
+   "L": 1110.8,
+   "W": 40,
+   "T": 20,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Drawer front",
+   "qty": 2,
+   "L": 521.4,
+   "W": 66,
+   "T": 19,
+   "material": "walnut",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Drawer box front",
+   "qty": 2,
+   "L": 505.4,
+   "W": 60,
+   "T": 12,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "includes 5/16 in for locking rabbet",
+   "angles": null
+  },
+  {
+   "name": "Drawer box back",
+   "qty": 2,
+   "L": 505.4,
+   "W": 60,
+   "T": 12,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "includes 5/16 in for dado / housing",
+   "angles": null
+  },
+  {
+   "name": "Drawer side",
+   "qty": 4,
+   "L": 450,
+   "W": 60,
+   "T": 12,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Drawer runner",
+   "qty": 4,
+   "L": 524,
+   "W": 32,
+   "T": 20,
+   "material": "walnut",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Centre stile",
+   "qty": 1,
+   "L": 70,
+   "W": 60,
+   "T": 20,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "verdict": "advisory",
+  "rackScore": 100,
+  "tip": {
+   "angEmpty": 25.73,
+   "angLoaded": 22.627,
+   "ratio": 1.248
+  },
+  "checks": [
+   {
+    "id": "sag:apron:top_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.591,
+     "limitMM": 1.751,
+     "spanMM": 1110.8
+    }
+   },
+   {
+    "id": "str:apron:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:top_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.572,
+     "limitMM": 1.755,
+     "spanMM": 526.4
+    }
+   },
+   {
+    "id": "str:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip_f2057",
+    "status": "advisory",
+    "data": {
+     "marginRatio": 1.324,
+     "stabilizingNmm": 71385.701,
+     "overturningNmm": 53930.412,
+     "testKg": 22.7,
+     "openFraction": 0.667
+    }
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "slender",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "joints",
+    "status": "pass",
+    "data": {
+     "perN": 515.025,
+     "capN": 880
+    }
+   },
+   {
+    "id": "move:top_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 7.238,
+     "crossWidthMM": 660.4,
+     "context": "floated"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Black Walnut 1x4 x 6 ft (3/4 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 21.729
+   },
+   {
+    "label": "Black Walnut 2x2 x 8 ft (1 1/2 x 1 1/2 in)",
+    "qty": 1,
+    "cost": 26.33
+   },
+   {
+    "label": "Black Walnut 4x4 x 10 ft (3 1/2 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 115.214
+   },
+   {
+    "label": "Black Walnut 5/4x4 x 6 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 30.288
+   },
+   {
+    "label": "Black Walnut 5/4x6 x 10 ft (1 x 5 1/2 in)",
+    "qty": 2,
+    "cost": 158.008
+   },
+   {
+    "label": "Black Walnut 5/4x6 x 12 ft (1 x 5 1/2 in)",
+    "qty": 1,
+    "cost": 94.815
+   },
+   {
+    "label": "Baltic Birch Ply 1/4 in — quarter sheet (4 x 8 ft base)",
+    "qty": 1,
+    "cost": 10
+   },
+   {
+    "label": "Baltic Birch Ply 1/2 in — full sheet (4 x 8 ft base)",
+    "qty": 1,
+    "cost": 62
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x4",
+    "stockLen": 1829,
+    "offcut": 753.2,
+    "cuts": [
+     {
+      "name": "Drawer front",
+      "len": 521.4,
+      "offset": 15
+     },
+     {
+      "name": "Drawer front",
+      "len": 521.4,
+      "offset": 539.4
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 2438,
+    "offcut": 303,
+    "cuts": [
+     {
+      "name": "Drawer runner",
+      "len": 524,
+      "offset": 15
+     },
+     {
+      "name": "Drawer runner",
+      "len": 524,
+      "offset": 542
+     },
+     {
+      "name": "Drawer runner",
+      "len": 524,
+      "offset": 1069
+     },
+     {
+      "name": "Drawer runner",
+      "len": 524,
+      "offset": 1596
+     }
+    ]
+   },
+   {
+    "nominal": "4x4",
+    "stockLen": 3048,
+    "offcut": 162.6,
+    "cuts": [
+     {
+      "name": "Leg",
+      "len": 711.6,
+      "offset": 15
+     },
+     {
+      "name": "Leg",
+      "len": 711.6,
+      "offset": 729.6
+     },
+     {
+      "name": "Leg",
+      "len": 711.6,
+      "offset": 1444.2
+     },
+     {
+      "name": "Leg",
+      "len": 711.6,
+      "offset": 2158.8
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 1829,
+    "offcut": 615.2,
+    "cuts": [
+     {
+      "name": "Lower drawer rail",
+      "len": 1110.8,
+      "offset": 15
+     },
+     {
+      "name": "Centre stile",
+      "len": 70,
+      "offset": 1128.8
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x6",
+    "stockLen": 3658,
+    "offcut": 76.6,
+    "cuts": [
+     {
+      "name": "Top (strip 1/5)",
+      "len": 1320.8,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 2/5)",
+      "len": 1320.8,
+      "offset": 1338.8
+     },
+     {
+      "name": "Short apron",
+      "len": 450.4,
+      "offset": 2662.6
+     },
+     {
+      "name": "Short apron",
+      "len": 450.4,
+      "offset": 3116
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x6",
+    "stockLen": 3048,
+    "offcut": 373.4,
+    "cuts": [
+     {
+      "name": "Top (strip 3/5)",
+      "len": 1320.8,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 4/5)",
+      "len": 1320.8,
+      "offset": 1338.8
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x6",
+    "stockLen": 3048,
+    "offcut": 583.4,
+    "cuts": [
+     {
+      "name": "Top (strip 5/5)",
+      "len": 1320.8,
+      "offset": 15
+     },
+     {
+      "name": "Long apron",
+      "len": 1110.8,
+      "offset": 1338.8
+     }
+    ]
+   }
+  ],
+  "sheets": [
+   {
+    "thickness": 12,
+    "fraction": 1,
+    "placements": [
+     {
+      "name": "Drawer box front",
+      "x": 0,
+      "y": 0,
+      "w": 505.4,
+      "h": 60,
+      "rot": false
+     },
+     {
+      "name": "Drawer box front",
+      "x": 508.4,
+      "y": 0,
+      "w": 505.4,
+      "h": 60,
+      "rot": false
+     },
+     {
+      "name": "Drawer box back",
+      "x": 0,
+      "y": 63,
+      "w": 505.4,
+      "h": 60,
+      "rot": false
+     },
+     {
+      "name": "Drawer box back",
+      "x": 1016.8,
+      "y": 0,
+      "w": 505.4,
+      "h": 60,
+      "rot": false
+     },
+     {
+      "name": "Drawer side",
+      "x": 508.4,
+      "y": 63,
+      "w": 450,
+      "h": 60,
+      "rot": false
+     },
+     {
+      "name": "Drawer side",
+      "x": 0,
+      "y": 126,
+      "w": 450,
+      "h": 60,
+      "rot": false
+     },
+     {
+      "name": "Drawer side",
+      "x": 1016.8,
+      "y": 63,
+      "w": 450,
+      "h": 60,
+      "rot": false
+     },
+     {
+      "name": "Drawer side",
+      "x": 1525.2,
+      "y": 0,
+      "w": 450,
+      "h": 60,
+      "rot": false
+     }
+    ]
+   },
+   {
+    "thickness": 6,
+    "fraction": 0.25,
+    "placements": [
+     {
+      "name": "Drawer bottom",
+      "x": 0,
+      "y": 0,
+      "w": 507.4,
+      "h": 436,
+      "rot": false
+     },
+     {
+      "name": "Drawer bottom",
+      "x": 510.4,
+      "y": 0,
+      "w": 507.4,
+      "h": 436,
+      "rot": false
+     }
+    ]
+   }
+  ],
+  "totalCost": 518.39,
+  "wasteSolidPct": 36,
+  "wasteSheetPct": 82
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 1x4 x 6 ft (3/4 x 3 1/2 in)",
+    "qty": 1,
+    "price": 21.73
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 2x2 x 8 ft (1 1/2 x 1 1/2 in)",
+    "qty": 1,
+    "price": 26.33
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 4x4 x 10 ft (3 1/2 x 3 1/2 in)",
+    "qty": 1,
+    "price": 115.21
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 5/4x4 x 6 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "price": 30.29
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 5/4x6 x 10 ft (1 x 5 1/2 in)",
+    "qty": 2,
+    "price": 158.01
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 5/4x6 x 12 ft (1 x 5 1/2 in)",
+    "qty": 1,
+    "price": 94.82
+   },
+   {
+    "kind": "sheet",
+    "label": "Baltic Birch Ply 1/4 in — quarter sheet (4 x 8 ft base)",
+    "qty": 1,
+    "price": 10
+   },
+   {
+    "kind": "sheet",
+    "label": "Baltic Birch Ply 1/2 in — full sheet (4 x 8 ft base)",
+    "qty": 1,
+    "price": 62
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 24.2 bd ft",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 36% · sheet 82%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "5/16 in × 1 9/16 in fluted dowel",
+    "qty": 16,
+    "price": 1.6
+   },
+   {
+    "kind": "fastener",
+    "label": "Figure-8 fasteners + #8 × 5/8 in",
+    "qty": 5,
+    "price": 4
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 15/16 in wood screw (pilot 1/8 in)",
+    "qty": 12,
+    "price": 0.72
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "hardware",
+    "label": "Bar pull",
+    "qty": 1,
+    "price": 6
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 in wood screws (pilot 7/64 in)",
+    "qty": 4,
+    "price": 1
+   },
+   {
+    "kind": "hardware",
+    "label": "Bar pull",
+    "qty": 1,
+    "price": 6
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 in wood screws (pilot 7/64 in)",
+    "qty": 4,
+    "price": 1
+   },
+   {
+    "kind": "finish",
+    "label": "Hardwax oil",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 564.71
+ },
+ "steps": [
+  "glueup1",
+  "thickness",
+  "layout",
+  "s1",
+  "s2",
+  "base_check",
+  "s3",
+  "dr1_box",
+  "dr1_runners",
+  "dr1_hang",
+  "dr1_front",
+  "dr1_pull",
+  "dr2_box",
+  "dr2_runners",
+  "dr2_hang",
+  "dr2_front",
+  "dr2_pull",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

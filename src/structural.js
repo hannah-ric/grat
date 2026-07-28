@@ -290,7 +290,11 @@ var BB = globalThis.BB = globalThis.BB || {};
          * rides on them. Find the governing apron pair (the longer-spanning
          * parallel pair); the top is then checked as a plate strip spanning
          * BETWEEN that pair, not leg-to-leg on its own. */
-        const aprons = parts.filter(p => p.role === 'apron');
+        /* Desk apron drawers replace the front apron with a shallow lower
+         * rail — the band's weakest member governs the pair, so the rail
+         * joins the candidate list and the pair is judged at the MIN height
+         * (identical pairs are unchanged, so the frozen corpus is too). */
+        const aprons = parts.filter(p => p.role === 'apron' || p.id === 'rail_lower_1');
         const alongX = aprons.filter(a => a.size.w >= a.size.d);
         const alongZ = aprons.filter(a => a.size.d > a.size.w);
         const pick = (list, axis) => {
@@ -298,7 +302,8 @@ var BB = globalThis.BB = globalThis.BB || {};
           return {
             id: list[0].id, len: Math.max(...list.map(a => axis === 'x' ? a.size.w : a.size.d)),
             off: Math.max(...list.map(a => axis === 'x' ? Math.abs(a.pos.z) : Math.abs(a.pos.x))),
-            t: axis === 'x' ? list[0].size.d : list[0].size.w, h: list[0].size.h, axis
+            t: axis === 'x' ? list[0].size.d : list[0].size.w,
+            h: Math.min(...list.map(a => a.size.h)), axis
           };
         };
         const px = pick(alongX, 'x'), pz = pick(alongZ, 'z');
@@ -306,6 +311,18 @@ var BB = globalThis.BB = globalThis.BB || {};
         let apron = null, strip = null;
         if (pair) {
           apron = { id: pair.id, span: Math.max(100, pair.len), b: pair.t, h: pair.h };
+          /* Unequal pair (desk drawer band): the full rear apron and the
+           * shallow front rail share by stiffness (the fastened top forces
+           * equal deflection), and the rail's own span runs opening-wide —
+           * the centre stile, hung from the top, posts it at midspan. */
+          const hs = alongX.length >= 2 && pair.axis === 'x' ? alongX.map(a => a.size.h) : (pair.axis === 'z' ? alongZ.map(a => a.size.h) : []);
+          const hStrong = hs.length ? Math.max(...hs) : pair.h;
+          if (hStrong > pair.h + 0.1) {
+            apron.hStrong = hStrong;
+            apron.weakSpan = model.openings && model.openings.length
+              ? Math.max(100, Math.max(...model.openings.map(op => op.w)))
+              : apron.span;
+          }
           const stripSpan = Math.max(50, 2 * pair.off - pair.t);
           const topAlong = pair.axis === 'x' ? top.size.w : top.size.d;
           // Plate strip under a point load: effective width ≈ half the span
@@ -630,30 +647,57 @@ var BB = globalThis.BB = globalThis.BB || {};
          * half the spread load. The point load's worst position is directly
          * above one apron; the top (fastened along both aprons) redistributes
          * at least a quarter of it to the partner, so one apron carries 3/4 —
-         * still conservative against true composite action. */
+         * still conservative against true composite action.
+         *
+         * UNEQUAL pair (desk drawer band): the fastened top forces equal
+         * deflection, so the spread load splits by stiffness (h³); the point
+         * load keeps at least a quarter on the member it lands over (the
+         * mirror of the redistribution rule above). The weak member spans
+         * its OPENING (the centre stile, hung from the top, posts it), the
+         * strong member the full leg-to-leg run; the governing member is
+         * reported. Equal pairs take the original path byte for byte. */
         const POINT_SHARE = 0.75;
-        const cases = loadCasesFor(s.presetKey, s.apron.span, 'ss')
-          .map(c => ({ ...c, mag: c.fn.startsWith('udl') ? c.mag * 0.5 : c.mag * POINT_SHARE }));
-        const Ia = I_rect(s.apron.b, s.apron.h);
-        const { sag, M } = evalBeam(cases, s.apron.span, E, Ia);
-        const limit = s.apron.span / SAG_LIMIT_RATIO;
+        let Ia, sag, M, apEvalH = s.apron.h, apEvalSpan = s.apron.span;
+        if (s.apron.hStrong) {
+          const hW = s.apron.h, hS = s.apron.hStrong;
+          const shareW = Math.pow(hW, 3) / (Math.pow(hW, 3) + Math.pow(hS, 3));
+          const evalMember = (h, span, spreadShare, ptShare) => {
+            const I = I_rect(s.apron.b, h);
+            const cases = loadCasesFor(s.presetKey, span, 'ss')
+              .map(c => ({ ...c, mag: c.fn.startsWith('udl') ? c.mag * spreadShare : c.mag * ptShare }));
+            const r = evalBeam(cases, span, E, I);
+            return { I, sag: r.sag, M: r.M, ratio: r.sag / (span / SAG_LIMIT_RATIO), h, span };
+          };
+          const weak = evalMember(hW, s.apron.weakSpan || s.apron.span, shareW, Math.max(shareW, 0.25));
+          const strong = evalMember(hS, s.apron.span, 1 - shareW, POINT_SHARE);
+          const gov = weak.ratio >= strong.ratio ? weak : strong;
+          Ia = gov.I; sag = gov.sag; M = gov.M; apEvalH = gov.h; apEvalSpan = gov.span;
+        } else {
+          const cases = loadCasesFor(s.presetKey, s.apron.span, 'ss')
+            .map(c => ({ ...c, mag: c.fn.startsWith('udl') ? c.mag * 0.5 : c.mag * POINT_SHARE }));
+          Ia = I_rect(s.apron.b, s.apron.h);
+          ({ sag, M } = evalBeam(cases, s.apron.span, E, Ia));
+        }
+        const limit = apEvalSpan / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
-        if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.apron.span }; }
+        if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: apEvalSpan }; }
         const apFixes = [...fixes];
         if (spec.structure.apronHeight < 160) apFixes.unshift({ id: 'tall-apron', label: `Deepen aprons to ${fmtLen(Math.min(160, spec.structure.apronHeight + 30))}`, patch: { structure: { apronHeight: Math.min(160, spec.structure.apronHeight + 30) } } });
-        const apStress = Ia > 0 ? (M * (s.apron.h / 2)) / Ia : Infinity;
+        const apStress = Ia > 0 ? (M * (apEvalH / 2)) / Ia : Infinity;
         const apAllow = sp.mor / SAFETY_FACTOR;
         checks.push({
           id: 'sag:apron:' + s.id, title: `Sag — aprons under ${s.label.toLowerCase()}`,
           status: sagStatus(ratio),
-          value: `predicted sag ${fmtFine(sag)} over the ${fmtLen(s.apron.span)} apron span`,
+          value: `predicted sag ${fmtFine(sag)} over the ${fmtLen(apEvalSpan)} ${s.apron.hStrong ? 'governing band' : 'apron'} span`,
           threshold: `≤ ${fmtFine(limit)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
-          explain: `The aprons are the beams: each ${fmtLen(s.apron.b)} × ${fmtLen(s.apron.h)} apron carries half the spread load and, worst case, ¾ of the point load (the attached top shares the rest across). Sustained loads include ×${CREEP_FACTOR} creep.`,
+          explain: s.apron.hStrong
+            ? `Drawer band: the full ${fmtLen(s.apron.hStrong)} rear apron and the ${fmtLen(s.apron.h)} front rail share the load by stiffness through the fastened top; the governing member (${fmtLen(apEvalH)} deep over ${fmtLen(apEvalSpan)}) is reported. Sustained loads include ×${CREEP_FACTOR} creep.`
+            : `The aprons are the beams: each ${fmtLen(s.apron.b)} × ${fmtLen(s.apron.h)} apron carries half the spread load and, worst case, ¾ of the point load (the attached top shares the rest across). Sustained loads include ×${CREEP_FACTOR} creep.`,
           fixes: ratio > 1 ? withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'sag') : [],
           data: { sagMM: sag, limitMM: limit, spanMM: s.apron.span },
-          prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(s.apron.span)} mm, half the spread load per apron` }
+          prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(apEvalSpan)} mm, ${s.apron.hStrong ? 'stiffness-shared (h³) across the unequal band' : 'half the spread load per apron'}` }
         });
-        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset,
+        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, apEvalH, Ia, preset,
           withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'str'), sp);
 
         /* (b) Top as a plate strip between the aprons. Point loads act at the
@@ -1213,7 +1257,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         const zLoad = (frontPart ? frontPart.pos.z + frontPart.size.d / 2 : zF) + top.travel * OPEN_FRACTION;
         over += TEST_KG * GRAV * Math.max(0, zLoad - zF);
         const margin = over > 0 ? stab / over : Infinity;
-        const inScope = spec.overall.height >= 686; // F2057 covers clothing storage ≥ 27 in
+        // F2057/STURDY covers CLOTHING STORAGE ≥ 27 in — a desk's pencil
+        // drawer is not a dresser drawer, so the anchor mandate follows the
+        // regulation's scope while the physics is still reported.
+        const inScope = spec.overall.height >= 686 && t !== 'desk';
         const status = margin >= 1.5 ? 'pass' : margin >= 1 ? 'advisory' : (inScope ? 'fail' : 'advisory');
         // Anchor mandatory when it actually tips, or when a clothing-storage-
         // height piece runs a thin margin (the regulated scenario).

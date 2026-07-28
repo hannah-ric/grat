@@ -866,6 +866,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       chairSteps(spec, model, out, opts, { frP, ids });
     } else {
       frameSteps(spec, model, out, opts, { frP, ids });
+      // Desk apron drawers (frame_table extension): the band members go in
+      // with the base (their joints ride the frame steps' part lists); the
+      // boxes, runners, and fitting are the standard drawer sequence.
+      if (t === 'desk' && spec.drawers) drawerSteps(spec, model, out, opts);
     }
     // Mandatory anti-tip anchoring: an instruction step, not an aside. A
     // custom piece may not live against a wall at all (room dividers, column

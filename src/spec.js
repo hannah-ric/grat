@@ -1427,6 +1427,29 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* Desk apron drawers (frame_table extension, 2026-07): the drawer lives
+     * INSIDE the apron band — the top is its kicker, the front apron becomes
+     * a lower rail under the opening, and the box rides wooden runners hung
+     * between the front rail and the rear apron. That construction fixes the
+     * knobs: fronts are inset (there is no case face to overlay), runners
+     * are wood at EVERY level (there is no case side to screw a slide to —
+     * the beginner gate below is a casework rule, not an apron rule), and
+     * the band must be deep enough to leave a lower rail under a usable
+     * pencil-drawer opening. */
+    if (s.drawers && template === 'desk') {
+      const d = s.drawers;
+      d.count = clamp(Math.round(num(d.count, 1)), 1, 2);
+      d.frontStyle = 'inset';
+      d.runner = 'wood_runners';
+      st.apronHeight = Math.max(st.apronHeight, 90);
+      // A single drawer wider than a pencil drawer racks on its runners —
+      // the band splits into a pair around a centre stile, exactly as a
+      // too-wide door splits into a pair. Same deterministic rule the
+      // builder reads (35 mm overhang is the frame builder's own constant).
+      const clearW = o.width - 2 * 35 - 2 * st.legThickness;
+      if (d.count === 1 && clearW > 620) d.count = 2;
+    }
+
     // Drawers: only templates with openings support them.
     if (s.drawers && (template === 'nightstand' || template === 'cabinet')) {
       const d = s.drawers;
@@ -1445,7 +1468,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Reduce count until every opening clears the 80 mm minimum (correction
       // owns geometry; validation only reports what remains).
       while (d.count > 1 && BB.Parametric && BB.Parametric.openingHeightFor(s) < 80) d.count--;
-    } else {
+    } else if (template !== 'desk') {
       s.drawers = null;
     }
     if (template === 'nightstand' && !s.drawers) s.drawers = { count: 1, frontStyle: 'inset', runner: 'side_mount_slides' };
@@ -1684,6 +1707,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       band(hf.seat_width, se.width, 'ergo_seat_width', 'seat width');
     }
 
+    /* Desk knee room (frame_table coupling): the seated knee needs the air
+     * under the band. Residential desks commonly run ~600–640 clear; ADA
+     * 306.3 asks 685 for an accessible workstation — both are named, and
+     * the advisory never blocks. */
+    if (t === 'desk') {
+      const clear = o.height - spec.structure.topThickness - spec.structure.apronHeight;
+      if (clear < 600) {
+        advisories.push({ id: 'ergo_knee', text: `${fmt(clear)} of knee clearance under the ${spec.drawers ? 'drawer band' : 'apron'} is below the ~${fmt(600)} seated-knee band (Panero & Zelnik; ADA 306.3 asks ${fmt(685)} for accessible desks). Shallower ${spec.drawers ? 'band' : 'aprons'} or a taller desk buys it back.` });
+      }
+    }
+
     // Outdoor hardware truth (2026 hardware expansion): an exterior finish
     // on a tannin-rich species means plain-steel hardware streaks black.
     const finRow = K.FINISHES.find(f => f.key === spec.finish);
@@ -1716,7 +1750,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // Drawer geometry from the built model. Thresholds come from the
     // ergonomics table — one source of truth (audit F-SYS-3).
-    const drMinH = K.ergoRow('drawer_min_height').min;
+    /* Desk apron drawers are PENCIL drawers: the class accepts a 45 mm
+     * opening (the band could never hold the 80 mm casework minimum without
+     * eating the knee room) — a frame_table coupling, documented there. */
+    const drMinH = t === 'desk' ? 45 : K.ergoRow('drawer_min_height').min;
     const drMaxW = K.ergoRow('drawer_max_width').max;
     const pullMax = K.ergoRow('drawer_pull_height').max;
     if (model && model.openings) {

@@ -198,7 +198,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       couplings: [
         { id: 'apron_under_top', rule: 'apronHeight ≤ height − topThickness − 60: the apron band must leave leg below the top', enforcedBy: 'Spec.correctSpec geometry-sanity clamp' },
         { id: 'leg_vs_footprint', rule: 'legThickness ≤ min(width, depth)/4, snapped DOWN the post-stock table', enforcedBy: 'Spec.correctSpec legCap (audit E-04)' },
-        { id: 'stretcher_on_leg', rule: 'stretcher centreline ∈ [floor+100, apron underside − 90] — it must land on the leg with clamp room', enforcedBy: 'Spec.correctSpec stretcher clamp (X-07)' }
+        { id: 'stretcher_on_leg', rule: 'stretcher centreline ∈ [floor+100, apron underside − 90] — it must land on the leg with clamp room', enforcedBy: 'Spec.correctSpec stretcher clamp (X-07)' },
+        { id: 'drawer_in_band', rule: 'desk drawers live INSIDE the apron band: opening = apronHeight − 40 clamped 45–80 (pencil-drawer class, hence the 45 mm floor in validate), fronts inset, wood runners at every level (no case side for slides), a single opening wider than 620 splits around a centre stile', enforcedBy: 'Spec.correctSpec desk-drawer block + Parametric.addDeskDrawers' },
+        { id: 'knee_room', rule: 'desk knee clearance = height − top − band ≥ ~600 (Panero & Zelnik seated knee; ADA 306.3 asks 685 for accessible desks) — advisory, never silent', enforcedBy: 'Spec.validate ergo_knee' }
       ]
     },
     humanFactors: [
@@ -227,11 +229,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       { id: 'leg_buckle', mode: 'slender legs bow under load', checkIds: ['slender'], fixture: 'unit slenderness sections', realWorld: 'spindly hall tables' },
       { id: 'movement_split', mode: 'captured cross-grain panel splits with the seasons', checkIds: ['move:'], fixture: 'audit F-S2-3', realWorld: 'split solid tops screwed rigid' },
       { id: 'joint_overload', mode: 'weakest frame joint below its load share', checkIds: ['joints'], fixture: 'audit G5', realWorld: 'aprons torn off their legs' },
-      { id: 'tipping', mode: 'piece tips when top-loaded at the edge', checkIds: ['tip'], fixture: 'audit M-18', realWorld: 'tall narrow pieces going over' }
+      { id: 'tipping', mode: 'piece tips when top-loaded at the edge', checkIds: ['tip'], fixture: 'audit M-18', realWorld: 'tall narrow pieces going over' },
+      { id: 'band_weakened', mode: 'the drawer opening guts the front apron and the band sags or breaks', checkIds: ['sag:apron:', 'str:apron:'], conditional: true, fixture: 'audit DESK-1 (stiffness-shared band model, handcalc [17])', realWorld: 'pencil-drawer desks that bounce at the front edge' },
+      { id: 'drawer_pullout_tip', mode: 'open drawer + downward pull tips the desk', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit DESK-2 (reported; anchor mandate stays scoped to clothing storage)', realWorld: 'kids hanging on an open pencil drawer' }
     ],
     hardware: [
       { id: 'top_fasteners', item: 'figure-8 fasteners / tabletop buttons', when: 'every solid top', capacity: 'hold-down only; movement is released by design', matchedTo: 'seasonal travel computed by K.movementMM — the same number the movement check reports' },
-      { id: 'antitip', item: 'anti-tip wall anchor kit', when: 'tip margin below gate', capacity: 'per kit rating', matchedTo: 'tipping checks (mandatory BOM line when they fire, audit M-18)' }
+      { id: 'antitip', item: 'anti-tip wall anchor kit', when: 'tip margin below gate', capacity: 'per kit rating', matchedTo: 'tipping checks (mandatory BOM line when they fire, audit M-18)' },
+      { id: 'desk_drawer_gear', item: 'hardwood runners (cut list) + drawer pulls (BB.HW pullSpec)', when: 'desk drawers', capacity: 'runners are lumber sized by the box; pull bores computed by code', matchedTo: 'the wood-runner clearance model (climate-driven, FE-C2 family) and the pull rules the casework banks already use' }
     ],
     assembly: {
       sequence: ['layout', 's1 (end frames)', 's2 (join frames)', 'base_check (cure + rock check)', 's3 (attach top floating)'],
@@ -243,7 +248,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' }
     ],
     fixtures: {
-      golden: ['seed-table-imperial', 'shaker-table-imperial', 'custom-bench-metric'],
+      golden: ['seed-table-imperial', 'shaker-table-imperial', 'custom-bench-metric', 'walnut-writing-desk-imperial'],
       bad: ['audit F-S2-1 (apron-model regression)', 'unit geometric-buildability sections', 'battery boundary fixtures']
     }
   });

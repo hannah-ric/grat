@@ -316,7 +316,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     const apLenLong = frameW - 2 * legT, apLenShort = frameD - 2 * legT;
     const apZ = frameD / 2 - st.apronInset - st.apronThickness / 2;
     const apX = frameW / 2 - st.apronInset - st.apronThickness / 2;
+    // Desk apron drawers (frame_table extension): the FRONT apron is not a
+    // solid board — the drawer opening interrupts it, leaving a lower rail
+    // (and a centre stile on a pair). The rear apron stays full.
+    const deskDrawers = t === 'desk' && spec.drawers;
     [[-apZ, 1], [apZ, 2]].forEach(([z, i]) => {
+      if (deskDrawers && i === 2) return; // front band built by addDeskDrawers
       parts.push(part(`apron_long_${i}`, 'apron_long', 'apron', 'Long apron', apLenLong, st.apronHeight, st.apronThickness, 0, apY, z,
         { material: sp, explode: { x: 0, y: 0, z: Math.sign(z) } }));
     });
@@ -331,6 +336,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Frame joints: each apron end into its leg.
     const fj = spec.joinery.frame;
     for (const [z] of [[-apZ], [apZ]]) {
+      if (deskDrawers && z > 0) continue; // front band joints made below
       joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: apY, z } });
       joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: apY, z } });
     }
@@ -339,11 +345,127 @@ var BB = globalThis.BB = globalThis.BB || {};
       joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y: apY, z: lz } });
     }
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
+    if (!deskDrawers) joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
 
     addStretchers(spec, parts, joints, { lx, lz, legT, sp });
 
-    return { parts, joints, openings: [], drawers: [] };
+    let bankOut = { openings: [], drawers: [] };
+    if (deskDrawers) {
+      bankOut = addDeskDrawers(spec, parts, joints, {
+        apLenLong, apZ, apY, lx, frameD, sp, fj,
+        bandTop: o.height - topT, bandBottom: o.height - topT - st.apronHeight
+      });
+    }
+    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+  }
+
+  /* ---------------- desk apron drawers (frame_table extension, 2026-07) ----
+   * The drawer lives INSIDE the apron band: the top is its kicker, a lower
+   * rail runs under the opening (leg to leg — it is what remains of the
+   * front apron), a pair splits around a centre stile, and each box rides
+   * two wooden runners spanning from the lower rail to the rear apron.
+   * Fronts are inset in the band; the box derives from the opening exactly
+   * as the casework banks do (§5 math, wood-runner clearances). */
+  function addDeskDrawers(spec, parts, joints, f) {
+    const st = spec.structure, d = spec.drawers;
+    const sp = spec.wood.species;
+    const apT = st.apronThickness;
+    const openH = Math.max(45, Math.min(80, st.apronHeight - 40));
+    const lowerH = st.apronHeight - openH;
+    const zF = f.apZ;                 // band centreline (the front apron's plane)
+    const zFace = zF + apT / 2;       // outer face of the band
+    const frontT = 19, stileW = 60;
+    const boxT = spec.wood.sheetSpecies ? 12 : 15;
+    const boxMat = spec.wood.sheetSpecies || 'baltic_birch';
+    const openings = [], drawers = [];
+
+    const railY = f.bandBottom + lowerH / 2;
+    parts.push(part('rail_lower_1', 'rail_lower', 'rail', 'Lower drawer rail', f.apLenLong, lowerH, apT, 0, railY, zF,
+      { material: sp, explode: { x: 0, y: -0.3, z: 0.8 } }));
+    joints.push({ type: f.fj, a: 'rail_lower_1', b: 'leg_3', pos: { x: -f.lx, y: railY, z: zF } });
+    joints.push({ type: f.fj, a: 'rail_lower_1', b: 'leg_4', pos: { x: f.lx, y: railY, z: zF } });
+    if (d.count === 2) {
+      const stY = f.bandTop - openH / 2;
+      parts.push(part('stile_1', 'stile', 'rail', 'Centre stile', stileW, openH, apT, 0, stY, zF,
+        { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
+      joints.push({ type: 'butt_screws', a: 'stile_1', b: 'rail_lower_1', pos: { x: 0, y: f.bandBottom + lowerH, z: zF }, noCutAllowance: true });
+      joints.push({ type: 'butt_screws', a: 'stile_1', b: 'top_1', pos: { x: 0, y: f.bandTop, z: zF }, noCutAllowance: true });
+    }
+
+    const openW = Math.round(((d.count === 1 ? f.apLenLong : (f.apLenLong - stileW) / 2)) * 10) / 10;
+    const interiorD = 2 * f.apZ - apT; // clear run: band inner face to rear apron inner face
+    const boxD = Math.max(150, Math.min(Math.floor((interiorD - 25) / 10) * 10, 450));
+    const boxJoint = spec.joinery.box;
+    const slideIn = boxJoint === 'butt_screws' || boxJoint === 'pocket_screws';
+
+    for (let i = 0; i < d.count; i++) {
+      const px = d.count === 1 ? 0 : (i === 0 ? -1 : 1) * ((openW + stileW) / 2);
+      const op = {
+        index: i, w: openW, h: openH, x: px,
+        yTop: f.bandTop, yBottom: f.bandTop - openH, zTop: f.bandTop,
+        zFront: zFace, interiorDepth: interiorD
+      };
+      openings.push(op);
+      const boxW = openW - 4, boxH = openH - 10;
+      const boxFrontZ = zFace - frontT; // inset front finishes flush with the band face
+      const boxBottomY = op.yBottom + (op.h - boxH) / 2;
+      const cy = boxBottomY + boxH / 2, cz = boxFrontZ - boxD / 2;
+      const g = 'drawer_' + i;
+      const dp = [];
+      dp.push(part(`dr${i + 1}_side_l`, `drbox_side_${boxD}x${boxH}`, 'drawer_side', `Drawer ${i + 1} side`, boxT, boxH, boxD, px - boxW / 2 + boxT / 2, cy, cz, { material: boxMat, group: g }));
+      dp.push(part(`dr${i + 1}_side_r`, `drbox_side_${boxD}x${boxH}`, 'drawer_side', `Drawer ${i + 1} side`, boxT, boxH, boxD, px + boxW / 2 - boxT / 2, cy, cz, { material: boxMat, group: g }));
+      dp.push(part(`dr${i + 1}_boxfront`, `drbox_front_${Math.round(boxW)}x${boxH}`, 'drawer_boxfront', `Drawer ${i + 1} box front`, boxW - 2 * boxT, boxH, boxT, px, cy, boxFrontZ - boxT / 2, { material: boxMat, group: g }));
+      const backH = slideIn ? boxH - 16 : boxH;
+      dp.push(part(`dr${i + 1}_boxback`, `drbox_back_${Math.round(boxW)}x${Math.round(backH)}`, 'drawer_boxback', `Drawer ${i + 1} box back`, boxW - 2 * boxT, backH, boxT, px, boxBottomY + (slideIn ? backH / 2 + 16 : boxH / 2), boxFrontZ - boxD + boxT / 2, { material: boxMat, group: g }));
+      const botW = boxW - 2 * boxT + 10;
+      const botD = slideIn ? boxD - boxT - (boxT - 6) : boxD - 2 * boxT + 10;
+      dp.push(part(`dr${i + 1}_bottom`, `drbox_bot_${Math.round(botW)}x${Math.round(botD)}`, 'drawer_bottom', `Drawer ${i + 1} bottom`, botW, 6, botD, px, boxBottomY + 13, cz, { material: boxMat, group: g }));
+      const fw = openW - 4, fh = openH - 4;
+      const fZ = zFace - frontT / 2;
+      const front = part(`dr${i + 1}_front`, `drfront_${Math.round(fw)}x${Math.round(fh)}`, 'drawer_front', `Drawer ${i + 1} front`, fw, fh, frontT, px, op.yBottom + op.h / 2, fZ, { material: sp, group: g });
+      dp.push(front);
+      const pullStyle = (BB.HW && spec.hardware && BB.HW.PULLS[spec.hardware.pull]) ? spec.hardware.pull : 'bar_pull';
+      const pSpec = BB.HW ? BB.HW.pullSpec(fw, pullStyle) : { style: 'bar_pull', count: 1, ctcMM: 96, holes: 2 };
+      if (pullStyle !== 'none_touch') {
+        const isKnob = /knob|ring/.test(pSpec.style);
+        const pw = isKnob ? 35 : Math.max(60, Math.min(fw - 40, (pSpec.ctcMM || 96) + 14));
+        dp.push(part(`dr${i + 1}_pull`, 'pull', 'pull', `Drawer ${i + 1} pull`, pw, isKnob ? 35 : 12, 22, px, op.yBottom + op.h / 2, fZ + frontT / 2 + 11, { material: 'hardware', group: g }));
+      }
+      for (const p of dp) { p.drawer = i; p.explode = { x: 0, y: 0, z: 0 }; }
+      parts.push(...dp);
+      joints.push(
+        { type: boxJoint, a: dp[2].id, b: dp[0].id, pos: { x: px - boxW / 2 + boxT, y: cy, z: boxFrontZ - boxT / 2 } },
+        { type: boxJoint, a: dp[2].id, b: dp[1].id, pos: { x: px + boxW / 2 - boxT, y: cy, z: boxFrontZ - boxT / 2 } },
+        { type: slideIn ? boxJoint : 'dado', a: dp[3].id, b: dp[0].id, pos: { x: px - boxW / 2 + boxT, y: cy, z: boxFrontZ - boxD + boxT / 2 } },
+        { type: slideIn ? boxJoint : 'dado', a: dp[3].id, b: dp[1].id, pos: { x: px + boxW / 2 - boxT, y: cy, z: boxFrontZ - boxD + boxT / 2 } }
+      );
+
+      // Runners: real lumber, spanning the band to the rear apron under each
+      // box side — the top above is the kicker, so no upper gear at all.
+      const gearIds = [];
+      const runD = Math.max(120, Math.round(interiorD - 2)); // 2 mm fitting shy of the rear apron
+      const runZ = zF - apT / 2 - runD / 2;
+      [[-1, 'l'], [1, 'r']].forEach(([sgn, side]) => {
+        const id = `dr${i + 1}_runner_${side}`;
+        parts.push(part(id, `runner_${runD}`, 'runner', `Drawer ${i + 1} runner`, 32, 20, runD,
+          px + sgn * (boxW / 2 - 16), boxBottomY - 10, runZ, { group: 'frame', material: sp }));
+        gearIds.push(id);
+        joints.push({ type: 'butt_screws', a: id, b: 'apron_long_1', pos: { x: px + sgn * (boxW / 2 - 16), y: boxBottomY - 10, z: runZ - runD / 2 }, noCutAllowance: true });
+        joints.push({ type: 'butt_screws', a: id, b: 'rail_lower_1', pos: { x: px + sgn * (boxW / 2 - 16), y: boxBottomY - 10, z: zF }, noCutAllowance: true });
+      });
+
+      drawers.push({
+        index: i, group: g, opening: op,
+        box: { w: boxW, h: boxH, d: boxD, t: boxT },
+        slideLen: null, runner: 'wood_runners', frontStyle: 'inset',
+        front: { w: fw, h: fh, t: frontT },
+        pull: Object.assign({ styleKey: pullStyle }, pSpec),
+        travel: Math.round(boxD * 0.8),
+        partIds: dp.map(p => p.id),
+        gearIds
+      });
+    }
+    return { openings, drawers };
   }
 
   /* ---------------- stretchers (X-07) ----------------

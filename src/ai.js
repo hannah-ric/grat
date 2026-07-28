@@ -475,7 +475,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // X-01): the new template when creating, else the CURRENT design — a
     // mentioned-but-not-created template must never smuggle a field that
     // correction will strip (the phantom "2 drawer(s)" ack).
-    const canDrawer = w => ['nightstand', 'cabinet'].includes(w || spec.meta.template);
+    const canDrawer = w => ['nightstand', 'cabinet', 'desk'].includes(w || spec.meta.template);
     const landing = creating ? wantTemplate : spec.meta.template;
     let dm = null;
     if (/\b(no|remove|without)\b.*\bdrawers?\b/.test(t) && spec.meta.template !== 'nightstand') { patch.drawers = null; notes.push('no drawers'); }
@@ -487,7 +487,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           return {
             kind: 'question',
             question: `Drawers need a case with openings — a ${spec.meta.template} can't take them yet, but a nightstand or cabinet can.`,
-            options: ['Make it a nightstand', 'Make it a cabinet']
+            options: ['Make it a nightstand', 'Make it a cabinet', 'Make it a desk']
           };
         }
         notes.push(`drawers skipped — not available on a ${spec.meta.template}`);

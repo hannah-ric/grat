@@ -2647,7 +2647,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * control that quietly does nothing. Novel pieces carry a joint per
    * connection instead, so they are steered through chat. */
   const JOINERY_SLOTS = {
-    table: ['frame'], desk: ['frame'], bench: ['frame'],
+    table: ['frame'], desk: ['frame', 'box'], bench: ['frame'],
     bookshelf: ['case'],
     nightstand: ['frame', 'case', 'box'],
     cabinet: ['frame', 'case', 'box'],
@@ -2721,6 +2721,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
         v => live({ drawers: { count: v } }), () => done()));
     }
+    /* Desk pencil drawers (frame_table extension): an add/remove choice, not
+     * a 1–4 slider — the band takes one opening or a stiled pair, and
+     * correction owns the split, so the control offers exactly what the
+     * class builds. */
+    if (s.meta.template === 'desk') {
+      const cur = s.drawers ? String(s.drawers.count) : 'none';
+      body.append(paramSelect('Pencil drawers', [['none', 'None'], ['1', 'One'], ['2', 'A pair']], cur,
+        v => { merge({ drawers: v === 'none' ? null : { count: +v } }, 'manual'); renderAdjustBody(); }));
+    }
     /* Doors (X-07). Only where there is a case front to close; correction
      * refuses them elsewhere, so offering the control elsewhere would be a
      * knob that does nothing. The hinge picker lists only hinges that can
@@ -2773,6 +2782,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     // the control cannot propose something correctSpec will overrule.
     const allowed = K.jointsForLevel(s.meta.level);
     for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
+      if (slot === 'box' && s.meta.template === 'desk' && !s.drawers) continue; // no drawers, no box joints
+
       const opts = Object.values(K.JOINERY)
         .filter(j => j.kinds.includes(slot) && allowed.includes(j.key))
         // Seating class mandate: the frame picker lists only joints the class

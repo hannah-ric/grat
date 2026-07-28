@@ -125,6 +125,21 @@ const CORPUS = [
     }
   },
   {
+    /* Desk apron drawers (frame_table extension, 2026-07): the band model —
+     * front apron replaced by a lower rail + centre stile, wood runners,
+     * inset pencil fronts, stiffness-shared beam check. */
+    name: 'walnut-writing-desk-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Writing Desk', template: 'desk', level: 'intermediate', units: 'in' },
+      wood: { species: 'walnut' },
+      structure: { apronHeight: 110, topThickness: 25 },
+      joinery: { frame: 'dowels', box: 'locking_rabbet' },
+      drawers: { count: 1 },
+      finish: 'hardwax_oil'
+    }
+  },
+  {
     /* Boundary: every seat-family knob at (or past) its edge — width/depth
      * at the band tops, seat height at the dining clamp, back rise at max,
      * rake asked at 8° and CLAMPED by the straight-post rule, slope at max.
