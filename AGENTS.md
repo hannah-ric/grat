@@ -26,7 +26,7 @@ npm run test:adjust            # Adjust rail: joinery slots, thickness knobs, sk
 npm run test:print             # 1:1 template fidelity against the real page box
 npm run test:a11y              # axe sweep + the project's own a11y commitments
 npm run test:cloud             # dev login → cloud autosave → reload restore
-npm run test:handcalc          # hand-arithmetic vs engine worksheet (audit asset)
+npm run test:handcalc          # hand-arithmetic vs engine worksheet (25/25, audit asset)
 npm run test:battery           # live behavior battery (representative/boundary/adversarial)
 ```
 
@@ -49,7 +49,7 @@ knowledge tables and self-tested — never hand-edit a digest string.
 
 - `src/` — one module per concern (`ai.js` transports/protocol, `spec.js`
   correction + validation incl. the geometric buildability audit,
-  `parametric.js` templates, `structural.js` physics (creep, BIFMA presets,
+  `classes.js` furniture-class contracts (nine artifact sets per class; seating + frame_table registered), `parametric.js` templates (incl. `chair`), `structural.js` physics (creep, BIFMA presets,
   F2057 open-drawer tipping), `fasteners.js` fastener-location/joinery-setout
   engine, `packing.js` stock optimizer, `units.js` display boundary,
   `ui.js` DOM, `materials.js` procedural textures/env, `engine.js` 3D

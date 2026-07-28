@@ -302,6 +302,88 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   console.log(`    offsets: ${offs} (hand: 15, 818, 1621)`);
 }
 
+/* =========================================================================
+ * 10. SEATING (2026-07) — the rear-tilt case, by hand, every step shown.
+ *     Nominal advanced red-oak dining chair (M&T frame):
+ *       seat.height 445, topThickness 20, apronHeight 65 → rail centreline
+ *       railY = 445 − 20 − 65/2 = 392.5 mm; stretcherHeight 200 →
+ *       couple arm = 392.5 − 200 = 192.5 mm.
+ *       backHeight 470, CREST_H 75 → crestY = 445 + 470 − 37.5 = 877.5 mm.
+ *     Back functional force 667 N (BIFMA X5.1 §5/6) at the crest, chair
+ *     tipped onto its rear legs. Per SIDE frame:
+ *       M = (667/2) × (877.5 − 392.5) = 333.5 × 485 = 161,747.5 N·mm
+ *       R = M / arm = 161,747.5 / 192.5 = 840.25 N per joint
+ *     Capacity: mortise & tenon 2000 N × (SG 0.63 / 0.5) = 2520 N
+ *       margin = 2520 / 840.25 = 3.00×  → PASS (gate 1.5×)
+ * ========================================================================= */
+{
+  const spec = Spec.correctSpec({ meta: { name: 'HC chair', template: 'chair', level: 'advanced', units: 'mm' }, joinery: { frame: 'mortise_tenon' } });
+  const model = Parametric.build(spec);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const tilt = integ.checks.find(c => c.id === 'chair:tilt');
+  const railY = 445 - 20 - 65 / 2;
+  const crestY = 445 + 470 - 75 / 2;
+  const arm = railY - 200;
+  const Mhand = (667 / 2) * (crestY - railY);
+  const Rhand = Mhand / arm;
+  const capHand = 2000 * (K.WOOD_SPECIES.red_oak.sg / 0.5);
+  console.log(`\n[13] Rear tilt: M = 333.5 × (${crestY} − ${railY}) = ${Mhand.toFixed(1)} N·mm; R = M/${arm} = ${Rhand.toFixed(2)} N; cap = 2000×1.26 = ${capHand} N; margin ${(capHand / Rhand).toFixed(2)}×`);
+  row('rear-tilt side moment M (N·mm)', Mhand, tilt.data.momentNmm);
+  row('rear-tilt joint demand R (N)', Rhand, tilt.data.demandN);
+  row('rear-tilt joint capacity (N)', capHand, tilt.data.capN, 0.01);
+  row('rear-tilt margin (×)', capHand / Rhand, tilt.data.marginRatio);
+
+  /* Back static — rear post net-section bending at the rail mortise:
+   *   post 38 wide × 45 deep; mortise derate 10 → net b = 28
+   *   I = 28 × 45³ / 12 = 212,625 mm⁴; c = 22.5
+   *   σ = M·c/I = 161,747.5 × 22.5 / 212,625 = 17.115 MPa
+   *   allow = MOR 99 / 4 = 24.75 → margin 1.45 → PASS */
+  const back = integ.checks.find(c => c.id === 'chair:back');
+  const Ihand = 28 * Math.pow(45, 3) / 12;
+  const sigmaHand = Mhand * 22.5 / Ihand;
+  console.log(`\n[14] Back post: I = 28×45³/12 = ${Ihand} mm⁴; σ = ${Mhand.toFixed(0)}×22.5/${Ihand} = ${sigmaHand.toFixed(3)} MPa vs allow ${(99 / 4).toFixed(2)}`);
+  row('rear-post net-section stress (MPa)', sigmaHand, back.data.stressMPa);
+
+  /* Cyclic acceptance: seat 1334 N / 4 joints = 333.5 N; capacity 2520 × 0.5
+   * = 1260 N → margin 3.78×. */
+  const cyc = integ.checks.find(c => c.id === 'chair:cyclic');
+  console.log(`\n[15] Cyclic: 1334/4 = 333.5 N vs 2520×0.5 = 1260 N (margin ${(1260 / 333.5).toFixed(2)})`);
+  row('cyclic per-joint demand (N)', 1334 / 4, cyc.data.perJointN);
+  row('cyclic capacity at 0.5 factor (N)', capHand * 0.5, cyc.data.cyclicCapN, 0.01);
+}
+
+/* =========================================================================
+ * 11. Stool: footrest step-up and the compound-splay resultant.
+ *     Maple counter stool, counter 900 → seat 630; splay 5°.
+ *     Resultant tilt of a leg splayed 5° in BOTH planes:
+ *       θR = atan(√2 · tan 5°) = atan(1.41421 × 0.0874886) = 7.0498°
+ *     Leg axial length: frameTop = 630 − 20 = 610;
+ *       La = 610 / cos(θR) − 38·tan(θR) = 614.62... − 4.70 = 609.92 → 609.9
+ *     Footrest: front stretcher at strY = 630 − 230 = 400;
+ *       span (model) grows with the splay run below the seat.
+ *       M = P·L/4 with P = 1334 N; σ = M·c/I, I = 25 × 49³/12.
+ * ========================================================================= */
+{
+  Units.set({ system: 'metric' });
+  const spec = Spec.correctSpec({ meta: { name: 'HC stool', template: 'chair', level: 'intermediate', units: 'mm' }, wood: { species: 'hard_maple' }, seat: { backHeight: 0, counterHeight: 900, splayDeg: 5 } });
+  const model = Parametric.build(spec);
+  const thetaR = Math.atan(Math.SQRT2 * Math.tan(5 * Math.PI / 180));
+  const LaHand = 610 / Math.cos(thetaR) - 38 * Math.tan(thetaR);
+  const leg = model.parts.find(p => p.id === 'leg_1');
+  console.log(`\n[16] Splay resultant: θR = atan(√2·tan5°) = ${(thetaR * 180 / Math.PI).toFixed(4)}°; La = 610/cosθR − 38·tanθR = ${LaHand.toFixed(2)} mm`);
+  row('splayed leg axial length (mm)', Math.round(LaHand * 10) / 10, leg.size.h);
+
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const foot = integ.checks.find(c => c.id === 'chair:foot');
+  const fr = model.parts.find(p => p.id === 'stretcher_front_1');
+  const span = Math.max(fr.size.w, fr.size.d);
+  const Mf = 1334 * span / 4;
+  const If = 25 * Math.pow(49, 3) / 12;
+  const sigmaF = Mf * (49 / 2) / If;
+  console.log(`    Footrest: span ${span} → M = 1334×${span}/4 = ${Mf.toFixed(0)} N·mm; I = 25×49³/12 = ${If.toFixed(0)}; σ = ${sigmaF.toFixed(3)} MPa vs allow ${(K.WOOD_SPECIES.hard_maple.mor / 4).toFixed(2)}`);
+  row('footrest bending stress (MPa)', sigmaF, foot.data.stressMPa);
+}
+
 const fails = rows.filter(r => !r.pass);
 console.log(`\nworksheet: ${rows.length - fails.length}/${rows.length} agree`);
 for (const f of fails) console.log(`  DISAGREE: ${f.name} (hand ${f.hand} vs engine ${f.engine})`);

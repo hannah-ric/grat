@@ -5259,7 +5259,7 @@ body.ph-open .porch::after { display: none; }
     ],
     jointRules: {
       connections: [
-        { connection: 'side rail → rear post (and all seat-frame rails → legs)', required: SEAT_FRAME_ALLOWED, prohibited: ['butt_screws', 'pocket_screws', 'biscuits', 'dowels'], reason: 'the rear-tilt couple puts ≈ 750 N through each side joint (handcalc); screws top out ≈ 1.35× margin in the densest stocked species and biscuits/dowels sit at 0.8–1.35× — all below the 1.5× gate, and halved again under the cyclic factor. Mortise & tenon (or loose tenon / bolted barrel-nut) carries it at 3× in oak. This is why a screwed chair loosens in a year.' },
+        { connection: 'side rail → rear post (and all seat-frame rails → legs)', required: SEAT_FRAME_ALLOWED, prohibited: ['butt_screws', 'pocket_screws', 'biscuits', 'dowels'], reason: 'the rear-tilt couple puts ≈ 840 N through each side joint on the nominal dining chair (handcalc [13]); screws top out ≈ 1.2× margin in the densest stocked species and biscuits/dowels sit at 0.7–1.4× — all below the 1.5× gate, and halved again under the cyclic factor. Mortise & tenon (or loose tenon / bolted barrel-nut) carries it at 2.7–3.0× in oak. This is why a screwed chair loosens in a year.' },
         { connection: 'back slats / crest → rear posts', required: ['mortise_tenon', 'loose_tenon', 'kd_bolt'], prohibited: ['butt_screws', 'pocket_screws'], reason: 'the back force levers slats in withdrawal — screws into post side grain work loose; housed tenons do not. Follows the frame slot mandate.' },
         { connection: 'corner blocks → rails', required: ['butt_screws'], prohibited: [], reason: 'corner blocks are glued and screwed across the corner — structure of the seat frame (they close the racking loop), listed as parts with their own dimensions, but their fastening is honestly screws + glue.' },
         { connection: 'seat panel → rails/posts', required: ['butt_screws'], prohibited: ['edge_glue'], reason: 'a solid seat moves across the grain: screws in slotted holes / buttons, notched around the posts with capture in the panel size — never glued down (movement check).' }
@@ -5281,7 +5281,7 @@ body.ph-open .porch::after { display: none; }
     hardware: [
       { id: 'corner_block_screws', item: '#8 × 32 wood screws, 2 per block face (glue + screws)', when: 'every seat frame (4 corner blocks)', capacity: 'screw shear ≥ 500 N each (JOINT_RATING butt_screws basis)', matchedTo: 'racking share of the seat frame; blocks close the frame loop — counted by the fastener engine so BOM = drilling instructions' },
       { id: 'seat_fixing', item: '#8 screws in slotted/oversize holes through the corner blocks (or figure-8s)', when: 'solid seat panels', capacity: 'hold-down only', matchedTo: 'seasonal movement computed by K.movementMM — fixing must release it' },
-      { id: 'kd_hardware', item: 'M6 furniture bolts + barrel nuts, 2 per rail end', when: 'joinery.frame = kd_bolt', capacity: '1800 N per joint class (JOINT_RATING kd_bolt), SG-scaled', matchedTo: 'rear-tilt couple demand (≈ 750 N nominal) with re-snug schedule in the steps' }
+      { id: 'kd_hardware', item: 'M6 furniture bolts + barrel nuts, 2 per rail end', when: 'joinery.frame = kd_bolt', capacity: '1800 N per joint class (JOINT_RATING kd_bolt), SG-scaled', matchedTo: 'rear-tilt couple demand (≈ 840 N nominal, handcalc [13]) with re-snug schedule in the steps' }
     ],
     assembly: {
       sequence: [

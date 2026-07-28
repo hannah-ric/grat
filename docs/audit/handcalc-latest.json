@@ -110,5 +110,68 @@
     "engine": 2,
     "errPct": 0,
     "pass": true
+  },
+  {
+    "name": "rear-tilt side moment M (N·mm)",
+    "hand": 161747.5,
+    "engine": 161747.5,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "rear-tilt joint demand R (N)",
+    "hand": 840.2467532467532,
+    "engine": 840.2467532467532,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "rear-tilt joint capacity (N)",
+    "hand": 2520,
+    "engine": 2520,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "rear-tilt margin (×)",
+    "hand": 2.9991189972024297,
+    "engine": 2.9991189972024297,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "rear-post net-section stress (MPa)",
+    "hand": 17.116137566137567,
+    "engine": 17.116137566137567,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "cyclic per-joint demand (N)",
+    "hand": 333.5,
+    "engine": 333.5,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "cyclic capacity at 0.5 factor (N)",
+    "hand": 1260,
+    "engine": 1260,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "splayed leg axial length (mm)",
+    "hand": 609.9,
+    "engine": 609.9,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "footrest bending stress (MPa)",
+    "hand": 13.024418159100374,
+    "engine": 13.024418159100374,
+    "errPct": 0,
+    "pass": true
   }
 ]

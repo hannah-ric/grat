@@ -3052,5 +3052,217 @@ section('X-07b doors: geometry, the hinge rule, and one source for the count');
   }
 }
 
+/* =========================================================================
+ * SEATING class (2026-07) — the class contract and its bad fixtures.
+ * Every entry in the seating failure-mode checklist must FIRE on its bad
+ * fixture, caught by code, never by a model's judgment. One section per
+ * fixture; SEAT-0 holds the contract itself.
+ * ========================================================================= */
+section('SEAT-0 the class contract holds, is covered, and its goldens exist');
+{
+  for (const cls of BB.Classes.all()) {
+    eq(BB.Classes.validateContract(cls), [], `contract complete: ${cls.key}`);
+    for (const g of cls.fixtures.golden) {
+      ok(fs.existsSync(path.join(__dirname, 'golden', g + '.json')), `${cls.key} golden fixture on disk: ${g}`);
+    }
+  }
+  // Nominal coverage: every non-conditional failure mode is examined live.
+  for (const [tmpl, level] of [['chair', 'advanced'], ['table', 'beginner']]) {
+    const { spec, model, report } = pipeline({ meta: { name: 'cov', template: tmpl, level, units: 'mm' } });
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const rows = BB.Classes.runChecklist(tmpl, { integrity: integ, validation: report });
+    eq(rows.filter(r => r.status === 'uncovered').map(r => r.id), [], `no uncovered failure modes on a nominal ${tmpl}`);
+  }
+  // The stool exercises the conditional modes the chair cannot.
+  const st = pipeline({ meta: { name: 'cov', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0, counterHeight: 900 } });
+  const stInteg = Structural.computeIntegrity(st.spec, st.model, {});
+  const stRows = BB.Classes.runChecklist('chair', { integrity: stInteg, validation: st.report });
+  ok(stRows.find(r => r.id === 'footrest_break').covered, 'the footrest mode is examined on a stool');
+}
+
+section('SEAT-1 a screwed side rail cannot survive correction (rear-tilt mandate)');
+{
+  const seatCls = BB.Classes.get('seating');
+  for (const level of K.LEVELS) {
+    for (const j of ['butt_screws', 'pocket_screws', 'biscuits', 'dowels']) {
+      const spec = Spec.correctSpec({ meta: { name: 'S1', template: 'chair', level, units: 'mm' }, joinery: { frame: j } });
+      ok(!['butt_screws', 'pocket_screws', 'biscuits', 'dowels'].includes(spec.joinery.frame),
+        `${j} at ${level} is rewritten to ${spec.joinery.frame} — screwed seat frames are impossible`);
+    }
+  }
+  // The disclosure: a level-legal joint the class refuses is SAID, not silent.
+  const notes = Spec.correctionNotes(
+    { meta: { name: 'S1', template: 'chair', level: 'beginner', units: 'mm' }, joinery: { frame: 'pocket_screws' } },
+    Spec.correctSpec({ meta: { name: 'S1', template: 'chair', level: 'beginner', units: 'mm' }, joinery: { frame: 'pocket_screws' } }));
+  ok(notes.some(n => /can’t hold a chair’s seat frame/.test(n)), `the substitution is disclosed — got ${JSON.stringify(notes)}`);
+  // And the REASON is arithmetic, not taste: the rear-tilt demand vs a
+  // pocket screw's SG-scaled capacity never reaches the 1.5× gate, even in
+  // the densest stocked species (hickory).
+  const { spec, model } = pipeline({ meta: { name: 'S1', template: 'chair', level: 'beginner', units: 'mm' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const tilt = integ.checks.find(c => c.id === 'chair:tilt');
+  ok(tilt && tilt.status === 'pass', 'the mandated joint passes the same case');
+  const worstSgF = Math.max(...Object.values(K.WOOD_SPECIES).filter(s => !s.sheet).map(s => s.sg)) / 0.5;
+  const pocketBest = Structural.JOINT_RATING.pocket_screws.capN * worstSgF / tilt.data.demandN;
+  ok(pocketBest < 1.5, `pocket screws top out at ${pocketBest.toFixed(2)}× on the same demand — below the 1.5× gate in every species`);
+}
+
+section('SEAT-2 a sawn rear leg (excess rake) is refused, not built');
+{
+  const raw = { meta: { name: 'S2', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backRake: 8 } };
+  const spec = Spec.correctSpec(raw);
+  const maxRake = BB.Classes.get('seating').geom.backRakeMax(spec.structure, spec.seat);
+  ok(spec.seat.backRake <= maxRake + 0.01, `rake clamps to straight-post capability (${spec.seat.backRake}° ≤ ${maxRake}°)`);
+  const notes = Spec.correctionNotes(raw, spec);
+  ok(notes.some(n => /short grain/.test(n) && /sawn or steam-bent/.test(n)),
+    `the refusal names short grain — got ${JSON.stringify(notes)}`);
+  // Defense in depth: a spec that somehow escapes correction still cannot
+  // present sawn-leg geometry as sound — chair:rake fails it.
+  const model = Parametric.build(spec);
+  const tampered = Spec.clone(spec);
+  tampered.seat.backRake = 12;
+  const integ = Structural.computeIntegrity(tampered, model, {});
+  eq(integ.checks.find(c => c.id === 'chair:rake').status, 'fail', 'chair:rake fails a tampered 12° rake');
+  eq(integ.summary.verdict, 'fail', 'and the verdict is FAIL, never a plausible plan');
+}
+
+section('SEAT-3 a stool sized to the wrong counter is re-derived and told');
+{
+  const raw = { meta: { name: 'S3', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0, counterHeight: 900, height: 750 } };
+  const spec = Spec.correctSpec(raw);
+  eq(spec.seat.height, 630, 'a 750 seat asked against a 900 counter is re-derived to 630 (counter − 270)');
+  const notes = Spec.correctionNotes(raw, spec);
+  ok(notes.some(n => /250–300 mm below/.test(n)), `and the coupling is disclosed — got ${JSON.stringify(notes)}`);
+  // A height already inside the 250–300 window is the user's own tweak.
+  const tweak = Spec.correctSpec({ meta: { name: 'S3', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0, counterHeight: 900, height: 615 } });
+  eq(tweak.seat.height, 615, 'a height inside the drop window survives');
+  // No counter named: the ask is a live finding, not silence.
+  const { spec: s2, model: m2 } = pipeline({ meta: { name: 'S3', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0 } });
+  const counter = Structural.computeIntegrity(s2, m2, {}).checks.find(c => c.id === 'chair:counter');
+  ok(counter && counter.status === 'advisory' && /Tell the app the real counter height/.test(counter.explain),
+    'a stool with no counter stated ASKS for one');
+}
+
+section('SEAT-4 seat dimensions outside the human-factors band are named');
+{
+  const { spec, model, report } = pipeline({ meta: { name: 'S4', template: 'chair', level: 'beginner', units: 'mm' }, seat: { height: 500, depth: 460, width: 520 } });
+  for (const id of ['ergo_seat_height', 'ergo_seat_depth', 'ergo_seat_width']) {
+    ok(report.advisories.some(a => a.id === id), `${id} fires on an out-of-band seat`);
+  }
+  // Beyond the family range entirely: clamped AND told.
+  const raw = { meta: { name: 'S4', template: 'chair', level: 'beginner', units: 'mm' }, seat: { height: 550 } };
+  const clamped = Spec.correctSpec(raw);
+  eq(clamped.seat.height, 500, 'a 550 dining seat clamps to the family edge');
+  ok(Spec.correctionNotes(raw, clamped).some(n => /seat height/.test(n)), 'and the clamp is a note, not a silence');
+  // The nominal chair stays advisory-free.
+  const nom = pipeline({ meta: { name: 'S4', template: 'chair', level: 'beginner', units: 'mm' } });
+  eq(nom.report.advisories.filter(a => /^ergo_seat/.test(a.id)), [], 'the nominal chair sits inside every band');
+}
+
+section('SEAT-5 upholstery, arms, and mechanisms are refusals with reasons');
+{
+  const raw = { meta: { name: 'S5', template: 'chair', level: 'beginner', units: 'mm' }, seat: { upholstered: true, arms: true } };
+  const notes = Spec.correctionNotes(raw, Spec.correctSpec(raw));
+  ok(notes.some(n => /Upholstered and slip seats aren’t generated/.test(n)), 'upholstery refusal note');
+  ok(notes.some(n => /Arms aren’t generated/.test(n)), 'arms refusal note');
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table' } });
+  for (const [ask, rx] of [
+    ['an upholstered dining chair', /upholster/i],
+    ['build me an armchair', /arm/i],
+    ['a rocking chair', /rock/i],
+    ['a folding chair', /fold/i],
+    ['a chair with steam-bent legs', /short grain/i]
+  ]) {
+    const r = AI.localModel(ask, table, {});
+    ok(r.kind === 'info' && rx.test(r.text || ''), `parser refuses "${ask}" with the reason — got ${r.kind}`);
+  }
+  ok(/NOT buildable: upholstered\/slip seats, arms, sawn or bent rear legs, rockers, folders/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC teaches the model the refusal set');
+}
+
+section('SEAT-6 a pine chair fails honestly — a second frozen honest-fail');
+{
+  const { spec, model } = pipeline({ meta: { name: 'S6', template: 'chair', level: 'advanced', units: 'mm' }, joinery: { frame: 'mortise_tenon' }, wood: { species: 'pine' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  eq(integ.checks.find(c => c.id === 'chair:back').status, 'fail',
+    'pine rear posts fail the back case at the rail mortise (margin < 1)');
+  eq(integ.summary.verdict, 'fail', 'the pine chair ships a FAIL verdict — do not "fix" this');
+  // Red oak at identical geometry passes everything: species is the answer.
+  const oak = pipeline({ meta: { name: 'S6', template: 'chair', level: 'advanced', units: 'mm' }, joinery: { frame: 'mortise_tenon' } });
+  const oakInteg = Structural.computeIntegrity(oak.spec, oak.model, {});
+  eq(oakInteg.summary.verdict, 'pass', 'the same chair in red oak passes clean');
+  // And the failing check offers the species fix, not a shrug.
+  const backFail = integ.checks.find(c => c.id === 'chair:back');
+  ok(backFail.fixes.some(f => /Switch to|Thicken/.test(f.label)), 'the fail carries tappable fixes');
+}
+
+section('SEAT-7 corner blocks are structure: parts, dimensions, screws, step');
+{
+  const { spec, model } = pipeline({ meta: { name: 'S7', template: 'chair', level: 'beginner', units: 'mm' } });
+  const cut = Plans.cutList(spec, model);
+  const block = cut.find(r => /corner block/i.test(r.name));
+  ok(block && block.qty === 4 && block.L === 60 && block.W === 60, `4 corner blocks on the cut list with dimensions — got ${JSON.stringify(block && { qty: block.qty, L: block.L, W: block.W, T: block.T })}`);
+  ok(/45°/.test(block.note), 'the block row carries the 45° rip note');
+  ok(/straight-grained/.test(block.note), 'and the clear-stock note — blocks are load-bearing');
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const steps = Plans.assembly(spec, model, integ, {});
+  const s4 = steps.find(s => s.id === 's4');
+  ok(s4 && /structure, not trim/i.test(s4.title) && /racking loop/.test(s4.text), 'the block step names them structure');
+  // BOM counts the block screws: 4 blocks × ≥3 mates × 2 screws each ride
+  // the fastener engine, so drilling instructions and BOM agree by
+  // construction. Assert the screw line exists and covers them.
+  const bom = Plans.bom(spec, model, { integrity: integ });
+  const screwQty = bom.items.filter(i => /wood screw/i.test(i.label)).reduce((n, i) => n + i.qty, 0);
+  ok(screwQty >= 24, `the screw lines cover the block fastening (12 block joints × 2) — got ${screwQty}`);
+}
+
+section('SEAT-8 no output surface ever claims BIFMA compliance');
+{
+  for (const raw of [
+    { meta: { name: 'S8', template: 'chair', level: 'advanced', units: 'mm' }, joinery: { frame: 'mortise_tenon' } },
+    { meta: { name: 'S8s', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0, counterHeight: 1060 } }
+  ]) {
+    const { spec, model } = pipeline(raw);
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const steps = Plans.assembly(spec, model, integ, {});
+    const cut = Plans.cutList(spec, model);
+    const bom = Plans.bom(spec, model, { integrity: integ }).items;
+    const everything = JSON.stringify({ checks: integ.checks, steps, cut, bom });
+    ok(!/BIFMA[\s-]*(certified|compliant|approved|rated|passes|meets)/i.test(everything),
+      `no compliance claim anywhere in the ${spec.seat.backHeight ? 'chair' : 'stool'} output`);
+    const disc = integ.checks.find(c => c.id === 'chair:bifma');
+    ok(disc && /not a compliance claim/.test(disc.explain) && /physical testing/.test(disc.explain),
+      'the benchmarked-not-certified disclosure ships in the output itself');
+    ok(/not formally covered by BIFMA/.test(disc.explain), 'and says residential chairs are outside BIFMA scope');
+  }
+}
+
+section('SEAT-9 units are display-only: one geometry in mm and inches');
+{
+  const mk = units => {
+    const { spec, model } = pipeline({ meta: { name: 'S9', template: 'chair', level: 'advanced', units }, joinery: { frame: 'mortise_tenon' } });
+    return { spec, model };
+  };
+  const a = mk('mm'), b = mk('in');
+  const dims = m => m.model.parts.map(p => `${p.id}:${p.size.w}x${p.size.h}x${p.size.d}`).join('|');
+  eq(dims(a), dims(b), 'identical part geometry whichever display units are chosen');
+  eq(a.spec.seat, b.spec.seat, 'identical corrected seat family');
+  // The compound-splay stool carries its angle guidance in BOTH systems.
+  for (const units of ['mm', 'in']) {
+    Units.set({ system: units === 'mm' ? 'metric' : 'imperial', precision: 16, dual: false });
+    const { spec, model } = pipeline({ meta: { name: 'S9s', template: 'chair', level: 'intermediate', units }, seat: { backHeight: 0, counterHeight: 900, splayDeg: 5 } });
+    const cut = Plans.cutList(spec, model);
+    const leg = cut.find(r => /^Leg$/i.test(r.name));
+    ok(leg && /compound end cut/.test(leg.note), `splayed legs carry the compound note (${units})`);
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const steps = Plans.assembly(spec, model, integ, {});
+    const layout = steps.find(s => s.id === 'layout');
+    ok(layout && /sliding bevel/.test(layout.text) && /7\.1|7°|7\.05/.test(layout.text),
+      `the angle schedule states the true resultant (~7.1° for 5° splay) in tool-settable terms (${units})`);
+    ok(/RIP EACH LEG BLANK WITH THE GRAIN/.test(layout.text), 'and mandates the blank orientation');
+  }
+  Units.set({ system: 'metric', precision: 16, dual: false });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
