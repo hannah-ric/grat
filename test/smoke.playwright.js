@@ -1135,8 +1135,12 @@ const clickMoreCtl = async sel => {
   await page.dispatchEvent('#brandLogo', 'pointerdown');
   await page.waitForTimeout(800);
   await page.dispatchEvent('#brandLogo', 'pointerup');
+  // Wait for the open state instead of sampling the instant after pointerup:
+  // the panel opens through the motion system, and a slow CI runner can be a
+  // frame or two behind the event (run #77 flaked exactly here).
+  await page.waitForSelector('#diagScrim.open', { timeout: 10000 }).catch(() => {});
   ok(await page.isVisible('#diagScrim.open'), 'long-press opens the diagnostics panel');
-  await page.waitForFunction(() => /green/.test(document.getElementById('diagSummary').textContent), null, { timeout: 30000 });
+  await page.waitForFunction(() => /green/.test(document.getElementById('diagSummary').textContent), null, { timeout: 60000 });
   const diag = await page.textContent('#diagSummary');
   ok(!/RED/.test(diag), `all in-app self-tests green (${diag.trim()})`);
   await page.screenshot({ path: SHOTS + '/17-diagnostics.png' });

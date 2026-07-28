@@ -267,7 +267,7 @@ const summarize = (name, r, ig, extra) => {
      * answer. Every unmatched ask that reads like a piece routes to the honest
      * capability list, with the nearest expressible option as a chip. */
     const outOfScope = {};
-    for (const ask of ['bed frame', 'something for my entryway', 'a sofa']) {
+    for (const ask of ['something for my entryway', 'a sofa']) {
       const r = outOfScope[ask] = say(ask);
       ok(r.kind === 'question' && !EDIT_ASK.test(r.question), `"${ask}" never gets the edit-phrased answer`, r.question);
       ok(r.kind === 'question' && /rough out/.test(r.question), `"${ask}" gets the honest capability list`, r.question);
@@ -277,9 +277,20 @@ const summarize = (name, r, ig, extra) => {
         ok(AI.localModel(chip, table, {}).kind === 'new', `"${ask}" chip "${chip}" really builds`, AI.localModel(chip, table, {}).kind);
       }
     }
-    ok(/beds are outside/i.test(outOfScope['bed frame'].question),
-      'beds are named as outside what it builds — no nearest substitute is invented', outOfScope['bed frame'].question);
-    ok(!(outOfScope['bed frame'].options || []).some(o => /\bbed\b/i.test(o)), 'and no chip offers a bed', outOfScope['bed frame'].options);
+    /* Bed class (2026-07): "bed frame" graduated from the out-of-scope list
+     * to a real platform-bed build. The shapes no sound plan can honor keep
+     * refusals that outrank creation, each with its regulation named. */
+    const bed = say('bed frame');
+    ok(bed.kind === 'new' && bed.spec.meta.template === 'bed', 'a bed frame ask now builds the bed class', bed.kind);
+    const kingBed = say('a king bed with no headboard');
+    ok(kingBed.kind === 'new' && kingBed.spec.bed.size === 'king' && kingBed.spec.bed.headboardHeight === 0,
+      'size words and "no headboard" are carried into the spec', kingBed.kind === 'new' && JSON.stringify(kingBed.spec.bed));
+    const bunk = say('build me a bunk bed');
+    ok(bunk.kind === 'info' && /F1427/.test(bunk.text), 'bunk beds are refused with ASTM F1427 named', bunk.kind + ': ' + (bunk.text || ''));
+    const crib = say('a crib for the nursery');
+    ok(crib.kind === 'info' && /16 CFR/.test(crib.text), 'cribs are refused permanently with 16 CFR 1219/1220 named', crib.kind + ': ' + (crib.text || ''));
+    const murphy = say('a murphy bed');
+    ok(murphy.kind === 'info' && /mechanism/i.test(murphy.text), 'murphy beds are refused on the mechanism', murphy.kind + ': ' + (murphy.text || ''));
     /* Wall-mounted class (2026-07): floating shelves graduated from the
      * out-of-scope list. A shelf with no wall named is ASKED for the
      * substrate (the class refusal), the chips parse straight back in, and

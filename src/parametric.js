@@ -1095,6 +1095,123 @@ var BB = globalThis.BB = globalThis.BB || {};
     return { parts, joints, openings: [], drawers: [] };
   }
 
+  /* ---------------- bed (the 'bed' class) ----------------
+   * Knock-down platform bed: four posts, bolted rails, a slat deck on
+   * cleats, a centre rail with its own leg at queen width and up, and a
+   * board headboard. Slat count is SOLVED against the foam-warranty gap cap;
+   * everything else reads the class geometry (classes.js BED_GEOM). */
+  function bedBuild(spec) {
+    const st = spec.structure, b = spec.bed;
+    const G = BB.Classes.get('bed').geom;
+    const sp = spec.wood.species;
+    const parts = [], joints = [];
+    const m = G.SIZES[b.size];
+    const Wi = m.w + G.FIT_CLEARANCE, Li = m.l + G.FIT_CLEARANCE;
+    const railT = st.apronThickness, railH = st.apronHeight, postT = st.legThickness;
+    const deckY = b.platformHeight;              // slat TOP = mattress bottom
+    const railTop = deckY + G.MATTRESS_STOP;
+    const railY = railTop - railH / 2;
+    const lx = Wi / 2 + railT / 2;               // side-rail centreline
+    const px = Wi / 2 + railT - postT / 2;       // post outer face flush with rail
+    const lz = Li / 2 + railT / 2;
+    const pz = Li / 2 + railT - postT / 2;
+    const fj = 'kd_bolt';
+
+    // Posts: head pair runs to the headboard top (or just past the rail).
+    const headH = b.headboardHeight > 0 ? b.headboardHeight : railTop + 50;
+    const footH = railTop + 50;
+    [[-1, 1], [1, 2]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'bed_post_head', 'post', 'Headboard post', postT, headH, postT,
+        sx * px, headH / 2, -pz, { material: sp, explode: { x: sx * 0.35, y: 0.2, z: -0.5 } }));
+    });
+    [[-1, 3], [1, 4]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'bed_post_foot', 'post', 'Footboard post', postT, footH, postT,
+        sx * px, footH / 2, pz, { material: sp, explode: { x: sx * 0.35, y: -0.2, z: 0.5 } }));
+    });
+
+    // Rails: sides span the posts along the length; head/foot span the width.
+    const sideLen = 2 * pz - postT;
+    [[-1, 1, 'post_1', 'post_3'], [1, 2, 'post_2', 'post_4']].forEach(([sx, i, a, bId]) => {
+      parts.push(part(`rail_side_${i}`, 'bed_rail_side', 'rail', 'Side rail', railT, railH, sideLen,
+        sx * lx, railY, 0, { material: sp, explode: { x: sx, y: 0, z: 0 } }));
+      joints.push({ type: fj, a: `rail_side_${i}`, b: a, pos: { x: sx * lx, y: railY, z: -pz + postT / 2 } });
+      joints.push({ type: fj, a: `rail_side_${i}`, b: bId, pos: { x: sx * lx, y: railY, z: pz - postT / 2 } });
+    });
+    const endLen = 2 * px - postT;
+    [[-1, 'rail_head_1', 'post_1', 'post_2'], [1, 'rail_foot_1', 'post_3', 'post_4']].forEach(([sz, id, a, bId]) => {
+      parts.push(part(id, 'bed_rail_end', 'rail', sz < 0 ? 'Head rail' : 'Foot rail', endLen, railH, railT,
+        0, railY, sz * lz, { material: sp, explode: { x: 0, y: 0, z: sz } }));
+      joints.push({ type: fj, a: id, b: a, pos: { x: -px + postT / 2, y: railY, z: sz * lz } });
+      joints.push({ type: fj, a: id, b: bId, pos: { x: px - postT / 2, y: railY, z: sz * lz } });
+    });
+
+    // Cleats inside the side rails: slat bearing, dropped so slat top = deck.
+    const slatTPre = G.slatThickness(Wi >= G.CENTRE_RAIL_MIN_W ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w, sp);
+    const cleatY = deckY - slatTPre - G.CLEAT.h / 2;
+    [[-1, 1, 'rail_side_1'], [1, 2, 'rail_side_2']].forEach(([sx, i, railId]) => {
+      parts.push(part(`cleat_${i}`, 'bed_cleat', 'cleat', 'Slat cleat', G.CLEAT.w, G.CLEAT.h, sideLen,
+        sx * (Wi / 2 - G.CLEAT.w / 2), cleatY, 0, { material: sp, explode: { x: sx * 0.6, y: -0.3, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: `cleat_${i}`, b: railId, pos: { x: sx * Wi / 2, y: cleatY, z: 0 }, noCutAllowance: true });
+    });
+
+    // Centre rail + leg: mandatory at queen width and up (warranty rule).
+    const centre = Wi >= G.CENTRE_RAIL_MIN_W;
+    if (centre) {
+      const crH = 89; // 2x4 on edge
+      const crY = deckY - slatTPre - crH / 2;
+      // Runs between the head/foot rails' INNER faces — it bears on both.
+      const crLen = Li;
+      parts.push(part('rail_centre_1', 'bed_rail_centre', 'rail', 'Centre rail', 38, crH, crLen,
+        0, crY, 0, { material: sp, explode: { x: 0, y: -0.4, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: 'rail_centre_1', b: 'rail_head_1', pos: { x: 0, y: crY, z: -lz + railT / 2 }, noCutAllowance: true });
+      joints.push({ type: 'butt_screws', a: 'rail_centre_1', b: 'rail_foot_1', pos: { x: 0, y: crY, z: lz - railT / 2 }, noCutAllowance: true });
+      const legH2 = crY - crH / 2;
+      parts.push(part('leg_centre_1', 'bed_leg_centre', 'leg', 'Centre leg', 64, legH2, 38,
+        0, legH2 / 2, 0, { material: sp, explode: { x: 0, y: -0.6, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: 'leg_centre_1', b: 'rail_centre_1', pos: { x: 0, y: legH2, z: 0 }, noCutAllowance: true });
+    }
+
+    /* Slat deck: count solved so every gap ≤ SLAT_GAP_MAX (foam-warranty
+     * floor); SECTION solved by G.slatThickness against the knee case in
+     * the actual species (spans past 850 also floor at 25 for stiffness —
+     * the structural check verifies with the same span). The deck is inset
+     * clear of the corner posts, which stand proud of the rails into the
+     * interior. */
+    const slatSpan = centre ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w;
+    const slatT = G.slatThickness(slatSpan, sp);
+    const deckLen = Li - 2 * (postT - railT) - 6; // clear of both post intrusions
+    const n = Math.max(3, Math.ceil((deckLen - G.SLAT_W) / (G.SLAT_W + G.SLAT_GAP_MAX)) + 1);
+    const gap = (deckLen - n * G.SLAT_W) / (n - 1);
+    const slatLen = Wi - 6;
+    for (let i = 0; i < n; i++) {
+      const z = -deckLen / 2 + G.SLAT_W / 2 + i * (G.SLAT_W + gap);
+      const id = `slat_${i + 1}`;
+      parts.push(part(id, 'bed_slat', 'slat', 'Bed slat', slatLen, slatT, G.SLAT_W,
+        0, deckY - slatT / 2, Math.round(z * 10) / 10, { material: sp, explode: { x: 0, y: 0.6, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: id, b: 'cleat_1', pos: { x: -Wi / 2 + G.CLEAT.w / 2, y: deckY - slatT, z }, noCutAllowance: true });
+      joints.push({ type: 'butt_screws', a: id, b: 'cleat_2', pos: { x: Wi / 2 - G.CLEAT.w / 2, y: deckY - slatT, z }, noCutAllowance: true });
+    }
+
+    // Headboard: three horizontal boards between the head posts.
+    if (b.headboardHeight > 0) {
+      const boardW = 140, boardT = 19;
+      const top = b.headboardHeight - 40;
+      const bottom = railTop + 60;
+      const span = top - bottom;
+      const nb = Math.max(2, Math.min(3, Math.floor(span / (boardW + 20)) + 1));
+      const step2 = nb > 1 ? (span - boardW) / (nb - 1) : 0;
+      for (let i = 0; i < nb; i++) {
+        const y = bottom + boardW / 2 + i * step2;
+        const id = `hboard_${i + 1}`;
+        parts.push(part(id, 'bed_hboard', 'headboard', 'Headboard board', endLen, boardW, boardT,
+          0, Math.round(y * 10) / 10, -pz, { material: sp, explode: { x: 0, y: 0.3, z: -0.6 } }));
+        joints.push({ type: fj, a: id, b: 'post_1', pos: { x: -px + postT / 2, y, z: -pz } });
+        joints.push({ type: fj, a: id, b: 'post_2', pos: { x: px - postT / 2, y, z: -pz } });
+      }
+    }
+    return { parts, joints, openings: [], drawers: [] };
+  }
+
   /* ---------------- custom (novel) compositions ----------------
    * The AI composes primitives + a connection graph; correction has already
    * grounded, centered, and canonicalized them. This builder is a straight
@@ -1144,6 +1261,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (t === 'custom') m = customBuild(spec);
     else if (t === 'chair') m = chairBuild(spec);
     else if (t === 'wall_shelf') m = wallShelfBuild(spec);
+    else if (t === 'bed') m = bedBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
     // Round sizes/positions to 0.1 mm so exports and cut lists are stable.

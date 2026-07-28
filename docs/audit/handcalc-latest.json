@@ -194,5 +194,75 @@
     "engine": 1.7700711064420587,
     "errPct": 0,
     "pass": true
+  },
+  {
+    "name": "bed slat gap (mm)",
+    "hand": 67.25,
+    "engine": 67.25,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed knee stress (MPa)",
+    "hand": 18.616443437527973,
+    "engine": 18.616443437527973,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed knee margin (×)",
+    "hand": 1.3294698357962236,
+    "engine": 1.3294698357962236,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed slat sag (mm)",
+    "hand": 0.9115789055201335,
+    "engine": 0.9115789055201335,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed rail end reaction (N)",
+    "hand": 741.8812500000001,
+    "engine": 741.8812500000001,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed joint margin (×)",
+    "hand": 3.057093032072181,
+    "engine": 3.057093032072181,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed required bracket rating (N)",
+    "hand": 1120,
+    "engine": 1120,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed centre-rail stress (MPa)",
+    "hand": 1.7309183740423526,
+    "engine": 1.7309183740423526,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed headboard lever (mm)",
+    "hand": 600,
+    "engine": 600,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed headboard post stress (MPa)",
+    "hand": 3.5002915451895045,
+    "engine": 3.5002915451895045,
+    "errPct": 0,
+    "pass": true
   }
 ]

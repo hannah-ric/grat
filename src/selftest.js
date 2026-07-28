@@ -472,7 +472,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2760-token ceiling', tk <= 2760 && tk > 800, tk + ' tokens', '≤ 2760'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted class keys and their refusal doctrines (2026-07)
+      test('hardening', 'system prompt under the 2900-token ceiling', tk <= 2900 && tk > 800, tk + ' tokens', '≤ 2900'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07)
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
 

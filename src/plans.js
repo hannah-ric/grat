@@ -46,7 +46,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     // clear-stock note is the difference between a chair and kindling.
     'post', 'stretcher', 'crest', 'slat', 'corner_block',
     // Wall-mounted class: the cleat carries everything.
-    'cleat'];
+    'cleat',
+    // Bed class: headboard boards take the sitting lean.
+    'headboard'];
 
   /* ---------------- cut list ---------------- */
   function cutList(spec, model) {
@@ -782,6 +784,43 @@ var BB = globalThis.BB = globalThis.BB || {};
       ['shelf_1']));
   }
 
+  /* ---------------- bed (the 'bed' class) ----------------
+   * The class contract's sequence: sub-assemble the ends, bolt the rails IN
+   * THE ROOM (knock-down is the point), centre support before the deck, deck
+   * to the story stick, then the snug schedule. */
+  function bedSteps(spec, model, integrity, out) {
+    const len = mm => U().fmtLength(mm);
+    const b = spec.bed;
+    const G = BB.Classes && BB.Classes.get('bed') ? BB.Classes.get('bed').geom : null;
+    const slats = model.parts.filter(p => p.role === 'slat').map(p => p.id);
+    const hboards = model.parts.filter(p => p.role === 'headboard').map(p => p.id);
+    const hasCentre = model.parts.some(p => p.id === 'rail_centre_1');
+    const jointChk = integrity && integrity.checks ? integrity.checks.find(c => c.id === 'bed:joint') : null;
+
+    if (hboards.length) {
+      out.push(step('s1', 'Headboard sub-assembly',
+        `Bolt the ${hboards.length} headboard boards between the head posts — barrel-nut bores drilled with the jig, both holes off the same reference face. Check the assembly for wind on the flat and measure the diagonals; a twisted headboard fights every later bolt.`,
+        ['post_1', 'post_2', ...hboards]));
+    }
+    out.push(step('s2', 'Foot sub-assembly',
+      'Bolt the foot rail between the footboard posts. Two mirror ends, checked against each other.',
+      ['post_3', 'post_4', 'rail_foot_1']));
+    out.push(step('s3', 'Bolt the side rails — in the bedroom',
+      `Stand the head and foot ends where the bed will LIVE and bolt the side rails between them (${jointChk && jointChk.data ? `each end carries ${U().fmtPointLoad(jointChk.data.endReactionN / 9.81)} at ${jointChk.data.marginRatio.toFixed(1)}× margin on its two bolts` : 'two barrel bolts per end'}). This is the knock-down mandate paying rent: the bed assembles in the room it can never leave whole. Snug in rotation, diagonals equal before the last bolt goes home.`,
+      ['rail_side_1', 'rail_side_2', 'rail_head_1']));
+    if (hasCentre) {
+      out.push(step('s4', 'Centre rail and its leg — before the deck',
+        'Screw the centre rail between the head and foot rails and fit its floor leg at midspan. The leg must BEAR THE FLOOR before any load goes on — a centre rail hanging in air is a broken-slat generator. Shim to firm contact if the floor dips.',
+        ['rail_centre_1', 'leg_centre_1']));
+    }
+    out.push(step('s5', 'Cleats and the slat deck',
+      `Screw the cleats level inside the side rails (constant drop from the rail top — use a spacer block), then lay the ${slats.length} slats to the spacing story stick (gaps ${G ? '≤ ' + len(G.SLAT_GAP_MAX) : 'even'} — the foam-mattress warranty number) and put one screw through each end so nothing walks.`,
+      ['cleat_1', 'cleat_2', ...slats]));
+    out.push(step('s6', 'Square, snug schedule, mattress',
+      'Check the frame diagonals once more, then the re-snug schedule that keeps a bolted bed silent: go round every bolt after the first week, the first month, and each season. Then the mattress — and the first night is the load test.',
+      []));
+  }
+
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -907,6 +946,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       chairSteps(spec, model, out, opts, { frP, ids });
     } else if (t === 'wall_shelf') {
       wallShelfSteps(spec, model, integrity, out);
+    } else if (t === 'bed') {
+      bedSteps(spec, model, integrity, out);
     } else {
       frameSteps(spec, model, out, opts, { frP, ids });
       // Desk apron drawers (frame_table extension): the band members go in

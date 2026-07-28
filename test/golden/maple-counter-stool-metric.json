@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 8,
+  "specVersion": 9,
   "meta": {
    "name": "Maple Counter Stool",
    "template": "chair",
@@ -53,7 +53,8 @@
    "splayDeg": 5,
    "backRake": 0
   },
-  "wall": null
+  "wall": null,
+  "bed": null
  },
  "validation": {
   "errors": [],

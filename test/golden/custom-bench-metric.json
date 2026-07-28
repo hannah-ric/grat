@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 8,
+  "specVersion": 9,
   "meta": {
    "name": "Custom Bench",
    "template": "custom",
@@ -127,7 +127,8 @@
    ]
   },
   "seat": null,
-  "wall": null
+  "wall": null,
+  "bed": null
  },
  "validation": {
   "errors": [],

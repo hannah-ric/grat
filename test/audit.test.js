@@ -1835,9 +1835,10 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
 
   // The frame/case/custom goldens stay kd_bolt-free, so this wording change
   // cannot diff them. The SEATING goldens (2026-07) legitimately bolt —
-  // kd_bolt is the class's beginner/default seat-frame joint, and their
-  // step text is deliberately frozen WITH the corpus.
-  const KD_GOLDENS = ['maple-counter-stool-metric.json', 'walnut-chair-boundary-metric.json'];
+  // kd_bolt is the class's beginner/default seat-frame joint — and the BED
+  // goldens bolt by MANDATE (every rail end, all levels); their step text
+  // is deliberately frozen WITH the corpus.
+  const KD_GOLDENS = ['maple-counter-stool-metric.json', 'walnut-chair-boundary-metric.json', 'oak-queen-bed-imperial.json', 'pine-twin-bed-metric.json'];
   for (const f of fs.readdirSync(path.join(__dirname, 'golden'))) {
     if (KD_GOLDENS.includes(f)) continue;
     ok(!/kd_bolt/.test(fs.readFileSync(path.join(__dirname, 'golden', f), 'utf8')), `golden ${f} is kd_bolt-free`);
@@ -3380,6 +3381,105 @@ section('WALL-4 depth is the fixing class: clamped, coupled, and the floor doctr
   const basis = integ.checks.find(c => c.id === 'wall:basis');
   ok(basis && /not certified anchor design/i.test(basis.explain) && /drywall alone is refused/i.test(basis.explain),
     'the fixing-basis disclosure ships in the output');
+}
+
+section('LSPAN-1 long spans raise the racking demand; the width cap is a stated refusal');
+{
+  // Same table, same joints — only the span moves. The couple on the
+  // apron–leg joints grows with span while capacity is fixed (roadmap 2).
+  const mk = w => {
+    const { spec, model } = pipeline({ meta: { name: 'L1', template: 'table', level: 'beginner', units: 'mm' }, overall: { width: w } });
+    return Structural.computeIntegrity(spec, model, {});
+  };
+  const short = mk(1500), long = mk(2400);
+  const spanF = long.racking.factors.find(f => /long span/.test(f.label));
+  ok(spanF && spanF.mult < 1 && spanF.mult >= 0.7,
+    `the 2400 table carries the span factor in its listed racking factors — got ${JSON.stringify(long.racking.factors.map(f => f.label))}`);
+  ok(!short.racking.factors.some(f => /long span/.test(f.label)), 'the 1500 table does not — the coupling starts past 1800 clear');
+  ok(long.racking.score < short.racking.score, `and the long span scores lower (${long.racking.score} < ${short.racking.score})`);
+  // The cap is the refusal: 3000 clamps to 2400 and correction says so.
+  const raw = { meta: { name: 'L1c', template: 'table', level: 'beginner', units: 'mm' }, overall: { width: 3000 } };
+  const spec = Spec.correctSpec(raw);
+  eq(spec.overall.width, 2400, 'width clamps at the stated 2400 cap');
+  ok(Spec.correctionNotes(raw, spec).some(n => /width/i.test(n.label || n.text || JSON.stringify(n))),
+    'the clamp is disclosed, never silent');
+  // The contract carries the artifacts.
+  const C = BB.Classes.get('frame_table');
+  ok(C.family.couplings.some(c => c.id === 'long_span'), 'the coupling is a contract artifact');
+  ok(C.refusals.some(r => r.id === 'no_over_span' && /2400/.test(r.shape + r.surface)), 'the span cap is a stated contract refusal');
+}
+
+/* =========================================================================
+ * BEDS (the 'bed' class, 2026-07)
+ * ========================================================================= */
+section('BED-1 every size builds a deck the checks and the builder agree on');
+{
+  const G = BB.Classes.get('bed').geom;
+  for (const size of ['twin', 'full', 'queen', 'king', 'cal_king']) {
+    const { spec, model, report } = pipeline({ meta: { name: 'B1', template: 'bed', level: 'beginner', units: 'mm' }, bed: { size } });
+    eq(report.errors.length, 0, `${size} builds clean`);
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const slats = integ.checks.find(c => c.id === 'bed:slats');
+    ok(slats && slats.status !== 'fail', `${size} slat deck is not a fail — got ${slats && slats.status}: ${slats && slats.value}`);
+    // Gap parity: the check must measure the deck the builder laid out.
+    const zs = model.parts.filter(p => p.role === 'slat').map(p => p.pos.z);
+    const deckLen = Math.max(...zs) - Math.min(...zs) + G.SLAT_W;
+    const builderGap = (deckLen - zs.length * G.SLAT_W) / (zs.length - 1);
+    ok(Math.abs(slats.data.gapMM - builderGap) < 0.05,
+      `${size}: check gap ${slats.data.gapMM.toFixed(1)} == builder gap ${builderGap.toFixed(1)} (probe/builder parity)`);
+    ok(slats.data.gapMM <= G.SLAT_GAP_MAX + 0.05, `${size}: gaps ${slats.data.gapMM.toFixed(1)} ≤ ${G.SLAT_GAP_MAX} (foam-warranty floor)`);
+    // Centre-rail mandate: begins at 1350 interior.
+    const centre = integ.checks.find(c => c.id === 'bed:centre');
+    const Wi = G.SIZES[size].w + G.FIT_CLEARANCE;
+    if (Wi >= G.CENTRE_RAIL_MIN_W) {
+      ok(model.parts.some(p => p.id === 'rail_centre_1') && centre.status === 'pass',
+        `${size} (${Wi} interior) carries the mandated centre rail`);
+    } else {
+      ok(!model.parts.some(p => p.id === 'rail_centre_1') && /not required/.test(centre.value),
+        `${size} (${Wi} interior) honestly skips it`);
+    }
+  }
+}
+
+section('BED-2 knock-down mandate, bracket honesty, and the headboard lever');
+{
+  const { spec, model } = pipeline({ meta: { name: 'B2', template: 'bed', level: 'beginner', units: 'mm' }, bed: { size: 'queen' } });
+  eq(spec.joinery.frame, 'kd_bolt', 'the frame joint is the knock-down mandate — a bed that cannot leave the room is a defect');
+  const glued = Spec.correctSpec({ meta: { name: 'B2g', template: 'bed', level: 'advanced', units: 'mm' }, bed: { size: 'queen' }, joinery: { frame: 'mortise_tenon' } });
+  eq(glued.joinery.frame, 'kd_bolt', 'even an advanced ask for glued rails is corrected back to bolts (no_glued_bed refusal)');
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const joint = integ.checks.find(c => c.id === 'bed:joint');
+  ok(joint && joint.data.marginRatio >= 1.5, `the barrel-bolt connection clears the 1.5× joint gate — got ${joint && joint.data.marginRatio.toFixed(2)}×`);
+  ok(joint.data.requiredBracketN >= joint.data.endReactionN * 1.5 - 10 && /publish no ratings/.test(joint.threshold),
+    'the bracket alternative prints a REQUIRED capacity (demand × 1.5) because brackets publish none');
+  const hb = integ.checks.find(c => c.id === 'bed:headboard');
+  ok(hb && hb.data.leverMM > 0 && hb.status !== 'fail',
+    `the headboard post carries the 667 N back force about the rail line — got ${hb && hb.status}`);
+  const nohb = pipeline({ meta: { name: 'B2n', template: 'bed', level: 'beginner', units: 'mm' }, bed: { size: 'queen', headboardHeight: 0 } });
+  ok(!Structural.computeIntegrity(nohb.spec, nohb.model, {}).checks.some(c => c.id === 'bed:headboard'),
+    'no headboard, no headboard check — nothing phantom');
+}
+
+section('BED-3 refusals with their regulations, and the basis disclosure');
+{
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table' } });
+  const bunk = AI.localModel('build me a bunk bed', table, {});
+  ok(bunk.kind === 'info' && /F1427/.test(bunk.text), 'bunk/loft is refused with ASTM F1427 named');
+  const crib = AI.localModel('a crib for the baby', table, {});
+  ok(crib.kind === 'info' && /16 CFR 121(9|9\/1220)/.test(crib.text), 'cribs are refused permanently under 16 CFR 1219/1220');
+  const murphy = AI.localModel('a murphy bed for the office', table, {});
+  ok(murphy.kind === 'info' && /mechanism/i.test(murphy.text), 'murphy/folding is refused on the mechanism');
+  // The basis disclosure ships in the checks, never a compliance claim.
+  const { spec, model } = pipeline({ meta: { name: 'B3', template: 'bed', level: 'beginner', units: 'mm' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const basis = integ.checks.find(c => c.id === 'bed:basis');
+  ok(basis && /EN 1725/.test(basis.value + basis.explain) && /no US adult-bed standard/i.test(basis.threshold + basis.explain),
+    'the EN 1725 benchmark and the absence of a US standard are both stated');
+  ok(!integ.checks.some(c => /complian(t|ce)\b(?! claim)/i.test(c.value) && !/not certified|no compliance/i.test(c.value + c.threshold)),
+    'no bed check claims compliance');
+  // Sizes ride the wire: a share code carries the bed block.
+  const rt = Spec.correctSpec(Codec.decode(Codec.encode(spec)));
+  eq(rt.bed.size, spec.bed.size, 'the mattress size survives the codec roundtrip');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

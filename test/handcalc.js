@@ -449,6 +449,82 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   row('wall anchor margin (×)', margin, chk.data.marginRatio);
 }
 
+/* =========================================================================
+ * 14. BED (2026-07) — queen platform deck, every number by hand.
+ *     Default queen, red oak (SG 0.63, MOR 99, MOE 12 500):
+ *       Wi = 1524 + 30 = 1554; Li = 2030 + 30 = 2060; postT 70, railT 25.
+ *     Deck: deckLen = 2060 − 2·(70 − 25) − 6 = 1964 (clear of both posts);
+ *       n = 13 slats 89 wide → gap = (1964 − 13·89)/12 = 807/12 = 67.25 mm
+ *       (≤ 70, the Amerisleep 2.75 in foam-warranty floor).
+ *     Slat span (centre rail present): 1554/2 − 51 = 726; slatT 19 (≤ 850).
+ *       I = 89 × 19³/12 = 50 870.92 mm⁴.
+ *     Knee (strength): P = 110·9.81/2 = 539.55 N on one slat at midspan +
+ *       this slat's mattress line load w_m = 539.55/13/1554 N/mm:
+ *       M = 539.55·726/4 + w_m·726²/8 = 97 928.3 + 1 759.7 = 99 688 N·mm
+ *       σ = M·9.5/I = 18.616 MPa vs allow 99/4 = 24.75 → margin 1.329×
+ *     Sag (comfort, distributed): w = (2697.75/13)/1554 = 0.13354 N/mm;
+ *       creep factor = 0.2×2 (mattress, sustained) + 0.8 (people) = 1.2:
+ *       δ = 5wL⁴/(384EI) × 1.2 = 0.7596 × 1.2 = 0.912 mm (limit 726/300).
+ * ========================================================================= */
+{
+  Units.set({ system: 'metric' });
+  const spec = Spec.correctSpec({ meta: { name: 'HC bed', template: 'bed', level: 'beginner', units: 'mm' }, bed: { size: 'queen' } });
+  const model = Parametric.build(spec);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const slats = integ.checks.find(c => c.id === 'bed:slats');
+  const Wi = 1554, Li = 2060;
+  const deckLen = Li - 2 * (70 - 25) - 6;
+  const gapHand = (deckLen - 13 * 89) / 12;
+  const span = Wi / 2 - 51;
+  const I = 89 * Math.pow(19, 3) / 12;
+  const P = 110 * 9.81 / 2;
+  const mattN = 55 * 9.81, liveN = 2 * 110 * 9.81, totalN = mattN + liveN;
+  const Mk = P * span / 4 + (mattN / 13 / Wi) * span * span / 8;
+  const sigmaK = Mk * 9.5 / I;
+  const w = (totalN / 13) / Wi;
+  const sagHand = (5 * w * Math.pow(span, 4)) / (384 * 12500 * I) * (mattN / totalN * 2 + liveN / totalN);
+  console.log(`\n[19] Bed slats: deck ${deckLen} → gap ${gapHand.toFixed(2)} mm; knee M = ${Mk.toFixed(0)} N·mm → σ ${sigmaK.toFixed(3)} MPa (margin ${(24.75 / sigmaK).toFixed(3)}); sag ${sagHand.toFixed(3)} mm`);
+  row('bed slat gap (mm)', gapHand, slats.data.gapMM);
+  row('bed knee stress (MPa)', sigmaK, slats.data.kneeStressMPa);
+  row('bed knee margin (×)', 24.75 / sigmaK, slats.data.kneeMarginRatio);
+  row('bed slat sag (mm)', sagHand, slats.data.sagMM);
+
+  /* Side rail (25 × 140, span 1970, quarter share + 0.75-user edge-sit):
+   *   w = 2697.75·0.25/1970 = 0.342354 N/mm; Pedge = 0.75·110·9.81 = 809.325
+   *   R = wL/2 + P/2 = 337.22 + 404.66 = 741.88 N per rail end.
+   * Connection: kd_bolt 1800 N × (0.63/0.5) = 2268 N → margin 3.06×;
+   *   bracket REQUIRED rating = ceil(741.88 × 1.5 / 10)·10 = 1120 N. */
+  const rail = integ.checks.find(c => c.id === 'bed:rail');
+  const joint = integ.checks.find(c => c.id === 'bed:joint');
+  const wr = totalN * 0.25 / 1970;
+  const Rhand = wr * 1970 / 2 + 809.325 / 2;
+  const capHand = 1800 * (0.63 / 0.5);
+  console.log(`\n[20] Rail end: R = ${(wr * 1970 / 2).toFixed(2)} + ${(809.325 / 2).toFixed(2)} = ${Rhand.toFixed(2)} N; kd_bolt cap ${capHand} N (margin ${(capHand / Rhand).toFixed(3)}); bracket REQUIRED ${Math.ceil(Rhand * 1.5 / 10) * 10} N`);
+  row('bed rail end reaction (N)', Rhand, rail.data.endReactionN);
+  row('bed joint margin (×)', capHand / Rhand, joint.data.marginRatio);
+  row('bed required bracket rating (N)', Math.ceil(Rhand * 1.5 / 10) * 10, joint.data.requiredBracketN, 0.001);
+
+  /* Centre rail (38 × 89, full length 2060, half the deck load, worst
+   * segment = half the length between floor legs):
+   *   w = 2697.75·0.5/2060 = 0.654793; seg = 1030;
+   *   M = w·1030²/8 = 86 833 N·mm; I = 38·89³/12 = 2 232 401.9 mm⁴
+   *   σ = M·44.5/I = 1.731 MPa. */
+  const centre = integ.checks.find(c => c.id === 'bed:centre');
+  const wc = totalN * 0.5 / 2060;
+  const sigmaC = (wc * 1030 * 1030 / 8) * 44.5 / (38 * Math.pow(89, 3) / 12);
+  console.log(`\n[21] Centre rail: σ = ${sigmaC.toFixed(4)} MPa vs allow 24.75`);
+  row('bed centre-rail stress (MPa)', sigmaC, centre.data.stressMPa);
+
+  /* Headboard lever: rail top = platform 350 + stop 50 = 400; lever =
+   *   1000 − 400 = 600 mm. M = (667/2)·600 = 200 100 N·mm into a 70 mm
+   *   square post: I = 70⁴/12 = 2 000 833.3; σ = M·35/I = 3.500 MPa. */
+  const hb = integ.checks.find(c => c.id === 'bed:headboard');
+  const sigmaH = (667 / 2) * 600 * 35 / (Math.pow(70, 4) / 12);
+  console.log(`\n[22] Headboard: lever 600 mm; σ = ${sigmaH.toFixed(4)} MPa (margin ${(24.75 / sigmaH).toFixed(3)})`);
+  row('bed headboard lever (mm)', 600, hb.data.leverMM);
+  row('bed headboard post stress (MPa)', sigmaH, hb.data.stressMPa);
+}
+
 const fails = rows.filter(r => !r.pass);
 console.log(`\nworksheet: ${rows.length - fails.length}/${rows.length} agree`);
 for (const f of fails) console.log(`  DISAGREE: ${f.name} (hand ${f.hand} vs engine ${f.engine})`);

@@ -721,7 +721,10 @@ section('local intent parser');
 
     // A8: an unparseable creation-shaped request gets a creation-phrased
     // fallback naming what offline CAN build — not the edit question.
-    const murph = AI.localModel('a murphy bed with zero hardware', spec);
+    // (This probe was "a murphy bed" until the bed class landed — murphy
+    // now draws its own mechanism refusal, so the no-parse probe moved to
+    // a piece with no template and no refusal row.)
+    const murph = AI.localModel('a hall tree with zero hardware', spec);
     eq(murph.kind, 'question', 'req3 offline: still a question');
     ok(/rough out/.test(murph.question) && /workbench/.test(murph.question) && /cabinet/.test(murph.question),
       `req3 offline: fallback names the buildable templates — got "${murph.question}"`);
@@ -1386,7 +1389,10 @@ section('prompt budget: hard ceiling with measured headroom');
   // 2620 → 2760 for the wall_mounted class: the "wl" key with its substrate
   // enum and the never-propose-unknown / drywall-refused doctrine — again
   // the refusal is the spend that matters.
-  ok(tokens <= 2760, `system prompt stays under the 2760-token ceiling (measured ${tokens})`);
+  // 2760 → 2900 for the bed class: the "bd" key with the mattress-size enum
+  // and the bunk/crib/murphy refusal line — cribs especially are federal
+  // safety law, and a model that cannot say why it refuses will improvise.
+  ok(tokens <= 2900, `system prompt stays under the 2900-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
@@ -2223,7 +2229,7 @@ section('V-05 · __proto__ in a share code leaves Object.prototype clean');
     // survives decode.
     const decoded = Codec.decode(JSON.parse(JSON.stringify(wire)));
     ok(!Object.prototype.hasOwnProperty.call(decoded, '__proto__'), `${what}: decode() never copies an own __proto__ key onto the spec`);
-    eq(Object.keys(decoded).sort(), ['custom', 'doors', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'seat', 'specVersion', 'structure', 'wall', 'wood'],
+    eq(Object.keys(decoded).sort(), ['bed', 'custom', 'doors', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'seat', 'specVersion', 'structure', 'wall', 'wood'],
       `${what}: decode() emits exactly the spec schema and nothing else`);
   }
   // The partial-merge path (AI refinement diffs) rides the same whitelist.

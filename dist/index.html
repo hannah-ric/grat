@@ -5129,7 +5129,8 @@ body.ph-open .porch::after { display: none; }
         { id: 'leg_vs_footprint', rule: 'legThickness ≤ min(width, depth)/4, snapped DOWN the post-stock table', enforcedBy: 'Spec.correctSpec legCap (audit E-04)' },
         { id: 'stretcher_on_leg', rule: 'stretcher centreline ∈ [floor+100, apron underside − 90] — it must land on the leg with clamp room', enforcedBy: 'Spec.correctSpec stretcher clamp (X-07)' },
         { id: 'drawer_in_band', rule: 'desk drawers live INSIDE the apron band: opening = apronHeight − 40 clamped 45–80 (pencil-drawer class, hence the 45 mm floor in validate), fronts inset, wood runners at every level (no case side for slides), a single opening wider than 620 splits around a centre stile', enforcedBy: 'Spec.correctSpec desk-drawer block + Parametric.addDeskDrawers' },
-        { id: 'knee_room', rule: 'desk knee clearance = height − top − band ≥ ~600 (Panero & Zelnik seated knee; ADA 306.3 asks 685 for accessible desks) — advisory, never silent', enforcedBy: 'Spec.validate ergo_knee' }
+        { id: 'knee_room', rule: 'desk knee clearance = height − top − band ≥ ~600 (Panero & Zelnik seated knee; ADA 306.3 asks 685 for accessible desks) — advisory, never silent', enforcedBy: 'Spec.validate ergo_knee' },
+        { id: 'long_span', rule: 'clear span between legs > 1800 scales the racking score down (linearly to ×0.7 at the cap) — the couple on the apron–leg joints grows with span while joint capacity is fixed, and the top’s torsional stiffness stops helping', enforcedBy: 'Structural racking span factor (roadmap item 2)' }
       ]
     },
     humanFactors: [
@@ -5174,7 +5175,8 @@ body.ph-open .porch::after { display: none; }
     },
     refusals: [
       { id: 'no_wall_hang', shape: 'wall-hung / floating variants of a frame piece', reason: 'anchor pullout and stud engagement are a different class (wall-mounted) not yet generated soundly', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule' },
-      { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' }
+      { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' },
+      { id: 'no_over_span', shape: 'tops wider than 2400 mm', reason: 'past the cap the apron-beam model still runs but the racking couple and the top’s torsional floppiness have no code-owned answer (breadboard/batten stiffening is future work) — the clamp is the refusal and correction says so', surface: 'Spec.DIM_RULES overall.width max 2400 (dimensionNotes disclose the clamp) + the racking span factor' }
     ],
     fixtures: {
       golden: ['seed-table-imperial', 'shaker-table-imperial', 'custom-bench-metric', 'walnut-writing-desk-imperial'],
@@ -5396,9 +5398,113 @@ body.ph-open .porch::after { display: none; }
       bad: ['audit WALL-1 unknown/drywall substrate', 'audit WALL-2 anchor margin arithmetic', 'audit WALL-3 stud engagement', 'audit WALL-4 depth refusal + thickness coupling']
     }
   });
+  const DESIGN_BASIS_BED =
+    'Bed checks are BENCHMARKED against EN 1725:2023 magnitudes (adult beds, ' +
+    '110 kg user weight — the one citable adult-bed standard; no US ASTM ' +
+    'standard covers adult residential beds) plus manufacturer warranty ' +
+    'rules for slat gaps and centre support. Bed-rail brackets publish NO ' +
+    'load ratings, so the rail connection capacity here is the barrel-bolt ' +
+    'math, not a vendor claim. Benchmarks, not certification.';
+  const BED_GEOM = {
+    SIZES: {
+      twin: { w: 965, l: 1905, label: 'Twin' },
+      full: { w: 1372, l: 1905, label: 'Full' },
+      queen: { w: 1524, l: 2030, label: 'Queen' },
+      king: { w: 1956, l: 2030, label: 'King' },
+      cal_king: { w: 1829, l: 2134, label: 'California King' }
+    },
+    MATTRESS_KG: { twin: 32, full: 42, queen: 55, king: 70, cal_king: 65 },
+    FIT_CLEARANCE: 30,     // interior over mattress (post corners intrude ~45)
+    MATTRESS_STOP: 50,     // rail top above the slat deck — keeps the mattress
+    SLAT_W: 89, SLAT_T: 19, // 1x4 slats (Tempur-Pedic asks ≥ 3 in wide slats)
+    SLAT_GAP_MAX: 70,
+    CLEAT: { w: 32, h: 20 },
+    CENTRE_RAIL_MIN_W: 1350,
+    USER_KG: 110,          // EN 1725:2023 user mass
+    OCCUPANTS: 2,
+    slatThickness(spanMM, speciesKey) {
+      const sp = (K.WOOD_SPECIES && K.WOOD_SPECIES[speciesKey]) || { mor: 99 };
+      const allow = sp.mor / 4;
+      const M = (this.USER_KG * 9.81 / 2) * spanMM / 4;
+      const floor = spanMM > 850 ? 25 : this.SLAT_T;
+      const stock = K.SOLID_THICKNESS.filter(t => t >= floor);
+      for (const t of stock) {
+        if (allow / (6 * M / (this.SLAT_W * t * t)) >= 1.25) return t;
+      }
+      return stock[stock.length - 1];
+    }
+  };
+  register({
+    key: 'bed',
+    label: 'Beds (knock-down platform, slat deck)',
+    templates: ['bed'],
+    geom: BED_GEOM,
+    DESIGN_BASIS_BED,
+    family: {
+      rules: [
+        { path: 'structure.apronHeight', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.apronThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.legThickness', ownedBy: 'Spec.DIM_RULES' }
+      ],
+      couplings: [
+        { id: 'mattress_master', rule: 'the mattress size drives everything: interior = standard size + 30 fit; overall derived (width/depth/height are read-outs, not knobs)', enforcedBy: 'Spec.correctSpec bed block' },
+        { id: 'knockdown_mandate', rule: 'rails bolt to posts (kd_bolt) at every level — a glued bed cannot leave the room; asking for glued joinery is overridden and told', enforcedBy: 'Spec.correctSpec + bedNotes' },
+        { id: 'slat_gap', rule: 'slat count solved so gaps ≤ 70 mm (foam-warranty floor: Amerisleep 2.75 in) with ≥ 75 mm slat width (Tempur-Pedic ≥ 3 in)', enforcedBy: 'Parametric.bedBuild + bed:slats check' },
+        { id: 'centre_support', rule: 'interior ≥ 1350 mm always gets a centre rail + floor leg (Sealy/S&F warranty: ≥ 5 legs with centre support at queen+)', enforcedBy: 'Parametric.bedBuild + bed:centre check' },
+        { id: 'headboard_clear', rule: 'a headboard clears the rail band by ≥ 150 or it is trim, not a headboard', enforcedBy: 'Spec.correctSpec bed block' }
+      ]
+    },
+    humanFactors: [
+      { key: 'platform_height', label: 'Platform (deck) height', min: 300, max: 450, unit: 'mm', source: 'K.ERGONOMICS platform_bed_height (mattress top lands 500–650 off the floor)' },
+      { key: 'mattress_sizes', label: 'Mattress standards', min: 965, max: 1956, unit: 'mm width', source: 'K.ERGONOMICS bed-size anchor rows (US standard widths; lengths in the row notes)' },
+      { key: 'headboard_height', label: 'Headboard height', min: 800, max: 1300, unit: 'mm', source: 'trade convention: sit-up support band above a 500–650 mattress top' }
+    ],
+    loadCases: [
+      { id: 'deck_live', label: 'Two occupants + mattress on the deck', magnitude: '2 × 110 kg (EN 1725 user mass) + design mattress mass, per size', apply: 'distributed over the slat deck', direction: 'gravity', duration: 'occupants transient; mattress sustained (×2 creep)', acceptance: 'slat and rail sag ≤ L/300; bending ≥ 1× at MOR/4', source: 'EN 1725:2023 user weight (SATRA/BSI summaries); mattress masses from Saatva/Nectar spec pages', traceability: 'standard' },
+      { id: 'slat_point', label: 'Kneeling on one slat', magnitude: '1079 N (110 kg on one knee-point)', apply: 'midspan of the worst slat', direction: 'gravity', duration: 'transient', acceptance: 'slat bending ≥ 1× at MOR/4', source: 'derivation from the EN 1725 user mass — the load every bed slat sees when someone climbs in', traceability: 'derivation' },
+      { id: 'rail_connection', label: 'Rail end reaction into the posts', magnitude: 'rail tributary share ÷ 2 ends', apply: 'each barrel-bolt pair', direction: 'vertical shear', duration: 'sustained + transient', acceptance: '≥ 1.5× on 2 × kd_bolt per rail end (SG-scaled); the bracket ALTERNATIVE prints its required rating — brackets publish none', source: 'JOINT_RATING kd_bolt; Rockler bracket pages confirmed rating-free (research 2026-07)', traceability: 'derivation' },
+      { id: 'headboard_pull', label: 'Sitting back against the headboard', magnitude: '667 N horizontal at the headboard top', apply: 'shared by the two head posts', direction: 'horizontal', duration: 'functional', acceptance: 'post bending ≥ 1× at MOR/4 over the lever above the rail bolts', source: 'derivation aligned to the BIFMA X5.1 back functional magnitude the seating class uses', traceability: 'derivation' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'side/head/foot rails → posts', required: ['kd_bolt'], prohibited: ['mortise_tenon', 'pocket_screws', 'butt_screws', 'dowels', 'loose_tenon'], reason: 'the knock-down mandate: 2 barrel bolts per rail end carry the end reaction at ≥ 1.5× and come apart on moving day. A glued tenon here is a bed that cannot leave the room; screws alone loosen under cyclic edge-sitting. Surface-mount bed-rail brackets are a legitimate alternative — but they publish NO ratings, so the BOM prints the required capacity for the buyer to match.' },
+        { connection: 'slats → cleats', required: ['butt_screws'], prohibited: [], reason: 'one screw per end keeps slats from walking; the cleat and centre rail carry the load in bearing.' },
+        { connection: 'cleats → rails, centre rail → head/foot rails', required: ['butt_screws'], prohibited: [], reason: 'glued + screwed along the length; loads are distributed bearing, not joint-limited.' }
+      ]
+    },
+    failureModes: [
+      { id: 'slat_snap', mode: 'a slat snaps under a knee or concentrated sit', checkIds: ['bed:slats'], fixture: 'handcalc bed slat section; audit BED-2', realWorld: 'the cracked-slat thump at 2 am' },
+      { id: 'rail_sag', mode: 'side rails sag or break under the deck load', checkIds: ['bed:rail'], fixture: 'audit BED-2', realWorld: 'sagging bed edges' },
+      { id: 'connection_failure', mode: 'rail-to-post connection works loose / shears', checkIds: ['bed:joint'], fixture: 'audit BED-2 (margin arithmetic)', realWorld: 'wobbly knock-down frames, stripped brackets' },
+      { id: 'missing_centre', mode: 'queen+ deck without centre support', checkIds: ['bed:centre'], fixture: 'audit BED-1 (builder always adds it ≥ 1350)', realWorld: 'broken slats and voided mattress warranties' },
+      { id: 'slat_gap_wide', mode: 'slat gaps beyond the foam-mattress warranty floor', checkIds: ['bed:slats'], fixture: 'audit BED-1 gap arithmetic', realWorld: 'foam sagging into the gaps' },
+      { id: 'headboard_break', mode: 'head posts break at the rail line under a sitting lean', checkIds: ['bed:headboard'], conditional: true, fixture: 'audit BED-3', realWorld: 'headboards snapping their posts' },
+      { id: 'ergonomic_height', mode: 'deck height outside the platform band', checkIds: ['ergo_platform'], conditional: true, fixture: 'audit BED-3', realWorld: 'beds you fall into or climb onto' }
+    ],
+    hardware: [
+      { id: 'rail_bolts', item: 'M6 × 50 furniture bolts + barrel nuts, 2 per rail end (8+ total)', when: 'every bed', capacity: 'kd_bolt joint class, 1800 N SG-scaled per bolt-pair joint', matchedTo: 'bed:joint end-reaction margin ≥ 1.5×' },
+      { id: 'bracket_alt', item: 'surface-mount bed-rail brackets (alternative)', when: 'buyer preference', capacity: 'NO published ratings exist (Rockler et al., confirmed) — the BOM prints the computed required capacity per end to match against whatever the maker will state', matchedTo: 'bed:joint demand × 1.5' },
+      { id: 'slat_screws', item: '#8 × 32 screws, one per slat end', when: 'every bed', capacity: 'anti-walk only; load is bearing on the cleats', matchedTo: 'slat retention (fastener engine counts them)' }
+    ],
+    assembly: {
+      sequence: ['headboard sub-assembly (boards into posts)', 'foot sub-assembly', 'bolt side rails to head + foot (in the room!)', 'cleats + centre rail with its leg', 'lay and screw the slat deck', 'square check, snug schedule, mattress'],
+      jigs: ['doweling jig for barrel-nut bores (both bores off one reference face)', 'cleat spacer block (constant drop from the rail top)', 'slat spacing story stick'],
+      checks: ['diagonals across the frame before snugging the last bolts', 'centre rail leg bears the floor BEFORE the deck goes on', 'slat gaps verified against the story stick (≤ 70)', 're-snug bolts after the first week and each season']
+    },
+    refusals: [
+      { id: 'no_bunks', shape: 'bunk and loft beds', reason: 'ASTM F1427 territory (sleeping surface > 762 mm, guardrail and entrapment rules) — fall-height engineering this tool does not model', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_cribs', shape: 'cribs and infant furniture', reason: '16 CFR 1219/1220 is federal safety law, not a hobbyist domain — permanently refused', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_murphy', shape: 'murphy / wall / folding beds', reason: 'lift mechanisms and wall anchorage under a moving load are unmodeled (and the mechanism doctrine already refuses moving parts)', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_glued_bed', shape: 'glued rail joinery on a bed', reason: 'a bed that cannot be disassembled cannot leave the room — the knock-down mandate overrides and says so', surface: 'Spec.correctSpec + bedNotes' }
+    ],
+    fixtures: {
+      golden: ['oak-queen-bed-imperial', 'pine-twin-bed-metric'],
+      bad: ['audit BED-1 gap/centre rules', 'audit BED-2 slat/rail/joint margins vs hand arithmetic', 'audit BED-3 headboard + platform band + refusals']
+    }
+  });
   BB.Classes = {
     register, get, all, forTemplate, validateContract, runChecklist,
-    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL
+    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED
   };
 })();</script>
 <script>var BB = globalThis.BB = globalThis.BB || {};
@@ -5407,11 +5513,11 @@ body.ph-open .porch::after { display: none; }
   const K = BB.K;
   const Geo = BB.Geo;
   const U = () => BB.Units;
-  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair', 'wall_shelf'];
+  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair', 'wall_shelf', 'bed'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
   const FRAME_TEMPLATES = ['table', 'desk', 'bench'];
-  const SPEC_VERSION = 8;
+  const SPEC_VERSION = 9;
   const migrations = {
     3: function (s) {
       const out = clone(s) || {};
@@ -5447,6 +5553,12 @@ body.ph-open .porch::after { display: none; }
       const out = clone(s) || {};
       out.specVersion = 8;
       if (out.wall === undefined) out.wall = null;
+      return out;
+    },
+    8: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 9;
+      if (out.bed === undefined) out.bed = null;
       return out;
     }
   };
@@ -5495,9 +5607,18 @@ body.ph-open .porch::after { display: none; }
       doors: null,
       custom: null,
       seat: null,
-      wall: null
+      wall: null,
+      bed: null
     };
     const t = base.meta.template;
+    if (t === 'bed') {
+      base.meta.name = 'Platform Bed';
+      base.bed = { size: 'queen', platformHeight: 350, headboardHeight: 1000 };
+      Object.assign(base.structure, {
+        legThickness: 70, apronHeight: 140, apronThickness: 25, topThickness: 19
+      });
+      base.joinery.frame = 'kd_bolt';
+    }
     if (t === 'wall_shelf') {
       base.meta.name = 'Floating Shelf';
       Object.assign(base.overall, { width: 914.4, depth: 241.3, height: 102 });
@@ -6066,9 +6187,9 @@ body.ph-open .porch::after { display: none; }
   const at = (o, sec, key) => (o && o[sec] && typeof o[sec] === 'object' ? o[sec][key] : undefined);
   function dimensionNotes(raw, cor, notes) {
     const fmt = mm => U().fmtLength(mm);
-    const isChair = at(cor, 'meta', 'template') === 'chair';
+    const derivedOverall = ['chair', 'bed'].includes(at(cor, 'meta', 'template'));
     for (const path of Object.keys(DIM_RULES)) {
-      if (isChair && path.startsWith('overall.')) continue;
+      if (derivedOverall && path.startsWith('overall.')) continue;
       const dot = path.indexOf('.');
       const sec = path.slice(0, dot), key = path.slice(dot + 1);
       const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
@@ -6164,6 +6285,17 @@ body.ph-open .porch::after { display: none; }
       }
     }
   }
+  function bedNotes(raw, cor, notes) {
+    if (!cor || at(cor, 'meta', 'template') !== 'bed' || !cor.bed) return;
+    const wantJ = raw && isObj(raw.joinery) ? raw.joinery.frame : undefined;
+    if (typeof wantJ === 'string' && wantJ !== 'kd_bolt' && K.JOINERY[wantJ]) {
+      notes.push(`${K.JOINERY[wantJ].label} can’t join a bed’s rails — a glued bed cannot leave the room, so the class bolts every rail to its post (knockdown bolts) and the plan carries the re-snug schedule.`);
+    }
+    const wantSize = raw && isObj(raw.bed) ? raw.bed.size : undefined;
+    if (typeof wantSize === 'string' && wantSize !== cor.bed.size) {
+      notes.push(`“${wantSize}” isn’t a mattress size this tool knows (twin, full, queen, king, california king) — the frame is sized for a ${cor.bed.size.replace('_', ' ')}.`);
+    }
+  }
   function drawerNote(raw, cor, notes) {
     const want = raw && raw.drawers;
     if (!want || typeof want !== 'object' || !cor || cor.drawers) return;
@@ -6199,6 +6331,7 @@ body.ph-open .porch::after { display: none; }
       joineryNotes(raw, correctedSpec, notes);
       drawerNote(raw, correctedSpec, notes);
       seatNotes(raw, correctedSpec, notes);
+      bedNotes(raw, correctedSpec, notes);
     }
     return [...new Set(notes)];
   }
@@ -6364,6 +6497,32 @@ body.ph-open .porch::after { display: none; }
       s.drawers = null; s.doors = null;
     } else {
       s.wall = null;
+    }
+    if (template === 'bed') {
+      const C = BB.Classes ? BB.Classes.get('bed') : null;
+      const G = C ? C.geom : null;
+      const b = isObj(s.bed) ? s.bed : {};
+      const sizes = G ? Object.keys(G.SIZES) : ['twin', 'full', 'queen', 'king', 'cal_king'];
+      const size = sizes.includes(b.size) ? b.size : 'queen';
+      const platform = r1(clamp(num(b.platformHeight, 350), 250, 500));
+      let hb = num(b.headboardHeight, 1000);
+      hb = hb <= 0 ? 0 : r1(clamp(hb, 800, 1300));
+      const railTop = platform + (G ? G.MATTRESS_STOP : 50);
+      if (hb > 0 && hb < railTop + 150) hb = r1(railTop + 150);
+      s.bed = { size, platformHeight: platform, headboardHeight: hb };
+      st.apronHeight = clamp(st.apronHeight, 110, 160);
+      st.apronThickness = Math.max(st.apronThickness, 19);
+      s.joinery.frame = 'kd_bolt';
+      if (G) {
+        const m = G.SIZES[size];
+        const Wi = m.w + G.FIT_CLEARANCE, Li = m.l + G.FIT_CLEARANCE;
+        o.width = r1(Wi + 2 * st.apronThickness);
+        o.depth = r1(Li + 2 * st.apronThickness);
+        o.height = r1(Math.max(hb, railTop + 50));
+      }
+      s.drawers = null; s.doors = null;
+    } else {
+      s.bed = null;
     }
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
     const legCap = Math.floor(Math.min(o.width, o.depth) / 4);
@@ -6612,6 +6771,13 @@ body.ph-open .porch::after { display: none; }
         errors.push({ id: 'wall_substrate', text: 'What is this wall? A shelf hangs on its substrate, and the anchor math needs it: wood studs or masonry. Hanging on an unknown wall is a guess — worse than a refusal.' });
       } else if (spec.wall.substrate === 'drywall') {
         errors.push({ id: 'wall_substrate', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. Find the studs behind it (16 or 24 in apart) or name a masonry wall.' });
+      }
+    }
+    if (t === 'bed' && spec.bed && BB.Classes) {
+      const row = K.ergoRow('platform_bed_height');
+      const ph = spec.bed.platformHeight;
+      if (row && (ph < row.min || ph > row.max)) {
+        advisories.push({ id: 'ergo_platform', text: `${fmt(ph)} deck height is outside the ${fmt(row.min)}–${fmt(row.max)} platform band — with a mattress the sleeping surface should land ${fmt(500)}–${fmt(650)} off the floor (K.ERGONOMICS).` });
       }
     }
     if (t === 'desk') {
@@ -7546,6 +7712,99 @@ body.ph-open .porch::after { display: none; }
     joints.push({ type: 'butt_screws', a: 'cleat_shelf_1', b: 'shelf_1', pos: { x: 0, y: ch, z: zWall + ct + ct / 2 }, noCutAllowance: true });
     return { parts, joints, openings: [], drawers: [] };
   }
+  function bedBuild(spec) {
+    const st = spec.structure, b = spec.bed;
+    const G = BB.Classes.get('bed').geom;
+    const sp = spec.wood.species;
+    const parts = [], joints = [];
+    const m = G.SIZES[b.size];
+    const Wi = m.w + G.FIT_CLEARANCE, Li = m.l + G.FIT_CLEARANCE;
+    const railT = st.apronThickness, railH = st.apronHeight, postT = st.legThickness;
+    const deckY = b.platformHeight;              // slat TOP = mattress bottom
+    const railTop = deckY + G.MATTRESS_STOP;
+    const railY = railTop - railH / 2;
+    const lx = Wi / 2 + railT / 2;               // side-rail centreline
+    const px = Wi / 2 + railT - postT / 2;       // post outer face flush with rail
+    const lz = Li / 2 + railT / 2;
+    const pz = Li / 2 + railT - postT / 2;
+    const fj = 'kd_bolt';
+    const headH = b.headboardHeight > 0 ? b.headboardHeight : railTop + 50;
+    const footH = railTop + 50;
+    [[-1, 1], [1, 2]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'bed_post_head', 'post', 'Headboard post', postT, headH, postT,
+        sx * px, headH / 2, -pz, { material: sp, explode: { x: sx * 0.35, y: 0.2, z: -0.5 } }));
+    });
+    [[-1, 3], [1, 4]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'bed_post_foot', 'post', 'Footboard post', postT, footH, postT,
+        sx * px, footH / 2, pz, { material: sp, explode: { x: sx * 0.35, y: -0.2, z: 0.5 } }));
+    });
+    const sideLen = 2 * pz - postT;
+    [[-1, 1, 'post_1', 'post_3'], [1, 2, 'post_2', 'post_4']].forEach(([sx, i, a, bId]) => {
+      parts.push(part(`rail_side_${i}`, 'bed_rail_side', 'rail', 'Side rail', railT, railH, sideLen,
+        sx * lx, railY, 0, { material: sp, explode: { x: sx, y: 0, z: 0 } }));
+      joints.push({ type: fj, a: `rail_side_${i}`, b: a, pos: { x: sx * lx, y: railY, z: -pz + postT / 2 } });
+      joints.push({ type: fj, a: `rail_side_${i}`, b: bId, pos: { x: sx * lx, y: railY, z: pz - postT / 2 } });
+    });
+    const endLen = 2 * px - postT;
+    [[-1, 'rail_head_1', 'post_1', 'post_2'], [1, 'rail_foot_1', 'post_3', 'post_4']].forEach(([sz, id, a, bId]) => {
+      parts.push(part(id, 'bed_rail_end', 'rail', sz < 0 ? 'Head rail' : 'Foot rail', endLen, railH, railT,
+        0, railY, sz * lz, { material: sp, explode: { x: 0, y: 0, z: sz } }));
+      joints.push({ type: fj, a: id, b: a, pos: { x: -px + postT / 2, y: railY, z: sz * lz } });
+      joints.push({ type: fj, a: id, b: bId, pos: { x: px - postT / 2, y: railY, z: sz * lz } });
+    });
+    const slatTPre = G.slatThickness(Wi >= G.CENTRE_RAIL_MIN_W ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w, sp);
+    const cleatY = deckY - slatTPre - G.CLEAT.h / 2;
+    [[-1, 1, 'rail_side_1'], [1, 2, 'rail_side_2']].forEach(([sx, i, railId]) => {
+      parts.push(part(`cleat_${i}`, 'bed_cleat', 'cleat', 'Slat cleat', G.CLEAT.w, G.CLEAT.h, sideLen,
+        sx * (Wi / 2 - G.CLEAT.w / 2), cleatY, 0, { material: sp, explode: { x: sx * 0.6, y: -0.3, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: `cleat_${i}`, b: railId, pos: { x: sx * Wi / 2, y: cleatY, z: 0 }, noCutAllowance: true });
+    });
+    const centre = Wi >= G.CENTRE_RAIL_MIN_W;
+    if (centre) {
+      const crH = 89; // 2x4 on edge
+      const crY = deckY - slatTPre - crH / 2;
+      const crLen = Li;
+      parts.push(part('rail_centre_1', 'bed_rail_centre', 'rail', 'Centre rail', 38, crH, crLen,
+        0, crY, 0, { material: sp, explode: { x: 0, y: -0.4, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: 'rail_centre_1', b: 'rail_head_1', pos: { x: 0, y: crY, z: -lz + railT / 2 }, noCutAllowance: true });
+      joints.push({ type: 'butt_screws', a: 'rail_centre_1', b: 'rail_foot_1', pos: { x: 0, y: crY, z: lz - railT / 2 }, noCutAllowance: true });
+      const legH2 = crY - crH / 2;
+      parts.push(part('leg_centre_1', 'bed_leg_centre', 'leg', 'Centre leg', 64, legH2, 38,
+        0, legH2 / 2, 0, { material: sp, explode: { x: 0, y: -0.6, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: 'leg_centre_1', b: 'rail_centre_1', pos: { x: 0, y: legH2, z: 0 }, noCutAllowance: true });
+    }
+    const slatSpan = centre ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w;
+    const slatT = G.slatThickness(slatSpan, sp);
+    const deckLen = Li - 2 * (postT - railT) - 6; // clear of both post intrusions
+    const n = Math.max(3, Math.ceil((deckLen - G.SLAT_W) / (G.SLAT_W + G.SLAT_GAP_MAX)) + 1);
+    const gap = (deckLen - n * G.SLAT_W) / (n - 1);
+    const slatLen = Wi - 6;
+    for (let i = 0; i < n; i++) {
+      const z = -deckLen / 2 + G.SLAT_W / 2 + i * (G.SLAT_W + gap);
+      const id = `slat_${i + 1}`;
+      parts.push(part(id, 'bed_slat', 'slat', 'Bed slat', slatLen, slatT, G.SLAT_W,
+        0, deckY - slatT / 2, Math.round(z * 10) / 10, { material: sp, explode: { x: 0, y: 0.6, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: id, b: 'cleat_1', pos: { x: -Wi / 2 + G.CLEAT.w / 2, y: deckY - slatT, z }, noCutAllowance: true });
+      joints.push({ type: 'butt_screws', a: id, b: 'cleat_2', pos: { x: Wi / 2 - G.CLEAT.w / 2, y: deckY - slatT, z }, noCutAllowance: true });
+    }
+    if (b.headboardHeight > 0) {
+      const boardW = 140, boardT = 19;
+      const top = b.headboardHeight - 40;
+      const bottom = railTop + 60;
+      const span = top - bottom;
+      const nb = Math.max(2, Math.min(3, Math.floor(span / (boardW + 20)) + 1));
+      const step2 = nb > 1 ? (span - boardW) / (nb - 1) : 0;
+      for (let i = 0; i < nb; i++) {
+        const y = bottom + boardW / 2 + i * step2;
+        const id = `hboard_${i + 1}`;
+        parts.push(part(id, 'bed_hboard', 'headboard', 'Headboard board', endLen, boardW, boardT,
+          0, Math.round(y * 10) / 10, -pz, { material: sp, explode: { x: 0, y: 0.3, z: -0.6 } }));
+        joints.push({ type: fj, a: id, b: 'post_1', pos: { x: -px + postT / 2, y, z: -pz } });
+        joints.push({ type: fj, a: id, b: 'post_2', pos: { x: px - postT / 2, y, z: -pz } });
+      }
+    }
+    return { parts, joints, openings: [], drawers: [] };
+  }
   function customBuild(spec) {
     const parts = [], joints = [];
     const c = spec.custom || { parts: [], connections: [] };
@@ -7588,6 +7847,7 @@ body.ph-open .porch::after { display: none; }
     else if (t === 'custom') m = customBuild(spec);
     else if (t === 'chair') m = chairBuild(spec);
     else if (t === 'wall_shelf') m = wallShelfBuild(spec);
+    else if (t === 'bed') m = bedBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
     for (const p of m.parts) {
@@ -8600,6 +8860,148 @@ body.ph-open .porch::after { display: none; }
         fixes: []
       });
     }
+    if (t === 'bed' && spec.bed && BB.Classes) {
+      const C = BB.Classes.get('bed');
+      const G = C.geom;
+      const bd = spec.bed;
+      const msz = G.SIZES[bd.size];
+      const Wi = msz.w + G.FIT_CLEARANCE, Li = msz.l + G.FIT_CLEARANCE;
+      const slats = parts.filter(p => p.role === 'slat');
+      const nSlat = slats.length;
+      const slatZs = slats.map(p => p.pos.z);
+      const deckLenMM = nSlat > 1 ? (Math.max.apply(null, slatZs) - Math.min.apply(null, slatZs)) + G.SLAT_W : G.SLAT_W;
+      const gapMM = nSlat > 1 ? (deckLenMM - nSlat * G.SLAT_W) / (nSlat - 1) : 0;
+      const hasCentre = parts.some(p => p.id === 'rail_centre_1');
+      const allow = sp.mor / SAFETY_FACTOR;
+      const liveN = G.OCCUPANTS * G.USER_KG * GRAV;
+      const mattN = (G.MATTRESS_KG[bd.size] || 55) * GRAV;
+      const totalN = liveN + mattN;
+      {
+        const span = Math.max(200, hasCentre ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w);
+        const slatT = slats.length ? slats[0].size.h : G.SLAT_T; // section solved by the builder
+        const I = I_rect(G.SLAT_W, slatT);
+        const perSlat = totalN / nSlat;
+        const w = perSlat / Wi; // N/mm along the slat
+        const sagD = (5 * w * Math.pow(span, 4)) / (384 * E * I) * (mattN / totalN * CREEP_FACTOR + liveN / totalN);
+        const limD = span / SAG_LIMIT_RATIO;
+        const P = (G.USER_KG * GRAV) / 2;
+        const Mk = (P * span) / 4 + ((mattN / nSlat / Wi) * span * span) / 8;
+        const stressK = (Mk * (slatT / 2)) / I;
+        const marginK = allow / stressK;
+        const gapOK = gapMM <= G.SLAT_GAP_MAX + 0.05;
+        const sagStat = sagStatus(sagD / limD), strStat = strStatus(marginK);
+        const worst = !gapOK ? 'fail' : (RANK[sagStat] < RANK[strStat] ? sagStat : strStat);
+        checks.push({
+          id: 'bed:slats', title: 'Slat deck',
+          status: worst,
+          value: `${nSlat} × ${fmtLen(G.SLAT_W)}×${fmtLen(slatT)} slats, gaps ${fmtLen(Math.round(gapMM * 10) / 10)} · knee margin ${marginK.toFixed(2)}× · sag ${fmtFine(sagD)}`,
+          threshold: `gaps ≤ ${fmtLen(G.SLAT_GAP_MAX)} (foam-warranty floor, Amerisleep 2.75 in) · strength ≥ 1.25× at MOR/${SAFETY_FACTOR} · sag ≤ ${fmtFine(limD)}`,
+          explain: `Two occupants at ${G.USER_KG} kg (EN 1725 user mass) plus a ${Math.round(mattN / GRAV)} kg design mattress ride ${nSlat} slats${hasCentre ? ', each spanning half the width to the centre rail' : ''}. The strength case is a knee: ${Math.round(G.USER_KG * GRAV)} N through the mattress onto two slats at midspan. Slat width ${fmtLen(G.SLAT_W)} meets the ≥ 3 in manufacturer floor.`,
+          fixes: [],
+          data: { nSlat, gapMM, spanMM: span, kneeMarginRatio: marginK, sagMM: sagD, kneeStressMPa: stressK },
+          prov: { rule: `knee: M = ${Math.round(P)}×${Math.round(span)}/4 + mattress share; I = ${G.SLAT_W}×${G.SLAT_T}³/12 = ${Math.round(I).toLocaleString()} mm⁴` }
+        });
+      }
+      const rail = parts.find(p => p.id === 'rail_side_1');
+      let railR = 0;
+      if (rail) {
+        const span = Math.max(500, rail.size.d);
+        const share = hasCentre ? 0.25 : 0.5;
+        const w = (totalN * share) / span;
+        const I = I_rect(rail.size.w, rail.size.h);
+        const Pedge = 0.75 * G.USER_KG * GRAV; // sitting on the rail edge
+        const M = (w * span * span) / 8 + (Pedge * span) / 4;
+        const sag = (5 * w * Math.pow(span, 4)) / (384 * E * I) + (Pedge * Math.pow(span, 3)) / (48 * E * I);
+        const lim = span / SAG_LIMIT_RATIO;
+        const stress = (M * (rail.size.h / 2)) / I;
+        const margin = allow / stress;
+        railR = (w * span) / 2 + Pedge / 2;
+        checks.push({
+          id: 'bed:rail', title: 'Side rails',
+          status: sag / lim > 1.5 || margin < 1 ? 'fail' : sag / lim > 1 || margin < 1.25 ? 'advisory' : 'pass',
+          value: `sag ${fmtFine(sag)} over ${fmtLen(span)} · strength margin ${margin.toFixed(1)}×`,
+          threshold: `sag ≤ ${fmtFine(lim)} (L/${SAG_LIMIT_RATIO}) · margin ≥ 1.25× at MOR/${SAFETY_FACTOR}`,
+          explain: `Each ${fmtLen(rail.size.w)} × ${fmtLen(rail.size.h)} rail carries ${hasCentre ? 'a quarter' : 'half'} of the deck load${hasCentre ? ' (the centre rail takes half)' : ''} plus a ${U().fmtPointLoad(Pedge / GRAV)} edge-sit at midspan.`,
+          fixes: [],
+          data: { sagMM: sag, limitMM: lim, marginRatio: margin, endReactionN: railR },
+          prov: { rule: `rail: w = ${Math.round(totalN * share)}/${Math.round(span)} N/mm + P·L/4 edge case; I = ${Math.round(I).toLocaleString()} mm⁴` }
+        });
+        const capJ = JOINT_RATING.kd_bolt.capN * sgF;
+        const marginJ = capJ / railR;
+        checks.push({
+          id: 'bed:joint', title: 'Rail-to-post connections',
+          status: jointStatus(marginJ),
+          value: `${U().fmtPointLoad(railR / GRAV)} per rail end vs ${U().fmtPointLoad(capJ / GRAV)} (2 × M6 barrel bolts) — ${marginJ.toFixed(2)}×`,
+          threshold: '≥ 1.5× on the barrel-bolt connection; the bracket alternative prints this demand × 1.5 as its REQUIRED capacity (brackets publish no ratings — confirmed)',
+          explain: 'The knock-down mandate: every rail end bolts to its post with two M6 barrel bolts and comes apart on moving day. Surface-mount bed-rail brackets are a legitimate swap, but no maker publishes a rating — match the printed requirement or keep the bolts. Re-snug after the first week and each season.',
+          fixes: [],
+          data: { endReactionN: railR, capN: capJ, marginRatio: marginJ, requiredBracketN: Math.ceil(railR * 1.5 / 10) * 10 },
+          prov: { rule: `end reaction = wL/2 + P/2 = ${Math.round(railR)} N vs kd_bolt ${Math.round(capJ)} N (SG-scaled)` }
+        });
+      }
+      {
+        const needed = Wi >= G.CENTRE_RAIL_MIN_W;
+        if (needed && hasCentre) {
+          const cr = parts.find(p => p.id === 'rail_centre_1');
+          const seg = Math.max(400, cr.size.d / 2);
+          const w = (totalN * 0.5) / cr.size.d;
+          const I = I_rect(cr.size.w, cr.size.h);
+          const M = (w * seg * seg) / 8;
+          const stress = (M * (cr.size.h / 2)) / I;
+          checks.push({
+            id: 'bed:centre', title: 'Centre support',
+            status: strStatus(allow / stress),
+            value: `centre rail + floor leg — segment stress ${stress.toFixed(1)} MPa (margin ${(allow / stress).toFixed(1)}×)`,
+            threshold: 'mandatory at interior ≥ 1350 mm (Sealy/Stearns & Foster warranty: ≥ 5 legs with centre support at queen+)',
+            explain: 'The centre rail halves every slat span and takes half the deck load to its own floor leg — the difference between a deck that lasts and the broken-slat queen bed. The leg must bear the floor BEFORE the deck is loaded (it is in the steps).',
+            fixes: [],
+            data: { segmentSpan: seg, stressMPa: stress }
+          });
+        } else if (!needed) {
+          checks.push({
+            id: 'bed:centre', title: 'Centre support', status: 'pass',
+            value: `not required at ${fmtLen(Wi)} interior`,
+            threshold: 'mandatory at interior ≥ 1350 mm (warranty practice)',
+            explain: 'Twin-class widths carry on the side cleats alone; the mandate begins at 1350 mm.',
+            fixes: []
+          });
+        } else {
+          checks.push({
+            id: 'bed:centre', title: 'Centre support', status: 'fail',
+            value: 'MISSING at a width that requires it',
+            threshold: 'mandatory at interior ≥ 1350 mm',
+            explain: 'A queen-class deck without centre support breaks slats and voids mattress warranties — the builder always adds it; this spec somehow lacks it.',
+            fixes: []
+          });
+        }
+      }
+      if (bd.headboardHeight > 0) {
+        const railTopY = bd.platformHeight + G.MATTRESS_STOP;
+        const lever = Math.max(100, bd.headboardHeight - railTopY);
+        const F = 667; // aligned to the X5.1 back magnitude the seating class uses (derivation)
+        const Mh = (F / 2) * lever;
+        const postT2 = spec.structure.legThickness;
+        const I = I_rect(postT2, postT2);
+        const stress = (Mh * (postT2 / 2)) / I;
+        const margin = allow / stress;
+        checks.push({
+          id: 'bed:headboard', title: 'Headboard posts',
+          status: strStatus(margin),
+          value: `bending ${stress.toFixed(1)} MPa at the rail line · margin ${margin.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR/${SAFETY_FACTOR}) under ${U().fmtPointLoad(F / GRAV)} at the headboard top`,
+          explain: `Sitting back against the headboard levers each post about the rail-bolt line — ${fmtLen(lever)} of lever into a ${fmtLen(postT2)} square post.`,
+          fixes: margin < 1.25 ? [{ id: 'bed-post-up', label: `Thicken posts to ${fmtLen(Math.min(100, postT2 + 10))}`, patch: { structure: { legThickness: Math.min(100, postT2 + 10) } } }] : [],
+          data: { leverMM: lever, stressMPa: stress, marginRatio: margin }
+        });
+      }
+      checks.push({
+        id: 'bed:basis', title: 'What these bed numbers are', status: 'pass',
+        value: 'benchmarked (EN 1725 magnitudes), not certified',
+        threshold: 'no compliance claim; no US adult-bed standard exists',
+        explain: BB.Classes.DESIGN_BASIS_BED,
+        fixes: []
+      });
+    }
     let antiTip = false, tip = null;
     if (!isWallMounted) {
       let mass = 0, mx = 0, my = 0, mz = 0;
@@ -8739,6 +9141,13 @@ body.ph-open .porch::after { display: none; }
         }
         if (hasRole('back')) mults.push({ label: 'back panel acts as a shear panel', mult: 1.5 });
         if (spec.joinery.case === 'dado' && hasRole('shelf')) mults.push({ label: 'fixed shelves housed in dados', mult: 1.15 });
+        if (TABLE_LIKE.includes(t)) {
+          const clearSpan = spec.overall.width - 2 * (spec.structure.legThickness || 0);
+          if (clearSpan > 1800) {
+            const spanMult = Math.max(0.7, 1 - (clearSpan - 1800) / 2000);
+            mults.push({ label: `long span raises the racking couple (${Math.round(clearSpan)} mm clear between legs)`, mult: Math.round(spanMult * 100) / 100 });
+          }
+        }
       } else {
         const connCount = new Map();
         for (const c of (spec.custom && spec.custom.connections) || []) {
@@ -9884,7 +10293,8 @@ body.ph-open .porch::after { display: none; }
   }
   const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth',
     'post', 'stretcher', 'crest', 'slat', 'corner_block',
-    'cleat'];
+    'cleat',
+    'headboard'];
   function cutList(spec, model) {
     const byId = new Map(model.parts.map(p => [p.id, p]));
     const ends = {};
@@ -10422,6 +10832,37 @@ body.ph-open .porch::after { display: none; }
       'Drop the shelf onto the wall half and press down along its length — it must seat fully with no rock. Check level. Then the acceptance test, gently: pull straight down at the FRONT edge with real force before any load goes on. A shelf that moves now moves worse with your things on it.',
       ['shelf_1']));
   }
+  function bedSteps(spec, model, integrity, out) {
+    const len = mm => U().fmtLength(mm);
+    const b = spec.bed;
+    const G = BB.Classes && BB.Classes.get('bed') ? BB.Classes.get('bed').geom : null;
+    const slats = model.parts.filter(p => p.role === 'slat').map(p => p.id);
+    const hboards = model.parts.filter(p => p.role === 'headboard').map(p => p.id);
+    const hasCentre = model.parts.some(p => p.id === 'rail_centre_1');
+    const jointChk = integrity && integrity.checks ? integrity.checks.find(c => c.id === 'bed:joint') : null;
+    if (hboards.length) {
+      out.push(step('s1', 'Headboard sub-assembly',
+        `Bolt the ${hboards.length} headboard boards between the head posts — barrel-nut bores drilled with the jig, both holes off the same reference face. Check the assembly for wind on the flat and measure the diagonals; a twisted headboard fights every later bolt.`,
+        ['post_1', 'post_2', ...hboards]));
+    }
+    out.push(step('s2', 'Foot sub-assembly',
+      'Bolt the foot rail between the footboard posts. Two mirror ends, checked against each other.',
+      ['post_3', 'post_4', 'rail_foot_1']));
+    out.push(step('s3', 'Bolt the side rails — in the bedroom',
+      `Stand the head and foot ends where the bed will LIVE and bolt the side rails between them (${jointChk && jointChk.data ? `each end carries ${U().fmtPointLoad(jointChk.data.endReactionN / 9.81)} at ${jointChk.data.marginRatio.toFixed(1)}× margin on its two bolts` : 'two barrel bolts per end'}). This is the knock-down mandate paying rent: the bed assembles in the room it can never leave whole. Snug in rotation, diagonals equal before the last bolt goes home.`,
+      ['rail_side_1', 'rail_side_2', 'rail_head_1']));
+    if (hasCentre) {
+      out.push(step('s4', 'Centre rail and its leg — before the deck',
+        'Screw the centre rail between the head and foot rails and fit its floor leg at midspan. The leg must BEAR THE FLOOR before any load goes on — a centre rail hanging in air is a broken-slat generator. Shim to firm contact if the floor dips.',
+        ['rail_centre_1', 'leg_centre_1']));
+    }
+    out.push(step('s5', 'Cleats and the slat deck',
+      `Screw the cleats level inside the side rails (constant drop from the rail top — use a spacer block), then lay the ${slats.length} slats to the spacing story stick (gaps ${G ? '≤ ' + len(G.SLAT_GAP_MAX) : 'even'} — the foam-mattress warranty number) and put one screw through each end so nothing walks.`,
+      ['cleat_1', 'cleat_2', ...slats]));
+    out.push(step('s6', 'Square, snug schedule, mattress',
+      'Check the frame diagonals once more, then the re-snug schedule that keeps a bolted bed silent: go round every bolt after the first week, the first month, and each season. Then the mattress — and the first night is the load test.',
+      []));
+  }
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -10522,6 +10963,8 @@ body.ph-open .porch::after { display: none; }
       chairSteps(spec, model, out, opts, { frP, ids });
     } else if (t === 'wall_shelf') {
       wallShelfSteps(spec, model, integrity, out);
+    } else if (t === 'bed') {
+      bedSteps(spec, model, integrity, out);
     } else {
       frameSteps(spec, model, out, opts, { frP, ids });
       if (t === 'desk' && spec.drawers) drawerSteps(spec, model, out, opts);
@@ -11421,7 +11864,7 @@ BlueprintBuddyImport.build
 (function () {
   'use strict';
   const TPL = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom',
-    'chair', 'wall_shelf'];
+    'chair', 'wall_shelf', 'bed'];
   const SPC = ['red_oak', 'white_oak', 'hard_maple', 'walnut', 'cherry', 'ash', 'poplar', 'pine', 'baltic_birch',
     'douglas_fir', 'syp', 'spf', 'western_red_cedar', 'soft_maple', 'hickory', 'beech', 'yellow_birch',
     'red_alder', 'sapele', 'teak', 'mdf', 'hardwood_ply'];
@@ -11438,6 +11881,7 @@ BlueprintBuddyImport.build
     'edge_pull', 'flush_recessed', 'appliance_pull', 'leather_pull', 'none_touch'];
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SUB = ['unknown', 'stud', 'masonry', 'drywall'];
+  const BSZ = ['twin', 'full', 'queen', 'king', 'cal_king'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
   const STK = ['solid', 'sheet'];
@@ -11501,6 +11945,9 @@ BlueprintBuddyImport.build
     }
     if (spec.wall && spec.meta.template === 'wall_shelf') {
       w.wl = [ix(SUB, spec.wall.substrate, 1), spec.wall.studSpacingMM];
+    }
+    if (spec.bed && spec.meta.template === 'bed') {
+      w.bd = [ix(BSZ, spec.bed.size, 2), spec.bed.platformHeight, spec.bed.headboardHeight];
     }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
@@ -11568,8 +12015,16 @@ BlueprintBuddyImport.build
         : null,
       custom: null,
       seat: null,
-      wall: null
+      wall: null,
+      bed: null
     };
+    if (Array.isArray(w.bd) && spec.meta.template === 'bed') {
+      spec.bed = {
+        size: at(BSZ, w.bd[0], 'queen'),
+        platformHeight: typeof w.bd[1] === 'number' ? w.bd[1] : 350,
+        headboardHeight: typeof w.bd[2] === 'number' ? w.bd[2] : 1000
+      };
+    }
     if (Array.isArray(w.wl) && spec.meta.template === 'wall_shelf') {
       spec.wall = {
         substrate: at(SUB, w.wl[0], 'stud'),
@@ -11630,6 +12085,15 @@ BlueprintBuddyImport.build
         if (w.d.c !== undefined) patch.drawers.count = w.d.c;
         if (w.d.f !== undefined) patch.drawers.frontStyle = at(FRONT, w.d.f, undefined);
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
+      }
+    }
+    if (w.bd !== undefined) {
+      if (Array.isArray(w.bd)) patch.bed = { size: at(BSZ, w.bd[0], undefined), platformHeight: w.bd[1], headboardHeight: w.bd[2] };
+      else if (w.bd && typeof w.bd === 'object') {
+        patch.bed = {};
+        if (w.bd.sz !== undefined) patch.bed.size = at(BSZ, w.bd.sz, undefined);
+        if (w.bd.ph !== undefined) patch.bed.platformHeight = w.bd.ph;
+        if (w.bd.hb !== undefined) patch.bed.headboardHeight = w.bd.hb;
       }
     }
     if (w.wl !== undefined) {
@@ -11720,6 +12184,7 @@ BlueprintBuddyImport.build
     `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
+    'BED (t=9 bed): knock-down platform bed + slat deck. "bd"=[BSZ,platformHeight,headboardHeight(0=none)], BSZ=[twin,full,queen,king,cal_king] — the mattress size drives the whole frame (overall is derived). Rails are ALWAYS barrel-bolted (code enforces; a glued bed cannot leave the room); centre rail auto-added at queen+. NOT buildable: bunk/loft beds (ASTM F1427 fall territory), cribs (16 CFR 1219 — always refuse), murphy/folding beds, storage/drawer beds — refuse or ask.',
     'WALL SHELF (t=8 wall_shelf): the ONE wall-mounted template — a French-cleat floating shelf. "wl"=[SUB,studSpacing_mm], SUB=[unknown,stud,masonry,drywall]. The SUBSTRATE IS REQUIRED: never propose wl[0]=0 (unknown) — ASK which wall it is; drywall-only is refused by code (anchor creep). Depth caps at 300; height is derived (cleat+shelf).',
     'SEATING (t=7 chair): "se"=[seatW,seatD,seatH,slopeDeg,backHeight,backRake,splayDeg,counterH|0]. backHeight 0=stool (splay stools-only); counterH>0 derives seat height (ask when a stool names none). Code mandates tenon-class seat-frame joints (never screws). NOT buildable: upholstered/slip seats, arms, sawn or bent rear legs, rockers, folders — refuse or ask, never approximate.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
@@ -11885,8 +12350,6 @@ BlueprintBuddyImport.build
   const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, chair or stool (counter and bar heights too), bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, doors, or stretchers to brace the legs) and I’ll build it to standard proportions.';
   const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A cabinet with doors', 'A desk in white oak'];
   const OUT_OF_SCOPE = [
-    [/\bbeds?\b|\bbed[\s-]?frames?\b|\bheadboards?\b|\bbunks?\b|\bmurphy\b|\bcribs?\b|\bmattress(?:es)?\b/,
-      'Beds are outside what I build — nothing here is sized to carry a mattress.', null],
     [/\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\brecliners?\b|\bchaises?\b/,
       'Sofas and soft seating are outside what I build — upholstery is a different craft. A solid-wood dining chair, stool, or bench I can do.', 'A dining chair in red oak'],
     [/\b(?:ceiling|suspended|hanging from)\b[\w\s'’-]{0,24}?\bshel(?:f|ves)\b/,
@@ -11920,7 +12383,7 @@ BlueprintBuddyImport.build
       const clause = src.slice(0, m.index).split(/[,.;:!?()]|\s[—–-]\s/).pop();
       return /(?:^|\s)(?:no|not|never|without|avoid|don'?t|do not|hate)(?:\s+[\w']+){0,2}\s*$/.test(clause);
     };
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair', 'floating shelf': 'wall_shelf', 'wall shelf': 'wall_shelf', 'wall-mounted shelf': 'wall_shelf', 'wall mounted shelf': 'wall_shelf', 'shelf ledge': 'wall_shelf' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair', 'floating shelf': 'wall_shelf', 'wall shelf': 'wall_shelf', 'wall-mounted shelf': 'wall_shelf', 'wall mounted shelf': 'wall_shelf', 'shelf ledge': 'wall_shelf', bed: 'bed', 'bed frame': 'bed', 'platform bed': 'bed', bedframe: 'bed' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -11935,6 +12398,15 @@ BlueprintBuddyImport.build
     const differentPiece = wantTemplate !== spec.meta.template ||
       (tmplWord === 'workbench' && !/workbench/i.test((spec.meta && spec.meta.name) || ''));
     const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && differentPiece;
+    if (/\b(bunk|loft)\b.{0,12}\bbeds?\b|\bbunk[- ]?beds?\b|\bloft[- ]?beds?\b/.test(t)) {
+      return { kind: 'info', text: 'Bunk and loft beds are ASTM F1427 territory — sleeping surfaces above 762 mm carry guardrail, ladder, and entrapment rules I don’t model, and falls from height are the injury case. A platform bed I can build soundly.' };
+    }
+    if (/\bcribs?\b|\bbassinets?\b|\bcradles?\b|\btoddler beds?\b/.test(t)) {
+      return { kind: 'info', text: 'Cribs and infant sleep furniture are federal safety law (16 CFR 1219/1220), not a hobbyist domain — I refuse these permanently rather than approximate them. For an adult or guest bed I’m glad to help.' };
+    }
+    if (/\bmurphy\b|\bwall[- ]?beds?\b|\bfold(?:ing|[- ]?(?:up|down|away))\b.{0,12}\bbeds?\b/.test(t)) {
+      return { kind: 'info', text: 'Murphy and folding beds need a lift mechanism and wall anchorage under a moving load — mechanisms are outside what I build (every joint here is fixed or bolted). A freestanding platform bed I can do.' };
+    }
     if (spec.meta.template === 'chair' || /\b(chairs?|stools?|armchairs?|barstools?)\b/.test(t)) {
       if (/\bupholster\w*|\bpadded\b|\bcushion\w*|\bslip[- ]seat\b|\bfoam\b|\bfabric seat\b|\bleather seat\b/.test(t)) {
         return { kind: 'info', text: 'I don’t generate upholstered or slip seats: the seat frame becomes its own part set with foam and fabric clearances I can’t model soundly yet, and a guessed frame is worse than a refusal. I can build the same chair with a solid wood seat — say the word.' };
@@ -12111,6 +12583,16 @@ BlueprintBuddyImport.build
       if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
         const row = K.ergoRow('workbench_height');
         if (row) { set('overall.height', Math.round((row.min + row.max) / 2)); benchHeight = true; }
+      }
+      if (wantTemplate === 'bed') {
+        const size = /\bcal(?:ifornia)?[- ]?king\b/.test(t) ? 'cal_king'
+          : /\bking\b/.test(t) ? 'king'
+          : /\bqueen\b/.test(t) ? 'queen'
+          : /\bfull\b|\bdouble\b/.test(t) ? 'full'
+          : /\btwin\b|\bsingle\b/.test(t) ? 'twin' : 'queen';
+        set('bed.size', size);
+        if (/\bno headboard\b|\bwithout (a )?headboard\b|\bheadboardless\b/.test(t)) set('bed.headboardHeight', 0);
+        notes.push(size.replace('_', ' ') + ' bed');
       }
       if (wantTemplate === 'wall_shelf') {
         if (/\bdrywall\b|\bplasterboard\b|\bsheetrock\b/.test(t) && !/\bstuds?\b/.test(t)) {
@@ -13698,7 +14180,7 @@ BlueprintBuddyImport.build
         humid && /humid indoor swing/.test(humid.text), humid ? 'humid named' : 'step missing', 'humid named');
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2760-token ceiling', tk <= 2760 && tk > 800, tk + ' tokens', '≤ 2760'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted class keys and their refusal doctrines (2026-07)
+      test('hardening', 'system prompt under the 2900-token ceiling', tk <= 2900 && tk > 800, tk + ' tokens', '≤ 2900'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07)
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
       const mode = Store.persistenceMode();
@@ -18932,7 +19414,7 @@ BlueprintBuddyImport.build
     nightstand: ['frame', 'case', 'box'],
     cabinet: ['frame', 'case', 'box'],
     chair: ['frame'],
-    wall_shelf: [],
+    wall_shelf: [], bed: [],
     custom: []
   };
   const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
@@ -18958,7 +19440,24 @@ BlueprintBuddyImport.build
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
-    if (s.meta.template === 'wall_shelf') {
+    if (s.meta.template === 'bed') {
+      const G = BB.Classes && BB.Classes.get('bed') ? BB.Classes.get('bed').geom : null;
+      if (G) {
+        body.append(paramSelect('Mattress size', Object.entries(G.SIZES).map(([k, v]) => [k, v.label]),
+          (s.bed && s.bed.size) || 'queen', v => { merge({ bed: { size: v } }, 'manual'); renderAdjustBody(); }));
+      }
+      body.append(paramSlider('Deck height', (s.bed && s.bed.platformHeight) || 350, 250, 500, 5, true,
+        v => live({ bed: { platformHeight: v } }), () => done()));
+      const hasHb = s.bed && s.bed.headboardHeight > 0;
+      body.append(paramSeg('Headboard', [['1', 'Yes'], ['0', 'None']], hasHb ? '1' : '0',
+        v => { merge({ bed: { headboardHeight: v === '1' ? 1000 : 0 } }, 'manual'); renderAdjustBody(); }));
+      if (hasHb) {
+        body.append(paramSlider('Headboard height', s.bed.headboardHeight, 800, 1300, 10, true,
+          v => live({ bed: { headboardHeight: v } }), () => done()));
+      }
+      body.append(dim('Rail depth', 'structure.apronHeight', 110, 160));
+      body.append(dim('Post thickness', 'structure.legThickness', 60, 100));
+    } else if (s.meta.template === 'wall_shelf') {
       body.append(dim('Length', 'overall.width', 300, 2400));
       body.append(paramSlider('Depth', s.overall.depth, 200, 300, 5, true,
         v => live({ overall: { depth: v } }), () => done()));

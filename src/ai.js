@@ -259,8 +259,8 @@ var BB = globalThis.BB = globalThis.BB || {};
    * the geometry CAN make — offered as the first chip, never as a claim. A
    * row with no nearest option says plainly that there isn't one. */
   const OUT_OF_SCOPE = [
-    [/\bbeds?\b|\bbed[\s-]?frames?\b|\bheadboards?\b|\bbunks?\b|\bmurphy\b|\bcribs?\b|\bmattress(?:es)?\b/,
-      'Beds are outside what I build — nothing here is sized to carry a mattress.', null],
+    // Beds graduated to the 'bed' class (2026-07). Bunks/cribs/murphy keep
+    // dedicated refusals with their regulations, before creation triggers.
     /* Chairs and stools graduated to a real class (2026-07 seating). What
      * stays out of scope is soft seating — and its refusal now points at the
      * chair the tool genuinely builds. */
@@ -321,7 +321,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // New design? Longest template word first: "bedside table" must win
     // over "table".
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair', 'floating shelf': 'wall_shelf', 'wall shelf': 'wall_shelf', 'wall-mounted shelf': 'wall_shelf', 'wall mounted shelf': 'wall_shelf', 'shelf ledge': 'wall_shelf' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair', 'floating shelf': 'wall_shelf', 'wall shelf': 'wall_shelf', 'wall-mounted shelf': 'wall_shelf', 'wall mounted shelf': 'wall_shelf', 'shelf ledge': 'wall_shelf', bed: 'bed', 'bed frame': 'bed', 'platform bed': 'bed', bedframe: 'bed' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -348,6 +348,18 @@ var BB = globalThis.BB = globalThis.BB || {};
     const differentPiece = wantTemplate !== spec.meta.template ||
       (tmplWord === 'workbench' && !/workbench/i.test((spec.meta && spec.meta.name) || ''));
     const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && differentPiece;
+
+    /* Bed-class refusals (BB.Classes 'bed'): the shapes no sound plan can
+     * honor, each with its regulation or reason. These outrank creation. */
+    if (/\b(bunk|loft)\b.{0,12}\bbeds?\b|\bbunk[- ]?beds?\b|\bloft[- ]?beds?\b/.test(t)) {
+      return { kind: 'info', text: 'Bunk and loft beds are ASTM F1427 territory — sleeping surfaces above 762 mm carry guardrail, ladder, and entrapment rules I don’t model, and falls from height are the injury case. A platform bed I can build soundly.' };
+    }
+    if (/\bcribs?\b|\bbassinets?\b|\bcradles?\b|\btoddler beds?\b/.test(t)) {
+      return { kind: 'info', text: 'Cribs and infant sleep furniture are federal safety law (16 CFR 1219/1220), not a hobbyist domain — I refuse these permanently rather than approximate them. For an adult or guest bed I’m glad to help.' };
+    }
+    if (/\bmurphy\b|\bwall[- ]?beds?\b|\bfold(?:ing|[- ]?(?:up|down|away))\b.{0,12}\bbeds?\b/.test(t)) {
+      return { kind: 'info', text: 'Murphy and folding beds need a lift mechanism and wall anchorage under a moving load — mechanisms are outside what I build (every joint here is fixed or bolted). A freestanding platform bed I can do.' };
+    }
 
     /* Seating-class refusals (BB.Classes 'seating') — said as refusals, never
      * approximated silently. These fire whenever seating is the subject,
@@ -603,6 +615,18 @@ var BB = globalThis.BB = globalThis.BB || {};
        * coupling). The WORD sets sensible surface defaults; an explicit
        * "for my 950 mm counter" wins; a bare "stool" ships dining height
        * and the integrity panel asks for the counter. */
+      /* Bed: the mattress size drives the frame. Named sizes win; a bare
+       * "bed" ships queen (the modal ask) and the ack names the size. */
+      if (wantTemplate === 'bed') {
+        const size = /\bcal(?:ifornia)?[- ]?king\b/.test(t) ? 'cal_king'
+          : /\bking\b/.test(t) ? 'king'
+          : /\bqueen\b/.test(t) ? 'queen'
+          : /\bfull\b|\bdouble\b/.test(t) ? 'full'
+          : /\btwin\b|\bsingle\b/.test(t) ? 'twin' : 'queen';
+        set('bed.size', size);
+        if (/\bno headboard\b|\bwithout (a )?headboard\b|\bheadboardless\b/.test(t)) set('bed.headboardHeight', 0);
+        notes.push(size.replace('_', ' ') + ' bed');
+      }
       /* Wall shelf: the SUBSTRATE is required input — the wall carries the
        * whole load path, so a creation with no wall named ASKS rather than
        * guessing (the chips parse straight back in here). Drywall-only is

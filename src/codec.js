@@ -19,7 +19,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   const TPL = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom',
     // Seating + wall-mounted classes (2026-07) — appended; old share codes
     // decode unchanged.
-    'chair', 'wall_shelf'];
+    'chair', 'wall_shelf', 'bed'];
   const SPC = ['red_oak', 'white_oak', 'hard_maple', 'walnut', 'cherry', 'ash', 'poplar', 'pine', 'baltic_birch',
     // 2026 knowledge expansion — appended in this exact order; old share codes decode unchanged.
     'douglas_fir', 'syp', 'spf', 'western_red_cedar', 'soft_maple', 'hickory', 'beech', 'yellow_birch',
@@ -41,6 +41,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     'edge_pull', 'flush_recessed', 'appliance_pull', 'leather_pull', 'none_touch'];
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SUB = ['unknown', 'stud', 'masonry', 'drywall'];
+  const BSZ = ['twin', 'full', 'queen', 'king', 'cal_king'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
   const STK = ['solid', 'sheet'];
@@ -128,6 +129,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (spec.wall && spec.meta.template === 'wall_shelf') {
       w.wl = [ix(SUB, spec.wall.substrate, 1), spec.wall.studSpacingMM];
     }
+    // Bed (2026-07): size + heights ride only on a bed.
+    if (spec.bed && spec.meta.template === 'bed') {
+      w.bd = [ix(BSZ, spec.bed.size, 2), spec.bed.platformHeight, spec.bed.headboardHeight];
+    }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
       w.p = spec.custom.parts.map(encodePart);
@@ -203,8 +208,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         : null,
       custom: null,
       seat: null,
-      wall: null
+      wall: null,
+      bed: null
     };
+    if (Array.isArray(w.bd) && spec.meta.template === 'bed') {
+      spec.bed = {
+        size: at(BSZ, w.bd[0], 'queen'),
+        platformHeight: typeof w.bd[1] === 'number' ? w.bd[1] : 350,
+        headboardHeight: typeof w.bd[2] === 'number' ? w.bd[2] : 1000
+      };
+    }
     if (Array.isArray(w.wl) && spec.meta.template === 'wall_shelf') {
       spec.wall = {
         substrate: at(SUB, w.wl[0], 'stud'),
@@ -273,6 +286,17 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (w.d.c !== undefined) patch.drawers.count = w.d.c;
         if (w.d.f !== undefined) patch.drawers.frontStyle = at(FRONT, w.d.f, undefined);
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
+      }
+    }
+    /* Bed refinements: {sz, ph, hb} partial or full array. "hb":0 removes
+     * the headboard. */
+    if (w.bd !== undefined) {
+      if (Array.isArray(w.bd)) patch.bed = { size: at(BSZ, w.bd[0], undefined), platformHeight: w.bd[1], headboardHeight: w.bd[2] };
+      else if (w.bd && typeof w.bd === 'object') {
+        patch.bed = {};
+        if (w.bd.sz !== undefined) patch.bed.size = at(BSZ, w.bd.sz, undefined);
+        if (w.bd.ph !== undefined) patch.bed.platformHeight = w.bd.ph;
+        if (w.bd.hb !== undefined) patch.bed.headboardHeight = w.bd.hb;
       }
     }
     /* Wall refinements: {su, sp} partial or full array. */
@@ -391,6 +415,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
+    'BED (t=9 bed): knock-down platform bed + slat deck. "bd"=[BSZ,platformHeight,headboardHeight(0=none)], BSZ=[twin,full,queen,king,cal_king] — the mattress size drives the whole frame (overall is derived). Rails are ALWAYS barrel-bolted (code enforces; a glued bed cannot leave the room); centre rail auto-added at queen+. NOT buildable: bunk/loft beds (ASTM F1427 fall territory), cribs (16 CFR 1219 — always refuse), murphy/folding beds, storage/drawer beds — refuse or ask.',
     'WALL SHELF (t=8 wall_shelf): the ONE wall-mounted template — a French-cleat floating shelf. "wl"=[SUB,studSpacing_mm], SUB=[unknown,stud,masonry,drywall]. The SUBSTRATE IS REQUIRED: never propose wl[0]=0 (unknown) — ASK which wall it is; drywall-only is refused by code (anchor creep). Depth caps at 300; height is derived (cleat+shelf).',
     'SEATING (t=7 chair): "se"=[seatW,seatD,seatH,slopeDeg,backHeight,backRake,splayDeg,counterH|0]. backHeight 0=stool (splay stools-only); counterH>0 derives seat height (ask when a stool names none). Code mandates tenon-class seat-frame joints (never screws). NOT buildable: upholstered/slip seats, arms, sawn or bent rear legs, rockers, folders — refuse or ask, never approximate.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',

@@ -16,7 +16,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   const Geo = BB.Geo;
   const U = () => BB.Units;
 
-  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair', 'wall_shelf'];
+  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair', 'wall_shelf', 'bed'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
   /* The templates Parametric.tableLike() builds: four legs tied by an apron
@@ -31,7 +31,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * through the migration registry on load — a saved design must never fail
    * to open. From Phase 4 forward, EVERY schema change adds a migration here.
    */
-  const SPEC_VERSION = 8;
+  const SPEC_VERSION = 9;
   const migrations = {
     /* v3 → v4: Phase 1–3 specs had no specVersion and no `custom` section.
      * Stamp the version, initialise custom to null, and normalise the legacy
@@ -91,6 +91,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       const out = clone(s) || {};
       out.specVersion = 8;
       if (out.wall === undefined) out.wall = null;
+      return out;
+    },
+    /* v8 -> v9: the bed class added a `bed` section. Same doctrine: absence
+     * becomes an explicit null. */
+    8: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 9;
+      if (out.bed === undefined) out.bed = null;
       return out;
     }
   };
@@ -165,9 +173,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       doors: null,
       custom: null,
       seat: null,
-      wall: null
+      wall: null,
+      bed: null
     };
     const t = base.meta.template;
+    if (t === 'bed') {
+      /* Bed class (BB.Classes 'bed'): the mattress size DRIVES the frame —
+       * overall is derived from the size standard plus rail structure. */
+      base.meta.name = 'Platform Bed';
+      base.bed = { size: 'queen', platformHeight: 350, headboardHeight: 1000 };
+      Object.assign(base.structure, {
+        legThickness: 70, apronHeight: 140, apronThickness: 25, topThickness: 19
+      });
+      /* Knock-down is a CLASS MANDATE: a glued bed cannot leave the room.
+       * Correction re-enforces this whatever is asked. */
+      base.joinery.frame = 'kd_bolt';
+    }
     if (t === 'wall_shelf') {
       /* Wall-mounted class (BB.Classes 'wall_mounted'): width = length along
        * the wall, depth = shelf depth, height DERIVED (cleat + shelf). The
@@ -971,12 +992,12 @@ var BB = globalThis.BB = globalThis.BB || {};
    * real board is the deal — so it stays quiet. */
   function dimensionNotes(raw, cor, notes) {
     const fmt = mm => U().fmtLength(mm);
-    const isChair = at(cor, 'meta', 'template') === 'chair';
+    const derivedOverall = ['chair', 'bed'].includes(at(cor, 'meta', 'template'));
     for (const path of Object.keys(DIM_RULES)) {
-      // A chair's overall is DERIVED from the seat family (splay widens the
-      // footprint, the back sets the height) — the seat.* rows carry the
-      // user-facing refusals, so overall.* notes there would be noise.
-      if (isChair && path.startsWith('overall.')) continue;
+      // A chair's overall is DERIVED from the seat family and a bed's from
+      // its mattress size — their own sections carry the user-facing
+      // refusals, so overall.* notes there would be noise.
+      if (derivedOverall && path.startsWith('overall.')) continue;
       const dot = path.indexOf('.');
       const sec = path.slice(0, dot), key = path.slice(dot + 1);
       const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
@@ -1103,6 +1124,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* Bed-class disclosures: the knock-down mandate and the size fallback. */
+  function bedNotes(raw, cor, notes) {
+    if (!cor || at(cor, 'meta', 'template') !== 'bed' || !cor.bed) return;
+    const wantJ = raw && isObj(raw.joinery) ? raw.joinery.frame : undefined;
+    if (typeof wantJ === 'string' && wantJ !== 'kd_bolt' && K.JOINERY[wantJ]) {
+      notes.push(`${K.JOINERY[wantJ].label} can’t join a bed’s rails — a glued bed cannot leave the room, so the class bolts every rail to its post (knockdown bolts) and the plan carries the re-snug schedule.`);
+    }
+    const wantSize = raw && isObj(raw.bed) ? raw.bed.size : undefined;
+    if (typeof wantSize === 'string' && wantSize !== cor.bed.size) {
+      notes.push(`“${wantSize}” isn’t a mattress size this tool knows (twin, full, queen, king, california king) — the frame is sized for a ${cor.bed.size.replace('_', ' ')}.`);
+    }
+  }
+
   /* A drawer bank asked of a template that has no opening to put one in. */
   function drawerNote(raw, cor, notes) {
     const want = raw && raw.drawers;
@@ -1144,6 +1178,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       joineryNotes(raw, correctedSpec, notes);
       drawerNote(raw, correctedSpec, notes);
       seatNotes(raw, correctedSpec, notes);
+      bedNotes(raw, correctedSpec, notes);
     }
     return [...new Set(notes)];
   }
@@ -1388,6 +1423,43 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.drawers = null; s.doors = null;
     } else {
       s.wall = null;
+    }
+
+    /* ---- beds (the 'bed' class) ----
+     * The mattress size is the master input: interior = mattress + fit
+     * clearance, overall derived from it plus the rail structure. The
+     * knock-down mandate is re-enforced (a glued bed cannot leave the room),
+     * and the centre-rail rule rides the builder (width ≥ 1350 always gets
+     * one — Sealy/Stearns & Foster warranty practice, see the contract). */
+    if (template === 'bed') {
+      const C = BB.Classes ? BB.Classes.get('bed') : null;
+      const G = C ? C.geom : null;
+      const b = isObj(s.bed) ? s.bed : {};
+      const sizes = G ? Object.keys(G.SIZES) : ['twin', 'full', 'queen', 'king', 'cal_king'];
+      const size = sizes.includes(b.size) ? b.size : 'queen';
+      const platform = r1(clamp(num(b.platformHeight, 350), 250, 500));
+      let hb = num(b.headboardHeight, 1000);
+      hb = hb <= 0 ? 0 : r1(clamp(hb, 800, 1300));
+      // The headboard must clear the rail band by a board's worth or it is trim.
+      const railTop = platform + (G ? G.MATTRESS_STOP : 50);
+      if (hb > 0 && hb < railTop + 150) hb = r1(railTop + 150);
+      s.bed = { size, platformHeight: platform, headboardHeight: hb };
+      // Rails are the structure: keep the band deep enough to carry the deck.
+      st.apronHeight = clamp(st.apronHeight, 110, 160);
+      st.apronThickness = Math.max(st.apronThickness, 19);
+      s.joinery.frame = 'kd_bolt';
+      if (G) {
+        const m = G.SIZES[size];
+        const Wi = m.w + G.FIT_CLEARANCE, Li = m.l + G.FIT_CLEARANCE;
+        o.width = r1(Wi + 2 * st.apronThickness);
+        o.depth = r1(Li + 2 * st.apronThickness);
+        // Posts run 50 past the rail top (they cap the corners), so the
+        // envelope is the taller of headboard and post tops.
+        o.height = r1(Math.max(hb, railTop + 50));
+      }
+      s.drawers = null; s.doors = null;
+    } else {
+      s.bed = null;
     }
 
     // Geometry sanity: aprons and legs must fit under the top.
@@ -1769,6 +1841,15 @@ var BB = globalThis.BB = globalThis.BB || {};
         errors.push({ id: 'wall_substrate', text: 'What is this wall? A shelf hangs on its substrate, and the anchor math needs it: wood studs or masonry. Hanging on an unknown wall is a guess — worse than a refusal.' });
       } else if (spec.wall.substrate === 'drywall') {
         errors.push({ id: 'wall_substrate', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. Find the studs behind it (16 or 24 in apart) or name a masonry wall.' });
+      }
+    }
+
+    /* Bed human factors: the platform band, said with its consequence. */
+    if (t === 'bed' && spec.bed && BB.Classes) {
+      const row = K.ergoRow('platform_bed_height');
+      const ph = spec.bed.platformHeight;
+      if (row && (ph < row.min || ph > row.max)) {
+        advisories.push({ id: 'ergo_platform', text: `${fmt(ph)} deck height is outside the ${fmt(row.min)}–${fmt(row.max)} platform band — with a mattress the sleeping surface should land ${fmt(500)}–${fmt(650)} off the floor (K.ERGONOMICS).` });
       }
     }
 

@@ -10,7 +10,7 @@
     "minParts": 10
   },
   "expectAfterMigration": {
-    "specVersion": 8,
+    "specVersion": 9,
     "doors.count": 2,
     "doors.style": "inset",
     "hardware.hinge": "butt_brass"

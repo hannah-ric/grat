@@ -10,7 +10,7 @@
     "minParts": 3
   },
   "expectAfterMigration": {
-    "specVersion": 8,
+    "specVersion": 9,
     "wall.substrate": "stud",
     "wall.studSpacingMM": 406
   },

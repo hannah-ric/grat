@@ -200,7 +200,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         { id: 'leg_vs_footprint', rule: 'legThickness ≤ min(width, depth)/4, snapped DOWN the post-stock table', enforcedBy: 'Spec.correctSpec legCap (audit E-04)' },
         { id: 'stretcher_on_leg', rule: 'stretcher centreline ∈ [floor+100, apron underside − 90] — it must land on the leg with clamp room', enforcedBy: 'Spec.correctSpec stretcher clamp (X-07)' },
         { id: 'drawer_in_band', rule: 'desk drawers live INSIDE the apron band: opening = apronHeight − 40 clamped 45–80 (pencil-drawer class, hence the 45 mm floor in validate), fronts inset, wood runners at every level (no case side for slides), a single opening wider than 620 splits around a centre stile', enforcedBy: 'Spec.correctSpec desk-drawer block + Parametric.addDeskDrawers' },
-        { id: 'knee_room', rule: 'desk knee clearance = height − top − band ≥ ~600 (Panero & Zelnik seated knee; ADA 306.3 asks 685 for accessible desks) — advisory, never silent', enforcedBy: 'Spec.validate ergo_knee' }
+        { id: 'knee_room', rule: 'desk knee clearance = height − top − band ≥ ~600 (Panero & Zelnik seated knee; ADA 306.3 asks 685 for accessible desks) — advisory, never silent', enforcedBy: 'Spec.validate ergo_knee' },
+        { id: 'long_span', rule: 'clear span between legs > 1800 scales the racking score down (linearly to ×0.7 at the cap) — the couple on the apron–leg joints grows with span while joint capacity is fixed, and the top’s torsional stiffness stops helping', enforcedBy: 'Structural racking span factor (roadmap item 2)' }
       ]
     },
     humanFactors: [
@@ -245,7 +246,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     },
     refusals: [
       { id: 'no_wall_hang', shape: 'wall-hung / floating variants of a frame piece', reason: 'anchor pullout and stud engagement are a different class (wall-mounted) not yet generated soundly', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule' },
-      { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' }
+      { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' },
+      { id: 'no_over_span', shape: 'tops wider than 2400 mm', reason: 'past the cap the apron-beam model still runs but the racking couple and the top’s torsional floppiness have no code-owned answer (breadboard/batten stiffening is future work) — the clamp is the refusal and correction says so', surface: 'Spec.DIM_RULES overall.width max 2400 (dimensionNotes disclose the clamp) + the racking span factor' }
     ],
     fixtures: {
       golden: ['seed-table-imperial', 'shaker-table-imperial', 'custom-bench-metric', 'walnut-writing-desk-imperial'],
@@ -541,8 +543,142 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   });
 
+  /* =========================================================================
+   * BEDS — knock-down platform beds with a slat deck. The class the roadmap
+   * ranked first on demand. No US standard covers adult residential beds
+   * (ASTM F1427 is bunk beds only) — the citable adult reference is
+   * EN 1725:2023 (user weight 110 kg, tests per ISO 19833), used here as a
+   * BENCHMARK, never a compliance claim.
+   * ========================================================================= */
+  const DESIGN_BASIS_BED =
+    'Bed checks are BENCHMARKED against EN 1725:2023 magnitudes (adult beds, ' +
+    '110 kg user weight — the one citable adult-bed standard; no US ASTM ' +
+    'standard covers adult residential beds) plus manufacturer warranty ' +
+    'rules for slat gaps and centre support. Bed-rail brackets publish NO ' +
+    'load ratings, so the rail connection capacity here is the barrel-bolt ' +
+    'math, not a vendor claim. Benchmarks, not certification.';
+
+  const BED_GEOM = {
+    /* Mattress standards: widths from K.ERGONOMICS bed rows; lengths from
+     * the same rows' notes (US standard sizes). */
+    SIZES: {
+      twin: { w: 965, l: 1905, label: 'Twin' },
+      full: { w: 1372, l: 1905, label: 'Full' },
+      queen: { w: 1524, l: 2030, label: 'Queen' },
+      king: { w: 1956, l: 2030, label: 'King' },
+      cal_king: { w: 1829, l: 2134, label: 'California King' }
+    },
+    /* Design mattress mass (kg): the heavy end of published hybrid weights
+     * (Saatva/Nectar spec pages; verified-approximate). Sustained load. */
+    MATTRESS_KG: { twin: 32, full: 42, queen: 55, king: 70, cal_king: 65 },
+    FIT_CLEARANCE: 30,     // interior over mattress (post corners intrude ~45)
+    MATTRESS_STOP: 50,     // rail top above the slat deck — keeps the mattress
+    SLAT_W: 89, SLAT_T: 19, // 1x4 slats (Tempur-Pedic asks ≥ 3 in wide slats)
+    /* Foam-mattress warranty floor: gaps ≤ 70 mm (Amerisleep ≤ 2.75 in,
+     * warranty text; Tempur-Pedic ≤ 4 in is the loosest major). */
+    SLAT_GAP_MAX: 70,
+    CLEAT: { w: 32, h: 20 },
+    /* Centre rail + floor leg mandatory at interior width ≥ 1350 mm — the
+     * Sealy / Stearns & Foster warranty rule (≥ 5 legs with centre support
+     * at queen and up; strict variants start at 53 in). */
+    CENTRE_RAIL_MIN_W: 1350,
+    USER_KG: 110,          // EN 1725:2023 user mass
+    OCCUPANTS: 2,
+    /* Slat section, solved by code against the governing knee case — the
+     * same case bed:slats prices: 110 kg on one knee at midspan, spread
+     * over two slats by the mattress (P = USER_KG·g/2) — in the ACTUAL
+     * species: σ = 6M/(b·t²) must hold ≥ 1.25× at MOR/4 (the strength-pass
+     * floor; the check adds a small mattress line-load term on top, so the
+     * solver's floor is the check's pass band). Stock thicknesses only;
+     * spans past 850 additionally floor at 25 for stiffness. A red-oak
+     * queen stays at 19; the same deck in SPF stud lumber solves to 25 —
+     * exactly the 1x4-vs-2x4 choice the published plans leave to the
+     * reader, made by arithmetic instead. If even the largest stock fails,
+     * the builder ships it and bed:slats says so honestly. */
+    slatThickness(spanMM, speciesKey) {
+      const sp = (K.WOOD_SPECIES && K.WOOD_SPECIES[speciesKey]) || { mor: 99 };
+      const allow = sp.mor / 4;
+      const M = (this.USER_KG * 9.81 / 2) * spanMM / 4;
+      const floor = spanMM > 850 ? 25 : this.SLAT_T;
+      const stock = K.SOLID_THICKNESS.filter(t => t >= floor);
+      for (const t of stock) {
+        if (allow / (6 * M / (this.SLAT_W * t * t)) >= 1.25) return t;
+      }
+      return stock[stock.length - 1];
+    }
+  };
+
+  register({
+    key: 'bed',
+    label: 'Beds (knock-down platform, slat deck)',
+    templates: ['bed'],
+    geom: BED_GEOM,
+    DESIGN_BASIS_BED,
+    family: {
+      rules: [
+        { path: 'structure.apronHeight', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.apronThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.legThickness', ownedBy: 'Spec.DIM_RULES' }
+      ],
+      couplings: [
+        { id: 'mattress_master', rule: 'the mattress size drives everything: interior = standard size + 30 fit; overall derived (width/depth/height are read-outs, not knobs)', enforcedBy: 'Spec.correctSpec bed block' },
+        { id: 'knockdown_mandate', rule: 'rails bolt to posts (kd_bolt) at every level — a glued bed cannot leave the room; asking for glued joinery is overridden and told', enforcedBy: 'Spec.correctSpec + bedNotes' },
+        { id: 'slat_gap', rule: 'slat count solved so gaps ≤ 70 mm (foam-warranty floor: Amerisleep 2.75 in) with ≥ 75 mm slat width (Tempur-Pedic ≥ 3 in)', enforcedBy: 'Parametric.bedBuild + bed:slats check' },
+        { id: 'centre_support', rule: 'interior ≥ 1350 mm always gets a centre rail + floor leg (Sealy/S&F warranty: ≥ 5 legs with centre support at queen+)', enforcedBy: 'Parametric.bedBuild + bed:centre check' },
+        { id: 'headboard_clear', rule: 'a headboard clears the rail band by ≥ 150 or it is trim, not a headboard', enforcedBy: 'Spec.correctSpec bed block' }
+      ]
+    },
+    humanFactors: [
+      { key: 'platform_height', label: 'Platform (deck) height', min: 300, max: 450, unit: 'mm', source: 'K.ERGONOMICS platform_bed_height (mattress top lands 500–650 off the floor)' },
+      { key: 'mattress_sizes', label: 'Mattress standards', min: 965, max: 1956, unit: 'mm width', source: 'K.ERGONOMICS bed-size anchor rows (US standard widths; lengths in the row notes)' },
+      { key: 'headboard_height', label: 'Headboard height', min: 800, max: 1300, unit: 'mm', source: 'trade convention: sit-up support band above a 500–650 mattress top' }
+    ],
+    loadCases: [
+      { id: 'deck_live', label: 'Two occupants + mattress on the deck', magnitude: '2 × 110 kg (EN 1725 user mass) + design mattress mass, per size', apply: 'distributed over the slat deck', direction: 'gravity', duration: 'occupants transient; mattress sustained (×2 creep)', acceptance: 'slat and rail sag ≤ L/300; bending ≥ 1× at MOR/4', source: 'EN 1725:2023 user weight (SATRA/BSI summaries); mattress masses from Saatva/Nectar spec pages', traceability: 'standard' },
+      { id: 'slat_point', label: 'Kneeling on one slat', magnitude: '1079 N (110 kg on one knee-point)', apply: 'midspan of the worst slat', direction: 'gravity', duration: 'transient', acceptance: 'slat bending ≥ 1× at MOR/4', source: 'derivation from the EN 1725 user mass — the load every bed slat sees when someone climbs in', traceability: 'derivation' },
+      { id: 'rail_connection', label: 'Rail end reaction into the posts', magnitude: 'rail tributary share ÷ 2 ends', apply: 'each barrel-bolt pair', direction: 'vertical shear', duration: 'sustained + transient', acceptance: '≥ 1.5× on 2 × kd_bolt per rail end (SG-scaled); the bracket ALTERNATIVE prints its required rating — brackets publish none', source: 'JOINT_RATING kd_bolt; Rockler bracket pages confirmed rating-free (research 2026-07)', traceability: 'derivation' },
+      { id: 'headboard_pull', label: 'Sitting back against the headboard', magnitude: '667 N horizontal at the headboard top', apply: 'shared by the two head posts', direction: 'horizontal', duration: 'functional', acceptance: 'post bending ≥ 1× at MOR/4 over the lever above the rail bolts', source: 'derivation aligned to the BIFMA X5.1 back functional magnitude the seating class uses', traceability: 'derivation' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'side/head/foot rails → posts', required: ['kd_bolt'], prohibited: ['mortise_tenon', 'pocket_screws', 'butt_screws', 'dowels', 'loose_tenon'], reason: 'the knock-down mandate: 2 barrel bolts per rail end carry the end reaction at ≥ 1.5× and come apart on moving day. A glued tenon here is a bed that cannot leave the room; screws alone loosen under cyclic edge-sitting. Surface-mount bed-rail brackets are a legitimate alternative — but they publish NO ratings, so the BOM prints the required capacity for the buyer to match.' },
+        { connection: 'slats → cleats', required: ['butt_screws'], prohibited: [], reason: 'one screw per end keeps slats from walking; the cleat and centre rail carry the load in bearing.' },
+        { connection: 'cleats → rails, centre rail → head/foot rails', required: ['butt_screws'], prohibited: [], reason: 'glued + screwed along the length; loads are distributed bearing, not joint-limited.' }
+      ]
+    },
+    failureModes: [
+      { id: 'slat_snap', mode: 'a slat snaps under a knee or concentrated sit', checkIds: ['bed:slats'], fixture: 'handcalc bed slat section; audit BED-2', realWorld: 'the cracked-slat thump at 2 am' },
+      { id: 'rail_sag', mode: 'side rails sag or break under the deck load', checkIds: ['bed:rail'], fixture: 'audit BED-2', realWorld: 'sagging bed edges' },
+      { id: 'connection_failure', mode: 'rail-to-post connection works loose / shears', checkIds: ['bed:joint'], fixture: 'audit BED-2 (margin arithmetic)', realWorld: 'wobbly knock-down frames, stripped brackets' },
+      { id: 'missing_centre', mode: 'queen+ deck without centre support', checkIds: ['bed:centre'], fixture: 'audit BED-1 (builder always adds it ≥ 1350)', realWorld: 'broken slats and voided mattress warranties' },
+      { id: 'slat_gap_wide', mode: 'slat gaps beyond the foam-mattress warranty floor', checkIds: ['bed:slats'], fixture: 'audit BED-1 gap arithmetic', realWorld: 'foam sagging into the gaps' },
+      { id: 'headboard_break', mode: 'head posts break at the rail line under a sitting lean', checkIds: ['bed:headboard'], conditional: true, fixture: 'audit BED-3', realWorld: 'headboards snapping their posts' },
+      { id: 'ergonomic_height', mode: 'deck height outside the platform band', checkIds: ['ergo_platform'], conditional: true, fixture: 'audit BED-3', realWorld: 'beds you fall into or climb onto' }
+    ],
+    hardware: [
+      { id: 'rail_bolts', item: 'M6 × 50 furniture bolts + barrel nuts, 2 per rail end (8+ total)', when: 'every bed', capacity: 'kd_bolt joint class, 1800 N SG-scaled per bolt-pair joint', matchedTo: 'bed:joint end-reaction margin ≥ 1.5×' },
+      { id: 'bracket_alt', item: 'surface-mount bed-rail brackets (alternative)', when: 'buyer preference', capacity: 'NO published ratings exist (Rockler et al., confirmed) — the BOM prints the computed required capacity per end to match against whatever the maker will state', matchedTo: 'bed:joint demand × 1.5' },
+      { id: 'slat_screws', item: '#8 × 32 screws, one per slat end', when: 'every bed', capacity: 'anti-walk only; load is bearing on the cleats', matchedTo: 'slat retention (fastener engine counts them)' }
+    ],
+    assembly: {
+      sequence: ['headboard sub-assembly (boards into posts)', 'foot sub-assembly', 'bolt side rails to head + foot (in the room!)', 'cleats + centre rail with its leg', 'lay and screw the slat deck', 'square check, snug schedule, mattress'],
+      jigs: ['doweling jig for barrel-nut bores (both bores off one reference face)', 'cleat spacer block (constant drop from the rail top)', 'slat spacing story stick'],
+      checks: ['diagonals across the frame before snugging the last bolts', 'centre rail leg bears the floor BEFORE the deck goes on', 'slat gaps verified against the story stick (≤ 70)', 're-snug bolts after the first week and each season']
+    },
+    refusals: [
+      { id: 'no_bunks', shape: 'bunk and loft beds', reason: 'ASTM F1427 territory (sleeping surface > 762 mm, guardrail and entrapment rules) — fall-height engineering this tool does not model', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_cribs', shape: 'cribs and infant furniture', reason: '16 CFR 1219/1220 is federal safety law, not a hobbyist domain — permanently refused', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_murphy', shape: 'murphy / wall / folding beds', reason: 'lift mechanisms and wall anchorage under a moving load are unmodeled (and the mechanism doctrine already refuses moving parts)', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_glued_bed', shape: 'glued rail joinery on a bed', reason: 'a bed that cannot be disassembled cannot leave the room — the knock-down mandate overrides and says so', surface: 'Spec.correctSpec + bedNotes' }
+    ],
+    fixtures: {
+      golden: ['oak-queen-bed-imperial', 'pine-twin-bed-metric'],
+      bad: ['audit BED-1 gap/centre rules', 'audit BED-2 slat/rail/joint margins vs hand arithmetic', 'audit BED-3 headboard + platform band + refusals']
+    }
+  });
+
   BB.Classes = {
     register, get, all, forTemplate, validateContract, runChecklist,
-    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL
+    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED
   };
 })();

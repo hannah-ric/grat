@@ -2652,7 +2652,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     nightstand: ['frame', 'case', 'box'],
     cabinet: ['frame', 'case', 'box'],
     chair: ['frame'],
-    wall_shelf: [],
+    wall_shelf: [], bed: [],
     custom: []
   };
   const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
@@ -2687,7 +2687,25 @@ var BB = globalThis.BB = globalThis.BB || {};
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
-    if (s.meta.template === 'wall_shelf') {
+    if (s.meta.template === 'bed') {
+      /* Bed: the mattress size is the master knob; overall is a read-out. */
+      const G = BB.Classes && BB.Classes.get('bed') ? BB.Classes.get('bed').geom : null;
+      if (G) {
+        body.append(paramSelect('Mattress size', Object.entries(G.SIZES).map(([k, v]) => [k, v.label]),
+          (s.bed && s.bed.size) || 'queen', v => { merge({ bed: { size: v } }, 'manual'); renderAdjustBody(); }));
+      }
+      body.append(paramSlider('Deck height', (s.bed && s.bed.platformHeight) || 350, 250, 500, 5, true,
+        v => live({ bed: { platformHeight: v } }), () => done()));
+      const hasHb = s.bed && s.bed.headboardHeight > 0;
+      body.append(paramSeg('Headboard', [['1', 'Yes'], ['0', 'None']], hasHb ? '1' : '0',
+        v => { merge({ bed: { headboardHeight: v === '1' ? 1000 : 0 } }, 'manual'); renderAdjustBody(); }));
+      if (hasHb) {
+        body.append(paramSlider('Headboard height', s.bed.headboardHeight, 800, 1300, 10, true,
+          v => live({ bed: { headboardHeight: v } }), () => done()));
+      }
+      body.append(dim('Rail depth', 'structure.apronHeight', 110, 160));
+      body.append(dim('Post thickness', 'structure.legThickness', 60, 100));
+    } else if (s.meta.template === 'wall_shelf') {
       /* Wall-mounted: length/depth/thickness are the honest knobs (height is
        * derived from cleat + shelf); the substrate select carries the class's
        * required input, and 'not sure' routes through chat where the refusal

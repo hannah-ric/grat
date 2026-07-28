@@ -1270,6 +1270,171 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     }
 
+    /* ---- bed load cases (the 'bed' class) ----
+     * Deck + connection physics with EN 1725's 110 kg user mass as the
+     * benchmark. Hand arithmetic in test/handcalc.js. Sag is judged on the
+     * DISTRIBUTED case (comfort criterion); strength on the knee-point case
+     * spread over two slats by the mattress (derivation, stated). */
+    if (t === 'bed' && spec.bed && BB.Classes) {
+      const C = BB.Classes.get('bed');
+      const G = C.geom;
+      const bd = spec.bed;
+      const msz = G.SIZES[bd.size];
+      const Wi = msz.w + G.FIT_CLEARANCE, Li = msz.l + G.FIT_CLEARANCE;
+      const slats = parts.filter(p => p.role === 'slat');
+      const nSlat = slats.length;
+      // Gaps are measured over the deck the builder actually laid out
+      // (slats sit clear of the post intrusions, not over the full inner
+      // length) — probe and builder must agree on the same number.
+      const slatZs = slats.map(p => p.pos.z);
+      const deckLenMM = nSlat > 1 ? (Math.max.apply(null, slatZs) - Math.min.apply(null, slatZs)) + G.SLAT_W : G.SLAT_W;
+      const gapMM = nSlat > 1 ? (deckLenMM - nSlat * G.SLAT_W) / (nSlat - 1) : 0;
+      const hasCentre = parts.some(p => p.id === 'rail_centre_1');
+      const allow = sp.mor / SAFETY_FACTOR;
+      const liveN = G.OCCUPANTS * G.USER_KG * GRAV;
+      const mattN = (G.MATTRESS_KG[bd.size] || 55) * GRAV;
+      const totalN = liveN + mattN;
+
+      /* (a) SLATS — gap rule + the governing segment. */
+      {
+        const span = Math.max(200, hasCentre ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w);
+        const slatT = slats.length ? slats[0].size.h : G.SLAT_T; // section solved by the builder
+        const I = I_rect(G.SLAT_W, slatT);
+        // Distributed (sag criterion): this slat's share, segment tributary.
+        const perSlat = totalN / nSlat;
+        const w = perSlat / Wi; // N/mm along the slat
+        const sagD = (5 * w * Math.pow(span, 4)) / (384 * E * I) * (mattN / totalN * CREEP_FACTOR + liveN / totalN);
+        const limD = span / SAG_LIMIT_RATIO;
+        // Knee point (strength criterion): 110 kg on one knee, spread over
+        // TWO slats by the mattress (a knee patch through 200+ mm of
+        // mattress covers two slats at this pitch — derivation, stated).
+        const P = (G.USER_KG * GRAV) / 2;
+        const Mk = (P * span) / 4 + ((mattN / nSlat / Wi) * span * span) / 8;
+        const stressK = (Mk * (slatT / 2)) / I;
+        const marginK = allow / stressK;
+        const gapOK = gapMM <= G.SLAT_GAP_MAX + 0.05;
+        const sagStat = sagStatus(sagD / limD), strStat = strStatus(marginK);
+        const worst = !gapOK ? 'fail' : (RANK[sagStat] < RANK[strStat] ? sagStat : strStat);
+        checks.push({
+          id: 'bed:slats', title: 'Slat deck',
+          status: worst,
+          value: `${nSlat} × ${fmtLen(G.SLAT_W)}×${fmtLen(slatT)} slats, gaps ${fmtLen(Math.round(gapMM * 10) / 10)} · knee margin ${marginK.toFixed(2)}× · sag ${fmtFine(sagD)}`,
+          threshold: `gaps ≤ ${fmtLen(G.SLAT_GAP_MAX)} (foam-warranty floor, Amerisleep 2.75 in) · strength ≥ 1.25× at MOR/${SAFETY_FACTOR} · sag ≤ ${fmtFine(limD)}`,
+          explain: `Two occupants at ${G.USER_KG} kg (EN 1725 user mass) plus a ${Math.round(mattN / GRAV)} kg design mattress ride ${nSlat} slats${hasCentre ? ', each spanning half the width to the centre rail' : ''}. The strength case is a knee: ${Math.round(G.USER_KG * GRAV)} N through the mattress onto two slats at midspan. Slat width ${fmtLen(G.SLAT_W)} meets the ≥ 3 in manufacturer floor.`,
+          fixes: [],
+          data: { nSlat, gapMM, spanMM: span, kneeMarginRatio: marginK, sagMM: sagD, kneeStressMPa: stressK },
+          prov: { rule: `knee: M = ${Math.round(P)}×${Math.round(span)}/4 + mattress share; I = ${G.SLAT_W}×${G.SLAT_T}³/12 = ${Math.round(I).toLocaleString()} mm⁴` }
+        });
+      }
+
+      /* (b) SIDE RAILS — tributary share + edge-sit point. */
+      const rail = parts.find(p => p.id === 'rail_side_1');
+      let railR = 0;
+      if (rail) {
+        const span = Math.max(500, rail.size.d);
+        const share = hasCentre ? 0.25 : 0.5;
+        const w = (totalN * share) / span;
+        const I = I_rect(rail.size.w, rail.size.h);
+        const Pedge = 0.75 * G.USER_KG * GRAV; // sitting on the rail edge
+        const M = (w * span * span) / 8 + (Pedge * span) / 4;
+        const sag = (5 * w * Math.pow(span, 4)) / (384 * E * I) + (Pedge * Math.pow(span, 3)) / (48 * E * I);
+        const lim = span / SAG_LIMIT_RATIO;
+        const stress = (M * (rail.size.h / 2)) / I;
+        const margin = allow / stress;
+        railR = (w * span) / 2 + Pedge / 2;
+        checks.push({
+          id: 'bed:rail', title: 'Side rails',
+          status: sag / lim > 1.5 || margin < 1 ? 'fail' : sag / lim > 1 || margin < 1.25 ? 'advisory' : 'pass',
+          value: `sag ${fmtFine(sag)} over ${fmtLen(span)} · strength margin ${margin.toFixed(1)}×`,
+          threshold: `sag ≤ ${fmtFine(lim)} (L/${SAG_LIMIT_RATIO}) · margin ≥ 1.25× at MOR/${SAFETY_FACTOR}`,
+          explain: `Each ${fmtLen(rail.size.w)} × ${fmtLen(rail.size.h)} rail carries ${hasCentre ? 'a quarter' : 'half'} of the deck load${hasCentre ? ' (the centre rail takes half)' : ''} plus a ${U().fmtPointLoad(Pedge / GRAV)} edge-sit at midspan.`,
+          fixes: [],
+          data: { sagMM: sag, limitMM: lim, marginRatio: margin, endReactionN: railR },
+          prov: { rule: `rail: w = ${Math.round(totalN * share)}/${Math.round(span)} N/mm + P·L/4 edge case; I = ${Math.round(I).toLocaleString()} mm⁴` }
+        });
+        /* (c) RAIL CONNECTIONS — the knock-down joints. */
+        const capJ = JOINT_RATING.kd_bolt.capN * sgF;
+        const marginJ = capJ / railR;
+        checks.push({
+          id: 'bed:joint', title: 'Rail-to-post connections',
+          status: jointStatus(marginJ),
+          value: `${U().fmtPointLoad(railR / GRAV)} per rail end vs ${U().fmtPointLoad(capJ / GRAV)} (2 × M6 barrel bolts) — ${marginJ.toFixed(2)}×`,
+          threshold: '≥ 1.5× on the barrel-bolt connection; the bracket alternative prints this demand × 1.5 as its REQUIRED capacity (brackets publish no ratings — confirmed)',
+          explain: 'The knock-down mandate: every rail end bolts to its post with two M6 barrel bolts and comes apart on moving day. Surface-mount bed-rail brackets are a legitimate swap, but no maker publishes a rating — match the printed requirement or keep the bolts. Re-snug after the first week and each season.',
+          fixes: [],
+          data: { endReactionN: railR, capN: capJ, marginRatio: marginJ, requiredBracketN: Math.ceil(railR * 1.5 / 10) * 10 },
+          prov: { rule: `end reaction = wL/2 + P/2 = ${Math.round(railR)} N vs kd_bolt ${Math.round(capJ)} N (SG-scaled)` }
+        });
+      }
+
+      /* (d) CENTRE RAIL — the warranty mandate, verified live. */
+      {
+        const needed = Wi >= G.CENTRE_RAIL_MIN_W;
+        if (needed && hasCentre) {
+          const cr = parts.find(p => p.id === 'rail_centre_1');
+          const seg = Math.max(400, cr.size.d / 2);
+          const w = (totalN * 0.5) / cr.size.d;
+          const I = I_rect(cr.size.w, cr.size.h);
+          const M = (w * seg * seg) / 8;
+          const stress = (M * (cr.size.h / 2)) / I;
+          checks.push({
+            id: 'bed:centre', title: 'Centre support',
+            status: strStatus(allow / stress),
+            value: `centre rail + floor leg — segment stress ${stress.toFixed(1)} MPa (margin ${(allow / stress).toFixed(1)}×)`,
+            threshold: 'mandatory at interior ≥ 1350 mm (Sealy/Stearns & Foster warranty: ≥ 5 legs with centre support at queen+)',
+            explain: 'The centre rail halves every slat span and takes half the deck load to its own floor leg — the difference between a deck that lasts and the broken-slat queen bed. The leg must bear the floor BEFORE the deck is loaded (it is in the steps).',
+            fixes: [],
+            data: { segmentSpan: seg, stressMPa: stress }
+          });
+        } else if (!needed) {
+          checks.push({
+            id: 'bed:centre', title: 'Centre support', status: 'pass',
+            value: `not required at ${fmtLen(Wi)} interior`,
+            threshold: 'mandatory at interior ≥ 1350 mm (warranty practice)',
+            explain: 'Twin-class widths carry on the side cleats alone; the mandate begins at 1350 mm.',
+            fixes: []
+          });
+        } else {
+          checks.push({
+            id: 'bed:centre', title: 'Centre support', status: 'fail',
+            value: 'MISSING at a width that requires it',
+            threshold: 'mandatory at interior ≥ 1350 mm',
+            explain: 'A queen-class deck without centre support breaks slats and voids mattress warranties — the builder always adds it; this spec somehow lacks it.',
+            fixes: []
+          });
+        }
+      }
+
+      /* (e) HEADBOARD — sitting back against it. */
+      if (bd.headboardHeight > 0) {
+        const railTopY = bd.platformHeight + G.MATTRESS_STOP;
+        const lever = Math.max(100, bd.headboardHeight - railTopY);
+        const F = 667; // aligned to the X5.1 back magnitude the seating class uses (derivation)
+        const Mh = (F / 2) * lever;
+        const postT2 = spec.structure.legThickness;
+        const I = I_rect(postT2, postT2);
+        const stress = (Mh * (postT2 / 2)) / I;
+        const margin = allow / stress;
+        checks.push({
+          id: 'bed:headboard', title: 'Headboard posts',
+          status: strStatus(margin),
+          value: `bending ${stress.toFixed(1)} MPa at the rail line · margin ${margin.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR/${SAFETY_FACTOR}) under ${U().fmtPointLoad(F / GRAV)} at the headboard top`,
+          explain: `Sitting back against the headboard levers each post about the rail-bolt line — ${fmtLen(lever)} of lever into a ${fmtLen(postT2)} square post.`,
+          fixes: margin < 1.25 ? [{ id: 'bed-post-up', label: `Thicken posts to ${fmtLen(Math.min(100, postT2 + 10))}`, patch: { structure: { legThickness: Math.min(100, postT2 + 10) } } }] : [],
+          data: { leverMM: lever, stressMPa: stress, marginRatio: margin }
+        });
+      }
+
+      checks.push({
+        id: 'bed:basis', title: 'What these bed numbers are', status: 'pass',
+        value: 'benchmarked (EN 1725 magnitudes), not certified',
+        threshold: 'no compliance claim; no US adult-bed standard exists',
+        explain: BB.Classes.DESIGN_BASIS_BED,
+        fixes: []
+      });
+    }
+
     /* ---- tipping stability: COG from part volumes & density, empty and loaded ---- */
     let antiTip = false, tip = null;
     if (!isWallMounted) {
@@ -1434,6 +1599,19 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
         if (hasRole('back')) mults.push({ label: 'back panel acts as a shear panel', mult: 1.5 });
         if (spec.joinery.case === 'dado' && hasRole('shelf')) mults.push({ label: 'fixed shelves housed in dados', mult: 1.15 });
+        /* Long-span coupling (frame_table contract, roadmap item 2): the
+         * racking couple on the apron–leg joints grows with the clear span
+         * while joint capacity stays fixed, and past ~1800 mm the top's own
+         * torsional stiffness stops helping. Demand scales the score down
+         * linearly to ×0.7 at the 2400 mm DIM_RULES cap — the cap itself is
+         * the refusal (correction clamps and says so). */
+        if (TABLE_LIKE.includes(t)) {
+          const clearSpan = spec.overall.width - 2 * (spec.structure.legThickness || 0);
+          if (clearSpan > 1800) {
+            const spanMult = Math.max(0.7, 1 - (clearSpan - 1800) / 2000);
+            mults.push({ label: `long span raises the racking couple (${Math.round(clearSpan)} mm clear between legs)`, mult: Math.round(spanMult * 100) / 100 });
+          }
+        }
       } else {
         const connCount = new Map();
         for (const c of (spec.custom && spec.custom.connections) || []) {

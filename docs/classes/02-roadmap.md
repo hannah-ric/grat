@@ -7,7 +7,7 @@ scope cap), and stays one until it can meet the contract in
 one sound one — nothing here ships without its own load cases, failure-mode
 checklist, golden fixtures, and a published-plan benchmark.
 
-## 1. Beds — driver: demand
+## 1. Beds — BUILT (2026-07, see 04-beds.md)
 
 The most-requested absent class: the codebase already grew bed-size
 ergonomic anchors (AI-review C1) and `bed_bracket` hardware because users
@@ -20,8 +20,14 @@ rail mandate** above full/queen width, mattress-standard couplings (widths
 already in `K.ERGONOMICS`), and a knock-down mandate (a bed that cannot
 leave the room is a defect). Engineering risk moderate: static, rectilinear,
 no compound geometry — the contract fits it cleanly. Build first.
+Built as specified: mattress-master couplings, species-solved slat deck
+against the foam-warranty gap floor, barrel-bolt rail connections with the
+required-rating pattern for unrated brackets, the centre-rail warranty
+mandate, the knock-down mandate enforced by correction, and bunk/crib/murphy
+refusals with their regulations named. EN 1725 user mass is the benchmark;
+every output states there is no US adult-bed standard.
 
-## 2. Long-span tables and desks — driver: engineering risk in a shipping class
+## 2. Long-span tables and desks — BUILT as a guard (2026-07, see 04-beds.md addendum)
 
 Not a new template — a soundness boundary inside `frame_table`. Past ~1800 mm
 the apron-beam model still runs but racking stops scaling (the couple on the
@@ -31,6 +37,10 @@ breadboard/batten stiffening options, and a stated span cap with refusal
 beyond it. Ranked second because the app *already generates* 2400 mm tables
 — any unsoundness here is live today, and closing it is cheap (the frame
 model and contract exist).
+Built: the racking score now carries a named span factor (linear to ×0.7 at
+the cap) past 1800 mm clear, and the 2400 mm width clamp is a stated contract
+refusal (`no_over_span`). Breadboard/batten stiffening options remain future
+work — the honest cap stands in until they exist.
 
 ## 3. Wall-mounted and floating pieces — BUILT (2026-07, see 03-wall-mounted.md)
 

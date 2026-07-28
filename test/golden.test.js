@@ -176,6 +176,31 @@ const CORPUS = [
       seat: { width: 520, depth: 460, height: 520, slopeDeg: 8, backHeight: 650, backRake: 8 },
       structure: { legThickness: 45, topThickness: 25 }
     }
+  },
+
+  /* ---- bed class (2026-07): nominal queen (imperial) with headboard and
+   * the mandated centre rail, and a twin (metric) with no headboard — the
+   * no-centre-rail side of the mandate plus the pine section step-up the
+   * species-aware slat solver produces. Refusals (bunk/crib/murphy/glued)
+   * are exact-match assertions in audit BED-2/BED-3. */
+  {
+    name: 'oak-queen-bed-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Oak Queen Bed', template: 'bed', level: 'beginner', units: 'in' },
+      wood: { species: 'red_oak' },
+      bed: { size: 'queen' },
+      finish: 'danish_oil'
+    }
+  },
+  {
+    name: 'pine-twin-bed-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Pine Twin Bed', template: 'bed', level: 'beginner', units: 'mm' },
+      wood: { species: 'pine' },
+      bed: { size: 'twin', headboardHeight: 0, platformHeight: 300 }
+    }
   }
 ];
 
