@@ -50,6 +50,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     ['ai', 'apronInset'], ['c', 'shelfCount'], ['st', 'shelfThickness'], ['sd', 'sideThickness'],
     ['b', 'backPanel'], ['k', 'toeKick']
   ];
+  /* Stretcher style. Deliberately NOT in S_KEYS: those keys ride on every
+   * design, and an unbraced piece — which is every design saved before X-07,
+   * and still the default — must encode to the same bytes it always did.
+   * Both stretcher keys are written only when there IS a stretcher. */
+  const STR = ['none', 'h', 'box'];
 
   /* ---------------- encode: verbose corrected spec -> wire ---------------- */
   function encodePart(p) {
@@ -91,6 +96,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       const v = spec.structure[path];
       w.s[k] = typeof v === 'boolean' ? (v ? 1 : 0) : v;
     }
+    if (spec.structure.stretcher && spec.structure.stretcher !== 'none') {
+      w.s.sx = ix(STR, spec.structure.stretcher, 0);
+      w.s.sy = spec.structure.stretcherHeight;
+    }
     w.d = spec.drawers ? [spec.drawers.count, ix(FRONT, spec.drawers.frontStyle, 0), ix(RUN, spec.drawers.runner, 0)] : 0;
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
@@ -128,6 +137,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (s[k] === undefined || s[k] === null) continue;
       out[path] = (path === 'backPanel' || path === 'toeKick') ? !!s[k] : s[k];
     }
+    // Absent on every pre-X-07 code, which is exactly what "unbraced" looks
+    // like on the wire; correction supplies the default in that case.
+    if (s.sx !== undefined && s.sx !== null) out.stretcher = at(STR, s.sx, 'none');
+    if (typeof s.sy === 'number') out.stretcherHeight = s.sy;
     return out;
   }
   function decode(w) {
@@ -144,7 +157,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         ? { width: w.o[0], depth: w.o[1], height: w.o[2] }
         : { width: 1000, depth: 500, height: 750 },
       wood: { species: at(SPC, w.m, 'red_oak'), sheetSpecies: at(SPC, w.ms, 'baltic_birch') },
-      structure: decodeStructure(w.s),
+      /* A FULL spec gets the unbraced default filled in; a PATCH (below, via
+       * the same decodeStructure) must not, or every refinement that touches
+       * any structure key would carry `stretcher:"none"` along with it and
+       * quietly un-brace a piece the user asked to brace. Same reason the
+       * keys are absent from the wire in the first place. */
+      structure: Object.assign({ stretcher: 'none', stretcherHeight: 280 }, decodeStructure(w.s)),
       joinery: Array.isArray(w.j)
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
@@ -291,7 +309,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
-    'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
+    `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
     'Mechanisms (hinge/lift-off/fold/slide/door) NOT expressible — all JNT are permanent except kd_bolt (tool-removable). For openable asks build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
     // G10: the floor boundary was undocumented — the model kept proposing
@@ -320,7 +338,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
 
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };

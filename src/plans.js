@@ -489,6 +489,23 @@ var BB = globalThis.BB = globalThis.BB || {};
     const legIds = ids('leg_1', 'leg_2', 'leg_3', 'leg_4');
     const shortIds = ids('apron_short_1', 'apron_short_2');
     const longIds = ids('apron_long_1', 'apron_long_2');
+    /* Stretchers are NOT a step of their own, and that is the single most
+     * useful thing the plan can say about them. Each one ties the same leg
+     * pair as an apron already in a sub-assembly, so it goes in during THAT
+     * glue-up: the side stretchers into the end frames, the long stretchers
+     * and the H's centre tie when the frames come together. Left as a
+     * bolt-on step at the end, they are unfittable without dismantling the
+     * base — the classic way a first stretcher build goes wrong. */
+    const stretcherStyle = (st.stretcher && st.stretcher !== 'none') ? st.stretcher : null;
+    const sideStrIds = ids('stretcher_side_1', 'stretcher_side_2');
+    const lateStrIds = ids('stretcher_long_1', 'stretcher_long_2', 'stretcher_centre_1');
+    const strSec = stretcherStyle && BB.Parametric.stretcherSection(st);
+    const strY = stretcherStyle ? len(st.stretcherHeight) : '';
+    // The one dimension that is neither a stock size nor on the cut list:
+    // where the stretcher mortise sits on the leg, measured from the foot.
+    const strSetout = stretcherStyle
+      ? ` Set the stretcher joints out from the FOOT of each leg, not from the top — ${strY} to the centre of a ${len(strSec.h)} × ${len(strSec.t)} rail — while the aprons are set out from the leg top. Two reference ends on one part is how a stretcher finishes ${len(6)} out of level across the piece, so mark all four legs together, feet aligned against a stop.`
+      : '';
     // Count what actually lands ON a leg, not "joints of the frame type" —
     // butt_screws is legal in the frame slot AND is the top's nominal joint,
     // so a type filter would count the two top fixings as leg joinery.
@@ -507,24 +524,30 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* 1. Layout. Every frame joint lands on a leg, so a leg mis-marked once
      * is the same error repeated at every corner. */
     out.push(step('layout', 'Mark the legs before you cut a joint',
-      `Stand the ${legIds.length} legs in the positions they will finish in and mark the tops with a cabinetmaker's triangle — best faces outward, sapwood and wild grain turned where nobody looks. All ${nJoints} frame joints land on a leg, so lay them out from ONE reference face and edge per leg: the aprons sit ${st.apronInset > 0 ? `${len(st.apronInset)} back from the outside leg face` : 'flush with the outside leg face'}, their top edges level with the leg tops and ${len(st.apronHeight)} of shoulder below that. Cut all ${nJoints} joints off that single setup — a layout error here is not one mistake, it is the same mistake ${nJoints} times over, and nothing downstream pulls a mis-marked base back into square. Pencil each part's cut-list name onto a face that finishes hidden.`,
+      `Stand the ${legIds.length} legs in the positions they will finish in and mark the tops with a cabinetmaker's triangle — best faces outward, sapwood and wild grain turned where nobody looks. All ${nJoints} frame joints land on a leg, so lay them out from ONE reference face and edge per leg: the aprons sit ${st.apronInset > 0 ? `${len(st.apronInset)} back from the outside leg face` : 'flush with the outside leg face'}, their top edges level with the leg tops and ${len(st.apronHeight)} of shoulder below that. Cut all ${nJoints} joints off that single setup — a layout error here is not one mistake, it is the same mistake ${nJoints} times over, and nothing downstream pulls a mis-marked base back into square.${strSetout} Pencil each part's cut-list name onto a face that finishes hidden.`,
       legIds));
 
     /* 2. The end frames — and the reason there are two stages at all. */
-    out.push(step('s1', 'Build the two end frames',
-      `Join a short apron between each leg pair with ${frP}. ${kd ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'} ` +
+    out.push(step('s1', stretcherStyle ? 'Build the two end frames, stretchers included' : 'Build the two end frames',
+      `Join a short apron between each leg pair with ${frP}.${stretcherStyle ? ` The side stretcher goes into this same glue-up: it ties the SAME two legs as the short apron above it, so a frame closed without it cannot take it afterwards without coming apart. Two rails per frame, apron at the top, stretcher at ${strY}.` : ''} ${kd ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'} ` +
       (kd
         ? `Two mirror-image assemblies — build them against each other, not just against a square, or the base finishes wider at one end than the other. Bring the bolts up in stages, alternating ends, and re-measure the diagonals after every turn: a bolted frame walks out of square if you take one side home first.`
         : `Two mirror-image assemblies, and the base goes together in two stages for a reason worth knowing — ${glue.label} gives ${glue.openMin} minutes of open time and the whole base is ${nJoints} joints, more than anyone spreads, seats, and clamps before the glue starts to grab. ${clamps(shortIds.length)} Measure both diagonals across each frame and make them equal, then sight along the clamp bars for wind — on a bench you have checked flat, not on the shop floor, because a frame with a twist in it will rock the finished piece however true the top is. ${glue.clampMin} minutes in the clamps.`),
-      legIds.concat(shortIds)));
+      legIds.concat(shortIds, sideStrIds)));
 
     /* 3. Closing the base. */
     out.push(step('s2', 'Join the frames',
-      `Connect the end frames with the long aprons using ${frP}. ${kd ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking. ` +
+      `Connect the end frames with the long aprons using ${frP}.` +
+      (stretcherStyle === 'box'
+        ? ` The long stretchers go on in this same stage, on the same leg pairs — four rails now, two aprons up top and two stretchers at ${strY}, and all four have to be seated before any of them is clamped home.`
+        : stretcherStyle === 'h'
+          ? ` The centre stretcher goes in now too, tying the two side stretchers at their midpoints. Its ends land on the FACE of each side stretcher, not on a leg — the one joint in this base that is end grain into a long-grain face, so it wants the glue given a minute to soak in before assembly, and it will never be as strong as the leg joints. Fit it dry with the frames standing before you commit: it sets the base's final width, and if it is long the end frames splay and every apron shoulder opens.`
+          : '') +
+      ` ${kd ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking. ` +
       (kd
         ? `Stand both end frames up and let the long aprons find their bores before anything is driven home — a knockdown base is only as square as the last bolt you tightened. Check the diagonals across the leg tops corner to corner: equal, or a shoulder is not seated. Then sight across the four leg tops from one end; they have to lie in one plane, because the top telegraphs any twist you leave in the base.`
         : `${nClamps(longIds.length)} bar clamps again, one in line with each long apron. Check the diagonals across the top of the base corner to corner — equal, or it is a parallelogram, and flattening the top will never hide that. Then sight across the four leg tops from one end: they have to lie in one plane, because the top telegraphs any twist you leave in the base. ${glue.clampMin} minutes in the clamps, and don't move it while it sets.`),
-      longIds));
+      longIds.concat(lateStrIds)));
 
     /* 4. When the clamps come off is not when the piece can be loaded. */
     const standCheck = ` Then set the base on the flattest floor you have and press each corner in turn. A base that rocks gets ONE foot trimmed — take the shaving off whichever foot is proud, with the base loaded on the opposite corner. Never shim it.`;
@@ -532,7 +555,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       (kd
         ? `Nothing in this base is glued, which is the entire point of a knockdown frame — so it is finished when the bolts are. Go round once more with the key, and plan to go round again after the first heating season: a knockdown frame nobody re-snugs will rack.`
         : `The clamps come off at ${glue.clampMin} minutes, but ${glue.label} is not at full strength for ${glue.cureHrs} hours — until then don't stand on the base, plane it, or hang a top off it. Pare the squeeze-out while it is still rubbery: a chisel or a card scraper lifts it away clean, where a wet rag drives it into the pores and it ghosts through the finish forever.`) + standCheck,
-      legIds.concat(shortIds, longIds)));
+      legIds.concat(shortIds, longIds, sideStrIds, lateStrIds)));
 
     /* 5. The top: how it is held, and which way it is allowed to travel. */
     const top = model.parts.find(p => p.id === 'top_1');

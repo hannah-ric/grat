@@ -661,14 +661,24 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* ============ migration ============ */
     {
+      /* Asserted against SPEC_VERSION, not a literal: the registry's job is
+       * to walk a stored design all the way to CURRENT, whatever current is.
+       * Pinned to a number, this test had to be edited every time the schema
+       * moved — which makes it a chore that reports the edit, not a guard
+       * that reports the walk. */
+      const CUR = Spec.SPEC_VERSION;
       const migrated = Spec.migrateSpec(JSON.parse(JSON.stringify(V3_FIXTURE)));
-      test('migration', 'v3 fixture gains specVersion 4 via the registry', migrated.specVersion === 4 && migrated.custom === null, `v${migrated.specVersion}, custom ${migrated.custom}`, 'v4, custom null');
+      test('migration', `v3 fixture walks the registry to specVersion ${CUR}`, migrated.specVersion === CUR && migrated.custom === null, `v${migrated.specVersion}, custom ${migrated.custom}`, `v${CUR}, custom null`);
       const { spec, model, report } = pipeline(JSON.parse(JSON.stringify(V3_FIXTURE)));
       test('migration', 'v3 stored design opens correctly at current version',
-        report.errors.length === 0 && spec.specVersion === 4 && spec.wood.species === 'walnut' &&
+        report.errors.length === 0 && spec.specVersion === CUR && spec.wood.species === 'walnut' &&
         spec.drawers.count === 2 && spec.meta.units === 'in' && model.parts.length > 8 && model.drawers.length === 2,
         `${report.errors.length} errors, v${spec.specVersion}, ${spec.wood.species}, ${model.drawers.length} drawers`,
-        '0 errors, v4, walnut, 2 drawers');
+        `0 errors, v${CUR}, walnut, 2 drawers`);
+      // A pre-stretcher design must open UNBRACED — the v4→v5 migration adds
+      // the field, and it must not add a rail nobody asked for.
+      test('migration', 'a pre-stretcher design opens unbraced', spec.structure.stretcher === 'none',
+        String(spec.structure.stretcher), 'none');
     }
 
     /* ============ continuation protocol ============ */

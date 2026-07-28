@@ -2701,6 +2701,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
         v => live({ drawers: { count: v } }), () => done()));
     }
+    /* Leg bracing (X-07). Only on the templates the frame builder builds —
+     * correction refuses a stretcher anywhere else, so offering it would be
+     * a control that silently does nothing. The height knob appears only
+     * once there is something to position, and its ceiling is the apron:
+     * dimBounds reads the same DIM_RULES correction clamps against, and
+     * correction narrows it further against this piece's actual leg. */
+    if (['table', 'desk', 'bench'].includes(s.meta.template)) {
+      body.append(paramSelect('Leg bracing', [['none', 'None'], ['h', 'H-stretcher'], ['box', 'Box stretcher']],
+        s.structure.stretcher || 'none',
+        v => { merge({ structure: { stretcher: v } }, 'manual'); renderAdjustBody(); }));
+      if (s.structure.stretcher && s.structure.stretcher !== 'none') {
+        body.append(dim('Stretcher height', 'structure.stretcherHeight', ...dimBounds('structure.stretcherHeight', 100, 600)));
+      }
+    }
     body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));
     body.append(paramSelect('Finish', K.FINISHES.map(f => [f.key, f.label]), s.finish,

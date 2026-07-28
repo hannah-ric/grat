@@ -5013,14 +5013,23 @@ body.ph-open .porch::after { display: none; }
   const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
-  const SPEC_VERSION = 4;
+  const FRAME_TEMPLATES = ['table', 'desk', 'bench'];
+  const SPEC_VERSION = 5;
   const migrations = {
     3: function (s) {
       const out = clone(s) || {};
       out.specVersion = 4;
       if (out.custom === undefined) out.custom = null;
-      out.wood = out.wood || {};
+      if (!isObj(out.wood)) out.wood = {};
       if (!out.wood.sheetSpecies) out.wood.sheetSpecies = 'baltic_birch';
+      return out;
+    },
+    4: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 5;
+      if (!isObj(out.structure)) out.structure = {};
+      if (out.structure.stretcher === undefined) out.structure.stretcher = 'none';
+      if (out.structure.stretcherHeight === undefined) out.structure.stretcherHeight = 280;
       return out;
     }
   };
@@ -5059,7 +5068,8 @@ body.ph-open .porch::after { display: none; }
       structure: {
         topThickness: 25, legThickness: 70, apronHeight: 90, apronThickness: 20,
         apronInset: 12, shelfCount: 0, shelfThickness: 19, sideThickness: 18,
-        backPanel: true, toeKick: false
+        backPanel: true, toeKick: false,
+        stretcher: 'none', stretcherHeight: 280
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
@@ -5491,8 +5501,12 @@ body.ph-open .porch::after { display: none; }
     'structure.apronHeight': { min: 60, max: 160, def: 90 },
     'structure.apronInset': { min: 0, max: 30, def: 12 },
     'structure.shelfThickness': { min: 12, max: 32, def: 19, stock: K.SOLID_THICKNESS },
-    'structure.sideThickness': { min: 12, max: 25, def: 18, stock: [12, 15, 18, 19, 25] }
+    'structure.sideThickness': { min: 12, max: 25, def: 18, stock: [12, 15, 18, 19, 25] },
+    'structure.stretcherHeight': { min: 100, max: 600, def: 280 }
   };
+  const STRETCHERS = ['none', 'h', 'box'];
+  const STRETCHER_APRON_GAP = 90;
+  const STRETCHER_FLOOR_MIN = 100;
   function applyDim(path, v) {
     const r = DIM_RULES[path];
     const c = clamp(num(v, r.def), r.min, r.max);
@@ -5797,10 +5811,20 @@ body.ph-open .porch::after { display: none; }
     st.shelfCount = clamp(Math.round(num(st.shelfCount, SHELF_COUNT.def)), SHELF_COUNT.min, SHELF_COUNT.max);
     st.backPanel = !!st.backPanel;
     st.toeKick = template === 'cabinet' ? !!st.toeKick : false;
+    st.stretcher = (FRAME_TEMPLATES.includes(template) && STRETCHERS.includes(st.stretcher)) ? st.stretcher : 'none';
+    st.stretcherHeight = applyDim('structure.stretcherHeight', st.stretcherHeight);
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
     const legCap = Math.floor(Math.min(o.width, o.depth) / 4);
     if (st.legThickness > legCap) {
       st.legThickness = K.POST_THICKNESS.filter(t => t <= legCap).pop() || K.POST_THICKNESS[0];
+    }
+    if (st.stretcher !== 'none') {
+      const apronUnderside = o.height - st.topThickness - st.apronHeight;
+      const ceiling = apronUnderside - STRETCHER_APRON_GAP;
+      const floor_ = STRETCHER_FLOOR_MIN;
+      st.stretcherHeight = ceiling >= floor_
+        ? clamp(st.stretcherHeight, floor_, ceiling)
+        : Math.max(floor_, Math.round(apronUnderside / 2));
     }
     const lvl = s.meta.level;
     for (const kind of ['frame', 'case', 'box']) {
@@ -6355,7 +6379,46 @@ body.ph-open .porch::after { display: none; }
     }
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
+    addStretchers(spec, parts, joints, { lx, lz, legT, sp });
     return { parts, joints, openings: [], drawers: [] };
+  }
+  const STRETCHER_H_RATIO = 0.65;   // of apron height
+  const STRETCHER_H_MIN = 40, STRETCHER_H_MAX = 90;
+  function stretcherSection(st) {
+    return {
+      h: Math.max(STRETCHER_H_MIN, Math.min(STRETCHER_H_MAX, Math.round(st.apronHeight * STRETCHER_H_RATIO))),
+      t: st.apronThickness
+    };
+  }
+  function addStretchers(spec, parts, joints, frame) {
+    const st = spec.structure;
+    if (!st.stretcher || st.stretcher === 'none') return;
+    const { lx, lz, legT, sp } = frame;
+    const sec = stretcherSection(st);
+    const y = st.stretcherHeight;
+    const fj = spec.joinery.frame;
+    const spanX = 2 * lx - legT, spanZ = 2 * lz - legT;
+    const addRail = (id, name, w, h, d, x, yy, z, ex) =>
+      parts.push(part(id, `stretcher_${Math.round(Math.max(w, d))}`, 'stretcher', name, w, h, d, x, yy, z,
+        { material: sp, explode: ex }));
+    if (st.stretcher === 'box') {
+      [[-lz, 1], [lz, 2]].forEach(([z, i]) => {
+        addRail(`stretcher_long_${i}`, 'Long stretcher', spanX, sec.h, sec.t, 0, y, z, { x: 0, y: -0.5, z: Math.sign(z) });
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y, z } });
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y, z } });
+      });
+    }
+    [[-lx, 1], [lx, 2]].forEach(([x, i]) => {
+      addRail(`stretcher_side_${i}`, 'Side stretcher', sec.t, sec.h, spanZ, x, y, 0, { x: Math.sign(x), y: -0.5, z: 0 });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y, z: -lz } });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y, z: lz } });
+    });
+    if (st.stretcher === 'h') {
+      const centreLen = 2 * lx - sec.t;
+      addRail('stretcher_centre_1', 'Centre stretcher', centreLen, sec.h, sec.t, 0, y, 0, { x: 0, y: -0.5, z: 0 });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_1', pos: { x: -lx + sec.t / 2, y, z: 0 } });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_2', pos: { x: lx - sec.t / 2, y, z: 0 } });
+    }
   }
   function bookshelf(spec) {
     const o = spec.overall, st = spec.structure;
@@ -6548,7 +6611,7 @@ body.ph-open .porch::after { display: none; }
     }
     return m;
   }
-  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
+  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights, stretcherSection };
 })();</script>
 <script>var BB = globalThis.BB = globalThis.BB || {};
 (function () {
@@ -6715,6 +6778,7 @@ body.ph-open .porch::after { display: none; }
     return { sag, M, crept };
   }
   const TABLE_LIKE = ['table', 'desk', 'bench', 'nightstand'];
+  const FRAME_TEMPLATES = ['table', 'desk', 'bench'];
   const CARCASS = ['bookshelf', 'cabinet'];
   function surfacesOf(spec, model, loadChoices, defaultLoad) {
     const t = spec.meta.template;
@@ -7398,6 +7462,11 @@ body.ph-open .porch::after { display: none; }
       if (!custom) {
         if (hasRole('apron')) mults.push({ label: 'apron frame ties the legs', mult: 1.2 });
         if (hasRole('rail')) mults.push({ label: 'drawer rails triangulate the frame', mult: 1.1 });
+        if (hasRole('stretcher')) {
+          mults.push(spec.structure.stretcher === 'box'
+            ? { label: 'box stretcher closes the frame at the foot', mult: 1.3 }
+            : { label: 'H-stretcher ties the legs low', mult: 1.2 });
+        }
         if (hasRole('back')) mults.push({ label: 'back panel acts as a shear panel', mult: 1.5 });
         if (spec.joinery.case === 'dado' && hasRole('shelf')) mults.push({ label: 'fixed shelves housed in dados', mult: 1.15 });
       } else {
@@ -7440,8 +7509,15 @@ body.ph-open .porch::after { display: none; }
               return q && q.pos.y > 0.15 * l.size.h && q.pos.y < 0.75 * l.size.h;
             }))
           : parts.some(p => p.role === 'shelf' || p.role === 'rail');
+        const stretchers = custom ? [] : parts.filter(p => p.role === 'stretcher');
         const worst = legs.reduce((m, l) => {
-          const len = l.size.h * (braced ? 0.6 : 1);
+          let len;
+          if (stretchers.length) {
+            const braceY = Math.min(...stretchers.map(s => s.pos.y));
+            len = Math.max(braceY, l.size.h - braceY);
+          } else {
+            len = l.size.h * (braced ? 0.6 : 1);
+          }
           const minT = Math.min(l.size.w, l.size.d);
           const r = len / minT;
           return r > m.r ? { r, l } : m;
@@ -7454,10 +7530,22 @@ body.ph-open .porch::after { display: none; }
             const newParts = spec.custom.parts.map(p => p.id === worst.l.id ? { ...p, dim: { ...p.dim, t: up, w: Math.max(p.dim.w, up) } } : p);
             fixes.push({ id: 'thick-' + worst.l.id, label: `Thicken ${worst.l.id}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
           }
+          if (FRAME_TEMPLATES.includes(t) && (!spec.structure || spec.structure.stretcher === 'none')) {
+            fixes.unshift({
+              id: 'stretcher', label: 'Brace the legs with stretchers',
+              patch: { structure: { stretcher: 'h', stretcherHeight: Math.round(worst.l.size.h / 2) } }
+            });
+          }
+          const measured = stretchers.length > 0;
           checks.push({
             id: 'slender', title: 'Leg slenderness', status: worst.r > 20 ? 'advisory' : 'pass',
-            value: `worst L/t = ${worst.r.toFixed(1)}${braced ? ' (braced)' : ''}`, threshold: '≤ 20 unbraced length / least thickness',
-            explain: worst.r > 20 ? 'Long thin legs bow under load and feel wobbly — add bracing or use thicker stock.' : 'Legs are stocky enough for their unbraced length.',
+            value: `worst L/t = ${worst.r.toFixed(1)}${measured ? ' (stretcher-braced)' : braced ? ' (braced)' : ''}`,
+            threshold: '≤ 20 unbraced length / least thickness',
+            explain: worst.r > 20
+              ? 'Long thin legs bow under load and feel wobbly — add bracing or use thicker stock.'
+              : measured
+                ? `Legs are stocky enough for the ${fmtLen(Math.max(...legs.map(l => l.size.h)) - Math.min(...stretchers.map(s => s.pos.y)))} the stretchers leave unbraced above them.`
+                : 'Legs are stocky enough for their unbraced length.',
             fixes: worst.r > 20 ? fixes : []
           });
         }
@@ -8823,6 +8911,14 @@ body.ph-open .porch::after { display: none; }
     const legIds = ids('leg_1', 'leg_2', 'leg_3', 'leg_4');
     const shortIds = ids('apron_short_1', 'apron_short_2');
     const longIds = ids('apron_long_1', 'apron_long_2');
+    const stretcherStyle = (st.stretcher && st.stretcher !== 'none') ? st.stretcher : null;
+    const sideStrIds = ids('stretcher_side_1', 'stretcher_side_2');
+    const lateStrIds = ids('stretcher_long_1', 'stretcher_long_2', 'stretcher_centre_1');
+    const strSec = stretcherStyle && BB.Parametric.stretcherSection(st);
+    const strY = stretcherStyle ? len(st.stretcherHeight) : '';
+    const strSetout = stretcherStyle
+      ? ` Set the stretcher joints out from the FOOT of each leg, not from the top — ${strY} to the centre of a ${len(strSec.h)} × ${len(strSec.t)} rail — while the aprons are set out from the leg top. Two reference ends on one part is how a stretcher finishes ${len(6)} out of level across the piece, so mark all four legs together, feet aligned against a stop.`
+      : '';
     const roleOf = id => { const p = model.parts.find(x => x.id === id); return p ? p.role : ''; };
     const nJoints = model.joints.filter(j => roleOf(j.b) === 'leg').length;
     const rec = K.recommendGlue(spec);
@@ -8833,26 +8929,32 @@ body.ph-open .porch::after { display: none; }
     const nClamps = n => (BB.Fasteners && BB.Fasteners.frameClampSchedule
       ? BB.Fasteners.frameClampSchedule(n).clamps : n);
     out.push(step('layout', 'Mark the legs before you cut a joint',
-      `Stand the ${legIds.length} legs in the positions they will finish in and mark the tops with a cabinetmaker's triangle — best faces outward, sapwood and wild grain turned where nobody looks. All ${nJoints} frame joints land on a leg, so lay them out from ONE reference face and edge per leg: the aprons sit ${st.apronInset > 0 ? `${len(st.apronInset)} back from the outside leg face` : 'flush with the outside leg face'}, their top edges level with the leg tops and ${len(st.apronHeight)} of shoulder below that. Cut all ${nJoints} joints off that single setup — a layout error here is not one mistake, it is the same mistake ${nJoints} times over, and nothing downstream pulls a mis-marked base back into square. Pencil each part's cut-list name onto a face that finishes hidden.`,
+      `Stand the ${legIds.length} legs in the positions they will finish in and mark the tops with a cabinetmaker's triangle — best faces outward, sapwood and wild grain turned where nobody looks. All ${nJoints} frame joints land on a leg, so lay them out from ONE reference face and edge per leg: the aprons sit ${st.apronInset > 0 ? `${len(st.apronInset)} back from the outside leg face` : 'flush with the outside leg face'}, their top edges level with the leg tops and ${len(st.apronHeight)} of shoulder below that. Cut all ${nJoints} joints off that single setup — a layout error here is not one mistake, it is the same mistake ${nJoints} times over, and nothing downstream pulls a mis-marked base back into square.${strSetout} Pencil each part's cut-list name onto a face that finishes hidden.`,
       legIds));
-    out.push(step('s1', 'Build the two end frames',
-      `Join a short apron between each leg pair with ${frP}. ${kd ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'} ` +
+    out.push(step('s1', stretcherStyle ? 'Build the two end frames, stretchers included' : 'Build the two end frames',
+      `Join a short apron between each leg pair with ${frP}.${stretcherStyle ? ` The side stretcher goes into this same glue-up: it ties the SAME two legs as the short apron above it, so a frame closed without it cannot take it afterwards without coming apart. Two rails per frame, apron at the top, stretcher at ${strY}.` : ''} ${kd ? KD_STEP_TEXT : 'Dry-fit first, then glue, clamp, and check for square.'} ` +
       (kd
         ? `Two mirror-image assemblies — build them against each other, not just against a square, or the base finishes wider at one end than the other. Bring the bolts up in stages, alternating ends, and re-measure the diagonals after every turn: a bolted frame walks out of square if you take one side home first.`
         : `Two mirror-image assemblies, and the base goes together in two stages for a reason worth knowing — ${glue.label} gives ${glue.openMin} minutes of open time and the whole base is ${nJoints} joints, more than anyone spreads, seats, and clamps before the glue starts to grab. ${clamps(shortIds.length)} Measure both diagonals across each frame and make them equal, then sight along the clamp bars for wind — on a bench you have checked flat, not on the shop floor, because a frame with a twist in it will rock the finished piece however true the top is. ${glue.clampMin} minutes in the clamps.`),
-      legIds.concat(shortIds)));
+      legIds.concat(shortIds, sideStrIds)));
     out.push(step('s2', 'Join the frames',
-      `Connect the end frames with the long aprons using ${frP}. ${kd ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking. ` +
+      `Connect the end frames with the long aprons using ${frP}.` +
+      (stretcherStyle === 'box'
+        ? ` The long stretchers go on in this same stage, on the same leg pairs — four rails now, two aprons up top and two stretchers at ${strY}, and all four have to be seated before any of them is clamped home.`
+        : stretcherStyle === 'h'
+          ? ` The centre stretcher goes in now too, tying the two side stretchers at their midpoints. Its ends land on the FACE of each side stretcher, not on a leg — the one joint in this base that is end grain into a long-grain face, so it wants the glue given a minute to soak in before assembly, and it will never be as strong as the leg joints. Fit it dry with the frames standing before you commit: it sets the base's final width, and if it is long the end frames splay and every apron shoulder opens.`
+          : '') +
+      ` ${kd ? 'Work' : 'Dry-fit the whole base before glue, and work'} on a flat surface so the base sits without rocking. ` +
       (kd
         ? `Stand both end frames up and let the long aprons find their bores before anything is driven home — a knockdown base is only as square as the last bolt you tightened. Check the diagonals across the leg tops corner to corner: equal, or a shoulder is not seated. Then sight across the four leg tops from one end; they have to lie in one plane, because the top telegraphs any twist you leave in the base.`
         : `${nClamps(longIds.length)} bar clamps again, one in line with each long apron. Check the diagonals across the top of the base corner to corner — equal, or it is a parallelogram, and flattening the top will never hide that. Then sight across the four leg tops from one end: they have to lie in one plane, because the top telegraphs any twist you leave in the base. ${glue.clampMin} minutes in the clamps, and don't move it while it sets.`),
-      longIds));
+      longIds.concat(lateStrIds)));
     const standCheck = ` Then set the base on the flattest floor you have and press each corner in turn. A base that rocks gets ONE foot trimmed — take the shaving off whichever foot is proud, with the base loaded on the opposite corner. Never shim it.`;
     out.push(step('base_check', kd ? 'Snug the base and stand it up' : 'Out of the clamps, then let it cure',
       (kd
         ? `Nothing in this base is glued, which is the entire point of a knockdown frame — so it is finished when the bolts are. Go round once more with the key, and plan to go round again after the first heating season: a knockdown frame nobody re-snugs will rack.`
         : `The clamps come off at ${glue.clampMin} minutes, but ${glue.label} is not at full strength for ${glue.cureHrs} hours — until then don't stand on the base, plane it, or hang a top off it. Pare the squeeze-out while it is still rubbery: a chisel or a card scraper lifts it away clean, where a wet rag drives it into the pores and it ghosts through the finish forever.`) + standCheck,
-      legIds.concat(shortIds, longIds)));
+      legIds.concat(shortIds, longIds, sideStrIds, lateStrIds)));
     const top = model.parts.find(p => p.id === 'top_1');
     const topName = top ? top.name.toLowerCase() : 'top';
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
@@ -9887,6 +9989,7 @@ BlueprintBuddyImport.build
     ['ai', 'apronInset'], ['c', 'shelfCount'], ['st', 'shelfThickness'], ['sd', 'sideThickness'],
     ['b', 'backPanel'], ['k', 'toeKick']
   ];
+  const STR = ['none', 'h', 'box'];
   function encodePart(p) {
     const r = p.rot || { x: 0, y: 0, z: 0 };
     const arr = [
@@ -9923,6 +10026,10 @@ BlueprintBuddyImport.build
       const v = spec.structure[path];
       w.s[k] = typeof v === 'boolean' ? (v ? 1 : 0) : v;
     }
+    if (spec.structure.stretcher && spec.structure.stretcher !== 'none') {
+      w.s.sx = ix(STR, spec.structure.stretcher, 0);
+      w.s.sy = spec.structure.stretcherHeight;
+    }
     w.d = spec.drawers ? [spec.drawers.count, ix(FRONT, spec.drawers.frontStyle, 0), ix(RUN, spec.drawers.runner, 0)] : 0;
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
@@ -9958,6 +10065,8 @@ BlueprintBuddyImport.build
       if (s[k] === undefined || s[k] === null) continue;
       out[path] = (path === 'backPanel' || path === 'toeKick') ? !!s[k] : s[k];
     }
+    if (s.sx !== undefined && s.sx !== null) out.stretcher = at(STR, s.sx, 'none');
+    if (typeof s.sy === 'number') out.stretcherHeight = s.sy;
     return out;
   }
   function decode(w) {
@@ -9974,7 +10083,7 @@ BlueprintBuddyImport.build
         ? { width: w.o[0], depth: w.o[1], height: w.o[2] }
         : { width: 1000, depth: 500, height: 750 },
       wood: { species: at(SPC, w.m, 'red_oak'), sheetSpecies: at(SPC, w.ms, 'baltic_birch') },
-      structure: decodeStructure(w.s),
+      structure: Object.assign({ stretcher: 'none', stretcherHeight: 280 }, decodeStructure(w.s)),
       joinery: Array.isArray(w.j)
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
@@ -10089,7 +10198,7 @@ BlueprintBuddyImport.build
     'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
-    'structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1). Send only relevant keys, e.g. {"t":25,"c":4}.',
+    `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
     'Mechanisms (hinge/lift-off/fold/slide/door) NOT expressible — all JNT are permanent except kd_bolt (tool-removable). For openable asks build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
     'Everything must STAND ON THE FLOOR — hanging/wall/ceiling mounting does not exist (airborne parts are force-grounded); for such asks build the nearest floor-standing design and say so in "e", or ask.',
@@ -10108,7 +10217,7 @@ BlueprintBuddyImport.build
     return digest;
   }
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };
@@ -10250,7 +10359,7 @@ BlueprintBuddyImport.build
     '\\b(?:it|its|mine)\\b' +
     '|\\b(?:this|that|these|those)\\s+' + PIECE_NOUN + '\\b' +
     '|\\bmy\\s+(?:own\\s+|current\\s+|existing\\s+)?' + PIECE_NOUN + '\\b');
-  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, or drawers) and I’ll build it to standard proportions.';
+  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, or stretchers to brace the legs) and I’ll build it to standard proportions.';
   const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A bookshelf', 'A desk in white oak'];
   const OUT_OF_SCOPE = [
     [/\bbeds?\b|\bbed[\s-]?frames?\b|\bheadboards?\b|\bbunks?\b|\bmurphy\b|\bcribs?\b|\bmattress(?:es)?\b/,
@@ -10369,6 +10478,14 @@ BlueprintBuddyImport.build
     } else if (/\badd (a |another )?shelf\b/.test(t)) {
       set('structure.shelfCount', spec.structure.shelfCount + 1); notes.push('shelf');
     }
+    if (/\bback panel\b|\bpanel(l)?ed back\b|\bclose the back\b/.test(t)) {
+      const off = /\b(no|without|remove|drop|delete|lose|open)\b[\w\s]{0,12}\bback\b/.test(t);
+      set('structure.backPanel', !off);
+      notes.push(off ? 'back panel removed' : 'back panel');
+    }
+    if (/\bdado(e|'|’)?s?\b|\bhoused? (the )?shel(f|ves)\b/.test(t)) {
+      set('joinery.case', 'dado'); notes.push('dado-housed shelves');
+    }
     const canDrawer = w => ['nightstand', 'cabinet'].includes(w || spec.meta.template);
     const landing = creating ? wantTemplate : spec.meta.template;
     let dm = null;
@@ -10397,6 +10514,23 @@ BlueprintBuddyImport.build
         if (/\bwood(en)? runners?\b/.test(t)) { set('drawers.runner', 'wood_runners'); notes.push('wood runners'); }
         if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) { set('drawers.runner', 'side_mount_slides'); notes.push('side-mount slides'); }
         if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
+      }
+    }
+    {
+      const canBrace = ['table', 'desk', 'bench'].includes(landing);
+      const wantsBrace = /\bstretchers?\b|\bcross[- ]?brace|\bbrace (it|the (legs?|base|frame))\b|\b(wobbl|rack)\w*\b/.test(t);
+      const wantsNone = /\b(no|remove|without|drop|delete|lose) (the )?stretchers?\b|\bunbraced\b/.test(t);
+      if (wantsNone && canBrace) { set('structure.stretcher', 'none'); notes.push('stretchers removed'); }
+      else if (wantsBrace && canBrace) {
+        const box = /\bbox\b|\bperimeter\b|\ball (four|4) sides\b|\bsquare\b/.test(t);
+        set('structure.stretcher', box ? 'box' : 'h');
+        notes.push(box ? 'box stretcher' : 'H-stretcher');
+      } else if ((wantsBrace || wantsNone) && /\bstretchers?\b/.test(t)) {
+        return {
+          kind: 'question',
+          question: `Stretchers tie the legs of a frame, and a ${landing} has no legs — its stiffness comes from the case instead: a back panel fastened all round, and shelves housed in dados rather than screwed.`,
+          options: ['Add a back panel', 'Dado the shelves', 'Make it a desk']
+        };
       }
     }
     if (/push[ -]?to[ -]?open|handleless|no (visible )?(hardware|handles|pulls)/.test(t)) { set('hardware.pull', 'none_touch'); notes.push('push-to-open'); }
@@ -12126,14 +12260,17 @@ BlueprintBuddyImport.build
       test('codec', 'share code rejects garbage gracefully', !!Codec.fromShareCode('BB4:!!!').error && !!Codec.fromShareCode('hello').error, 'errors returned', 'errors returned');
     }
     {
+      const CUR = Spec.SPEC_VERSION;
       const migrated = Spec.migrateSpec(JSON.parse(JSON.stringify(V3_FIXTURE)));
-      test('migration', 'v3 fixture gains specVersion 4 via the registry', migrated.specVersion === 4 && migrated.custom === null, `v${migrated.specVersion}, custom ${migrated.custom}`, 'v4, custom null');
+      test('migration', `v3 fixture walks the registry to specVersion ${CUR}`, migrated.specVersion === CUR && migrated.custom === null, `v${migrated.specVersion}, custom ${migrated.custom}`, `v${CUR}, custom null`);
       const { spec, model, report } = pipeline(JSON.parse(JSON.stringify(V3_FIXTURE)));
       test('migration', 'v3 stored design opens correctly at current version',
-        report.errors.length === 0 && spec.specVersion === 4 && spec.wood.species === 'walnut' &&
+        report.errors.length === 0 && spec.specVersion === CUR && spec.wood.species === 'walnut' &&
         spec.drawers.count === 2 && spec.meta.units === 'in' && model.parts.length > 8 && model.drawers.length === 2,
         `${report.errors.length} errors, v${spec.specVersion}, ${spec.wood.species}, ${model.drawers.length} drawers`,
-        '0 errors, v4, walnut, 2 drawers');
+        `0 errors, v${CUR}, walnut, 2 drawers`);
+      test('migration', 'a pre-stretcher design opens unbraced', spec.structure.stretcher === 'none',
+        String(spec.structure.stretcher), 'none');
     }
     {
       const novel = Spec.correctSpec(bigComposition());
@@ -17210,6 +17347,14 @@ BlueprintBuddyImport.build
     if (s.drawers && (s.meta.template === 'nightstand' || s.meta.template === 'cabinet')) {
       body.append(paramSlider('Drawer count', s.drawers.count, 1, 4, 1, false,
         v => live({ drawers: { count: v } }), () => done()));
+    }
+    if (['table', 'desk', 'bench'].includes(s.meta.template)) {
+      body.append(paramSelect('Leg bracing', [['none', 'None'], ['h', 'H-stretcher'], ['box', 'Box stretcher']],
+        s.structure.stretcher || 'none',
+        v => { merge({ structure: { stretcher: v } }, 'manual'); renderAdjustBody(); }));
+      if (s.structure.stretcher && s.structure.stretcher !== 'none') {
+        body.append(dim('Stretcher height', 'structure.stretcherHeight', ...dimBounds('structure.stretcherHeight', 100, 600)));
+      }
     }
     body.append(paramSelect('Species', Object.values(K.WOOD_SPECIES).filter(x => !x.sheet).map(x => [x.key, x.label]),
       s.wood.species, v => { merge({ wood: { species: v } }, 'manual'); renderAdjustBody(); }));

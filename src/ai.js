@@ -251,7 +251,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * names only what the geometry actually produces: "workbench" buys a work
    * TABLE at workbench height — the laminated top and the vise are not built,
    * so the list must never offer "a workbench" as a thing that comes out. */
-  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, or drawers) and I’ll build it to standard proportions.';
+  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, or stretchers to brace the legs) and I’ll build it to standard proportions.';
   const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A bookshelf', 'A desk in white oak'];
 
   /* Pieces people genuinely ask for that this tool does not build. Each row is
@@ -428,6 +428,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       set('structure.shelfCount', spec.structure.shelfCount + 1); notes.push('shelf');
     }
 
+    /* Back panel and dado'd shelves: the two things a CARCASS does instead of
+     * stretchers, and the engine already offers both as one-tap fixes off the
+     * racking check. Until now neither had any chat vocabulary at all — so a
+     * user could tap the fix in the Safety panel and not ask for the same
+     * thing in words, which is the sort of split the audit's X-03 was about.
+     * Both are gated on the case joint's own level rules, so asking for a
+     * dado as a beginner is refused by correction the same way it always is. */
+    if (/\bback panel\b|\bpanel(l)?ed back\b|\bclose the back\b/.test(t)) {
+      const off = /\b(no|without|remove|drop|delete|lose|open)\b[\w\s]{0,12}\bback\b/.test(t);
+      set('structure.backPanel', !off);
+      notes.push(off ? 'back panel removed' : 'back panel');
+    }
+    if (/\bdado(e|'|’)?s?\b|\bhoused? (the )?shel(f|ves)\b/.test(t)) {
+      set('joinery.case', 'dado'); notes.push('dado-housed shelves');
+    }
+
     // Drawers. Honesty first (audit FE-H10): the code strips drawers from
     // templates without openings, so the parser must never ack one there.
     // Drawer fields judge the template the patch actually LANDS on (audit
@@ -462,6 +478,39 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (/\bwood(en)? runners?\b/.test(t)) { set('drawers.runner', 'wood_runners'); notes.push('wood runners'); }
         if (/\bslides?\b/.test(t) && /\b(ball|side|metal)\b/.test(t)) { set('drawers.runner', 'side_mount_slides'); notes.push('side-mount slides'); }
         if (/\bundermount\b/.test(t)) { set('drawers.runner', 'undermount_slides'); notes.push('undermount slides'); }
+      }
+    }
+
+    /* Stretcher intent (X-07). Style only — the app owns the section, the
+     * joints, and where the rail can legally sit on the leg. "wobbly" and
+     * "racks" are in here because that is what people actually type when
+     * they mean "brace it"; the integrity panel offers the same fix from
+     * the other direction, off the slenderness check. */
+    {
+      const canBrace = ['table', 'desk', 'bench'].includes(landing);
+      const wantsBrace = /\bstretchers?\b|\bcross[- ]?brace|\bbrace (it|the (legs?|base|frame))\b|\b(wobbl|rack)\w*\b/.test(t);
+      const wantsNone = /\b(no|remove|without|drop|delete|lose) (the )?stretchers?\b|\bunbraced\b/.test(t);
+      if (wantsNone && canBrace) { set('structure.stretcher', 'none'); notes.push('stretchers removed'); }
+      else if (wantsBrace && canBrace) {
+        // Box only when the shape is named; H is the default because it
+        // keeps the foot well clear, which is what most people want and
+        // never think to ask for until they kick the rail.
+        const box = /\bbox\b|\bperimeter\b|\ball (four|4) sides\b|\bsquare\b/.test(t);
+        set('structure.stretcher', box ? 'box' : 'h');
+        notes.push(box ? 'box stretcher' : 'H-stretcher');
+      } else if ((wantsBrace || wantsNone) && /\bstretchers?\b/.test(t)) {
+        /* Named the part explicitly on a piece that cannot take one. This
+         * returns rather than notes: an empty patch falls through to the
+         * generic "I didn't catch a change I can make there", which is
+         * exactly the wrong-fallback defect X-04 was about — the user named
+         * a real furniture part and would get a shrug. The alternative
+         * offered is the engine's own answer for a carcass, the same one
+         * the racking check recommends, so the two never disagree. */
+        return {
+          kind: 'question',
+          question: `Stretchers tie the legs of a frame, and a ${landing} has no legs — its stiffness comes from the case instead: a back panel fastened all round, and shelves housed in dados rather than screwed.`,
+          options: ['Add a back panel', 'Dado the shelves', 'Make it a desk']
+        };
       }
     }
 

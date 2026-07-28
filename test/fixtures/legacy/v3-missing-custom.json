@@ -2,7 +2,12 @@
   "why": "Exactly what the 3 -> 4 migration exists to repair, half one: a v3 spec with no `custom` key at all. The migration must initialise it to null so the novel-piece grammar has a defined slot; nothing downstream may see `undefined`.",
   "version": 3,
   "kind": "spec",
-  "expectAfterMigration": { "specVersion": 4, "custom": null, "wood.sheetSpecies": "baltic_birch" },
+  "expectAfterMigration": {
+    "specVersion": 5,
+    "custom": null,
+    "wood.sheetSpecies": "baltic_birch",
+    "structure.stretcher": "none"
+  },
   "expect": {
     "template": "cabinet",
     "name": "Shop Cabinet",
@@ -13,16 +18,43 @@
   },
   "spec": {
     "specVersion": 3,
-    "meta": { "name": "Shop Cabinet", "template": "cabinet", "level": "beginner", "units": "in" },
-    "overall": { "width": 812.8, "depth": 457.2, "height": 914.4 },
-    "wood": { "species": "pine", "sheetSpecies": "baltic_birch" },
-    "structure": {
-      "topThickness": 25, "legThickness": 70, "apronHeight": 90, "apronThickness": 20,
-      "apronInset": 12, "shelfCount": 1, "shelfThickness": 19, "sideThickness": 18,
-      "backPanel": true, "toeKick": true
+    "meta": {
+      "name": "Shop Cabinet",
+      "template": "cabinet",
+      "level": "beginner",
+      "units": "in"
     },
-    "joinery": { "frame": "pocket_screws", "case": "butt_screws", "box": "pocket_screws" },
+    "overall": {
+      "width": 812.8,
+      "depth": 457.2,
+      "height": 914.4
+    },
+    "wood": {
+      "species": "pine",
+      "sheetSpecies": "baltic_birch"
+    },
+    "structure": {
+      "topThickness": 25,
+      "legThickness": 70,
+      "apronHeight": 90,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 1,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": true
+    },
+    "joinery": {
+      "frame": "pocket_screws",
+      "case": "butt_screws",
+      "box": "pocket_screws"
+    },
     "finish": "wipe_poly",
-    "drawers": { "count": 2, "frontStyle": "overlay", "runner": "side_mount_slides" }
+    "drawers": {
+      "count": 2,
+      "frontStyle": "overlay",
+      "runner": "side_mount_slides"
+    }
   }
 }

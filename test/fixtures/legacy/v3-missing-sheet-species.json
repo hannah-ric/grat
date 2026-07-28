@@ -2,7 +2,12 @@
   "why": "Exactly what the 3 -> 4 migration exists to repair, half two: a v3 spec whose wood block has a solid species but no sheetSpecies. The migration must normalise it to baltic_birch, because packing, pricing and the BOM all read that field and a missing one silently prices sheet goods as nothing.",
   "version": 3,
   "kind": "spec",
-  "expectAfterMigration": { "specVersion": 4, "custom": null, "wood.sheetSpecies": "baltic_birch" },
+  "expectAfterMigration": {
+    "specVersion": 5,
+    "custom": null,
+    "wood.sheetSpecies": "baltic_birch",
+    "structure.stretcher": "none"
+  },
   "expect": {
     "template": "bookshelf",
     "name": "Ash Bookcase",
@@ -14,15 +19,37 @@
   },
   "spec": {
     "specVersion": 3,
-    "meta": { "name": "Ash Bookcase", "template": "bookshelf", "level": "advanced", "units": "mm" },
-    "overall": { "width": 900, "depth": 300, "height": 1800 },
-    "wood": { "species": "ash" },
-    "structure": {
-      "topThickness": 25, "legThickness": 70, "apronHeight": 90, "apronThickness": 20,
-      "apronInset": 12, "shelfCount": 4, "shelfThickness": 25, "sideThickness": 18,
-      "backPanel": true, "toeKick": false
+    "meta": {
+      "name": "Ash Bookcase",
+      "template": "bookshelf",
+      "level": "advanced",
+      "units": "mm"
     },
-    "joinery": { "frame": "mortise_tenon", "case": "dado", "box": "half_blind_dovetail" },
+    "overall": {
+      "width": 900,
+      "depth": 300,
+      "height": 1800
+    },
+    "wood": {
+      "species": "ash"
+    },
+    "structure": {
+      "topThickness": 25,
+      "legThickness": 70,
+      "apronHeight": 90,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 4,
+      "shelfThickness": 25,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": false
+    },
+    "joinery": {
+      "frame": "mortise_tenon",
+      "case": "dado",
+      "box": "half_blind_dovetail"
+    },
     "finish": "danish_oil"
   }
 }

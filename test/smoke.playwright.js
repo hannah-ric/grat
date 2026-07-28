@@ -735,10 +735,14 @@ const clickMoreCtl = async sel => {
   const revived = await page.evaluate(() => ({
     name: __bb.state.spec.meta.name,
     progress: Object.values(__bb.state.project.progress.cuts).filter(Boolean).length,
-    version: __bb.state.spec.specVersion
+    version: __bb.state.spec.specVersion,
+    // Read from the app, not pinned to a literal: the contract is "a reopened
+    // design arrives at CURRENT", and a hardcoded number turns every schema
+    // change into a test edit that reports the edit rather than the migration.
+    current: BB.Spec.SPEC_VERSION
   }));
   ok(revived.progress >= 1, 'build progress survives reload');
-  ok(revived.version === 4, `reopened design is spec v${revived.version} via the migration registry`);
+  ok(revived.version === revived.current, `reopened design is spec v${revived.version} via the migration registry (current v${revived.current})`);
 
   /* ================= Phase A: state integrity ================= */
 

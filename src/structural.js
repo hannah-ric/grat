@@ -257,6 +257,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   /* ---------------- surface discovery ---------------- */
   const TABLE_LIKE = ['table', 'desk', 'bench', 'nightstand'];
+  // Templates that can actually take a stretcher — mirrors Spec.FRAME_TEMPLATES
+  // (nightstand's drawer bank fills the space a stretcher would span), so a
+  // fix is never offered on a piece correction would refuse to build.
+  const FRAME_TEMPLATES = ['table', 'desk', 'bench'];
   const CARCASS = ['bookshelf', 'cabinet'];
 
   function surfacesOf(spec, model, loadChoices, defaultLoad) {
@@ -1049,6 +1053,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (!custom) {
         if (hasRole('apron')) mults.push({ label: 'apron frame ties the legs', mult: 1.2 });
         if (hasRole('rail')) mults.push({ label: 'drawer rails triangulate the frame', mult: 1.1 });
+        /* Bracing at the foot works against the longest lever the frame has,
+         * which is why it beats the same joints anywhere else. A box
+         * stretcher closes the loop on all four sides; an H ties two sides
+         * and relies on the centre rail to carry the third direction. */
+        if (hasRole('stretcher')) {
+          mults.push(spec.structure.stretcher === 'box'
+            ? { label: 'box stretcher closes the frame at the foot', mult: 1.3 }
+            : { label: 'H-stretcher ties the legs low', mult: 1.2 });
+        }
         if (hasRole('back')) mults.push({ label: 'back panel acts as a shear panel', mult: 1.5 });
         if (spec.joinery.case === 'dado' && hasRole('shelf')) mults.push({ label: 'fixed shelves housed in dados', mult: 1.15 });
       } else {
@@ -1093,8 +1106,28 @@ var BB = globalThis.BB = globalThis.BB || {};
               return q && q.pos.y > 0.15 * l.size.h && q.pos.y < 0.75 * l.size.h;
             }))
           : parts.some(p => p.role === 'shelf' || p.role === 'rail');
+        /* A stretcher is a brace at a KNOWN height, so its effect is measured
+         * rather than assumed. Euler's effective length for a strut braced at
+         * one point is the longer of the two resulting segments — brace a leg
+         * dead centre and you halve it; brace it near the floor and you have
+         * barely helped. That distinction is the whole reason stretcherHeight
+         * is a knob, and the flat 0.6 factor below cannot express it.
+         *
+         * Shelves and rails keep the 0.6 estimate: their heights vary across
+         * the piece and no single one of them braces every leg, so there is
+         * no honest single number to measure. Unchanged for every design that
+         * has no stretcher. */
+        const stretchers = custom ? [] : parts.filter(p => p.role === 'stretcher');
         const worst = legs.reduce((m, l) => {
-          const len = l.size.h * (braced ? 0.6 : 1);
+          let len;
+          if (stretchers.length) {
+            // Lowest brace on this leg governs: the segment above it is the
+            // one that buckles. Legs run floor→top, so pos.y is the centre.
+            const braceY = Math.min(...stretchers.map(s => s.pos.y));
+            len = Math.max(braceY, l.size.h - braceY);
+          } else {
+            len = l.size.h * (braced ? 0.6 : 1);
+          }
           const minT = Math.min(l.size.w, l.size.d);
           const r = len / minT;
           return r > m.r ? { r, l } : m;
@@ -1107,10 +1140,25 @@ var BB = globalThis.BB = globalThis.BB || {};
             const newParts = spec.custom.parts.map(p => p.id === worst.l.id ? { ...p, dim: { ...p.dim, t: up, w: Math.max(p.dim.w, up) } } : p);
             fixes.push({ id: 'thick-' + worst.l.id, label: `Thicken ${worst.l.id}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } });
           }
+          /* Bracing beats bulk here, so it is offered first. Solved, not
+           * guessed: the height that minimises the worst segment is the leg's
+           * own midpoint, and correction clamps it to what the apron leaves. */
+          if (FRAME_TEMPLATES.includes(t) && (!spec.structure || spec.structure.stretcher === 'none')) {
+            fixes.unshift({
+              id: 'stretcher', label: 'Brace the legs with stretchers',
+              patch: { structure: { stretcher: 'h', stretcherHeight: Math.round(worst.l.size.h / 2) } }
+            });
+          }
+          const measured = stretchers.length > 0;
           checks.push({
             id: 'slender', title: 'Leg slenderness', status: worst.r > 20 ? 'advisory' : 'pass',
-            value: `worst L/t = ${worst.r.toFixed(1)}${braced ? ' (braced)' : ''}`, threshold: '≤ 20 unbraced length / least thickness',
-            explain: worst.r > 20 ? 'Long thin legs bow under load and feel wobbly — add bracing or use thicker stock.' : 'Legs are stocky enough for their unbraced length.',
+            value: `worst L/t = ${worst.r.toFixed(1)}${measured ? ' (stretcher-braced)' : braced ? ' (braced)' : ''}`,
+            threshold: '≤ 20 unbraced length / least thickness',
+            explain: worst.r > 20
+              ? 'Long thin legs bow under load and feel wobbly — add bracing or use thicker stock.'
+              : measured
+                ? `Legs are stocky enough for the ${fmtLen(Math.max(...legs.map(l => l.size.h)) - Math.min(...stretchers.map(s => s.pos.y)))} the stretchers leave unbraced above them.`
+                : 'Legs are stocky enough for their unbraced length.',
             fixes: worst.r > 20 ? fixes : []
           });
         }

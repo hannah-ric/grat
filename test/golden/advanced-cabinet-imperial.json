@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 4,
+  "specVersion": 5,
   "meta": {
    "name": "Sideboard Cabinet",
    "template": "cabinet",
@@ -26,7 +26,9 @@
    "shelfThickness": 19,
    "sideThickness": 18,
    "backPanel": true,
-   "toeKick": true
+   "toeKick": true,
+   "stretcher": "none",
+   "stretcherHeight": 280
   },
   "joinery": {
    "frame": "mortise_tenon",

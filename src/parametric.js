@@ -341,7 +341,82 @@ var BB = globalThis.BB = globalThis.BB || {};
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
 
+    addStretchers(spec, parts, joints, { lx, lz, legT, sp });
+
     return { parts, joints, openings: [], drawers: [] };
+  }
+
+  /* ---------------- stretchers (X-07) ----------------
+   * Leg-to-leg bracing low on the frame. Two styles, both real furniture:
+   *
+   *   h    two side stretchers running front-to-back, tied at their
+   *        midpoints by one long centre stretcher. The trestle/desk answer —
+   *        it braces the frame without a rail across the foot well.
+   *   box  the perimeter: four stretchers, leg to leg all the way round.
+   *        Stiffer, and the traditional look on benches and hall tables;
+   *        the long rails are where your feet go, so it earns its footroom
+   *        cost only if you want the bracing.
+   *
+   * Section is code-owned, not another knob: a stretcher carries almost no
+   * bending — its job is triangulation and shortening the leg's unbraced
+   * length — so it is cut from the apron's own stock thickness at a fraction
+   * of the apron's height. One stock thickness, one setup, no new stock line.
+   *
+   * The centre stretcher of an `h` meets the side stretchers on their FACE,
+   * not their end, which is a different joint from every apron-to-leg joint
+   * in the frame: end grain into a long-grain face. That is why it takes the
+   * frame joint's own type but is called out separately in the plan.
+   */
+  const STRETCHER_H_RATIO = 0.65;   // of apron height
+  const STRETCHER_H_MIN = 40, STRETCHER_H_MAX = 90;
+
+  function stretcherSection(st) {
+    return {
+      h: Math.max(STRETCHER_H_MIN, Math.min(STRETCHER_H_MAX, Math.round(st.apronHeight * STRETCHER_H_RATIO))),
+      t: st.apronThickness
+    };
+  }
+
+  function addStretchers(spec, parts, joints, frame) {
+    const st = spec.structure;
+    if (!st.stretcher || st.stretcher === 'none') return;
+    const { lx, lz, legT, sp } = frame;
+    const sec = stretcherSection(st);
+    const y = st.stretcherHeight;
+    const fj = spec.joinery.frame;
+    // Leg-face to leg-face: the stretcher spans the gap, it does not run past
+    // the legs. Same arithmetic the aprons use, at the legs' own centres.
+    const spanX = 2 * lx - legT, spanZ = 2 * lz - legT;
+
+    const addRail = (id, name, w, h, d, x, yy, z, ex) =>
+      parts.push(part(id, `stretcher_${Math.round(Math.max(w, d))}`, 'stretcher', name, w, h, d, x, yy, z,
+        { material: sp, explode: ex }));
+
+    if (st.stretcher === 'box') {
+      [[-lz, 1], [lz, 2]].forEach(([z, i]) => {
+        addRail(`stretcher_long_${i}`, 'Long stretcher', spanX, sec.h, sec.t, 0, y, z, { x: 0, y: -0.5, z: Math.sign(z) });
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y, z } });
+        joints.push({ type: fj, a: `stretcher_long_${i}`, b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y, z } });
+      });
+    }
+
+    // Both styles carry the pair of side stretchers; `box` adds the long
+    // pair above, `h` adds the single centre tie below.
+    [[-lx, 1], [lx, 2]].forEach(([x, i]) => {
+      addRail(`stretcher_side_${i}`, 'Side stretcher', sec.t, sec.h, spanZ, x, y, 0, { x: Math.sign(x), y: -0.5, z: 0 });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: x < 0 ? 'leg_1' : 'leg_2', pos: { x, y, z: -lz } });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y, z: lz } });
+    });
+
+    if (st.stretcher === 'h') {
+      // Centre tie runs leg-line to leg-line, landing on the INNER faces of
+      // the two side stretchers — hence the section thickness taken off each
+      // end rather than the leg thickness.
+      const centreLen = 2 * lx - sec.t;
+      addRail('stretcher_centre_1', 'Centre stretcher', centreLen, sec.h, sec.t, 0, y, 0, { x: 0, y: -0.5, z: 0 });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_1', pos: { x: -lx + sec.t / 2, y, z: 0 } });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_2', pos: { x: lx - sec.t / 2, y, z: 0 } });
+    }
   }
 
   function bookshelf(spec) {
@@ -574,5 +649,5 @@ var BB = globalThis.BB = globalThis.BB || {};
     return m;
   }
 
-  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights };
+  BB.Parametric = { build, openingHeightFor, shelfSpacingFor, RAIL_H, RAIL_T, DEFAULT_OPENING_H, bankHeights, stretcherSection };
 })();

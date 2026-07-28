@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 4,
+  "specVersion": 5,
   "meta": {
    "name": "Floor Bookshelf",
    "template": "bookshelf",
@@ -26,7 +26,9 @@
    "shelfThickness": 19,
    "sideThickness": 19,
    "backPanel": true,
-   "toeKick": false
+   "toeKick": false,
+   "stretcher": "none",
+   "stretcherHeight": 280
   },
   "joinery": {
    "frame": "pocket_screws",
