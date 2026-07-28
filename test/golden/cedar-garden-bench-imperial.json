@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 10,
+  "specVersion": 11,
   "meta": {
    "name": "Cedar Garden Bench",
    "template": "bench",
@@ -46,7 +46,8 @@
   "custom": null,
   "seat": null,
   "wall": null,
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],

@@ -3720,9 +3720,10 @@ section('OUT-1 one field: interior default, junk-proof, idempotent, byte-identic
   eq(plain.exposure, 'interior', 'a spec that never mentions exposure corrects to interior');
   eq(Spec.correctSpec({ meta: { template: 'table' }, exposure: 'submerged' }).exposure, 'interior', 'junk exposure falls to interior, never survives');
   eq(Spec.correctSpec({ meta: { template: 'table' }, exposure: null }).exposure, 'interior', 'an explicit null falls to interior');
-  // Migration: a v9 design opens as an interior design at v10.
+  // Migration: a v9 design opens as an interior design (the chain now runs
+  // through v11 — the children's scope landed in the same release).
   const migrated = Spec.migrateSpec({ specVersion: 9, meta: { template: 'bench' } });
-  eq([migrated.specVersion, migrated.exposure], [10, 'interior'], 'v9 → v10 writes the explicit interior default');
+  eq([migrated.specVersion, migrated.exposure], [Spec.SPEC_VERSION, 'interior'], 'v9 opens with the explicit interior default at the current version');
   // Wire discipline: interior never rides the wire, so every pre-exposure
   // design encodes byte-identically; an outdoor choice rides and returns.
   ok(!('ex' in Codec.encode(plain)), 'interior designs carry no "ex" key — old share codes stay byte-identical');
@@ -3901,7 +3902,10 @@ section('KID-0 the childrens contract holds, overlays cleanly, and its goldens e
   // A scope class never hijacks a template: the primary classes still answer.
   eq(BB.Classes.forTemplate('chair').key, 'seating', 'forTemplate(chair) is still the seating class');
   eq(BB.Classes.forTemplate('table').key, 'frame_table', 'forTemplate(table) is still frame_table');
-  ok(BB.Classes.forTemplate('bookshelf') === null, 'forTemplate(bookshelf) stays unowned — the scope class does not claim it');
+  // (bookshelf is owned by the casework class since the same release — the
+  // point stands: the scope class never answers forTemplate.)
+  ok(BB.Classes.forTemplate('bookshelf') === null || BB.Classes.forTemplate('bookshelf').key !== 'childrens',
+    'forTemplate(bookshelf) is never the scope class — it does not claim templates');
   // Checklist coverage on a live child-scoped chair: BOTH checklists ride.
   const { spec, model, report } = pipeline({ meta: { name: 'K0', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } });
   const integ = Structural.computeIntegrity(spec, model, {});

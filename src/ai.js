@@ -196,7 +196,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!patch) return null;
     // Wire keys outside the documented schema decode to nothing — record them
     // so the ack can say what was ignored instead of implying it landed (C4).
-    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c', 'ex', 'ch'];
+    // Kept in lockstep with codec decodePartial: every key it decodes is
+    // KNOWN here, or a landed refinement gets reported as "ignored" (this
+    // list had drifted — dr/hh/se/wl/bd were decoding fine but showing up
+    // in the ignored caveat; fixed with the 2026-08 class release).
+    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c', 'dr', 'hh', 'se', 'wl', 'bd', 'ex', 'ch'];
     const ignored = Object.keys(wireDiff).filter(k => !KNOWN.includes(k));
     return { kind: 'diff', patch, explain: explain || 'Updated.', ignored };
   }

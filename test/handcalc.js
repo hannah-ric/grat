@@ -597,7 +597,7 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
 }
 
 /* =========================================================================
- * 15. OUTDOOR EXPOSURE (2026-08) — indoor vs outdoor movement, every step.
+ * 16. OUTDOOR EXPOSURE (2026-08) — indoor vs outdoor movement, every step.
  *     ΔMC sources (single source: K.EXPOSURE_DMC, knowledge.js):
  *       interior temperate 4  — CLIMATE_DMC, unchanged.
  *       covered 6   — WH FPL-GTR-282 Table 13-2 exterior installation MC:
@@ -615,7 +615,7 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
 {
   Units.set({ system: 'metric' });
   const ct = K.WOOD_SPECIES.white_oak.ct;
-  console.log(`\n[23] Outdoor movement: 800 × ${ct} × {4, 6, 12} ΔMC`);
+  console.log(`\n[28] Outdoor movement: 800 × ${ct} × {4, 6, 12} ΔMC`);
   row('interior movement 800×0.00365×4 (mm)', 800 * ct * 4, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('interior', 'temperate')), 0.01);
   row('covered movement 800×0.00365×6 (mm)', 800 * ct * 6, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('covered', 'temperate')), 0.01);
   row('exposed movement 800×0.00365×12 (mm)', 800 * ct * 12, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('exposed', 'temperate')), 0.01);
@@ -635,7 +635,7 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
 }
 
 /* =========================================================================
- * 15. CHILDREN'S SCOPE (2026-07) — toddler chair, every number by hand.
+ * 17. CHILDREN'S SCOPE (2026-07) — toddler chair, every number by hand.
  *     Band: EN 1729 mark 1 (K.CHILD) — seat 260, table pair 460.
  *     Derived plan (CHILD_GEOM, ratios off the adult 445/430/420/470 nominal,
  *     round-to-5): width r5(260·430/445) = r5(251.24) = 250;
@@ -674,7 +674,7 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   const Rhand = Mhand / arm;
   const capHand = 1800 * (K.WOOD_SPECIES.red_oak.sg / 0.5);
   const tilt = integ.checks.find(c => c.id === 'chair:tilt');
-  console.log(`\n[23] Child chair rear tilt (ADULT 667 N kept): M = 333.5 × (${crestY} − ${railY}) = ${Mhand.toFixed(0)} N·mm; R = M/${arm} = ${Rhand.toFixed(2)} N; cap ${capHand} N; margin ${(capHand / Rhand).toFixed(3)}×`);
+  console.log(`\n[29] Child chair rear tilt (ADULT 667 N kept): M = 333.5 × (${crestY} − ${railY}) = ${Mhand.toFixed(0)} N·mm; R = M/${arm} = ${Rhand.toFixed(2)} N; cap ${capHand} N; margin ${(capHand / Rhand).toFixed(3)}×`);
   row('child rear-tilt moment M (N·mm)', Mhand, tilt.data.momentNmm);
   row('child rear-tilt joint demand R (N)', Rhand, tilt.data.demandN);
   row('child rear-tilt margin (×)', capHand / Rhand, tilt.data.marginRatio);

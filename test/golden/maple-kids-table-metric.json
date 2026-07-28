@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 10,
+  "specVersion": 11,
   "meta": {
    "name": "Kids Craft Table",
    "template": "table",
@@ -36,6 +36,7 @@
    "box": "pocket_screws"
   },
   "finish": "tung_pure",
+  "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
    "hinge": "euro_cup"

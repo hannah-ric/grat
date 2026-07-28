@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 10,
+  "specVersion": 11,
   "meta": {
    "name": "Custom Bench",
    "template": "custom",
