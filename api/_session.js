@@ -83,6 +83,8 @@ function sessionCookieFor(user, req) {
   const token = sign({
     v: 1, uid: user.uid, name: String(user.name || '').slice(0, 80),
     p: user.provider, av: user.avatar ? String(user.avatar).slice(0, 300) : undefined,
+    // Admin credential fingerprint (api/_admin.js) — rotation is revocation.
+    ak: user.ak ? String(user.ak).slice(0, 32) : undefined,
     iat: now, exp: now + SESSION_DAYS * 86400
   }, process.env.AUTH_SECRET);
   return cookie(SESSION_COOKIE, token, { secure: isSecure(req), maxAge: SESSION_DAYS * 86400 });
