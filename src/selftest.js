@@ -268,6 +268,40 @@ var BB = globalThis.BB = globalThis.BB || {};
         'generated line present', 'generated line present');
     }
 
+    /* ============ furniture-class contracts (BB.Classes) ============
+     * A class the app generates must be able to STATE its engineering:
+     * ranges, sources, load cases, joint rules, failure modes, hardware,
+     * assembly, refusals, fixtures — and every failure mode must be COVERED
+     * by a live check on a nominal build. A checklist entry going uncovered
+     * means a physics check silently disappeared. */
+    {
+      for (const cls of BB.Classes.all()) {
+        const probs = BB.Classes.validateContract(cls);
+        test('classes', `contract holds: ${cls.key}`, probs.length === 0, probs.join('; ') || 'complete', 'complete');
+        // Coverage on a nominal design of the class's first template.
+        const spec = Spec.correctSpec({ meta: { name: 'ct', template: cls.templates[0], level: 'advanced', units: 'mm' } });
+        const model = Parametric.build(spec);
+        const res = {
+          integrity: BB.Structural.computeIntegrity(spec, model, {}),
+          validation: Spec.validate(spec, model)
+        };
+        const rows = BB.Classes.runChecklist(cls.templates[0], res) || [];
+        const uncovered = rows.filter(r => r.status === 'uncovered' && !r.guard).map(r => r.id);
+        test('classes', `failure-mode checklist covered: ${cls.key}`, uncovered.length === 0,
+          uncovered.join(', ') || 'all modes examined', 'all modes examined');
+      }
+      // Seating specifics: the mandate and the refusal geometry hold.
+      const seat = BB.Classes.get('seating');
+      test('classes', 'seating: screwed seat frames are impossible post-correction',
+        ['pocket_screws', 'butt_screws', 'dowels', 'biscuits'].every(j =>
+          !['beginner', 'intermediate', 'advanced'].some(l => seat.enforceFrameJoint(j, l) === j)),
+        'all rewritten', 'all rewritten');
+      const chairSpec = Spec.correctSpec({ meta: { name: 'ct', template: 'chair', level: 'beginner', units: 'mm' }, seat: { backRake: 8 } });
+      test('classes', 'seating: rake clamps to straight-post capability',
+        chairSpec.seat.backRake <= seat.geom.backRakeMax(chairSpec.structure, chairSpec.seat) + 0.05,
+        String(chairSpec.seat.backRake), '≤ ' + seat.geom.backRakeMax(chairSpec.structure, chairSpec.seat));
+    }
+
     /* ============ 2026 knowledge expansion: full engine coverage ============
      * A joint or species that exists in the table but not in the derived
      * engines would silently mis-rate (racking 0, screws in a glue-up), so
@@ -438,7 +472,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2500-token ceiling', tk <= 2500 && tk > 800, tk + ' tokens', '≤ 2500'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, then X-07's stretcher and door/hinge keys
+      test('hardening', 'system prompt under the 2900-token ceiling', tk <= 2900 && tk > 800, tk + ' tokens', '≤ 2900'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07)
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
 

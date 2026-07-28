@@ -251,7 +251,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * names only what the geometry actually produces: "workbench" buys a work
    * TABLE at workbench height — the laminated top and the vise are not built,
    * so the list must never offer "a workbench" as a thing that comes out. */
-  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, doors, or stretchers to brace the legs) and I’ll build it to standard proportions.';
+  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, chair or stool (counter and bar heights too), bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, doors, or stretchers to brace the legs) and I’ll build it to standard proportions.';
   const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A cabinet with doors', 'A desk in white oak'];
 
   /* Pieces people genuinely ask for that this tool does not build. Each row is
@@ -259,14 +259,17 @@ var BB = globalThis.BB = globalThis.BB || {};
    * the geometry CAN make — offered as the first chip, never as a claim. A
    * row with no nearest option says plainly that there isn't one. */
   const OUT_OF_SCOPE = [
-    [/\bbeds?\b|\bbed[\s-]?frames?\b|\bheadboards?\b|\bbunks?\b|\bmurphy\b|\bcribs?\b|\bmattress(?:es)?\b/,
-      'Beds are outside what I build — nothing here is sized to carry a mattress.', null],
-    [/\bchairs?\b|\bstools?\b|\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\bseating\b/,
-      'Chairs and stools are outside what I build; a bench is the seating I can make.', 'A bench in white oak'],
-    // Only a WALL-HUNG shelf is out of scope — a bare "shelves" is ordinary
-    // bookshelf vocabulary and must keep its edit answer ("more shelves").
-    [/\b(?:floating|wall|hanging|wall[\s-]?mounted)\b[\w\s'’-]{0,20}?\bshel(?:f|ves)\b/,
-      'Wall-hung and floating shelves are past what I build — everything I make stands on its own legs.', 'A bookshelf'],
+    // Beds graduated to the 'bed' class (2026-07). Bunks/cribs/murphy keep
+    // dedicated refusals with their regulations, before creation triggers.
+    /* Chairs and stools graduated to a real class (2026-07 seating). What
+     * stays out of scope is soft seating — and its refusal now points at the
+     * chair the tool genuinely builds. */
+    [/\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\brecliners?\b|\bchaises?\b/,
+      'Sofas and soft seating are outside what I build — upholstery is a different craft. A solid-wood dining chair, stool, or bench I can do.', 'A dining chair in red oak'],
+    // Floating shelves graduated to the wall_mounted class (2026-07) and
+    // route through tmplWords; only ceiling-hung stays out of scope here.
+    [/\b(?:ceiling|suspended|hanging from)\b[\w\s'’-]{0,24}?\bshel(?:f|ves)\b/,
+      'Ceiling-hung shelves are past what I build — overhead failure is injury-first and I have no ceiling model. A wall-mounted floating shelf on studs or masonry I can do.', 'A floating shelf on wood studs'],
     [/\bdressers?\b|\barmoires?\b|\bwardrobes?\b|\bcredenzas?\b|\bhutch(?:es)?\b|\bvanit(?:y|ies)\b/,
       'A dresser-sized case is the cabinet template here — same carcass, same drawer bank.', 'A cabinet with three drawers'],
     // Doors LEFT this list with X-07 — they are built on cabinets and
@@ -318,7 +321,7 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     // New design? Longest template word first: "bedside table" must win
     // over "table".
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair', 'floating shelf': 'wall_shelf', 'wall shelf': 'wall_shelf', 'wall-mounted shelf': 'wall_shelf', 'wall mounted shelf': 'wall_shelf', 'shelf ledge': 'wall_shelf', bed: 'bed', 'bed frame': 'bed', 'platform bed': 'bed', bedframe: 'bed' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -345,6 +348,37 @@ var BB = globalThis.BB = globalThis.BB || {};
     const differentPiece = wantTemplate !== spec.meta.template ||
       (tmplWord === 'workbench' && !/workbench/i.test((spec.meta && spec.meta.name) || ''));
     const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && differentPiece;
+
+    /* Bed-class refusals (BB.Classes 'bed'): the shapes no sound plan can
+     * honor, each with its regulation or reason. These outrank creation. */
+    if (/\b(bunk|loft)\b.{0,12}\bbeds?\b|\bbunk[- ]?beds?\b|\bloft[- ]?beds?\b/.test(t)) {
+      return { kind: 'info', text: 'Bunk and loft beds are ASTM F1427 territory — sleeping surfaces above 762 mm carry guardrail, ladder, and entrapment rules I don’t model, and falls from height are the injury case. A platform bed I can build soundly.' };
+    }
+    if (/\bcribs?\b|\bbassinets?\b|\bcradles?\b|\btoddler beds?\b/.test(t)) {
+      return { kind: 'info', text: 'Cribs and infant sleep furniture are federal safety law (16 CFR 1219/1220), not a hobbyist domain — I refuse these permanently rather than approximate them. For an adult or guest bed I’m glad to help.' };
+    }
+    if (/\bmurphy\b|\bwall[- ]?beds?\b|\bfold(?:ing|[- ]?(?:up|down|away))\b.{0,12}\bbeds?\b/.test(t)) {
+      return { kind: 'info', text: 'Murphy and folding beds need a lift mechanism and wall anchorage under a moving load — mechanisms are outside what I build (every joint here is fixed or bolted). A freestanding platform bed I can do.' };
+    }
+
+    /* Seating-class refusals (BB.Classes 'seating') — said as refusals, never
+     * approximated silently. These fire whenever seating is the subject,
+     * creating or refining: an upholstered/arm/rocking/folding ask has no
+     * sound answer in this class, and the reason is stated. */
+    if (spec.meta.template === 'chair' || /\b(chairs?|stools?|armchairs?|barstools?)\b/.test(t)) {
+      if (/\bupholster\w*|\bpadded\b|\bcushion\w*|\bslip[- ]seat\b|\bfoam\b|\bfabric seat\b|\bleather seat\b/.test(t)) {
+        return { kind: 'info', text: 'I don’t generate upholstered or slip seats: the seat frame becomes its own part set with foam and fabric clearances I can’t model soundly yet, and a guessed frame is worse than a refusal. I can build the same chair with a solid wood seat — say the word.' };
+      }
+      if (/\barm[- ]?chairs?\b|\bwith arms\b|\barm[- ]?rests?\b/.test(t)) {
+        return { kind: 'info', text: 'I don’t generate arms yet: arm joints carry their own load cases (BIFMA arm strength, vertical and horizontal) that I don’t model, so I build side chairs only. Want the same chair without arms?' };
+      }
+      if (/\brock(er|ing)\b|\bfold(s|ing|able)?\b|\bswivel\w*\b|\bheight[- ]adjust\w*\b|\breclin\w*\b/.test(t)) {
+        return { kind: 'info', text: 'Rockers, folding chairs, and swivel or adjustable mechanisms aren’t buildable here — every connection I generate is fixed (or a barrel-nut bolt), and those load paths are unmodeled. A fixed dining chair or stool I can do soundly.' };
+      }
+      if (/\bsteam[- ]?bent\b|\bbent[- ]?wood\b|\bcurved (rear |back )?legs?\b|\bsculpted\b/.test(t)) {
+        return { kind: 'info', text: 'Curved or steam-bent rear legs are outside what I build soundly — sawing a bend from straight stock leaves short grain exactly where the back load breaks chairs, and I don’t model laminated bends. My chairs use straight rear posts with the back raked a few degrees by offset joinery.' };
+      }
+    }
 
     // Ambiguity checks first.
     if (/\b(bigger|larger|smaller)\b/.test(t) && !/\b(wide|width|deep|depth|tall|height|high|%|percent)\b/.test(t)) {
@@ -453,7 +487,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // X-01): the new template when creating, else the CURRENT design — a
     // mentioned-but-not-created template must never smuggle a field that
     // correction will strip (the phantom "2 drawer(s)" ack).
-    const canDrawer = w => ['nightstand', 'cabinet'].includes(w || spec.meta.template);
+    const canDrawer = w => ['nightstand', 'cabinet', 'desk'].includes(w || spec.meta.template);
     const landing = creating ? wantTemplate : spec.meta.template;
     let dm = null;
     if (/\b(no|remove|without)\b.*\bdrawers?\b/.test(t) && spec.meta.template !== 'nightstand') { patch.drawers = null; notes.push('no drawers'); }
@@ -465,7 +499,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           return {
             kind: 'question',
             question: `Drawers need a case with openings — a ${spec.meta.template} can't take them yet, but a nightstand or cabinet can.`,
-            options: ['Make it a nightstand', 'Make it a cabinet']
+            options: ['Make it a nightstand', 'Make it a cabinet', 'Make it a desk']
           };
         }
         notes.push(`drawers skipped — not available on a ${spec.meta.template}`);
@@ -576,6 +610,60 @@ var BB = globalThis.BB = globalThis.BB || {};
         const row = K.ergoRow('workbench_height');
         if (row) { set('overall.height', Math.round((row.min + row.max) / 2)); benchHeight = true; }
       }
+      /* Seating: a stool is the chair template with no back; a counter/bar
+       * stool derives its seat height from the surface it serves (the class
+       * coupling). The WORD sets sensible surface defaults; an explicit
+       * "for my 950 mm counter" wins; a bare "stool" ships dining height
+       * and the integrity panel asks for the counter. */
+      /* Bed: the mattress size drives the frame. Named sizes win; a bare
+       * "bed" ships queen (the modal ask) and the ack names the size. */
+      if (wantTemplate === 'bed') {
+        const size = /\bcal(?:ifornia)?[- ]?king\b/.test(t) ? 'cal_king'
+          : /\bking\b/.test(t) ? 'king'
+          : /\bqueen\b/.test(t) ? 'queen'
+          : /\bfull\b|\bdouble\b/.test(t) ? 'full'
+          : /\btwin\b|\bsingle\b/.test(t) ? 'twin' : 'queen';
+        set('bed.size', size);
+        if (/\bno headboard\b|\bwithout (a )?headboard\b|\bheadboardless\b/.test(t)) set('bed.headboardHeight', 0);
+        notes.push(size.replace('_', ' ') + ' bed');
+      }
+      /* Wall shelf: the SUBSTRATE is required input — the wall carries the
+       * whole load path, so a creation with no wall named ASKS rather than
+       * guessing (the chips parse straight back in here). Drywall-only is
+       * refused with the reason, matching the class contract. */
+      if (wantTemplate === 'wall_shelf') {
+        if (/\bdrywall\b|\bplasterboard\b|\bsheetrock\b/.test(t) && !/\bstuds?\b/.test(t)) {
+          return { kind: 'info', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. If there are wood studs behind it (there usually are, 16 or 24 in apart), say “on studs”; on brick or block, say “on masonry”.' };
+        }
+        const onStuds = /\bstuds?\b/.test(t);
+        const onMasonry = /\bmasonry\b|\bbrick\b|\bconcrete\b|\bblock\b|\bstone\b/.test(t);
+        if (!onStuds && !onMasonry) {
+          return {
+            kind: 'question',
+            question: 'A shelf hangs on its wall, so I need the substrate before I size the fixings — what’s behind the finish?',
+            options: ['A floating shelf on wood studs', 'A floating shelf on masonry', 'A bookshelf instead (floor-standing)']
+          };
+        }
+        set('wall.substrate', onMasonry ? 'masonry' : 'stud');
+        if (/\b24\s?(?:in|inch|″|")\b|\b610\s?mm\b/.test(t)) set('wall.studSpacingMM', 610);
+        notes.push(onMasonry ? 'masonry wall' : 'stud wall');
+      }
+      let stoolAsk = '';
+      if (wantTemplate === 'chair') {
+        const isStool = /stool/.test(tmplWord || '');
+        if (isStool) {
+          set('seat.backHeight', 0);
+          const cm = t.match(/(\d+(?:\.\d+)?\s*(?:mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?)\s*(?:counter|bar|island|worktop)/);
+          if (cm) {
+            const ch = parseLen(cm[1], spec);
+            if (ch) { set('seat.counterHeight', ch); notes.push(`counter ${BB.Units.fmtLength(ch)}`); }
+          } else if (/\bbar\b|barstool/.test(t)) { set('seat.counterHeight', 1060); notes.push('bar height'); }
+          else if (/\bcounter\b|\bisland\b|\bkitchen\b/.test(t)) { set('seat.counterHeight', 900); notes.push('counter height'); }
+          else stoolAsk = ' What counter or bar will it serve? Name its height and I’ll set the seat 250–300 mm below it.';
+        }
+        const sm = t.match(/seat\s*(?:height)?\s*(?:of|at|to|=)?\s*(\d+(?:\.\d+)?\s*(?:mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?)/);
+        if (sm) { const sh = parseLen(sm[1], spec); if (sh) set('seat.height', sh); }
+      }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
@@ -590,6 +678,9 @@ var BB = globalThis.BB = globalThis.BB || {};
           kind: 'new', spec: merged,
           explain: `Roughed out a work table${benchHeight ? ' at workbench height' : ' at the height you asked for'}${drawerNote} — a sturdy table, not a laminated bench top with a vise, which is past what I can build. Refine away.`
         };
+      }
+      if (wantTemplate === 'chair') {
+        return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to the seating class's human-factors table${drawerNote} — solid wood seat, class-mandated seat-frame joinery (screwed rails don't survive the rear-tilt case).${stoolAsk || ' Refine away.'}` };
       }
       return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }

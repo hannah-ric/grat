@@ -1,0 +1,73 @@
+{
+  "why": "The current-version anchor (v7), and the corpus's only SEATING design. The chair template and its seat section arrived with the 2026-07 seating class; a chair saved today must still open as a chair — seat family, class-mandated frame joinery, and stretchers intact — while every earlier fixture proves pre-seating designs open with seat: null.",
+  "version": 7,
+  "kind": "spec",
+  "expect": {
+    "template": "chair",
+    "name": "Oak Dining Chair",
+    "species": "red_oak",
+    "units": "in",
+    "minParts": 15
+  },
+  "expectAfterMigration": {
+    "specVersion": 9,
+    "seat.height": 445,
+    "seat.backHeight": 470,
+    "joinery.frame": "mortise_tenon"
+  },
+  "spec": {
+    "specVersion": 7,
+    "meta": {
+      "name": "Oak Dining Chair",
+      "template": "chair",
+      "level": "advanced",
+      "units": "in"
+    },
+    "overall": {
+      "width": 430,
+      "depth": 420,
+      "height": 915
+    },
+    "wood": {
+      "species": "red_oak",
+      "sheetSpecies": "baltic_birch"
+    },
+    "structure": {
+      "topThickness": 20,
+      "legThickness": 38,
+      "apronHeight": 65,
+      "apronThickness": 25,
+      "apronInset": 0,
+      "shelfCount": 0,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": false,
+      "stretcher": "h",
+      "stretcherHeight": 200
+    },
+    "joinery": {
+      "frame": "mortise_tenon",
+      "case": "butt_screws",
+      "box": "pocket_screws"
+    },
+    "finish": "danish_oil",
+    "hardware": {
+      "pull": "bar_pull",
+      "hinge": "euro_cup"
+    },
+    "drawers": null,
+    "doors": null,
+    "custom": null,
+    "seat": {
+      "width": 430,
+      "depth": 420,
+      "backHeight": 470,
+      "counterHeight": null,
+      "height": 445,
+      "slopeDeg": 3,
+      "splayDeg": 0,
+      "backRake": 4
+    }
+  }
+}

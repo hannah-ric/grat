@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
+const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'drafting.js', 'gltf.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'joinery3d.js', 'selftest.js'];
 for (const f of SRC) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
@@ -721,7 +721,10 @@ section('local intent parser');
 
     // A8: an unparseable creation-shaped request gets a creation-phrased
     // fallback naming what offline CAN build — not the edit question.
-    const murph = AI.localModel('a murphy bed with zero hardware', spec);
+    // (This probe was "a murphy bed" until the bed class landed — murphy
+    // now draws its own mechanism refusal, so the no-parse probe moved to
+    // a piece with no template and no refusal row.)
+    const murph = AI.localModel('a hall tree with zero hardware', spec);
     eq(murph.kind, 'question', 'req3 offline: still a question');
     ok(/rough out/.test(murph.question) && /workbench/.test(murph.question) && /cabinet/.test(murph.question),
       `req3 offline: fallback names the buildable templates — got "${murph.question}"`);
@@ -1379,7 +1382,17 @@ section('prompt budget: hard ceiling with measured headroom');
   // the doors + hinge-style keys with their enum (~70). Both buy capability
   // the model cannot otherwise reach — a door it cannot name is a door the
   // user cannot ask for. The guard still catches accidental bloat.
-  ok(tokens <= 2500, `system prompt stays under the 2500-token ceiling (measured ${tokens})`);
+  // 2500 → 2620 for the seating class (2026-07): the "se" seat-family keys,
+  // the stool/counter coupling, and the refusal doctrine (upholstery, arms,
+  // sawn rear legs) — the refusals are the load-bearing part: a model that
+  // cannot name what seating refuses will approximate it silently.
+  // 2620 → 2760 for the wall_mounted class: the "wl" key with its substrate
+  // enum and the never-propose-unknown / drywall-refused doctrine — again
+  // the refusal is the spend that matters.
+  // 2760 → 2900 for the bed class: the "bd" key with the mattress-size enum
+  // and the bunk/crib/murphy refusal line — cribs especially are federal
+  // safety law, and a model that cannot say why it refuses will improvise.
+  ok(tokens <= 2900, `system prompt stays under the 2900-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
@@ -1422,10 +1435,13 @@ section('prompt budget: hard ceiling with measured headroom');
   // G10: the floor-standing boundary is documented next to the mechanisms
   // line — the model kept proposing hangs and correction silently grounded
   // them into mangled floor deliveries (ref1 both runs).
-  ok(/STAND ON THE FLOOR/.test(Codec.SCHEMA_DOC) && /hanging\/wall\/ceiling mounting does not exist/.test(Codec.SCHEMA_DOC),
-    'SCHEMA_DOC states the everything-stands-on-the-floor boundary');
-  ok(/nearest floor-standing design and say so in "e", or ask/.test(Codec.SCHEMA_DOC),
-    'the floor line instructs the same disclose-or-ask behavior as the mechanisms line');
+  // Amended with the wall_mounted class (2026-07): wall_shelf is the ONE
+  // named exception; the novel grammar keeps the full floor doctrine and the
+  // disclose-or-ask instruction survives.
+  ok(/STAND ON THE FLOOR except t=8 wall_shelf/.test(Codec.SCHEMA_DOC) && /ceiling mounting do not exist/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC states the floor boundary with its single wall_shelf exception');
+  ok(/novel grammar still cannot hang/.test(Codec.SCHEMA_DOC) && /nearest expressible design and say so in "e", or ask/.test(Codec.SCHEMA_DOC),
+    'the floor line keeps the novel-grammar refusal and the disclose-or-ask behavior');
 }
 
 section('word-number lengths and storage driver honesty');
@@ -1452,7 +1468,7 @@ section('word-number lengths and storage driver honesty');
  * a stubbed browser + fetch so the real transport ladder runs. */
 async function testKeylessProxyState() {
   section('AI transport: keyless proxy (503) ≠ offline (L-14)');
-  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'codec.js', 'ai.js'];
   const load = globals => {
     const ctx = vm.createContext(globals);
     for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, { filename: 'L14-' + f });
@@ -1570,7 +1586,7 @@ async function testTransportFailedMarking() {
   eq(AI.roundDecision(res), 'transport', 'roundDecision names the network, never a design bail');
   // A session with NO transport at all (true offline) is NOT a transport
   // failure — the early local return stays unmarked and bails as before.
-  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'codec.js', 'ai.js'];
   const octx = vm.createContext({ console });
   for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), octx, { filename: 'G13-' + f });
   const OB = octx.BB;
@@ -1598,7 +1614,7 @@ async function testMidRoundInfo() {
  * into the existing fallback path. */
 async function testFetchTimeout() {
   section('AI transport: model fetches carry an abort timeout (C6)');
-  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'codec.js', 'ai.js'];
   const load = globals => {
     const ctx = vm.createContext(globals);
     for (const f of AI_SRC) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), ctx, { filename: 'C6-' + f });
@@ -1634,7 +1650,7 @@ async function testFetchTimeout() {
  * forever — restored connectivity brings the model back without a reload. */
 async function testTransportTTL() {
   section('AI transport: network death is a TTL bench, not forever (C7)');
-  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'spec.js', 'codec.js', 'ai.js'];
+  const AI_SRC = ['knowledge.js', 'hardware.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'codec.js', 'ai.js'];
   let failures = 1;
   const ctx = vm.createContext({
     console, window: {}, document: {},
@@ -2213,7 +2229,7 @@ section('V-05 · __proto__ in a share code leaves Object.prototype clean');
     // survives decode.
     const decoded = Codec.decode(JSON.parse(JSON.stringify(wire)));
     ok(!Object.prototype.hasOwnProperty.call(decoded, '__proto__'), `${what}: decode() never copies an own __proto__ key onto the spec`);
-    eq(Object.keys(decoded).sort(), ['custom', 'doors', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'specVersion', 'structure', 'wood'],
+    eq(Object.keys(decoded).sort(), ['bed', 'custom', 'doors', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'seat', 'specVersion', 'structure', 'wall', 'wood'],
       `${what}: decode() emits exactly the spec schema and nothing else`);
   }
   // The partial-merge path (AI refinement diffs) rides the same whitelist.

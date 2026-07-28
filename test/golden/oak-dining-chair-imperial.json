@@ -1,0 +1,637 @@
+{
+ "spec": {
+  "specVersion": 9,
+  "meta": {
+   "name": "Oak Dining Chair",
+   "template": "chair",
+   "level": "advanced",
+   "units": "in"
+  },
+  "overall": {
+   "width": 430,
+   "depth": 420,
+   "height": 915
+  },
+  "wood": {
+   "species": "red_oak",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 20,
+   "legThickness": 38,
+   "apronHeight": 65,
+   "apronThickness": 25,
+   "apronInset": 0,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false,
+   "stretcher": "h",
+   "stretcherHeight": 200
+  },
+  "joinery": {
+   "frame": "mortise_tenon",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "danish_oil",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": null,
+  "doors": null,
+  "custom": null,
+  "seat": {
+   "width": 430,
+   "depth": 420,
+   "backHeight": 470,
+   "counterHeight": null,
+   "height": 445,
+   "slopeDeg": 3,
+   "splayDeg": 0,
+   "backRake": 4
+  },
+  "wall": null,
+  "bed": null
+ },
+ "validation": {
+  "errors": [],
+  "advisories": []
+ },
+ "cutList": [
+  {
+   "name": "Seat",
+   "qty": 1,
+   "L": 430,
+   "W": 420,
+   "T": 20,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "bevel 3° · select straight-grained stock, free of knots",
+   "angles": {
+    "miter": 0,
+    "bevel": 3,
+    "compound": false,
+    "extreme": false
+   }
+  },
+  {
+   "name": "Rear post",
+   "qty": 2,
+   "L": 915,
+   "W": 45,
+   "T": 38,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Crest rail",
+   "qty": 1,
+   "L": 414,
+   "W": 75,
+   "T": 16,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "includes 2 3/8 in for mortise & tenon · mortise offset per setout — back rakes 4° via opposed offsets · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Front rail",
+   "qty": 1,
+   "L": 414,
+   "W": 65,
+   "T": 25,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "includes 2 3/8 in for mortise & tenon · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Back seat rail",
+   "qty": 1,
+   "L": 414,
+   "W": 65,
+   "T": 25,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "includes 2 3/8 in for mortise & tenon · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Side rail",
+   "qty": 2,
+   "L": 397.5,
+   "W": 65,
+   "T": 25,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "includes 2 3/8 in for mortise & tenon · bevel 3° · select straight-grained stock, free of knots",
+   "angles": {
+    "miter": 0,
+    "bevel": 3,
+    "compound": false,
+    "extreme": false
+   }
+  },
+  {
+   "name": "Back slat",
+   "qty": 2,
+   "L": 414,
+   "W": 60,
+   "T": 16,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "includes 2 3/8 in for mortise & tenon · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Centre stretcher",
+   "qty": 1,
+   "L": 418,
+   "W": 49,
+   "T": 25,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "includes 1 1/2 in for mortise & tenon · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Side stretcher",
+   "qty": 2,
+   "L": 397,
+   "W": 49,
+   "T": 25,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "includes 2 3/8 in for mortise & tenon · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Front leg",
+   "qty": 2,
+   "L": 423,
+   "W": 38,
+   "T": 38,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "top end beveled 3° to meet the sloped seat · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Corner block",
+   "qty": 4,
+   "L": 60,
+   "W": 60,
+   "T": 53,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "rip the blank at 45° across the corner — grain runs across the diagonal · select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "verdict": "pass",
+  "rackScore": 100,
+  "tip": {
+   "angEmpty": 22.517,
+   "angLoaded": 22.517,
+   "ratio": 2.179
+  },
+  "checks": [
+   {
+    "id": "sag:apron:seat_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.112,
+     "limitMM": 1.123,
+     "spanMM": 337
+    }
+   },
+   {
+    "id": "str:apron:seat_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:seat_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.631,
+     "limitMM": 1.267,
+     "spanMM": 380
+    }
+   },
+   {
+    "id": "str:seat_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "chair:tilt",
+    "status": "pass",
+    "data": {
+     "momentNmm": 161747.5,
+     "armMM": 192.5,
+     "demandN": 840.247,
+     "capN": 2520,
+     "marginRatio": 2.999
+    }
+   },
+   {
+    "id": "chair:back",
+    "status": "pass",
+    "data": {
+     "stressMPa": 17.116,
+     "allowMPa": 24.75,
+     "momentNmm": 161747.5,
+     "netW": 28,
+     "postD": 45
+    }
+   },
+   {
+    "id": "chair:leg",
+    "status": "pass",
+    "data": {
+     "stressMPa": 7.304,
+     "allowMPa": 24.75
+    }
+   },
+   {
+    "id": "chair:cyclic",
+    "status": "pass",
+    "data": {
+     "perJointN": 333.5,
+     "cyclicCapN": 1260,
+     "marginRatio": 3.778
+    }
+   },
+   {
+    "id": "chair:rake",
+    "status": "pass",
+    "data": {
+     "rakeDeg": 4,
+     "maxRakeDeg": 6.3
+    }
+   },
+   {
+    "id": "chair:grain",
+    "status": "pass",
+    "data": {
+     "splayDeg": 0
+    }
+   },
+   {
+    "id": "chair:bifma",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "slender",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:seat_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 6.199,
+     "crossWidthMM": 420,
+     "context": "floated"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Red Oak 1x3 x 6 ft (3/4 x 2 1/2 in)",
+    "qty": 1,
+    "cost": 8.56
+   },
+   {
+    "label": "Red Oak 1x4 x 6 ft (3/4 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 10.864
+   },
+   {
+    "label": "Red Oak 2x2 x 6 ft (1 1/2 x 1 1/2 in)",
+    "qty": 1,
+    "cost": 9.877
+   },
+   {
+    "label": "Red Oak 2x3 x 8 ft (1 1/2 x 2 1/2 in)",
+    "qty": 1,
+    "cost": 14.921
+   },
+   {
+    "label": "Red Oak 4x4 x 6 ft (3 1/2 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 34.568
+   },
+   {
+    "label": "Red Oak 5/4x4 x 8 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 20.187
+   },
+   {
+    "label": "Red Oak 5/4x4 x 12 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "cost": 30.288
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x3",
+    "stockLen": 1829,
+    "offcut": 968,
+    "cuts": [
+     {
+      "name": "Back slat",
+      "len": 414,
+      "offset": 15
+     },
+     {
+      "name": "Back slat",
+      "len": 414,
+      "offset": 432
+     }
+    ]
+   },
+   {
+    "nominal": "1x4",
+    "stockLen": 1829,
+    "offcut": 1385,
+    "cuts": [
+     {
+      "name": "Crest rail",
+      "len": 414,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 1829,
+    "offcut": 950,
+    "cuts": [
+     {
+      "name": "Front leg",
+      "len": 423,
+      "offset": 15
+     },
+     {
+      "name": "Front leg",
+      "len": 423,
+      "offset": 441
+     }
+    ]
+   },
+   {
+    "nominal": "2x3",
+    "stockLen": 2438,
+    "offcut": 575,
+    "cuts": [
+     {
+      "name": "Rear post",
+      "len": 915,
+      "offset": 15
+     },
+     {
+      "name": "Rear post",
+      "len": 915,
+      "offset": 933
+     }
+    ]
+   },
+   {
+    "nominal": "4x4",
+    "stockLen": 1829,
+    "offcut": 1550,
+    "cuts": [
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 15
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 78
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 141
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 204
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3658,
+    "offcut": 195,
+    "cuts": [
+     {
+      "name": "Seat (strip 1/6)",
+      "len": 430,
+      "offset": 15
+     },
+     {
+      "name": "Seat (strip 2/6)",
+      "len": 430,
+      "offset": 448
+     },
+     {
+      "name": "Seat (strip 3/6)",
+      "len": 430,
+      "offset": 881
+     },
+     {
+      "name": "Seat (strip 4/6)",
+      "len": 430,
+      "offset": 1314
+     },
+     {
+      "name": "Seat (strip 5/6)",
+      "len": 430,
+      "offset": 1747
+     },
+     {
+      "name": "Seat (strip 6/6)",
+      "len": 430,
+      "offset": 2180
+     },
+     {
+      "name": "Centre stretcher",
+      "len": 418,
+      "offset": 2613
+     },
+     {
+      "name": "Front rail",
+      "len": 414,
+      "offset": 3034
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 2438,
+    "offcut": 393,
+    "cuts": [
+     {
+      "name": "Back seat rail",
+      "len": 414,
+      "offset": 15
+     },
+     {
+      "name": "Side rail",
+      "len": 397.5,
+      "offset": 432
+     },
+     {
+      "name": "Side rail",
+      "len": 397.5,
+      "offset": 832.5
+     },
+     {
+      "name": "Side stretcher",
+      "len": 397,
+      "offset": 1233
+     },
+     {
+      "name": "Side stretcher",
+      "len": 397,
+      "offset": 1633
+     }
+    ]
+   }
+  ],
+  "sheets": [],
+  "totalCost": 129.26,
+  "wasteSolidPct": 66,
+  "wasteSheetPct": null
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Red Oak 1x3 x 6 ft (3/4 x 2 1/2 in)",
+    "qty": 1,
+    "price": 8.56
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 1x4 x 6 ft (3/4 x 3 1/2 in)",
+    "qty": 1,
+    "price": 10.86
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 2x2 x 6 ft (1 1/2 x 1 1/2 in)",
+    "qty": 1,
+    "price": 9.88
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 2x3 x 8 ft (1 1/2 x 2 1/2 in)",
+    "qty": 1,
+    "price": 14.92
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 4x4 x 6 ft (3 1/2 x 3 1/2 in)",
+    "qty": 1,
+    "price": 34.57
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x4 x 8 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "price": 20.19
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x4 x 12 ft (1 x 3 1/2 in)",
+    "qty": 1,
+    "price": 30.29
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 7.8 bd ft",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 66%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 2 1/2 in wood screw (pilot 1/8 in)",
+    "qty": 24,
+    "price": 1.44
+   },
+   {
+    "kind": "fastener",
+    "label": "Figure-8 fasteners + #8 × 5/8 in",
+    "qty": 4,
+    "price": 3.2
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 15/16 in wood screw (pilot 1/8 in)",
+    "qty": 4,
+    "price": 0.24
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "finish",
+    "label": "Danish oil",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 160.15
+ },
+ "steps": [
+  "glueup1",
+  "thickness",
+  "layout",
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "s5",
+  "s6",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

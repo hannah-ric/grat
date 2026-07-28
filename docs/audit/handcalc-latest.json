@@ -110,5 +110,159 @@
     "engine": 2,
     "errPct": 0,
     "pass": true
+  },
+  {
+    "name": "rear-tilt side moment M (N·mm)",
+    "hand": 161747.5,
+    "engine": 161747.5,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "rear-tilt joint demand R (N)",
+    "hand": 840.2467532467532,
+    "engine": 840.2467532467532,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "rear-tilt joint capacity (N)",
+    "hand": 2520,
+    "engine": 2520,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "rear-tilt margin (×)",
+    "hand": 2.9991189972024297,
+    "engine": 2.9991189972024297,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "rear-post net-section stress (MPa)",
+    "hand": 17.116137566137567,
+    "engine": 17.116137566137567,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "cyclic per-joint demand (N)",
+    "hand": 333.5,
+    "engine": 333.5,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "cyclic capacity at 0.5 factor (N)",
+    "hand": 1260,
+    "engine": 1260,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "splayed leg axial length (mm)",
+    "hand": 609.9,
+    "engine": 609.9,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "footrest bending stress (MPa)",
+    "hand": 13.024418159100374,
+    "engine": 13.024418159100374,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "desk band governing sag (mm)",
+    "hand": 2.0397286841640705,
+    "engine": 2.0397286841640705,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "wall anchor per-screw withdrawal (N)",
+    "hand": 359.87254844264726,
+    "engine": 359.87254844264726,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "wall anchor margin (×)",
+    "hand": 1.7700711064420587,
+    "engine": 1.7700711064420587,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed slat gap (mm)",
+    "hand": 67.25,
+    "engine": 67.25,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed knee stress (MPa)",
+    "hand": 18.616443437527973,
+    "engine": 18.616443437527973,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed knee margin (×)",
+    "hand": 1.3294698357962236,
+    "engine": 1.3294698357962236,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed slat sag (mm)",
+    "hand": 0.9115789055201335,
+    "engine": 0.9115789055201335,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed rail end reaction (N)",
+    "hand": 741.8812500000001,
+    "engine": 741.8812500000001,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed joint margin (×)",
+    "hand": 3.057093032072181,
+    "engine": 3.057093032072181,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed required bracket rating (N)",
+    "hand": 1120,
+    "engine": 1120,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed centre-rail stress (MPa)",
+    "hand": 1.7309183740423526,
+    "engine": 1.7309183740423526,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed headboard lever (mm)",
+    "hand": 600,
+    "engine": 600,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "bed headboard post stress (MPa)",
+    "hand": 3.5002915451895045,
+    "engine": 3.5002915451895045,
+    "errPct": 0,
+    "pass": true
   }
 ]

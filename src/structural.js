@@ -122,7 +122,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     display: { label: 'Display items', kind: 'udl', kgPerM: 10, sustained: true, basis: 'light display duty' },
     books:   { label: 'Books', kind: 'udl', kgPerM: 60, sustained: true, basis: 'BIFMA X5.9 shelf load, 40 lb/ft' },
     heavy:   { label: 'Heavy storage', kind: 'udl', kgPerM: 112, sustained: true, basis: 'BIFMA X5.9 high-density file load, 75 lb/ft' },
-    seating: { label: 'Seated people', kind: 'seat', kgSeat: 136, sustained: false, basis: 'BIFMA X5.4 seating functional load, 300 lbf' },
+    /* 136 kg = the BIFMA X5.1 §8 / X5.4 drop-test PROOF mass (300 lb);
+     * the functional drop mass is 225 lb, and no static seat test exists in
+     * either standard — designing statically to the proof mass is the
+     * conservative, honestly-labeled alignment (2026-07 seating class). */
+    seating: { label: 'Seated people', kind: 'seat', kgSeat: 136, sustained: false, basis: 'aligned to BIFMA X5.1/X5.4 drop-test proof mass, 300 lb (functional drop is 225 lb)' },
     // Worktop loads are BIFMA FUNCTIONAL (short-term capability) loads — a
     // set table or a lean, not weight that sits for years — so no creep.
     worktop: { label: 'Desk / table duty', kind: 'combo', kgDist: 75, kgEdge: 90, sustained: false, basis: 'BIFMA X5.5 distributed + concentrated functional loads' }
@@ -143,8 +147,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     /* A custom part tagged 'shelf' gets the same book duty the bookshelf
      * template uses (G4/B3): a novel BOOKSHELF was being checked at display
      * 10 kg/m — 1/6 of the duty its template twin assumes. Template shelf
-     * kinds (a table's lower shelf, a nightstand top) keep display duty. */
-    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom') return 'books';
+     * kinds (a table's lower shelf, a nightstand top) keep display duty.
+     * Wall shelves take book duty too — that is what people put on them. */
+    if (template === 'bookshelf' || template === 'cabinet' || template === 'custom' || template === 'wall_shelf') return 'books';
     return 'display';
   }
 
@@ -286,7 +291,11 @@ var BB = globalThis.BB = globalThis.BB || {};
          * rides on them. Find the governing apron pair (the longer-spanning
          * parallel pair); the top is then checked as a plate strip spanning
          * BETWEEN that pair, not leg-to-leg on its own. */
-        const aprons = parts.filter(p => p.role === 'apron');
+        /* Desk apron drawers replace the front apron with a shallow lower
+         * rail — the band's weakest member governs the pair, so the rail
+         * joins the candidate list and the pair is judged at the MIN height
+         * (identical pairs are unchanged, so the frozen corpus is too). */
+        const aprons = parts.filter(p => p.role === 'apron' || p.id === 'rail_lower_1');
         const alongX = aprons.filter(a => a.size.w >= a.size.d);
         const alongZ = aprons.filter(a => a.size.d > a.size.w);
         const pick = (list, axis) => {
@@ -294,7 +303,8 @@ var BB = globalThis.BB = globalThis.BB || {};
           return {
             id: list[0].id, len: Math.max(...list.map(a => axis === 'x' ? a.size.w : a.size.d)),
             off: Math.max(...list.map(a => axis === 'x' ? Math.abs(a.pos.z) : Math.abs(a.pos.x))),
-            t: axis === 'x' ? list[0].size.d : list[0].size.w, h: list[0].size.h, axis
+            t: axis === 'x' ? list[0].size.d : list[0].size.w,
+            h: Math.min(...list.map(a => a.size.h)), axis
           };
         };
         const px = pick(alongX, 'x'), pz = pick(alongZ, 'z');
@@ -302,6 +312,18 @@ var BB = globalThis.BB = globalThis.BB || {};
         let apron = null, strip = null;
         if (pair) {
           apron = { id: pair.id, span: Math.max(100, pair.len), b: pair.t, h: pair.h };
+          /* Unequal pair (desk drawer band): the full rear apron and the
+           * shallow front rail share by stiffness (the fastened top forces
+           * equal deflection), and the rail's own span runs opening-wide —
+           * the centre stile, hung from the top, posts it at midspan. */
+          const hs = alongX.length >= 2 && pair.axis === 'x' ? alongX.map(a => a.size.h) : (pair.axis === 'z' ? alongZ.map(a => a.size.h) : []);
+          const hStrong = hs.length ? Math.max(...hs) : pair.h;
+          if (hStrong > pair.h + 0.1) {
+            apron.hStrong = hStrong;
+            apron.weakSpan = model.openings && model.openings.length
+              ? Math.max(100, Math.max(...model.openings.map(op => op.w)))
+              : apron.span;
+          }
           const stripSpan = Math.max(50, 2 * pair.off - pair.t);
           const topAlong = pair.axis === 'x' ? top.size.w : top.size.d;
           // Plate strip under a point load: effective width ≈ half the span
@@ -323,6 +345,36 @@ var BB = globalThis.BB = globalThis.BB || {};
         push({
           id: p.id, part: p, label: p.role === 'top' ? 'Top panel' : `Shelf ${p.id.replace(/\D+/g, '') || 1}`,
           kind: 'shelf', model: 'ss', span: p.size.w, b: p.size.d, h: p.size.h, over: 0
+        });
+      }
+    } else if (t === 'wall_shelf') {
+      /* Wall-mounted: the shelf cantilevers its DEPTH off the cleat line —
+       * the wall:anchor check below prices the couple the cantilever throws
+       * into the fixings. */
+      const shelf = parts.find(p => p.id === 'shelf_1');
+      if (shelf) {
+        const G2 = BB.Classes ? BB.Classes.get('wall_mounted').geom : { CLEAT_T: 19 };
+        push({
+          id: shelf.id, part: shelf, label: 'Shelf', kind: 'shelf', model: 'cant',
+          span: Math.max(60, shelf.size.d - 2 * G2.CLEAT_T), b: shelf.size.w, h: shelf.size.h, over: 0
+        });
+      }
+    } else if (t === 'chair') {
+      /* Seating: the SIDE RAILS are the beams (front-back), the seat is a
+       * plate strip spanning between them — the frame model the audit
+       * established for tables, applied to the seat frame. Kind 'seat' pins
+       * the seating preset. */
+      const seat = parts.find(p => p.id === 'seat_1');
+      const rails = parts.filter(p => p.id === 'rail_side_1' || p.id === 'rail_side_2');
+      if (seat && rails.length === 2 && spec.seat) {
+        const r = rails[0];
+        const railSpan = Math.max(100, Math.max(r.size.d, r.size.w));
+        const stripSpan = Math.max(80, spec.seat.width - 2 * spec.structure.apronThickness);
+        push({
+          id: seat.id, part: seat, label: 'Seat', kind: 'seat', model: 'ss',
+          span: stripSpan, b: seat.size.d, h: seat.size.h, over: 0,
+          apron: { id: r.id, span: railSpan, b: Math.min(r.size.w, r.size.d), h: r.size.h },
+          strip: { span: stripSpan, bEff: Math.min(seat.size.d, 0.5 * stripSpan + 100) }
         });
       }
     } else if (t === 'custom') {
@@ -608,30 +660,57 @@ var BB = globalThis.BB = globalThis.BB || {};
          * half the spread load. The point load's worst position is directly
          * above one apron; the top (fastened along both aprons) redistributes
          * at least a quarter of it to the partner, so one apron carries 3/4 —
-         * still conservative against true composite action. */
+         * still conservative against true composite action.
+         *
+         * UNEQUAL pair (desk drawer band): the fastened top forces equal
+         * deflection, so the spread load splits by stiffness (h³); the point
+         * load keeps at least a quarter on the member it lands over (the
+         * mirror of the redistribution rule above). The weak member spans
+         * its OPENING (the centre stile, hung from the top, posts it), the
+         * strong member the full leg-to-leg run; the governing member is
+         * reported. Equal pairs take the original path byte for byte. */
         const POINT_SHARE = 0.75;
-        const cases = loadCasesFor(s.presetKey, s.apron.span, 'ss')
-          .map(c => ({ ...c, mag: c.fn.startsWith('udl') ? c.mag * 0.5 : c.mag * POINT_SHARE }));
-        const Ia = I_rect(s.apron.b, s.apron.h);
-        const { sag, M } = evalBeam(cases, s.apron.span, E, Ia);
-        const limit = s.apron.span / SAG_LIMIT_RATIO;
+        let Ia, sag, M, apEvalH = s.apron.h, apEvalSpan = s.apron.span;
+        if (s.apron.hStrong) {
+          const hW = s.apron.h, hS = s.apron.hStrong;
+          const shareW = Math.pow(hW, 3) / (Math.pow(hW, 3) + Math.pow(hS, 3));
+          const evalMember = (h, span, spreadShare, ptShare) => {
+            const I = I_rect(s.apron.b, h);
+            const cases = loadCasesFor(s.presetKey, span, 'ss')
+              .map(c => ({ ...c, mag: c.fn.startsWith('udl') ? c.mag * spreadShare : c.mag * ptShare }));
+            const r = evalBeam(cases, span, E, I);
+            return { I, sag: r.sag, M: r.M, ratio: r.sag / (span / SAG_LIMIT_RATIO), h, span };
+          };
+          const weak = evalMember(hW, s.apron.weakSpan || s.apron.span, shareW, Math.max(shareW, 0.25));
+          const strong = evalMember(hS, s.apron.span, 1 - shareW, POINT_SHARE);
+          const gov = weak.ratio >= strong.ratio ? weak : strong;
+          Ia = gov.I; sag = gov.sag; M = gov.M; apEvalH = gov.h; apEvalSpan = gov.span;
+        } else {
+          const cases = loadCasesFor(s.presetKey, s.apron.span, 'ss')
+            .map(c => ({ ...c, mag: c.fn.startsWith('udl') ? c.mag * 0.5 : c.mag * POINT_SHARE }));
+          Ia = I_rect(s.apron.b, s.apron.h);
+          ({ sag, M } = evalBeam(cases, s.apron.span, E, Ia));
+        }
+        const limit = apEvalSpan / SAG_LIMIT_RATIO;
         const ratio = sag / limit;
-        if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: s.apron.span }; }
+        if (ratio > worstSagRatio) { worstSagRatio = ratio; worstSag = { id: s.id, sag, limit, span: apEvalSpan }; }
         const apFixes = [...fixes];
         if (spec.structure.apronHeight < 160) apFixes.unshift({ id: 'tall-apron', label: `Deepen aprons to ${fmtLen(Math.min(160, spec.structure.apronHeight + 30))}`, patch: { structure: { apronHeight: Math.min(160, spec.structure.apronHeight + 30) } } });
-        const apStress = Ia > 0 ? (M * (s.apron.h / 2)) / Ia : Infinity;
+        const apStress = Ia > 0 ? (M * (apEvalH / 2)) / Ia : Infinity;
         const apAllow = sp.mor / SAFETY_FACTOR;
         checks.push({
           id: 'sag:apron:' + s.id, title: `Sag — aprons under ${s.label.toLowerCase()}`,
           status: sagStatus(ratio),
-          value: `predicted sag ${fmtFine(sag)} over the ${fmtLen(s.apron.span)} apron span`,
+          value: `predicted sag ${fmtFine(sag)} over the ${fmtLen(apEvalSpan)} ${s.apron.hStrong ? 'governing band' : 'apron'} span`,
           threshold: `≤ ${fmtFine(limit)} (${U().fmtSagRate(SAG_LIMIT_RATIO)})`,
-          explain: `The aprons are the beams: each ${fmtLen(s.apron.b)} × ${fmtLen(s.apron.h)} apron carries half the spread load and, worst case, ¾ of the point load (the attached top shares the rest across). Sustained loads include ×${CREEP_FACTOR} creep.`,
+          explain: s.apron.hStrong
+            ? `Drawer band: the full ${fmtLen(s.apron.hStrong)} rear apron and the ${fmtLen(s.apron.h)} front rail share the load by stiffness through the fastened top; the governing member (${fmtLen(apEvalH)} deep over ${fmtLen(apEvalSpan)}) is reported. Sustained loads include ×${CREEP_FACTOR} creep.`
+            : `The aprons are the beams: each ${fmtLen(s.apron.b)} × ${fmtLen(s.apron.h)} apron carries half the spread load and, worst case, ¾ of the point load (the attached top shares the rest across). Sustained loads include ×${CREEP_FACTOR} creep.`,
           fixes: ratio > 1 ? withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'sag') : [],
           data: { sagMM: sag, limitMM: limit, spanMM: s.apron.span },
-          prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(s.apron.span)} mm, half the spread load per apron` }
+          prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(apEvalSpan)} mm, ${s.apron.hStrong ? 'stiffness-shared (h³) across the unequal band' : 'half the spread load per apron'}` }
         });
-        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, s.apron.h, Ia, preset,
+        strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, apEvalH, Ia, preset,
           withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'str'), sp);
 
         /* (b) Top as a plate strip between the aprons. Point loads act at the
@@ -903,9 +982,462 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* ---- seating load cases (the 'seating' class, BB.Classes) ----
+     * Chairs break where casework never does: cyclic, eccentric loads and a
+     * user tipped onto two legs. Magnitudes and their sources are pinned in
+     * the class contract (classes.js SEAT_LOADS); the arithmetic here is
+     * hand-verified in test/handcalc.js. */
+    if (t === 'chair' && spec.seat && BB.Classes) {
+      const C = BB.Classes.get('seating');
+      const L = C.loads, G = C.geom;
+      const se = spec.seat, st2 = spec.structure;
+      const stool = se.backHeight === 0;
+      const fjKey = spec.joinery.frame;
+      const capJoint = (JOINT_RATING[fjKey] || JOINT_RATING.butt_screws).capN * sgF;
+      const jLabel = K.JOINERY[fjKey] ? K.JOINERY[fjKey].label.toLowerCase() : fjKey;
+      const railH = st2.apronHeight;
+      const railY = se.height - st2.topThickness - railH / 2;
+      const strYc = st2.stretcherHeight;
+      const arm = Math.max(30, railY - strYc);
+      const allow = sp.mor / SAFETY_FACTOR;
+      const crestY = se.height + se.backHeight - G.CREST_H / 2;
+
+      if (!stool) {
+        /* (a) REAR TILT — the case that kills chairs. Occupant weight rides
+         * the rear legs (axial — posts carry it easily); the governing
+         * demand is the back force levering each side frame about its seat
+         * joints. Per side: M = (F/2)·(crest − rail); resisted as a couple
+         * between the side-rail joint and the side-stretcher joint. */
+        const M = (L.BACK_STATIC_N / 2) * (crestY - railY);
+        const R = M / arm;
+        const margin = capJoint / R;
+        const fixes = [];
+        if (margin < 1.5) {
+          // A lower stretcher lengthens the couple arm — solved, not guessed.
+          const needArm = (R * arm) / (capJoint / 1.5);
+          const newY = Math.round(railY - needArm);
+          if (newY >= 100 && newY < strYc - 10) {
+            fixes.push({ id: 'tilt-arm', label: `Drop the stretchers to ${fmtLen(newY)}`, patch: { structure: { stretcherHeight: newY } } });
+          }
+          if (spec.meta.level === 'advanced' && fjKey !== 'mortise_tenon') {
+            fixes.push({ id: 'tilt-mt', label: 'Mortise & tenon the seat frame', patch: { joinery: { frame: 'mortise_tenon' } } });
+          }
+        }
+        checks.push({
+          id: 'chair:tilt', title: 'Rear tilt — user on two legs',
+          status: jointStatus(margin),
+          value: `${U().fmtPointLoad(R / GRAV)} per side joint vs ${U().fmtPointLoad(capJoint / GRAV)} capacity (${margin.toFixed(2)}×)`,
+          threshold: '≥ 1.5× on the side-rail↔rear-post joint couple (class contract, derivation)',
+          explain: `Tipped onto the rear legs, the ${U().fmtPointLoad(L.BACK_STATIC_N / GRAV)} back force (BIFMA X5.1 back functional magnitude) levers each side frame about its seat joints: M = ${Math.round(M).toLocaleString()} N·mm per side, resolved as a couple over the ${fmtLen(arm)} between the side rail and the side stretcher. This is why the class mandates ${jLabel}-grade joinery — screwed rails fail exactly here.`,
+          fixes,
+          data: { momentNmm: M, armMM: arm, demandN: R, capN: capJoint, marginRatio: margin },
+          prov: { rule: `rear tilt: M = (${L.BACK_STATIC_N}/2) × (${Math.round(crestY)} − ${Math.round(railY)}) = ${Math.round(M).toLocaleString()} N·mm; R = M/${Math.round(arm)} = ${Math.round(R)} N vs ${Math.round(capJoint)} N (${fjKey}, SG-scaled)` }
+        });
+
+        /* (b) BACK STATIC — rear post bending at the rail mortise: the
+         * highest moment lands on the post's smallest net section. */
+        const postD = G.rearPostDepth(st2);
+        const bNet = Math.max(10, st2.legThickness - G.MORTISE_DERATE);
+        const Ipost = I_rect(bNet, postD);
+        const stressP = (M * (postD / 2)) / Ipost;
+        const marginP = allow / stressP;
+        const pFixes = [];
+        if (marginP < 1.25) {
+          const up = nextSolidUp(st2.legThickness);
+          if (up && up <= 100) pFixes.push({ id: 'post-up', label: `Thicken the rear posts to ${fmtLen(up)}`, patch: { structure: { legThickness: up } } });
+          const sol2 = solveSpeciesFix(spec.wood.species, 0, stressP, allow, 'str');
+          if (sol2) pFixes.push({ id: 'post-sp-' + sol2.key, label: `Switch to ${sol2.label.toLowerCase()}${sol2.partial ? PARTIAL_LIMIT : ''}`, patch: { wood: { species: sol2.key } } });
+        }
+        checks.push({
+          id: 'chair:back', title: 'Back strength — rear posts',
+          status: strStatus(marginP),
+          value: `net-section bending ${stressP.toFixed(1)} MPa · margin ${marginP.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR}) at the rail mortise, ${fmtLen(bNet)} × ${fmtLen(postD)} net section`,
+          explain: `${U().fmtPointLoad(L.BACK_STATIC_N / GRAV)} horizontal at the crest (ANSI/BIFMA X5.1-2017 §5/6 functional back load — applied at the crest, a LONGER lever than the standard's ≤406 mm point) bends each rear post about the section the side-rail mortise has already thinned. Straight grain is mandatory here — which is exactly why the class refuses sawn rear-leg bends.`,
+          fixes: pFixes,
+          data: { stressMPa: stressP, allowMPa: allow, momentNmm: M, netW: bNet, postD },
+          prov: { rule: `post bending: I = ${Math.round(bNet)}×${Math.round(postD)}³/12 = ${Math.round(Ipost).toLocaleString()} mm⁴; σ = M·c/I with M = ${Math.round(M).toLocaleString()} N·mm, c = ${postD / 2}` }
+        });
+      }
+
+      /* (c) LEG STRENGTH — X5.4 §16 magnitude (334 N functional) applied
+       * horizontally at the foot: the longest lever to the stretcher brace
+       * (application height is unpublished; the foot is the conservative
+       * reading, stated in the class contract). */
+      {
+        const legT2 = st2.legThickness;
+        const Mleg = L.LEG_STATIC_N * strYc;
+        const Ileg = I_rect(legT2, legT2);
+        const stressL = (Mleg * (legT2 / 2)) / Ileg;
+        const marginL = allow / stressL;
+        checks.push({
+          id: 'chair:leg', title: 'Leg strength',
+          status: strStatus(marginL),
+          value: `bending ${stressL.toFixed(1)} MPa at the stretcher line · margin ${marginL.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR})`,
+          explain: `${U().fmtPointLoad(L.LEG_STATIC_N / GRAV)} sideways at the foot (BIFMA X5.4 §16 leg-strength functional magnitude) bends the leg over the ${fmtLen(strYc)} below the stretcher brace.`,
+          fixes: marginL < 1 ? [{ id: 'leg-up', label: `Thicken legs to ${fmtLen(Math.min(100, legT2 + 7))}`, patch: { structure: { legThickness: Math.min(100, legT2 + 7) } } }] : [],
+          data: { stressMPa: stressL, allowMPa: allow },
+          prov: { rule: `leg bending: M = ${L.LEG_STATIC_N} × ${strYc} = ${Math.round(Mleg).toLocaleString()} N·mm; I = ${legT2}⁴/12` }
+        });
+      }
+
+      /* (d) CYCLIC DURABILITY — 100 000 sit-downs (X5.1 §10.3 / X5.4-2020).
+       * Acceptance, not simulation: the seat-frame joints must carry the
+       * static seat case at HALF capacity (cyclic acceptable design load ≈
+       * half static — Eckelman practice; class contract names it a
+       * derivation). Demand: seat load through the four rail-end joint
+       * pairs; worst single joint takes a quarter. */
+      {
+        const perJoint = L.SEAT_STATIC_N / 4;
+        const marginC = (capJoint * L.CYCLIC_CAPACITY_FACTOR) / perJoint;
+        checks.push({
+          id: 'chair:cyclic', title: 'Cyclic seating durability',
+          status: jointStatus(marginC),
+          value: `${U().fmtPointLoad(perJoint / GRAV)} per joint vs ${U().fmtPointLoad(capJoint * L.CYCLIC_CAPACITY_FACTOR / GRAV)} cyclic capacity (${marginC.toFixed(2)}×)`,
+          threshold: `≥ 1.5× at half static joint capacity — stands in for ${L.CYCLIC_MASS_KG} kg × ${L.CYCLIC_CYCLES.toLocaleString()} cycles (X5.1 §10.3)`,
+          explain: marginC >= 1.5
+            ? `The ${jLabel} seat frame holds the seated load with cyclic headroom — the difference between a chair that is tight in year five and one that wobbles in year one.`
+            : `Under repeated seating the ${jLabel} joints work loose — this is the wobbly-chair failure. A stiffer species or mortise-and-tenon joinery buys the cyclic margin back.` + (fjKey === 'kd_bolt' ? ' Bolted frames additionally need their re-snug schedule honored (it is in the assembly steps).' : ''),
+          fixes: [],
+          data: { perJointN: perJoint, cyclicCapN: capJoint * L.CYCLIC_CAPACITY_FACTOR, marginRatio: marginC },
+          prov: { rule: `cyclic: ${L.SEAT_STATIC_N}/4 = ${Math.round(perJoint)} N vs ${Math.round(capJoint)} × ${L.CYCLIC_CAPACITY_FACTOR}` }
+        });
+      }
+
+      /* (e) STOOL FOOTREST — full body weight on one foot, midspan. */
+      if (stool) {
+        const fr = parts.find(p => p.id === 'stretcher_front_1');
+        if (fr) {
+          const span = Math.max(100, Math.max(fr.size.w, fr.size.d));
+          const bF = Math.min(fr.size.w, fr.size.d), hF = fr.size.h;
+          const IF = I_rect(bF, hF);
+          const MF = (L.FOOTREST_STEP_N * span) / 4;
+          const stressF = (MF * (hF / 2)) / IF;
+          const marginF = allow / stressF;
+          checks.push({
+            id: 'chair:foot', title: 'Footrest under a mounting step',
+            status: strStatus(marginF),
+            value: `bending ${stressF.toFixed(1)} MPa · margin ${marginF.toFixed(1)}×`,
+            threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR})`,
+            explain: `Mounting a stool puts the full ${U().fmtPointLoad(L.FOOTREST_STEP_N / GRAV)} on one foot at the footrest midspan (class derivation) — the load every bar-stool rung actually sees, and why the footrest is sized as structure, not trim.`,
+            fixes: [],
+            data: { stressMPa: stressF, allowMPa: allow, spanMM: span },
+            prov: { rule: `footrest: M = PL/4 = ${L.FOOTREST_STEP_N}×${Math.round(span)}/4 = ${Math.round(MF).toLocaleString()} N·mm; I = ${Math.round(bF)}×${Math.round(hF)}³/12` }
+          });
+        }
+        /* (f) COUNTER COUPLING — a stool is FOR a surface; not knowing the
+         * surface is itself a finding, never silence. */
+        checks.push(se.counterHeight === null ? {
+          id: 'chair:counter', title: 'Counter height', status: 'advisory',
+          value: `seat at ${fmtLen(se.height)} — no counter stated`,
+          threshold: 'seat 250–300 below the counter it serves',
+          explain: `No counter height was given, so the seat is at ${fmtLen(se.height)} on the standard band. Tell the app the real counter height and the seat will be re-derived 250–300 below it.`,
+          fixes: []
+        } : {
+          id: 'chair:counter', title: 'Counter height', status: 'pass',
+          value: `seat ${fmtLen(se.height)} for a ${fmtLen(se.counterHeight)} counter (drop ${fmtLen(se.counterHeight - se.height)})`,
+          threshold: 'seat 250–300 below the counter it serves',
+          explain: 'Seat height is derived from the stated counter — the coupling the class contract mandates.',
+          fixes: []
+        });
+      }
+
+      /* (g) RAKE DEFENSE — correction clamps rake to straight-post
+       * capability; this re-derives the cap so a spec that somehow escaped
+       * correction can never present a sawn-leg geometry as sound. */
+      if (!stool) {
+        const maxRake = G.backRakeMax(st2, se);
+        const over = se.backRake > maxRake + 0.05;
+        checks.push({
+          id: 'chair:rake', title: 'Back rake vs straight rear posts',
+          status: over ? 'fail' : 'pass',
+          value: `${fmtDeg(se.backRake)} of ${fmtDeg(maxRake)} available from offsets`,
+          threshold: 'rake achievable by opposed offsets within the post depth — beyond it is a sawn/bent leg (refused: short grain)',
+          explain: over
+            ? 'This rake exceeds what straight rear posts can give. A sawn bend puts short grain at the post’s highest-moment point — the classic rear-leg break — so the class refuses the geometry rather than shipping it.'
+            : `The back rakes ${fmtDeg(se.backRake)} by offsetting the crest rearward and the slats forward inside the post depth — rear posts stay straight, grain stays continuous, no short grain anywhere.`,
+          fixes: [],
+          data: { rakeDeg: se.backRake, maxRakeDeg: maxRake }
+        });
+      }
+
+      /* (h) GRAIN ORIENTATION — the blank rule for every angled leg: rip
+       * WITH the grain along the leg axis; never saw the angle into a
+       * vertical blank (slope-of-grain strength loss ~25–30% at 1-in-10,
+       * Wood Handbook slope-of-grain table; JLC/MDPI corroboration). */
+      {
+        const splayed = se.splayDeg > 0;
+        checks.push({
+          id: 'chair:grain', title: 'Grain orientation on legs',
+          status: splayed ? 'advisory' : 'pass',
+          value: splayed ? `${fmtDeg(se.splayDeg)} splay — blank orientation is load-bearing` : 'straight members — grain follows every leg',
+          threshold: 'grain runs the length of every leg; angled legs are ripped with the grain, never sawn from a vertical blank',
+          explain: splayed
+            ? `Splayed legs MUST be ripped with the grain running along the leg axis (the compound angle lives in the END cuts). Sawing the splay into a vertically-grained blank costs roughly a quarter of the bending strength at a 1-in-10 slope (Wood Handbook slope-of-grain data) — the cut list and steps carry the blank rule.`
+            : 'All legs and posts are straight members cut with continuous grain — the class geometry never creates runout.',
+          fixes: [],
+          data: { splayDeg: se.splayDeg }
+        });
+      }
+
+      /* (i) The benchmark disclosure — in the OUTPUT, not just the docs:
+       * never a compliance claim. */
+      checks.push({
+        id: 'chair:bifma', title: 'What these numbers are', status: 'pass',
+        value: 'benchmarked, not certified',
+        threshold: 'no compliance claim without physical testing',
+        explain: C.DESIGN_BASIS_SEATING,
+        fixes: []
+      });
+    }
+
+    /* ---- wall-mounted anchor model (the 'wall_mounted' class) ----
+     * The load path leaves the furniture: the cantilever couple lands in the
+     * fixings, and the class contract carries the sourced capacities
+     * (classes.js WALL_GEOM — NDS withdrawal, IRC spacing). Arithmetic is
+     * hand-verified in test/handcalc.js. */
+    const wallCls = BB.Classes ? BB.Classes.forTemplate(t) : null;
+    const isWallMounted = !!(wallCls && wallCls.mounted === 'wall');
+    if (isWallMounted && t === 'wall_shelf' && spec.wall) {
+      const G2 = wallCls.geom;
+      const shelf = parts.find(p => p.id === 'shelf_1');
+      const su = spec.wall.substrate;
+      const W = spec.overall.width, D = spec.overall.depth;
+      const cleatLen = W - 20;
+      const surf = surfaces.find(x => x.id === 'shelf_1');
+      const presetKey = surf ? surf.presetKey : 'books';
+      // Load: the chosen preset along the shelf + the shelf's own mass.
+      const loadN = totalLoadN(presetKey, W);
+      let selfN = 0;
+      for (const p of parts) if (!p.hardware) selfN += p.size.w * p.size.h * p.size.d * 1e-9 * partDensity(p, spec) * GRAV;
+      const totalN = loadN + selfN;
+      // Couple: load centroid at D/2 off the wall; tension at the screw
+      // line, bearing at the cleat bottom → arm = SCREW_LINE.
+      const M = totalN * (D / 2);
+      const Tn = M / G2.SCREW_LINE;
+
+      if (su === 'stud') {
+        const studs = G2.studsEngaged(cleatLen, spec.wall.studSpacingMM);
+        const screws = Math.max(1, studs) * G2.SCREWS_PER_STUD;
+        const perScrew = Tn / screws;
+        const margin = G2.SCREW_WITHDRAWAL_N / perScrew;
+        const shearPer = totalN / screws;
+        const shearMargin = G2.SCREW_LATERAL_N / shearPer;
+        checks.push({
+          id: 'wall:studs', title: 'Stud engagement',
+          status: studs >= 2 ? 'pass' : studs === 1 ? 'advisory' : 'fail',
+          value: `${studs} stud${studs === 1 ? '' : 's'} guaranteed under a ${fmtLen(cleatLen)} cleat at ${fmtLen(spec.wall.studSpacingMM)} centres`,
+          threshold: '≥ 2 studs (worst-phase floor(length/spacing), IRC R602.3(5) spacing)',
+          explain: studs >= 2
+            ? 'Whatever the cleat’s phase against the stud grid, it crosses at least two studs — find them, and put two screws in each.'
+            : studs === 1
+              ? `Only one stud crossing is guaranteed at this length. A single-stud mount works CENTRED on the stud with both screws in it — keep the shelf under ${fmtLen(600)} and expect no forgiveness for a missed centre.`
+              : 'The cleat cannot guarantee a single stud crossing — lengthen the shelf past one spacing bay or name a masonry wall.',
+          fixes: studs < 2 ? [{ id: 'wall-wider', label: `Lengthen to ${fmtLen(2 * spec.wall.studSpacingMM + 40)}`, patch: { overall: { width: 2 * spec.wall.studSpacingMM + 40 } } }] : [],
+          data: { studs, cleatLen, spacing: spec.wall.studSpacingMM }
+        });
+        checks.push({
+          id: 'wall:anchor', title: 'Anchor pullout — cleat screws',
+          status: jointStatus(Math.min(margin, shearMargin)),
+          value: `${U().fmtPointLoad(perScrew / GRAV)} withdrawal per screw vs ${U().fmtPointLoad(G2.SCREW_WITHDRAWAL_N / GRAV)} design capacity (${margin.toFixed(2)}×)`,
+          threshold: `≥ 1.5× on ${screws} × #10 screws (NDS W = 2850·G²·D, SPF floor, 1.5 in thread; shear ${shearMargin.toFixed(2)}× vs the 356 N secondary-source value)`,
+          explain: `${U().fmtPointLoad(totalN / GRAV)} at half the ${fmtLen(D)} depth throws a ${Math.round(M).toLocaleString()} N·mm couple into the wall: tension along the screw line, bearing at the cleat bottom, arm ${fmtLen(G2.SCREW_LINE)}. Every screw must land in a stud CENTRE — the capacity assumes wood, not drywall.`,
+          fixes: margin < 1.5 ? [{ id: 'wall-shallow', label: `Shallow the shelf to ${fmtLen(Math.max(200, D - 50))}`, patch: { overall: { depth: Math.max(200, D - 50) } } }] : [],
+          data: { momentNmm: M, tensionN: Tn, perScrewN: perScrew, capN: G2.SCREW_WITHDRAWAL_N, screws, marginRatio: margin, shearMargin },
+          prov: { rule: `anchor couple: M = ${Math.round(totalN)} N × ${Math.round(D / 2)} mm; T = M/${G2.SCREW_LINE} = ${Math.round(Tn)} N over ${screws} screws` }
+        });
+      } else if (su === 'masonry') {
+        const anchors = Math.max(2, Math.floor(cleatLen / G2.MASONRY_PITCH) + 1);
+        const perAnchor = Tn / anchors;
+        const required = Math.ceil(perAnchor * 1.5 / 10) * 10;
+        checks.push({
+          id: 'wall:anchor', title: 'Anchor pullout — masonry',
+          status: 'advisory',
+          value: `${anchors} anchors at ≤ ${fmtLen(G2.MASONRY_PITCH)}: buy a WORKING load rating ≥ ${U().fmtPointLoad(required / GRAV)} each`,
+          threshold: 'anchor’s published WORKING rating ≥ 1.5 × the computed demand — capacity is never assumed for masonry',
+          explain: `The couple puts ${U().fmtPointLoad(perAnchor / GRAV)} of tension on each of ${anchors} anchors. The BOM prints the required rating instead of guessing one: match it against the anchor box's WORKING (not ultimate) value, in the actual wall material.`,
+          fixes: [],
+          data: { momentNmm: M, perAnchorN: perAnchor, requiredWorkingN: required, anchors }
+        });
+      }
+      checks.push({
+        id: 'wall:basis', title: 'What these fixing numbers are', status: 'pass',
+        value: 'design guidance, not certified anchor engineering',
+        threshold: 'no fixing claim without the substrate stated',
+        explain: BB.Classes.DESIGN_BASIS_WALL,
+        fixes: []
+      });
+    }
+
+    /* ---- bed load cases (the 'bed' class) ----
+     * Deck + connection physics with EN 1725's 110 kg user mass as the
+     * benchmark. Hand arithmetic in test/handcalc.js. Sag is judged on the
+     * DISTRIBUTED case (comfort criterion); strength on the knee-point case
+     * spread over two slats by the mattress (derivation, stated). */
+    if (t === 'bed' && spec.bed && BB.Classes) {
+      const C = BB.Classes.get('bed');
+      const G = C.geom;
+      const bd = spec.bed;
+      const msz = G.SIZES[bd.size];
+      const Wi = msz.w + G.FIT_CLEARANCE, Li = msz.l + G.FIT_CLEARANCE;
+      const slats = parts.filter(p => p.role === 'slat');
+      const nSlat = slats.length;
+      // Gaps are measured over the deck the builder actually laid out
+      // (slats sit clear of the post intrusions, not over the full inner
+      // length) — probe and builder must agree on the same number.
+      const slatZs = slats.map(p => p.pos.z);
+      const deckLenMM = nSlat > 1 ? (Math.max.apply(null, slatZs) - Math.min.apply(null, slatZs)) + G.SLAT_W : G.SLAT_W;
+      const gapMM = nSlat > 1 ? (deckLenMM - nSlat * G.SLAT_W) / (nSlat - 1) : 0;
+      const hasCentre = parts.some(p => p.id === 'rail_centre_1');
+      const allow = sp.mor / SAFETY_FACTOR;
+      const liveN = G.OCCUPANTS * G.USER_KG * GRAV;
+      const mattN = (G.MATTRESS_KG[bd.size] || 55) * GRAV;
+      const totalN = liveN + mattN;
+
+      /* (a) SLATS — gap rule + the governing segment. */
+      {
+        const span = Math.max(200, hasCentre ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w);
+        const slatT = slats.length ? slats[0].size.h : G.SLAT_T; // section solved by the builder
+        const I = I_rect(G.SLAT_W, slatT);
+        // Distributed (sag criterion): this slat's share, segment tributary.
+        const perSlat = totalN / nSlat;
+        const w = perSlat / Wi; // N/mm along the slat
+        const sagD = (5 * w * Math.pow(span, 4)) / (384 * E * I) * (mattN / totalN * CREEP_FACTOR + liveN / totalN);
+        const limD = span / SAG_LIMIT_RATIO;
+        // Knee point (strength criterion): 110 kg on one knee, spread over
+        // TWO slats by the mattress (a knee patch through 200+ mm of
+        // mattress covers two slats at this pitch — derivation, stated).
+        const P = (G.USER_KG * GRAV) / 2;
+        const Mk = (P * span) / 4 + ((mattN / nSlat / Wi) * span * span) / 8;
+        const stressK = (Mk * (slatT / 2)) / I;
+        const marginK = allow / stressK;
+        const gapOK = gapMM <= G.SLAT_GAP_MAX + 0.05;
+        const sagStat = sagStatus(sagD / limD), strStat = strStatus(marginK);
+        const worst = !gapOK ? 'fail' : (RANK[sagStat] < RANK[strStat] ? sagStat : strStat);
+        checks.push({
+          id: 'bed:slats', title: 'Slat deck',
+          status: worst,
+          value: `${nSlat} × ${fmtLen(G.SLAT_W)}×${fmtLen(slatT)} slats, gaps ${fmtLen(Math.round(gapMM * 10) / 10)} · knee margin ${marginK.toFixed(2)}× · sag ${fmtFine(sagD)}`,
+          threshold: `gaps ≤ ${fmtLen(G.SLAT_GAP_MAX)} (foam-warranty floor, Amerisleep 2.75 in) · strength ≥ 1.25× at MOR/${SAFETY_FACTOR} · sag ≤ ${fmtFine(limD)}`,
+          explain: `Two occupants at ${G.USER_KG} kg (EN 1725 user mass) plus a ${Math.round(mattN / GRAV)} kg design mattress ride ${nSlat} slats${hasCentre ? ', each spanning half the width to the centre rail' : ''}. The strength case is a knee: ${Math.round(G.USER_KG * GRAV)} N through the mattress onto two slats at midspan. Slat width ${fmtLen(G.SLAT_W)} meets the ≥ 3 in manufacturer floor.`,
+          fixes: [],
+          data: { nSlat, gapMM, spanMM: span, kneeMarginRatio: marginK, sagMM: sagD, kneeStressMPa: stressK },
+          prov: { rule: `knee: M = ${Math.round(P)}×${Math.round(span)}/4 + mattress share; I = ${G.SLAT_W}×${G.SLAT_T}³/12 = ${Math.round(I).toLocaleString()} mm⁴` }
+        });
+      }
+
+      /* (b) SIDE RAILS — tributary share + edge-sit point. */
+      const rail = parts.find(p => p.id === 'rail_side_1');
+      let railR = 0;
+      if (rail) {
+        const span = Math.max(500, rail.size.d);
+        const share = hasCentre ? 0.25 : 0.5;
+        const w = (totalN * share) / span;
+        const I = I_rect(rail.size.w, rail.size.h);
+        const Pedge = 0.75 * G.USER_KG * GRAV; // sitting on the rail edge
+        const M = (w * span * span) / 8 + (Pedge * span) / 4;
+        const sag = (5 * w * Math.pow(span, 4)) / (384 * E * I) + (Pedge * Math.pow(span, 3)) / (48 * E * I);
+        const lim = span / SAG_LIMIT_RATIO;
+        const stress = (M * (rail.size.h / 2)) / I;
+        const margin = allow / stress;
+        railR = (w * span) / 2 + Pedge / 2;
+        checks.push({
+          id: 'bed:rail', title: 'Side rails',
+          status: sag / lim > 1.5 || margin < 1 ? 'fail' : sag / lim > 1 || margin < 1.25 ? 'advisory' : 'pass',
+          value: `sag ${fmtFine(sag)} over ${fmtLen(span)} · strength margin ${margin.toFixed(1)}×`,
+          threshold: `sag ≤ ${fmtFine(lim)} (L/${SAG_LIMIT_RATIO}) · margin ≥ 1.25× at MOR/${SAFETY_FACTOR}`,
+          explain: `Each ${fmtLen(rail.size.w)} × ${fmtLen(rail.size.h)} rail carries ${hasCentre ? 'a quarter' : 'half'} of the deck load${hasCentre ? ' (the centre rail takes half)' : ''} plus a ${U().fmtPointLoad(Pedge / GRAV)} edge-sit at midspan.`,
+          fixes: [],
+          data: { sagMM: sag, limitMM: lim, marginRatio: margin, endReactionN: railR },
+          prov: { rule: `rail: w = ${Math.round(totalN * share)}/${Math.round(span)} N/mm + P·L/4 edge case; I = ${Math.round(I).toLocaleString()} mm⁴` }
+        });
+        /* (c) RAIL CONNECTIONS — the knock-down joints. */
+        const capJ = JOINT_RATING.kd_bolt.capN * sgF;
+        const marginJ = capJ / railR;
+        checks.push({
+          id: 'bed:joint', title: 'Rail-to-post connections',
+          status: jointStatus(marginJ),
+          value: `${U().fmtPointLoad(railR / GRAV)} per rail end vs ${U().fmtPointLoad(capJ / GRAV)} (2 × M6 barrel bolts) — ${marginJ.toFixed(2)}×`,
+          threshold: '≥ 1.5× on the barrel-bolt connection; the bracket alternative prints this demand × 1.5 as its REQUIRED capacity (brackets publish no ratings — confirmed)',
+          explain: 'The knock-down mandate: every rail end bolts to its post with two M6 barrel bolts and comes apart on moving day. Surface-mount bed-rail brackets are a legitimate swap, but no maker publishes a rating — match the printed requirement or keep the bolts. Re-snug after the first week and each season.',
+          fixes: [],
+          data: { endReactionN: railR, capN: capJ, marginRatio: marginJ, requiredBracketN: Math.ceil(railR * 1.5 / 10) * 10 },
+          prov: { rule: `end reaction = wL/2 + P/2 = ${Math.round(railR)} N vs kd_bolt ${Math.round(capJ)} N (SG-scaled)` }
+        });
+      }
+
+      /* (d) CENTRE RAIL — the warranty mandate, verified live. */
+      {
+        const needed = Wi >= G.CENTRE_RAIL_MIN_W;
+        if (needed && hasCentre) {
+          const cr = parts.find(p => p.id === 'rail_centre_1');
+          const seg = Math.max(400, cr.size.d / 2);
+          const w = (totalN * 0.5) / cr.size.d;
+          const I = I_rect(cr.size.w, cr.size.h);
+          const M = (w * seg * seg) / 8;
+          const stress = (M * (cr.size.h / 2)) / I;
+          checks.push({
+            id: 'bed:centre', title: 'Centre support',
+            status: strStatus(allow / stress),
+            value: `centre rail + floor leg — segment stress ${stress.toFixed(1)} MPa (margin ${(allow / stress).toFixed(1)}×)`,
+            threshold: 'mandatory at interior ≥ 1350 mm (Sealy/Stearns & Foster warranty: ≥ 5 legs with centre support at queen+)',
+            explain: 'The centre rail halves every slat span and takes half the deck load to its own floor leg — the difference between a deck that lasts and the broken-slat queen bed. The leg must bear the floor BEFORE the deck is loaded (it is in the steps).',
+            fixes: [],
+            data: { segmentSpan: seg, stressMPa: stress }
+          });
+        } else if (!needed) {
+          checks.push({
+            id: 'bed:centre', title: 'Centre support', status: 'pass',
+            value: `not required at ${fmtLen(Wi)} interior`,
+            threshold: 'mandatory at interior ≥ 1350 mm (warranty practice)',
+            explain: 'Twin-class widths carry on the side cleats alone; the mandate begins at 1350 mm.',
+            fixes: []
+          });
+        } else {
+          checks.push({
+            id: 'bed:centre', title: 'Centre support', status: 'fail',
+            value: 'MISSING at a width that requires it',
+            threshold: 'mandatory at interior ≥ 1350 mm',
+            explain: 'A queen-class deck without centre support breaks slats and voids mattress warranties — the builder always adds it; this spec somehow lacks it.',
+            fixes: []
+          });
+        }
+      }
+
+      /* (e) HEADBOARD — sitting back against it. */
+      if (bd.headboardHeight > 0) {
+        const railTopY = bd.platformHeight + G.MATTRESS_STOP;
+        const lever = Math.max(100, bd.headboardHeight - railTopY);
+        const F = 667; // aligned to the X5.1 back magnitude the seating class uses (derivation)
+        const Mh = (F / 2) * lever;
+        const postT2 = spec.structure.legThickness;
+        const I = I_rect(postT2, postT2);
+        const stress = (Mh * (postT2 / 2)) / I;
+        const margin = allow / stress;
+        checks.push({
+          id: 'bed:headboard', title: 'Headboard posts',
+          status: strStatus(margin),
+          value: `bending ${stress.toFixed(1)} MPa at the rail line · margin ${margin.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR/${SAFETY_FACTOR}) under ${U().fmtPointLoad(F / GRAV)} at the headboard top`,
+          explain: `Sitting back against the headboard levers each post about the rail-bolt line — ${fmtLen(lever)} of lever into a ${fmtLen(postT2)} square post.`,
+          fixes: margin < 1.25 ? [{ id: 'bed-post-up', label: `Thicken posts to ${fmtLen(Math.min(100, postT2 + 10))}`, patch: { structure: { legThickness: Math.min(100, postT2 + 10) } } }] : [],
+          data: { leverMM: lever, stressMPa: stress, marginRatio: margin }
+        });
+      }
+
+      checks.push({
+        id: 'bed:basis', title: 'What these bed numbers are', status: 'pass',
+        value: 'benchmarked (EN 1725 magnitudes), not certified',
+        threshold: 'no compliance claim; no US adult-bed standard exists',
+        explain: BB.Classes.DESIGN_BASIS_BED,
+        fixes: []
+      });
+    }
+
     /* ---- tipping stability: COG from part volumes & density, empty and loaded ---- */
     let antiTip = false, tip = null;
-    {
+    if (!isWallMounted) {
       let mass = 0, mx = 0, my = 0, mz = 0;
       for (const p of parts) {
         if (p.role === 'pull' || p.hardware) continue;
@@ -981,7 +1513,10 @@ var BB = globalThis.BB = globalThis.BB || {};
         const zLoad = (frontPart ? frontPart.pos.z + frontPart.size.d / 2 : zF) + top.travel * OPEN_FRACTION;
         over += TEST_KG * GRAV * Math.max(0, zLoad - zF);
         const margin = over > 0 ? stab / over : Infinity;
-        const inScope = spec.overall.height >= 686; // F2057 covers clothing storage ≥ 27 in
+        // F2057/STURDY covers CLOTHING STORAGE ≥ 27 in — a desk's pencil
+        // drawer is not a dresser drawer, so the anchor mandate follows the
+        // regulation's scope while the physics is still reported.
+        const inScope = spec.overall.height >= 686 && t !== 'desk';
         const status = margin >= 1.5 ? 'pass' : margin >= 1 ? 'advisory' : (inScope ? 'fail' : 'advisory');
         // Anchor mandatory when it actually tips, or when a clothing-storage-
         // height piece runs a thin margin (the regulated scenario).
@@ -1064,6 +1599,19 @@ var BB = globalThis.BB = globalThis.BB || {};
         }
         if (hasRole('back')) mults.push({ label: 'back panel acts as a shear panel', mult: 1.5 });
         if (spec.joinery.case === 'dado' && hasRole('shelf')) mults.push({ label: 'fixed shelves housed in dados', mult: 1.15 });
+        /* Long-span coupling (frame_table contract, roadmap item 2): the
+         * racking couple on the apron–leg joints grows with the clear span
+         * while joint capacity stays fixed, and past ~1800 mm the top's own
+         * torsional stiffness stops helping. Demand scales the score down
+         * linearly to ×0.7 at the 2400 mm DIM_RULES cap — the cap itself is
+         * the refusal (correction clamps and says so). */
+        if (TABLE_LIKE.includes(t)) {
+          const clearSpan = spec.overall.width - 2 * (spec.structure.legThickness || 0);
+          if (clearSpan > 1800) {
+            const spanMult = Math.max(0.7, 1 - (clearSpan - 1800) / 2000);
+            mults.push({ label: `long span raises the racking couple (${Math.round(clearSpan)} mm clear between legs)`, mult: Math.round(spanMult * 100) / 100 });
+          }
+        }
       } else {
         const connCount = new Map();
         for (const c of (spec.custom && spec.custom.connections) || []) {
@@ -1083,7 +1631,9 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (TABLE_LIKE.includes(t) && spec.joinery.frame === 'butt_screws') fixes.push({ id: 'pocket', label: 'Pocket-screw the frame', patch: { joinery: { frame: 'pocket_screws' } } });
       }
       const cheapFix = TABLE_LIKE.includes(t) ? 'stronger frame joints or a lower shelf' : custom ? 'a stretcher or panel between the uprights' : 'a fastened back panel and dado-housed shelves';
-      checks.push({
+      // A wall shelf does not rack — the wall is its shear panel; the anchor
+      // checks own its safety story.
+      if (!isWallMounted) checks.push({
         id: 'rack', title: 'Racking resistance', status: rack.score < 40 ? 'advisory' : 'pass',
         value: `score ${rack.score} / 100`, threshold: '≥ 40 (heuristic, not physics)',
         explain: rack.score < 40
@@ -1273,6 +1823,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         return { map, patch: { custom: { parts: (spec.custom && spec.custom.parts) || [], connections: conns } } };
       };
       for (const s of surfaces) {
+        /* Chairs run their own joint cases (chair:tilt is the governing one,
+         * chair:cyclic the durability one) — the generic per-surface share
+         * would price the seat's movement screws as the load path, which is
+         * the wrong model for a frame the slab merely rests on. */
+        if (t === 'chair' || t === 'wall_shelf') continue; // both run their own joint/anchor cases
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
         let demand = null, apron = false; // G5: apron end reaction overrides N/count
@@ -1459,7 +2014,7 @@ var BB = globalThis.BB = globalThis.BB || {};
          *  custom    — attachment unknown: warn with the fix, as before. */
         let ctx = 'custom';
         if (!custom) {
-          if ((p.role === 'top' || p.role === 'seat') && TABLE_LIKE.includes(t)) ctx = 'floated';
+          if ((p.role === 'top' || p.role === 'seat') && (TABLE_LIKE.includes(t) || t === 'chair')) ctx = 'floated';
           else if (p.role === 'side') ctx = spec.structure.backPanel ? 'captured' : 'compatible';
           else if (p.role === 'shelf' && TABLE_LIKE.includes(t)) ctx = 'captured'; // notched around the legs
           else if (['top', 'bottom', 'shelf', 'seat'].includes(p.role)) ctx = 'compatible';

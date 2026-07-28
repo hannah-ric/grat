@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 6,
+  "specVersion": 9,
   "meta": {
    "name": "Floor Bookshelf",
    "template": "bookshelf",
@@ -42,7 +42,10 @@
   },
   "drawers": null,
   "doors": null,
-  "custom": null
+  "custom": null,
+  "seat": null,
+  "wall": null,
+  "bed": null
  },
  "validation": {
   "errors": [],

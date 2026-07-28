@@ -1,0 +1,71 @@
+{
+  "why": "The current-version anchor (v9), and the corpus's only BED. The bed template and its bed section (mattress size, platform and headboard heights) arrived with the 2026-07 bed class; a bed saved today must still open with its size intact — every interior dimension, the slat deck, and the centre-rail mandate derive from it, so losing it would resize someone's bed.",
+  "version": 9,
+  "kind": "spec",
+  "expect": {
+    "template": "bed",
+    "name": "Oak Queen Bed",
+    "species": "red_oak",
+    "units": "in",
+    "minParts": 25
+  },
+  "expectAfterMigration": {
+    "specVersion": 9,
+    "bed.size": "queen",
+    "bed.platformHeight": 350,
+    "bed.headboardHeight": 1000,
+    "joinery.frame": "kd_bolt"
+  },
+  "spec": {
+    "specVersion": 9,
+    "meta": {
+      "name": "Oak Queen Bed",
+      "template": "bed",
+      "level": "beginner",
+      "units": "in"
+    },
+    "overall": {
+      "width": 1604,
+      "depth": 2110,
+      "height": 1000
+    },
+    "wood": {
+      "species": "red_oak",
+      "sheetSpecies": "baltic_birch"
+    },
+    "structure": {
+      "topThickness": 19,
+      "legThickness": 70,
+      "apronHeight": 140,
+      "apronThickness": 25,
+      "apronInset": 12,
+      "shelfCount": 0,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": false,
+      "stretcher": "none",
+      "stretcherHeight": 280
+    },
+    "joinery": {
+      "frame": "kd_bolt",
+      "case": "butt_screws",
+      "box": "pocket_screws"
+    },
+    "finish": "danish_oil",
+    "hardware": {
+      "pull": "bar_pull",
+      "hinge": "euro_cup"
+    },
+    "drawers": null,
+    "doors": null,
+    "custom": null,
+    "seat": null,
+    "wall": null,
+    "bed": {
+      "size": "queen",
+      "platformHeight": 350,
+      "headboardHeight": 1000
+    }
+  }
+}

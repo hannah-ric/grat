@@ -1,0 +1,503 @@
+{
+ "spec": {
+  "specVersion": 9,
+  "meta": {
+   "name": "Pine Twin Bed",
+   "template": "bed",
+   "level": "beginner",
+   "units": "mm"
+  },
+  "overall": {
+   "width": 1045,
+   "depth": 1985,
+   "height": 400
+  },
+  "wood": {
+   "species": "pine",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 19,
+   "legThickness": 70,
+   "apronHeight": 140,
+   "apronThickness": 25,
+   "apronInset": 12,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false,
+   "stretcher": "none",
+   "stretcherHeight": 280
+  },
+  "joinery": {
+   "frame": "kd_bolt",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "wipe_poly",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": null,
+  "doors": null,
+  "custom": null,
+  "seat": null,
+  "wall": null,
+  "bed": {
+   "size": "twin",
+   "platformHeight": 300,
+   "headboardHeight": 0
+  }
+ },
+ "validation": {
+  "errors": [],
+  "advisories": []
+ },
+ "cutList": [
+  {
+   "name": "Side rail",
+   "qty": 2,
+   "L": 1845,
+   "W": 140,
+   "T": 25,
+   "material": "pine",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Head rail",
+   "qty": 1,
+   "L": 905,
+   "W": 140,
+   "T": 25,
+   "material": "pine",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Foot rail",
+   "qty": 1,
+   "L": 905,
+   "W": 140,
+   "T": 25,
+   "material": "pine",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Bed slat",
+   "qty": 13,
+   "L": 989,
+   "W": 89,
+   "T": 32,
+   "material": "pine",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Slat cleat",
+   "qty": 2,
+   "L": 1845,
+   "W": 32,
+   "T": 20,
+   "material": "pine",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Headboard post",
+   "qty": 2,
+   "L": 400,
+   "W": 70,
+   "T": 70,
+   "material": "pine",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Footboard post",
+   "qty": 2,
+   "L": 400,
+   "W": 70,
+   "T": 70,
+   "material": "pine",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "verdict": "advisory",
+  "rackScore": 71,
+  "tip": {
+   "angEmpty": 62.505,
+   "angLoaded": 62.505,
+   "ratio": 0.202
+  },
+  "checks": [
+   {
+    "id": "bed:slats",
+    "status": "pass",
+    "data": {
+     "nSlat": 13,
+     "gapMM": 56.833,
+     "spanMM": 931,
+     "kneeMarginRatio": 1.747,
+     "sagMM": 1.02,
+     "kneeStressMPa": 8.441
+    }
+   },
+   {
+    "id": "bed:rail",
+    "status": "pass",
+    "data": {
+     "sagMM": 4.259,
+     "limitMM": 6.15,
+     "marginRatio": 1.83,
+     "endReactionN": 1022.693
+    }
+   },
+   {
+    "id": "bed:joint",
+    "status": "advisory",
+    "data": {
+     "endReactionN": 1022.693,
+     "capN": 1260,
+     "marginRatio": 1.232,
+     "requiredBracketN": 1540
+    }
+   },
+   {
+    "id": "bed:centre",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "bed:basis",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Eastern White Pine 38 x 38 x 2438 mm (2x2)",
+    "qty": 2,
+    "cost": 14.628
+   },
+   {
+    "label": "Eastern White Pine 38 x 89 x 1829 mm (2x4)",
+    "qty": 1,
+    "cost": 7.682
+   },
+   {
+    "label": "Eastern White Pine 38 x 89 x 3048 mm (2x4)",
+    "qty": 4,
+    "cost": 51.206
+   },
+   {
+    "label": "Eastern White Pine 89 x 89 x 1829 mm (4x4)",
+    "qty": 1,
+    "cost": 19.205
+   },
+   {
+    "label": "Eastern White Pine 25 x 140 x 3048 mm (5/4x6)",
+    "qty": 2,
+    "cost": 43.891
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "2x2",
+    "stockLen": 2438,
+    "offcut": 563,
+    "cuts": [
+     {
+      "name": "Slat cleat",
+      "len": 1845,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "2x2",
+    "stockLen": 2438,
+    "offcut": 563,
+    "cuts": [
+     {
+      "name": "Slat cleat",
+      "len": 1845,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "2x4",
+    "stockLen": 3048,
+    "offcut": 45,
+    "cuts": [
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 15
+     },
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 1007
+     },
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 1999
+     }
+    ]
+   },
+   {
+    "nominal": "2x4",
+    "stockLen": 3048,
+    "offcut": 45,
+    "cuts": [
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 15
+     },
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 1007
+     },
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 1999
+     }
+    ]
+   },
+   {
+    "nominal": "2x4",
+    "stockLen": 3048,
+    "offcut": 45,
+    "cuts": [
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 15
+     },
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 1007
+     },
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 1999
+     }
+    ]
+   },
+   {
+    "nominal": "2x4",
+    "stockLen": 3048,
+    "offcut": 45,
+    "cuts": [
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 15
+     },
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 1007
+     },
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 1999
+     }
+    ]
+   },
+   {
+    "nominal": "2x4",
+    "stockLen": 1829,
+    "offcut": 810,
+    "cuts": [
+     {
+      "name": "Bed slat",
+      "len": 989,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "4x4",
+    "stockLen": 1829,
+    "offcut": 190,
+    "cuts": [
+     {
+      "name": "Headboard post",
+      "len": 400,
+      "offset": 15
+     },
+     {
+      "name": "Headboard post",
+      "len": 400,
+      "offset": 418
+     },
+     {
+      "name": "Footboard post",
+      "len": 400,
+      "offset": 821
+     },
+     {
+      "name": "Footboard post",
+      "len": 400,
+      "offset": 1224
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x6",
+    "stockLen": 3048,
+    "offcut": 265,
+    "cuts": [
+     {
+      "name": "Side rail",
+      "len": 1845,
+      "offset": 15
+     },
+     {
+      "name": "Head rail",
+      "len": 905,
+      "offset": 1863
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x6",
+    "stockLen": 3048,
+    "offcut": 265,
+    "cuts": [
+     {
+      "name": "Side rail",
+      "len": 1845,
+      "offset": 15
+     },
+     {
+      "name": "Foot rail",
+      "len": 905,
+      "offset": 1863
+     }
+    ]
+   }
+  ],
+  "sheets": [],
+  "totalCost": 136.61,
+  "wasteSolidPct": 27,
+  "wasteSheetPct": null
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Eastern White Pine 38 x 38 x 2438 mm (2x2)",
+    "qty": 2,
+    "price": 14.63
+   },
+   {
+    "kind": "lumber",
+    "label": "Eastern White Pine 38 x 89 x 1829 mm (2x4)",
+    "qty": 1,
+    "price": 7.68
+   },
+   {
+    "kind": "lumber",
+    "label": "Eastern White Pine 38 x 89 x 3048 mm (2x4)",
+    "qty": 4,
+    "price": 51.21
+   },
+   {
+    "kind": "lumber",
+    "label": "Eastern White Pine 89 x 89 x 1829 mm (4x4)",
+    "qty": 1,
+    "price": 19.2
+   },
+   {
+    "kind": "lumber",
+    "label": "Eastern White Pine 25 x 140 x 3048 mm (5/4x6)",
+    "qty": 2,
+    "price": 43.89
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 36.4 bd ft (0.09 m³)",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 27%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "M6 × 50 mm furniture bolt + barrel nut",
+    "qty": 16,
+    "price": 24
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 38 mm wood screw (pilot 2.8 mm)",
+    "qty": 78,
+    "price": 4.68
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "finish",
+    "label": "Wipe-on polyurethane",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 191.29
+ },
+ "steps": [
+  "thickness",
+  "s2",
+  "s3",
+  "s5",
+  "s6",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

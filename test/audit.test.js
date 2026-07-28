@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
+const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'drafting.js', 'gltf.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'joinery3d.js', 'selftest.js'];
 for (const f of SRC) {
   const p = path.join(__dirname, '..', 'src', f);
@@ -1833,9 +1833,14 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
   ok(glStep && / Dry-fit before glue\./.test(glStep.text),
     `glued custom connections keep the dry-fit suffix — got "${glStep && glStep.text}"`);
 
-  // No golden fixture uses kd_bolt, so this wording change cannot diff the
-  // corpus — assert it stays that way.
+  // The frame/case/custom goldens stay kd_bolt-free, so this wording change
+  // cannot diff them. The SEATING goldens (2026-07) legitimately bolt —
+  // kd_bolt is the class's beginner/default seat-frame joint — and the BED
+  // goldens bolt by MANDATE (every rail end, all levels); their step text
+  // is deliberately frozen WITH the corpus.
+  const KD_GOLDENS = ['maple-counter-stool-metric.json', 'walnut-chair-boundary-metric.json', 'oak-queen-bed-imperial.json', 'pine-twin-bed-metric.json'];
   for (const f of fs.readdirSync(path.join(__dirname, 'golden'))) {
+    if (KD_GOLDENS.includes(f)) continue;
     ok(!/kd_bolt/.test(fs.readFileSync(path.join(__dirname, 'golden', f), 'utf8')), `golden ${f} is kd_bolt-free`);
   }
 }
@@ -2133,9 +2138,13 @@ section('G10b correctionNotes names the joint, length, species and feature corre
 
   // 4. FEATURE DROPPED. Drawers on a template with no opening become null.
   {
-    const d = one({ meta: { template: 'desk', level: 'beginner' }, drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' } }, 'drawers on a desk');
-    ok(/desk/.test(d), `the note names the template that refused them — got "${d}"`);
+    // Desks GAINED apron drawers with the frame_table extension (2026-07) —
+    // the refusal note now belongs to templates with no opening at all.
+    const d = one({ meta: { template: 'bench', level: 'beginner' }, drawers: { count: 2, frontStyle: 'inset', runner: 'side_mount_slides' } }, 'drawers on a bench');
+    ok(/bench/.test(d), `the note names the template that refused them — got "${d}"`);
     ok(/drawer/i.test(d), `the note names the dropped feature — got "${d}"`);
+    eq(notes({ meta: { template: 'desk', level: 'beginner' }, drawers: { count: 1 } })
+      .filter(n => /drawer bank was dropped/.test(n)), [], 'a desk KEEPS its pencil drawers — no refusal note');
     ok(/table/.test(one({ meta: { template: 'table', level: 'beginner' }, drawers: { count: 1 } }, 'drawers on a table')), 'the same holds for a table');
     // Templates that DO carry drawers keep them — nothing was refused.
     eq(notes({ meta: { template: 'nightstand', level: 'beginner' }, drawers: { count: 2 } }), [], 'a nightstand keeps its drawers, so earns no note');
@@ -2147,8 +2156,10 @@ section('G10b correctionNotes names the joint, length, species and feature corre
     for (const t of ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom']) {
       eq(notes(Spec.defaultSpec(t)), [], `the ${t} default is corrected without a single note`);
     }
+    // bench, not desk: desks keep their drawers now (frame_table extension),
+    // so the drawer-refusal note needs a template with no opening at all.
     const all = notes({
-      meta: { template: 'desk', level: 'beginner' }, overall: { width: 4000 },
+      meta: { template: 'bench', level: 'beginner' }, overall: { width: 4000 },
       wood: { species: 'wenge' }, joinery: { frame: 'mortise_tenon' }, drawers: { count: 1 }
     });
     eq(all.length, 4, 'four independent corrections produce four notes');
@@ -3046,6 +3057,429 @@ section('X-07b doors: geometry, the hinge rule, and one source for the count');
     eq(back.doors.count, 2, 'a door count survives the round trip');
     eq(back.doors.style, 'inset', 'and so does the style');
   }
+}
+
+/* =========================================================================
+ * SEATING class (2026-07) — the class contract and its bad fixtures.
+ * Every entry in the seating failure-mode checklist must FIRE on its bad
+ * fixture, caught by code, never by a model's judgment. One section per
+ * fixture; SEAT-0 holds the contract itself.
+ * ========================================================================= */
+section('SEAT-0 the class contract holds, is covered, and its goldens exist');
+{
+  for (const cls of BB.Classes.all()) {
+    eq(BB.Classes.validateContract(cls), [], `contract complete: ${cls.key}`);
+    for (const g of cls.fixtures.golden) {
+      ok(fs.existsSync(path.join(__dirname, 'golden', g + '.json')), `${cls.key} golden fixture on disk: ${g}`);
+    }
+  }
+  // Nominal coverage: every non-conditional failure mode is examined live.
+  for (const [tmpl, level] of [['chair', 'advanced'], ['table', 'beginner']]) {
+    const { spec, model, report } = pipeline({ meta: { name: 'cov', template: tmpl, level, units: 'mm' } });
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const rows = BB.Classes.runChecklist(tmpl, { integrity: integ, validation: report });
+    eq(rows.filter(r => r.status === 'uncovered').map(r => r.id), [], `no uncovered failure modes on a nominal ${tmpl}`);
+  }
+  // The stool exercises the conditional modes the chair cannot.
+  const st = pipeline({ meta: { name: 'cov', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0, counterHeight: 900 } });
+  const stInteg = Structural.computeIntegrity(st.spec, st.model, {});
+  const stRows = BB.Classes.runChecklist('chair', { integrity: stInteg, validation: st.report });
+  ok(stRows.find(r => r.id === 'footrest_break').covered, 'the footrest mode is examined on a stool');
+}
+
+section('SEAT-1 a screwed side rail cannot survive correction (rear-tilt mandate)');
+{
+  const seatCls = BB.Classes.get('seating');
+  for (const level of K.LEVELS) {
+    for (const j of ['butt_screws', 'pocket_screws', 'biscuits', 'dowels']) {
+      const spec = Spec.correctSpec({ meta: { name: 'S1', template: 'chair', level, units: 'mm' }, joinery: { frame: j } });
+      ok(!['butt_screws', 'pocket_screws', 'biscuits', 'dowels'].includes(spec.joinery.frame),
+        `${j} at ${level} is rewritten to ${spec.joinery.frame} — screwed seat frames are impossible`);
+    }
+  }
+  // The disclosure: a level-legal joint the class refuses is SAID, not silent.
+  const notes = Spec.correctionNotes(
+    { meta: { name: 'S1', template: 'chair', level: 'beginner', units: 'mm' }, joinery: { frame: 'pocket_screws' } },
+    Spec.correctSpec({ meta: { name: 'S1', template: 'chair', level: 'beginner', units: 'mm' }, joinery: { frame: 'pocket_screws' } }));
+  ok(notes.some(n => /can’t hold a chair’s seat frame/.test(n)), `the substitution is disclosed — got ${JSON.stringify(notes)}`);
+  // And the REASON is arithmetic, not taste: the rear-tilt demand vs a
+  // pocket screw's SG-scaled capacity never reaches the 1.5× gate, even in
+  // the densest stocked species (hickory).
+  const { spec, model } = pipeline({ meta: { name: 'S1', template: 'chair', level: 'beginner', units: 'mm' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const tilt = integ.checks.find(c => c.id === 'chair:tilt');
+  ok(tilt && tilt.status === 'pass', 'the mandated joint passes the same case');
+  const worstSgF = Math.max(...Object.values(K.WOOD_SPECIES).filter(s => !s.sheet).map(s => s.sg)) / 0.5;
+  const pocketBest = Structural.JOINT_RATING.pocket_screws.capN * worstSgF / tilt.data.demandN;
+  ok(pocketBest < 1.5, `pocket screws top out at ${pocketBest.toFixed(2)}× on the same demand — below the 1.5× gate in every species`);
+}
+
+section('SEAT-2 a sawn rear leg (excess rake) is refused, not built');
+{
+  const raw = { meta: { name: 'S2', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backRake: 8 } };
+  const spec = Spec.correctSpec(raw);
+  const maxRake = BB.Classes.get('seating').geom.backRakeMax(spec.structure, spec.seat);
+  ok(spec.seat.backRake <= maxRake + 0.01, `rake clamps to straight-post capability (${spec.seat.backRake}° ≤ ${maxRake}°)`);
+  const notes = Spec.correctionNotes(raw, spec);
+  ok(notes.some(n => /short grain/.test(n) && /sawn or steam-bent/.test(n)),
+    `the refusal names short grain — got ${JSON.stringify(notes)}`);
+  // Defense in depth: a spec that somehow escapes correction still cannot
+  // present sawn-leg geometry as sound — chair:rake fails it.
+  const model = Parametric.build(spec);
+  const tampered = Spec.clone(spec);
+  tampered.seat.backRake = 12;
+  const integ = Structural.computeIntegrity(tampered, model, {});
+  eq(integ.checks.find(c => c.id === 'chair:rake').status, 'fail', 'chair:rake fails a tampered 12° rake');
+  eq(integ.summary.verdict, 'fail', 'and the verdict is FAIL, never a plausible plan');
+}
+
+section('SEAT-3 a stool sized to the wrong counter is re-derived and told');
+{
+  const raw = { meta: { name: 'S3', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0, counterHeight: 900, height: 750 } };
+  const spec = Spec.correctSpec(raw);
+  eq(spec.seat.height, 630, 'a 750 seat asked against a 900 counter is re-derived to 630 (counter − 270)');
+  const notes = Spec.correctionNotes(raw, spec);
+  ok(notes.some(n => /250–300 mm below/.test(n)), `and the coupling is disclosed — got ${JSON.stringify(notes)}`);
+  // A height already inside the 250–300 window is the user's own tweak.
+  const tweak = Spec.correctSpec({ meta: { name: 'S3', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0, counterHeight: 900, height: 615 } });
+  eq(tweak.seat.height, 615, 'a height inside the drop window survives');
+  // No counter named: the ask is a live finding, not silence.
+  const { spec: s2, model: m2 } = pipeline({ meta: { name: 'S3', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0 } });
+  const counter = Structural.computeIntegrity(s2, m2, {}).checks.find(c => c.id === 'chair:counter');
+  ok(counter && counter.status === 'advisory' && /Tell the app the real counter height/.test(counter.explain),
+    'a stool with no counter stated ASKS for one');
+}
+
+section('SEAT-4 seat dimensions outside the human-factors band are named');
+{
+  const { spec, model, report } = pipeline({ meta: { name: 'S4', template: 'chair', level: 'beginner', units: 'mm' }, seat: { height: 500, depth: 460, width: 520 } });
+  for (const id of ['ergo_seat_height', 'ergo_seat_depth', 'ergo_seat_width']) {
+    ok(report.advisories.some(a => a.id === id), `${id} fires on an out-of-band seat`);
+  }
+  // Beyond the family range entirely: clamped AND told.
+  const raw = { meta: { name: 'S4', template: 'chair', level: 'beginner', units: 'mm' }, seat: { height: 550 } };
+  const clamped = Spec.correctSpec(raw);
+  eq(clamped.seat.height, 500, 'a 550 dining seat clamps to the family edge');
+  ok(Spec.correctionNotes(raw, clamped).some(n => /seat height/.test(n)), 'and the clamp is a note, not a silence');
+  // The nominal chair stays advisory-free.
+  const nom = pipeline({ meta: { name: 'S4', template: 'chair', level: 'beginner', units: 'mm' } });
+  eq(nom.report.advisories.filter(a => /^ergo_seat/.test(a.id)), [], 'the nominal chair sits inside every band');
+}
+
+section('SEAT-5 upholstery, arms, and mechanisms are refusals with reasons');
+{
+  const raw = { meta: { name: 'S5', template: 'chair', level: 'beginner', units: 'mm' }, seat: { upholstered: true, arms: true } };
+  const notes = Spec.correctionNotes(raw, Spec.correctSpec(raw));
+  ok(notes.some(n => /Upholstered and slip seats aren’t generated/.test(n)), 'upholstery refusal note');
+  ok(notes.some(n => /Arms aren’t generated/.test(n)), 'arms refusal note');
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table' } });
+  for (const [ask, rx] of [
+    ['an upholstered dining chair', /upholster/i],
+    ['build me an armchair', /arm/i],
+    ['a rocking chair', /rock/i],
+    ['a folding chair', /fold/i],
+    ['a chair with steam-bent legs', /short grain/i]
+  ]) {
+    const r = AI.localModel(ask, table, {});
+    ok(r.kind === 'info' && rx.test(r.text || ''), `parser refuses "${ask}" with the reason — got ${r.kind}`);
+  }
+  ok(/NOT buildable: upholstered\/slip seats, arms, sawn or bent rear legs, rockers, folders/.test(Codec.SCHEMA_DOC),
+    'SCHEMA_DOC teaches the model the refusal set');
+}
+
+section('SEAT-6 a pine chair fails honestly — a second frozen honest-fail');
+{
+  const { spec, model } = pipeline({ meta: { name: 'S6', template: 'chair', level: 'advanced', units: 'mm' }, joinery: { frame: 'mortise_tenon' }, wood: { species: 'pine' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  eq(integ.checks.find(c => c.id === 'chair:back').status, 'fail',
+    'pine rear posts fail the back case at the rail mortise (margin < 1)');
+  eq(integ.summary.verdict, 'fail', 'the pine chair ships a FAIL verdict — do not "fix" this');
+  // Red oak at identical geometry passes everything: species is the answer.
+  const oak = pipeline({ meta: { name: 'S6', template: 'chair', level: 'advanced', units: 'mm' }, joinery: { frame: 'mortise_tenon' } });
+  const oakInteg = Structural.computeIntegrity(oak.spec, oak.model, {});
+  eq(oakInteg.summary.verdict, 'pass', 'the same chair in red oak passes clean');
+  // And the failing check offers the species fix, not a shrug.
+  const backFail = integ.checks.find(c => c.id === 'chair:back');
+  ok(backFail.fixes.some(f => /Switch to|Thicken/.test(f.label)), 'the fail carries tappable fixes');
+}
+
+section('SEAT-7 corner blocks are structure: parts, dimensions, screws, step');
+{
+  const { spec, model } = pipeline({ meta: { name: 'S7', template: 'chair', level: 'beginner', units: 'mm' } });
+  const cut = Plans.cutList(spec, model);
+  const block = cut.find(r => /corner block/i.test(r.name));
+  ok(block && block.qty === 4 && block.L === 60 && block.W === 60, `4 corner blocks on the cut list with dimensions — got ${JSON.stringify(block && { qty: block.qty, L: block.L, W: block.W, T: block.T })}`);
+  ok(/45°/.test(block.note), 'the block row carries the 45° rip note');
+  ok(/straight-grained/.test(block.note), 'and the clear-stock note — blocks are load-bearing');
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const steps = Plans.assembly(spec, model, integ, {});
+  const s4 = steps.find(s => s.id === 's4');
+  ok(s4 && /structure, not trim/i.test(s4.title) && /racking loop/.test(s4.text), 'the block step names them structure');
+  // BOM counts the block screws: 4 blocks × ≥3 mates × 2 screws each ride
+  // the fastener engine, so drilling instructions and BOM agree by
+  // construction. Assert the screw line exists and covers them.
+  const bom = Plans.bom(spec, model, { integrity: integ });
+  const screwQty = bom.items.filter(i => /wood screw/i.test(i.label)).reduce((n, i) => n + i.qty, 0);
+  ok(screwQty >= 24, `the screw lines cover the block fastening (12 block joints × 2) — got ${screwQty}`);
+}
+
+section('SEAT-8 no output surface ever claims BIFMA compliance');
+{
+  for (const raw of [
+    { meta: { name: 'S8', template: 'chair', level: 'advanced', units: 'mm' }, joinery: { frame: 'mortise_tenon' } },
+    { meta: { name: 'S8s', template: 'chair', level: 'intermediate', units: 'mm' }, seat: { backHeight: 0, counterHeight: 1060 } }
+  ]) {
+    const { spec, model } = pipeline(raw);
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const steps = Plans.assembly(spec, model, integ, {});
+    const cut = Plans.cutList(spec, model);
+    const bom = Plans.bom(spec, model, { integrity: integ }).items;
+    const everything = JSON.stringify({ checks: integ.checks, steps, cut, bom });
+    ok(!/BIFMA[\s-]*(certified|compliant|approved|rated|passes|meets)/i.test(everything),
+      `no compliance claim anywhere in the ${spec.seat.backHeight ? 'chair' : 'stool'} output`);
+    const disc = integ.checks.find(c => c.id === 'chair:bifma');
+    ok(disc && /not a compliance claim/.test(disc.explain) && /physical testing/.test(disc.explain),
+      'the benchmarked-not-certified disclosure ships in the output itself');
+    ok(/not formally covered by BIFMA/.test(disc.explain), 'and says residential chairs are outside BIFMA scope');
+  }
+}
+
+section('SEAT-9 units are display-only: one geometry in mm and inches');
+{
+  const mk = units => {
+    const { spec, model } = pipeline({ meta: { name: 'S9', template: 'chair', level: 'advanced', units }, joinery: { frame: 'mortise_tenon' } });
+    return { spec, model };
+  };
+  const a = mk('mm'), b = mk('in');
+  const dims = m => m.model.parts.map(p => `${p.id}:${p.size.w}x${p.size.h}x${p.size.d}`).join('|');
+  eq(dims(a), dims(b), 'identical part geometry whichever display units are chosen');
+  eq(a.spec.seat, b.spec.seat, 'identical corrected seat family');
+  // The compound-splay stool carries its angle guidance in BOTH systems.
+  for (const units of ['mm', 'in']) {
+    Units.set({ system: units === 'mm' ? 'metric' : 'imperial', precision: 16, dual: false });
+    const { spec, model } = pipeline({ meta: { name: 'S9s', template: 'chair', level: 'intermediate', units }, seat: { backHeight: 0, counterHeight: 900, splayDeg: 5 } });
+    const cut = Plans.cutList(spec, model);
+    const leg = cut.find(r => /^Leg$/i.test(r.name));
+    ok(leg && /compound end cut/.test(leg.note), `splayed legs carry the compound note (${units})`);
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const steps = Plans.assembly(spec, model, integ, {});
+    const layout = steps.find(s => s.id === 'layout');
+    ok(layout && /sliding bevel/.test(layout.text) && /7\.1|7°|7\.05/.test(layout.text),
+      `the angle schedule states the true resultant (~7.1° for 5° splay) in tool-settable terms (${units})`);
+    ok(/RIP EACH LEG BLANK WITH THE GRAIN/.test(layout.text), 'and mandates the blank orientation');
+  }
+  Units.set({ system: 'metric', precision: 16, dual: false });
+}
+
+/* =========================================================================
+ * DESK apron drawers (frame_table extension, 2026-07)
+ * ========================================================================= */
+section('DESK-1 the band opens honestly: geometry, forced knobs, weakened-beam model');
+{
+  const { spec, model, report } = pipeline({ meta: { name: 'D1', template: 'desk', level: 'beginner', units: 'mm' }, drawers: { count: 1, frontStyle: 'overlay', runner: 'side_mount_slides' } });
+  eq(spec.drawers.frontStyle, 'inset', 'fronts are forced inset — there is no case face to overlay');
+  eq(spec.drawers.runner, 'wood_runners', 'runners are wood at EVERY level (no case side for slides) — the beginner slide gate is a casework rule');
+  eq(spec.drawers.count, 2, 'a single opening wider than 620 splits around the centre stile');
+  ok(model.parts.some(p => p.id === 'stile_1') && model.parts.some(p => p.id === 'rail_lower_1'),
+    'the front apron became a lower rail + centre stile');
+  ok(!model.parts.some(p => p.id === 'apron_long_2'), 'the solid front apron is gone');
+  ok(model.openings.every(op => op.h >= 45 && op.h <= 80), `pencil openings sit in the 45–80 band — got ${model.openings.map(o => o.h)}`);
+  eq(report.errors, [], 'the drawer desk builds clean');
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const band = integ.checks.find(c => c.id === 'sag:apron:top_1');
+  ok(/stiffness|governing/.test(band.prov.rule + band.explain), 'the beam check names the stiffness-shared band model');
+  ok(band.status === 'pass', 'and the default drawer desk passes it');
+  const steps = Plans.assembly(spec, model, integ, {});
+  ok(steps.some(s => /^dr1_runners/.test(s.id)) && steps.some(s => /^dr1_box/.test(s.id)), 'drawer steps ride the desk sequence');
+  // Anchor scope: a pencil-drawer desk is NOT clothing storage.
+  const f2057 = integ.checks.find(c => c.id === 'tip_f2057');
+  ok(f2057 && !integ.antiTip, 'the open-drawer physics reports WITHOUT mandating a wall anchor on a desk');
+}
+
+section('DESK-2 knee room is named, never silent');
+{
+  const deep = pipeline({ meta: { name: 'D2', template: 'desk', level: 'beginner', units: 'mm' }, structure: { apronHeight: 160 }, drawers: { count: 1 } });
+  ok(deep.report.advisories.some(a => a.id === 'ergo_knee' && /ADA 306\.3/.test(a.text)),
+    `a deep band under a standard top names the knee band with sources — got ${JSON.stringify(deep.report.advisories.map(a => a.id))}`);
+  const nominal = pipeline({ meta: { name: 'D2', template: 'desk', level: 'beginner', units: 'mm' } });
+  ok(!nominal.report.advisories.some(a => a.id === 'ergo_knee'), 'the plain default desk stays quiet');
+}
+
+/* =========================================================================
+ * WALL-MOUNTED shelves (the 'wall_mounted' class, 2026-07)
+ * ========================================================================= */
+section('WALL-1 unknown and drywall substrates are refused, not guessed');
+{
+  for (const [sub, rx] of [['unknown', /anchor math needs it|worse than a refusal/], ['drywall', /creep|ultimate/]]) {
+    const { report } = pipeline({ meta: { name: 'W1', template: 'wall_shelf', level: 'beginner', units: 'mm' }, wall: { substrate: sub } });
+    ok(report.errors.some(e => e.id === 'wall_substrate' && rx.test(e.text)),
+      `substrate '${sub}' is a hard error with the reason — got ${JSON.stringify(report.errors.map(e => e.id))}`);
+  }
+  // The refusal survives the wire: a share code carrying 'unknown' decodes to it.
+  const bad = Spec.correctSpec({ meta: { name: 'W1', template: 'wall_shelf', level: 'beginner', units: 'mm' }, wall: { substrate: 'unknown' } });
+  const rt = Spec.correctSpec(Codec.decode(Codec.encode(bad)));
+  eq(rt.wall.substrate, 'unknown', 'the unknown substrate rides the share code — the refusal cannot be laundered away');
+  // Parser: no wall named → ASK; drywall named → refusal; studs named → build.
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table' } });
+  const q = AI.localModel('a floating shelf for the living room', table, {});
+  ok(q.kind === 'question' && /substrate|behind the finish/i.test(q.question), 'the parser asks for the wall before creating');
+  const dw = AI.localModel('a floating shelf on drywall', table, {});
+  ok(dw.kind === 'info' && /creep/i.test(dw.text), 'drywall-only is refused in chat with the reason');
+  const st = AI.localModel('a floating shelf on wood studs', table, {});
+  ok(st.kind === 'new' && st.spec.wall && st.spec.wall.substrate === 'stud', 'naming studs builds with the substrate carried');
+}
+
+section('WALL-2 the anchor couple is arithmetic, sourced, and honest about margins');
+{
+  const { spec, model } = pipeline({ meta: { name: 'W2', template: 'wall_shelf', level: 'beginner', units: 'mm' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const anchor = integ.checks.find(c => c.id === 'wall:anchor');
+  ok(anchor && anchor.status === 'pass' && anchor.data.marginRatio > 1.5 && anchor.data.marginRatio < 2.2,
+    `the default stud shelf carries books at a real (not infinite) margin — got ${anchor && anchor.data.marginRatio}`);
+  ok(/NDS/.test(anchor.threshold) && /stud CENTRE/i.test(anchor.explain), 'the check names its source and its assumption');
+  // Heavier duty on the same fixings: margins fall, honestly.
+  const heavy = Structural.computeIntegrity(spec, model, { loadChoices: { shelf_1: 'heavy' } });
+  const hAnchor = heavy.checks.find(c => c.id === 'wall:anchor');
+  ok(hAnchor.data.marginRatio < anchor.data.marginRatio && hAnchor.status !== 'pass',
+    `heavy storage drops the anchor margin below the gate — got ${hAnchor.data.marginRatio.toFixed(2)} (${hAnchor.status})`);
+  // Masonry: capacity is NEVER assumed — the required rating is printed.
+  const ms = pipeline({ meta: { name: 'W2m', template: 'wall_shelf', level: 'beginner', units: 'mm' }, wall: { substrate: 'masonry' } });
+  const mInteg = Structural.computeIntegrity(ms.spec, ms.model, {});
+  const mAnchor = mInteg.checks.find(c => c.id === 'wall:anchor');
+  ok(mAnchor && mAnchor.data.requiredWorkingN > 0 && /WORKING/.test(mAnchor.explain + mAnchor.threshold),
+    'masonry emits the REQUIRED working rating instead of assuming a capacity');
+}
+
+section('WALL-3 stud engagement: worst-phase counting, single-stud named, zero refused');
+{
+  const mk = (w, sp2) => {
+    const { spec, model } = pipeline({ meta: { name: 'W3', template: 'wall_shelf', level: 'beginner', units: 'mm' }, overall: { width: w }, wall: { substrate: 'stud', studSpacingMM: sp2 } });
+    return Structural.computeIntegrity(spec, model, {}).checks.find(c => c.id === 'wall:studs');
+  };
+  eq(mk(914.4, 406).status, 'pass', 'a 36 in shelf on 16 in centres guarantees 2 studs');
+  const single = mk(500, 406);
+  ok(single.status === 'advisory' && /CENTRED on the stud/i.test(single.explain), 'a short shelf is a NAMED single-stud mount');
+  const none = mk(500, 610);
+  ok(none.status === 'fail' && none.fixes.some(f => /Lengthen/.test(f.label)), 'a shelf that cannot guarantee one stud FAILS with the lengthen fix');
+}
+
+section('WALL-4 depth is the fixing class: clamped, coupled, and the floor doctrine holds elsewhere');
+{
+  const raw = { meta: { name: 'W4', template: 'wall_shelf', level: 'beginner', units: 'mm' }, overall: { depth: 400 }, structure: { topThickness: 19 } };
+  const spec = Spec.correctSpec(raw);
+  eq(spec.overall.depth, 300, 'depth clamps at the 300 fixing cap');
+  eq(spec.structure.topThickness, 32, 'past 250 deep, the shelf is forced to 32 thick (ergonomics note, now structure)');
+  // The audit exemption is CLASS-scoped: a floor piece still refuses to hover.
+  const t2 = Spec.correctSpec({ meta: { name: 'W4t', template: 'table' } });
+  const m2 = Parametric.build(t2);
+  for (const p of m2.parts) p.pos.y += 500;
+  ok(Spec.auditModel(t2, m2).some(e => e.id === 'geom_floats'), 'a hovering TABLE still fails geom_floats — the exemption is only for mounted classes');
+  const ws = Spec.correctSpec({ meta: { name: 'W4s', template: 'wall_shelf' } });
+  eq(Spec.auditModel(ws, Parametric.build(ws)).length, 0, 'the wall shelf itself audits clean with no floor contact');
+  // No output claims a rating it doesn't have.
+  const integ = Structural.computeIntegrity(ws, Parametric.build(ws), {});
+  const basis = integ.checks.find(c => c.id === 'wall:basis');
+  ok(basis && /not certified anchor design/i.test(basis.explain) && /drywall alone is refused/i.test(basis.explain),
+    'the fixing-basis disclosure ships in the output');
+}
+
+section('LSPAN-1 long spans raise the racking demand; the width cap is a stated refusal');
+{
+  // Same table, same joints — only the span moves. The couple on the
+  // apron–leg joints grows with span while capacity is fixed (roadmap 2).
+  const mk = w => {
+    const { spec, model } = pipeline({ meta: { name: 'L1', template: 'table', level: 'beginner', units: 'mm' }, overall: { width: w } });
+    return Structural.computeIntegrity(spec, model, {});
+  };
+  const short = mk(1500), long = mk(2400);
+  const spanF = long.racking.factors.find(f => /long span/.test(f.label));
+  ok(spanF && spanF.mult < 1 && spanF.mult >= 0.7,
+    `the 2400 table carries the span factor in its listed racking factors — got ${JSON.stringify(long.racking.factors.map(f => f.label))}`);
+  ok(!short.racking.factors.some(f => /long span/.test(f.label)), 'the 1500 table does not — the coupling starts past 1800 clear');
+  ok(long.racking.score < short.racking.score, `and the long span scores lower (${long.racking.score} < ${short.racking.score})`);
+  // The cap is the refusal: 3000 clamps to 2400 and correction says so.
+  const raw = { meta: { name: 'L1c', template: 'table', level: 'beginner', units: 'mm' }, overall: { width: 3000 } };
+  const spec = Spec.correctSpec(raw);
+  eq(spec.overall.width, 2400, 'width clamps at the stated 2400 cap');
+  ok(Spec.correctionNotes(raw, spec).some(n => /width/i.test(n.label || n.text || JSON.stringify(n))),
+    'the clamp is disclosed, never silent');
+  // The contract carries the artifacts.
+  const C = BB.Classes.get('frame_table');
+  ok(C.family.couplings.some(c => c.id === 'long_span'), 'the coupling is a contract artifact');
+  ok(C.refusals.some(r => r.id === 'no_over_span' && /2400/.test(r.shape + r.surface)), 'the span cap is a stated contract refusal');
+}
+
+/* =========================================================================
+ * BEDS (the 'bed' class, 2026-07)
+ * ========================================================================= */
+section('BED-1 every size builds a deck the checks and the builder agree on');
+{
+  const G = BB.Classes.get('bed').geom;
+  for (const size of ['twin', 'full', 'queen', 'king', 'cal_king']) {
+    const { spec, model, report } = pipeline({ meta: { name: 'B1', template: 'bed', level: 'beginner', units: 'mm' }, bed: { size } });
+    eq(report.errors.length, 0, `${size} builds clean`);
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const slats = integ.checks.find(c => c.id === 'bed:slats');
+    ok(slats && slats.status !== 'fail', `${size} slat deck is not a fail — got ${slats && slats.status}: ${slats && slats.value}`);
+    // Gap parity: the check must measure the deck the builder laid out.
+    const zs = model.parts.filter(p => p.role === 'slat').map(p => p.pos.z);
+    const deckLen = Math.max(...zs) - Math.min(...zs) + G.SLAT_W;
+    const builderGap = (deckLen - zs.length * G.SLAT_W) / (zs.length - 1);
+    ok(Math.abs(slats.data.gapMM - builderGap) < 0.05,
+      `${size}: check gap ${slats.data.gapMM.toFixed(1)} == builder gap ${builderGap.toFixed(1)} (probe/builder parity)`);
+    ok(slats.data.gapMM <= G.SLAT_GAP_MAX + 0.05, `${size}: gaps ${slats.data.gapMM.toFixed(1)} ≤ ${G.SLAT_GAP_MAX} (foam-warranty floor)`);
+    // Centre-rail mandate: begins at 1350 interior.
+    const centre = integ.checks.find(c => c.id === 'bed:centre');
+    const Wi = G.SIZES[size].w + G.FIT_CLEARANCE;
+    if (Wi >= G.CENTRE_RAIL_MIN_W) {
+      ok(model.parts.some(p => p.id === 'rail_centre_1') && centre.status === 'pass',
+        `${size} (${Wi} interior) carries the mandated centre rail`);
+    } else {
+      ok(!model.parts.some(p => p.id === 'rail_centre_1') && /not required/.test(centre.value),
+        `${size} (${Wi} interior) honestly skips it`);
+    }
+  }
+}
+
+section('BED-2 knock-down mandate, bracket honesty, and the headboard lever');
+{
+  const { spec, model } = pipeline({ meta: { name: 'B2', template: 'bed', level: 'beginner', units: 'mm' }, bed: { size: 'queen' } });
+  eq(spec.joinery.frame, 'kd_bolt', 'the frame joint is the knock-down mandate — a bed that cannot leave the room is a defect');
+  const glued = Spec.correctSpec({ meta: { name: 'B2g', template: 'bed', level: 'advanced', units: 'mm' }, bed: { size: 'queen' }, joinery: { frame: 'mortise_tenon' } });
+  eq(glued.joinery.frame, 'kd_bolt', 'even an advanced ask for glued rails is corrected back to bolts (no_glued_bed refusal)');
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const joint = integ.checks.find(c => c.id === 'bed:joint');
+  ok(joint && joint.data.marginRatio >= 1.5, `the barrel-bolt connection clears the 1.5× joint gate — got ${joint && joint.data.marginRatio.toFixed(2)}×`);
+  ok(joint.data.requiredBracketN >= joint.data.endReactionN * 1.5 - 10 && /publish no ratings/.test(joint.threshold),
+    'the bracket alternative prints a REQUIRED capacity (demand × 1.5) because brackets publish none');
+  const hb = integ.checks.find(c => c.id === 'bed:headboard');
+  ok(hb && hb.data.leverMM > 0 && hb.status !== 'fail',
+    `the headboard post carries the 667 N back force about the rail line — got ${hb && hb.status}`);
+  const nohb = pipeline({ meta: { name: 'B2n', template: 'bed', level: 'beginner', units: 'mm' }, bed: { size: 'queen', headboardHeight: 0 } });
+  ok(!Structural.computeIntegrity(nohb.spec, nohb.model, {}).checks.some(c => c.id === 'bed:headboard'),
+    'no headboard, no headboard check — nothing phantom');
+}
+
+section('BED-3 refusals with their regulations, and the basis disclosure');
+{
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table' } });
+  const bunk = AI.localModel('build me a bunk bed', table, {});
+  ok(bunk.kind === 'info' && /F1427/.test(bunk.text), 'bunk/loft is refused with ASTM F1427 named');
+  const crib = AI.localModel('a crib for the baby', table, {});
+  ok(crib.kind === 'info' && /16 CFR 121(9|9\/1220)/.test(crib.text), 'cribs are refused permanently under 16 CFR 1219/1220');
+  const murphy = AI.localModel('a murphy bed for the office', table, {});
+  ok(murphy.kind === 'info' && /mechanism/i.test(murphy.text), 'murphy/folding is refused on the mechanism');
+  // The basis disclosure ships in the checks, never a compliance claim.
+  const { spec, model } = pipeline({ meta: { name: 'B3', template: 'bed', level: 'beginner', units: 'mm' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const basis = integ.checks.find(c => c.id === 'bed:basis');
+  ok(basis && /EN 1725/.test(basis.value + basis.explain) && /no US adult-bed standard/i.test(basis.threshold + basis.explain),
+    'the EN 1725 benchmark and the absence of a US standard are both stated');
+  ok(!integ.checks.some(c => /complian(t|ce)\b(?! claim)/i.test(c.value) && !/not certified|no compliance/i.test(c.value + c.threshold)),
+    'no bed check claims compliance');
+  // Sizes ride the wire: a share code carries the bed block.
+  const rt = Spec.correctSpec(Codec.decode(Codec.encode(spec)));
+  eq(rt.bed.size, spec.bed.size, 'the mattress size survives the codec roundtrip');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

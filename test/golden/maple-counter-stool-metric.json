@@ -1,0 +1,529 @@
+{
+ "spec": {
+  "specVersion": 9,
+  "meta": {
+   "name": "Maple Counter Stool",
+   "template": "chair",
+   "level": "intermediate",
+   "units": "mm"
+  },
+  "overall": {
+   "width": 536.7,
+   "depth": 526.7,
+   "height": 630
+  },
+  "wood": {
+   "species": "hard_maple",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 20,
+   "legThickness": 38,
+   "apronHeight": 65,
+   "apronThickness": 25,
+   "apronInset": 0,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false,
+   "stretcher": "box",
+   "stretcherHeight": 400
+  },
+  "joinery": {
+   "frame": "kd_bolt",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "hardwax_oil",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": null,
+  "doors": null,
+  "custom": null,
+  "seat": {
+   "width": 430,
+   "depth": 420,
+   "backHeight": 0,
+   "counterHeight": 900,
+   "height": 630,
+   "slopeDeg": 0,
+   "splayDeg": 5,
+   "backRake": 0
+  },
+  "wall": null,
+  "bed": null
+ },
+ "validation": {
+  "errors": [],
+  "advisories": []
+ },
+ "cutList": [
+  {
+   "name": "Seat",
+   "qty": 1,
+   "L": 430,
+   "W": 420,
+   "T": 20,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Back rail",
+   "qty": 1,
+   "L": 359.7,
+   "W": 65,
+   "T": 25,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "shoulders cut at 5° (legs splay) — sliding bevel from the angle schedule · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Front rail",
+   "qty": 1,
+   "L": 359.7,
+   "W": 65,
+   "T": 25,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "shoulders cut at 5° (legs splay) — sliding bevel from the angle schedule · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Leg",
+   "qty": 4,
+   "L": 609.9,
+   "W": 38,
+   "T": 38,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "bevel 5° · compound end cut: splay 5° both ways — see the angle schedule in the steps · select straight-grained stock, free of knots",
+   "angles": {
+    "miter": 0,
+    "bevel": 5,
+    "compound": false,
+    "extreme": false
+   }
+  },
+  {
+   "name": "Side rail",
+   "qty": 2,
+   "L": 349.7,
+   "W": 65,
+   "T": 25,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "shoulders cut at 5° (legs splay) — sliding bevel from the angle schedule · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Rear stretcher",
+   "qty": 1,
+   "L": 390.7,
+   "W": 49,
+   "T": 25,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "shoulders cut at 5° (legs splay) — sliding bevel from the angle schedule · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Footrest stretcher",
+   "qty": 1,
+   "L": 390.7,
+   "W": 49,
+   "T": 25,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "shoulders cut at 5° (legs splay) — sliding bevel from the angle schedule · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Side stretcher",
+   "qty": 2,
+   "L": 380.7,
+   "W": 49,
+   "T": 25,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "shoulders cut at 5° (legs splay) — sliding bevel from the angle schedule · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Corner block",
+   "qty": 4,
+   "L": 60,
+   "W": 60,
+   "T": 53,
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "rip the blank at 45° across the corner — grain runs across the diagonal · select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "verdict": "advisory",
+  "rackScore": 100,
+  "tip": {
+   "angEmpty": 28.563,
+   "angLoaded": 28.563,
+   "ratio": 1.197
+  },
+  "checks": [
+   {
+    "id": "sag:apron:seat_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.124,
+     "limitMM": 1.166,
+     "spanMM": 349.7
+    }
+   },
+   {
+    "id": "str:apron:seat_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:seat_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.626,
+     "limitMM": 1.267,
+     "spanMM": 380
+    }
+   },
+   {
+    "id": "str:seat_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "chair:leg",
+    "status": "pass",
+    "data": {
+     "stressMPa": 14.609,
+     "allowMPa": 27.25
+    }
+   },
+   {
+    "id": "chair:cyclic",
+    "status": "pass",
+    "data": {
+     "perJointN": 333.5,
+     "cyclicCapN": 1134,
+     "marginRatio": 3.4
+    }
+   },
+   {
+    "id": "chair:foot",
+    "status": "pass",
+    "data": {
+     "stressMPa": 13.024,
+     "allowMPa": 27.25,
+     "spanMM": 390.7
+    }
+   },
+   {
+    "id": "chair:counter",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "chair:grain",
+    "status": "advisory",
+    "data": {
+     "splayDeg": 5
+    }
+   },
+   {
+    "id": "chair:bifma",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "slender",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:seat_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 5.93,
+     "crossWidthMM": 420,
+     "context": "floated"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Hard Maple 38 x 38 x 3048 mm (2x2)",
+    "qty": 1,
+    "cost": 16.459
+   },
+   {
+    "label": "Hard Maple 89 x 89 x 1829 mm (4x4)",
+    "qty": 1,
+    "cost": 34.568
+   },
+   {
+    "label": "Hard Maple 25 x 89 x 2438 mm (5/4x4)",
+    "qty": 1,
+    "cost": 20.187
+   },
+   {
+    "label": "Hard Maple 25 x 89 x 3658 mm (5/4x4)",
+    "qty": 1,
+    "cost": 30.288
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "2x2",
+    "stockLen": 3048,
+    "offcut": 569.4,
+    "cuts": [
+     {
+      "name": "Leg",
+      "len": 609.9,
+      "offset": 15
+     },
+     {
+      "name": "Leg",
+      "len": 609.9,
+      "offset": 627.9
+     },
+     {
+      "name": "Leg",
+      "len": 609.9,
+      "offset": 1240.8
+     },
+     {
+      "name": "Leg",
+      "len": 609.9,
+      "offset": 1853.7
+     }
+    ]
+   },
+   {
+    "nominal": "4x4",
+    "stockLen": 1829,
+    "offcut": 1550,
+    "cuts": [
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 15
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 78
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 141
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 204
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3658,
+    "offcut": 245.6,
+    "cuts": [
+     {
+      "name": "Seat (strip 1/6)",
+      "len": 430,
+      "offset": 15
+     },
+     {
+      "name": "Seat (strip 2/6)",
+      "len": 430,
+      "offset": 448
+     },
+     {
+      "name": "Seat (strip 3/6)",
+      "len": 430,
+      "offset": 881
+     },
+     {
+      "name": "Seat (strip 4/6)",
+      "len": 430,
+      "offset": 1314
+     },
+     {
+      "name": "Seat (strip 5/6)",
+      "len": 430,
+      "offset": 1747
+     },
+     {
+      "name": "Seat (strip 6/6)",
+      "len": 430,
+      "offset": 2180
+     },
+     {
+      "name": "Rear stretcher",
+      "len": 390.7,
+      "offset": 2613
+     },
+     {
+      "name": "Footrest stretcher",
+      "len": 390.7,
+      "offset": 3006.7
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 2438,
+    "offcut": 212.8,
+    "cuts": [
+     {
+      "name": "Side stretcher",
+      "len": 380.7,
+      "offset": 15
+     },
+     {
+      "name": "Side stretcher",
+      "len": 380.7,
+      "offset": 398.7
+     },
+     {
+      "name": "Back rail",
+      "len": 359.7,
+      "offset": 782.4
+     },
+     {
+      "name": "Front rail",
+      "len": 359.7,
+      "offset": 1145.1
+     },
+     {
+      "name": "Side rail",
+      "len": 349.7,
+      "offset": 1507.8
+     },
+     {
+      "name": "Side rail",
+      "len": 349.7,
+      "offset": 1860.5
+     }
+    ]
+   }
+  ],
+  "sheets": [],
+  "totalCost": 101.5,
+  "wasteSolidPct": 63,
+  "wasteSheetPct": null
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Hard Maple 38 x 38 x 3048 mm (2x2)",
+    "qty": 1,
+    "price": 16.46
+   },
+   {
+    "kind": "lumber",
+    "label": "Hard Maple 89 x 89 x 1829 mm (4x4)",
+    "qty": 1,
+    "price": 34.57
+   },
+   {
+    "kind": "lumber",
+    "label": "Hard Maple 25 x 89 x 2438 mm (5/4x4)",
+    "qty": 1,
+    "price": 20.19
+   },
+   {
+    "kind": "lumber",
+    "label": "Hard Maple 25 x 89 x 3658 mm (5/4x4)",
+    "qty": 1,
+    "price": 30.29
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 6.7 bd ft (0.02 m³)",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 63%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "M6 × 50 mm furniture bolt + barrel nut",
+    "qty": 24,
+    "price": 36
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 64 mm wood screw (pilot 3.2 mm)",
+    "qty": 24,
+    "price": 1.44
+   },
+   {
+    "kind": "fastener",
+    "label": "Figure-8 fasteners + #8 × 16 mm",
+    "qty": 6,
+    "price": 4.81
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "finish",
+    "label": "Hardwax oil",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 169.76
+ },
+ "steps": [
+  "glueup1",
+  "thickness",
+  "layout",
+  "s1",
+  "s2",
+  "s4",
+  "s5",
+  "s6",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

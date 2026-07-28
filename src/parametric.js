@@ -316,7 +316,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     const apLenLong = frameW - 2 * legT, apLenShort = frameD - 2 * legT;
     const apZ = frameD / 2 - st.apronInset - st.apronThickness / 2;
     const apX = frameW / 2 - st.apronInset - st.apronThickness / 2;
+    // Desk apron drawers (frame_table extension): the FRONT apron is not a
+    // solid board — the drawer opening interrupts it, leaving a lower rail
+    // (and a centre stile on a pair). The rear apron stays full.
+    const deskDrawers = t === 'desk' && spec.drawers;
     [[-apZ, 1], [apZ, 2]].forEach(([z, i]) => {
+      if (deskDrawers && i === 2) return; // front band built by addDeskDrawers
       parts.push(part(`apron_long_${i}`, 'apron_long', 'apron', 'Long apron', apLenLong, st.apronHeight, st.apronThickness, 0, apY, z,
         { material: sp, explode: { x: 0, y: 0, z: Math.sign(z) } }));
     });
@@ -331,6 +336,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Frame joints: each apron end into its leg.
     const fj = spec.joinery.frame;
     for (const [z] of [[-apZ], [apZ]]) {
+      if (deskDrawers && z > 0) continue; // front band joints made below
       joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_1' : 'leg_3', pos: { x: -lx, y: apY, z } });
       joints.push({ type: fj, a: z < 0 ? 'apron_long_1' : 'apron_long_2', b: z < 0 ? 'leg_2' : 'leg_4', pos: { x: lx, y: apY, z } });
     }
@@ -339,11 +345,127 @@ var BB = globalThis.BB = globalThis.BB || {};
       joints.push({ type: fj, a: x < 0 ? 'apron_short_1' : 'apron_short_2', b: x < 0 ? 'leg_3' : 'leg_4', pos: { x, y: apY, z: lz } });
     }
     joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_1', pos: { x: 0, y: o.height - topT, z: -apZ } });
-    joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
+    if (!deskDrawers) joints.push({ type: 'butt_screws', a: 'top_1', b: 'apron_long_2', pos: { x: 0, y: o.height - topT, z: apZ } });
 
     addStretchers(spec, parts, joints, { lx, lz, legT, sp });
 
-    return { parts, joints, openings: [], drawers: [] };
+    let bankOut = { openings: [], drawers: [] };
+    if (deskDrawers) {
+      bankOut = addDeskDrawers(spec, parts, joints, {
+        apLenLong, apZ, apY, lx, frameD, sp, fj,
+        bandTop: o.height - topT, bandBottom: o.height - topT - st.apronHeight
+      });
+    }
+    return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
+  }
+
+  /* ---------------- desk apron drawers (frame_table extension, 2026-07) ----
+   * The drawer lives INSIDE the apron band: the top is its kicker, a lower
+   * rail runs under the opening (leg to leg — it is what remains of the
+   * front apron), a pair splits around a centre stile, and each box rides
+   * two wooden runners spanning from the lower rail to the rear apron.
+   * Fronts are inset in the band; the box derives from the opening exactly
+   * as the casework banks do (§5 math, wood-runner clearances). */
+  function addDeskDrawers(spec, parts, joints, f) {
+    const st = spec.structure, d = spec.drawers;
+    const sp = spec.wood.species;
+    const apT = st.apronThickness;
+    const openH = Math.max(45, Math.min(80, st.apronHeight - 40));
+    const lowerH = st.apronHeight - openH;
+    const zF = f.apZ;                 // band centreline (the front apron's plane)
+    const zFace = zF + apT / 2;       // outer face of the band
+    const frontT = 19, stileW = 60;
+    const boxT = spec.wood.sheetSpecies ? 12 : 15;
+    const boxMat = spec.wood.sheetSpecies || 'baltic_birch';
+    const openings = [], drawers = [];
+
+    const railY = f.bandBottom + lowerH / 2;
+    parts.push(part('rail_lower_1', 'rail_lower', 'rail', 'Lower drawer rail', f.apLenLong, lowerH, apT, 0, railY, zF,
+      { material: sp, explode: { x: 0, y: -0.3, z: 0.8 } }));
+    joints.push({ type: f.fj, a: 'rail_lower_1', b: 'leg_3', pos: { x: -f.lx, y: railY, z: zF } });
+    joints.push({ type: f.fj, a: 'rail_lower_1', b: 'leg_4', pos: { x: f.lx, y: railY, z: zF } });
+    if (d.count === 2) {
+      const stY = f.bandTop - openH / 2;
+      parts.push(part('stile_1', 'stile', 'rail', 'Centre stile', stileW, openH, apT, 0, stY, zF,
+        { material: sp, explode: { x: 0, y: 0, z: 0.8 } }));
+      joints.push({ type: 'butt_screws', a: 'stile_1', b: 'rail_lower_1', pos: { x: 0, y: f.bandBottom + lowerH, z: zF }, noCutAllowance: true });
+      joints.push({ type: 'butt_screws', a: 'stile_1', b: 'top_1', pos: { x: 0, y: f.bandTop, z: zF }, noCutAllowance: true });
+    }
+
+    const openW = Math.round(((d.count === 1 ? f.apLenLong : (f.apLenLong - stileW) / 2)) * 10) / 10;
+    const interiorD = 2 * f.apZ - apT; // clear run: band inner face to rear apron inner face
+    const boxD = Math.max(150, Math.min(Math.floor((interiorD - 25) / 10) * 10, 450));
+    const boxJoint = spec.joinery.box;
+    const slideIn = boxJoint === 'butt_screws' || boxJoint === 'pocket_screws';
+
+    for (let i = 0; i < d.count; i++) {
+      const px = d.count === 1 ? 0 : (i === 0 ? -1 : 1) * ((openW + stileW) / 2);
+      const op = {
+        index: i, w: openW, h: openH, x: px,
+        yTop: f.bandTop, yBottom: f.bandTop - openH, zTop: f.bandTop,
+        zFront: zFace, interiorDepth: interiorD
+      };
+      openings.push(op);
+      const boxW = openW - 4, boxH = openH - 10;
+      const boxFrontZ = zFace - frontT; // inset front finishes flush with the band face
+      const boxBottomY = op.yBottom + (op.h - boxH) / 2;
+      const cy = boxBottomY + boxH / 2, cz = boxFrontZ - boxD / 2;
+      const g = 'drawer_' + i;
+      const dp = [];
+      dp.push(part(`dr${i + 1}_side_l`, `drbox_side_${boxD}x${boxH}`, 'drawer_side', `Drawer ${i + 1} side`, boxT, boxH, boxD, px - boxW / 2 + boxT / 2, cy, cz, { material: boxMat, group: g }));
+      dp.push(part(`dr${i + 1}_side_r`, `drbox_side_${boxD}x${boxH}`, 'drawer_side', `Drawer ${i + 1} side`, boxT, boxH, boxD, px + boxW / 2 - boxT / 2, cy, cz, { material: boxMat, group: g }));
+      dp.push(part(`dr${i + 1}_boxfront`, `drbox_front_${Math.round(boxW)}x${boxH}`, 'drawer_boxfront', `Drawer ${i + 1} box front`, boxW - 2 * boxT, boxH, boxT, px, cy, boxFrontZ - boxT / 2, { material: boxMat, group: g }));
+      const backH = slideIn ? boxH - 16 : boxH;
+      dp.push(part(`dr${i + 1}_boxback`, `drbox_back_${Math.round(boxW)}x${Math.round(backH)}`, 'drawer_boxback', `Drawer ${i + 1} box back`, boxW - 2 * boxT, backH, boxT, px, boxBottomY + (slideIn ? backH / 2 + 16 : boxH / 2), boxFrontZ - boxD + boxT / 2, { material: boxMat, group: g }));
+      const botW = boxW - 2 * boxT + 10;
+      const botD = slideIn ? boxD - boxT - (boxT - 6) : boxD - 2 * boxT + 10;
+      dp.push(part(`dr${i + 1}_bottom`, `drbox_bot_${Math.round(botW)}x${Math.round(botD)}`, 'drawer_bottom', `Drawer ${i + 1} bottom`, botW, 6, botD, px, boxBottomY + 13, cz, { material: boxMat, group: g }));
+      const fw = openW - 4, fh = openH - 4;
+      const fZ = zFace - frontT / 2;
+      const front = part(`dr${i + 1}_front`, `drfront_${Math.round(fw)}x${Math.round(fh)}`, 'drawer_front', `Drawer ${i + 1} front`, fw, fh, frontT, px, op.yBottom + op.h / 2, fZ, { material: sp, group: g });
+      dp.push(front);
+      const pullStyle = (BB.HW && spec.hardware && BB.HW.PULLS[spec.hardware.pull]) ? spec.hardware.pull : 'bar_pull';
+      const pSpec = BB.HW ? BB.HW.pullSpec(fw, pullStyle) : { style: 'bar_pull', count: 1, ctcMM: 96, holes: 2 };
+      if (pullStyle !== 'none_touch') {
+        const isKnob = /knob|ring/.test(pSpec.style);
+        const pw = isKnob ? 35 : Math.max(60, Math.min(fw - 40, (pSpec.ctcMM || 96) + 14));
+        dp.push(part(`dr${i + 1}_pull`, 'pull', 'pull', `Drawer ${i + 1} pull`, pw, isKnob ? 35 : 12, 22, px, op.yBottom + op.h / 2, fZ + frontT / 2 + 11, { material: 'hardware', group: g }));
+      }
+      for (const p of dp) { p.drawer = i; p.explode = { x: 0, y: 0, z: 0 }; }
+      parts.push(...dp);
+      joints.push(
+        { type: boxJoint, a: dp[2].id, b: dp[0].id, pos: { x: px - boxW / 2 + boxT, y: cy, z: boxFrontZ - boxT / 2 } },
+        { type: boxJoint, a: dp[2].id, b: dp[1].id, pos: { x: px + boxW / 2 - boxT, y: cy, z: boxFrontZ - boxT / 2 } },
+        { type: slideIn ? boxJoint : 'dado', a: dp[3].id, b: dp[0].id, pos: { x: px - boxW / 2 + boxT, y: cy, z: boxFrontZ - boxD + boxT / 2 } },
+        { type: slideIn ? boxJoint : 'dado', a: dp[3].id, b: dp[1].id, pos: { x: px + boxW / 2 - boxT, y: cy, z: boxFrontZ - boxD + boxT / 2 } }
+      );
+
+      // Runners: real lumber, spanning the band to the rear apron under each
+      // box side — the top above is the kicker, so no upper gear at all.
+      const gearIds = [];
+      const runD = Math.max(120, Math.round(interiorD - 2)); // 2 mm fitting shy of the rear apron
+      const runZ = zF - apT / 2 - runD / 2;
+      [[-1, 'l'], [1, 'r']].forEach(([sgn, side]) => {
+        const id = `dr${i + 1}_runner_${side}`;
+        parts.push(part(id, `runner_${runD}`, 'runner', `Drawer ${i + 1} runner`, 32, 20, runD,
+          px + sgn * (boxW / 2 - 16), boxBottomY - 10, runZ, { group: 'frame', material: sp }));
+        gearIds.push(id);
+        joints.push({ type: 'butt_screws', a: id, b: 'apron_long_1', pos: { x: px + sgn * (boxW / 2 - 16), y: boxBottomY - 10, z: runZ - runD / 2 }, noCutAllowance: true });
+        joints.push({ type: 'butt_screws', a: id, b: 'rail_lower_1', pos: { x: px + sgn * (boxW / 2 - 16), y: boxBottomY - 10, z: zF }, noCutAllowance: true });
+      });
+
+      drawers.push({
+        index: i, group: g, opening: op,
+        box: { w: boxW, h: boxH, d: boxD, t: boxT },
+        slideLen: null, runner: 'wood_runners', frontStyle: 'inset',
+        front: { w: fw, h: fh, t: frontT },
+        pull: Object.assign({ styleKey: pullStyle }, pSpec),
+        travel: Math.round(boxD * 0.8),
+        partIds: dp.map(p => p.id),
+        gearIds
+      });
+    }
+    return { openings, drawers };
   }
 
   /* ---------------- stretchers (X-07) ----------------
@@ -680,6 +802,416 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* ---------------- seating: chair / stool (the 'seating' class) ----------------
+   * The engineering profile lives in BB.Classes ('seating'); this builds its
+   * geometry. Two honest constructions, both from straight stock:
+   *
+   *   chair  vertical rear posts running floor→crest (one piece, no sawn
+   *          bend — the class REFUSES sawn rear legs, short grain). The back
+   *          rake comes from offsetting the crest rearward and the slats
+   *          forward WITHIN the post depth; the seat slopes by tilting the
+   *          side rails and dropping the rear band, exactly as a rectilinear
+   *          chair is really built. Corner blocks are structure and ship as
+   *          parts.
+   *   stool  backHeight 0: four legs splayed outward in both planes
+   *          (compound angle), level rails, and a mandatory box-stretcher
+   *          footrest. Legs are straight rips — the instructions demand the
+   *          blank ripped WITH the grain along the leg axis, never sawn from
+   *          a vertical blank (grain runout, see chair:grain).
+   */
+  function chairBuild(spec) {
+    const st = spec.structure, se = spec.seat;
+    const G = BB.Classes.get('seating').geom;
+    const parts = [], joints = [];
+    const sp = spec.wood.species;
+    const fj = spec.joinery.frame;
+    const W = se.width, D = se.depth, Hs = se.height;
+    const seatT = st.topThickness, railH = st.apronHeight, railT = st.apronThickness;
+    const legT = st.legThickness;
+    const stool = se.backHeight === 0;
+    const rad = d => d * Math.PI / 180;
+    // Footrests carry a standing foot (chair:foot) — beefier than a table's
+    // stretcher, same stock thickness.
+    const secH = Math.max(45, Math.min(90, Math.round(railH * 0.75)));
+    const secT = railT;
+    const strY = st.stretcherHeight;
+    const cb = G.CORNER_BLOCK;
+
+    /* Ground a possibly-rotated part exactly: snap its lowest OBB corner to
+     * the floor plane (the compound end cut trims the real leg flush). */
+    const ground = p => {
+      const cs = BB.Geo.obbCorners(BB.Geo.partOBB(p));
+      const dy = Math.min(...cs.map(c => c[1]));
+      if (Math.abs(dy) > 0.01) p.pos.y = Math.round((p.pos.y - dy) * 10) / 10;
+    };
+
+    if (stool) {
+      const s = se.splayDeg, t = Math.tan(rad(s));
+      const frameTop = Hs - seatT;
+      const thetaR = Math.atan(Math.SQRT2 * t) * 180 / Math.PI; // compound resultant
+      const lx = W / 2 - legT / 2, lz = D / 2 - legT / 2;
+      // Axial length, trimmed a hair so the tilted top corners stay under the seat.
+      const La = frameTop / Math.cos(rad(thetaR)) - legT * Math.tan(rad(thetaR));
+      [[-1, -1, 1], [1, -1, 2], [-1, 1, 3], [1, 1, 4]].forEach(([sx, sz, i]) => {
+        const runMid = t * (frameTop / 2); // outward travel of the leg centre at mid-height
+        const p = part(`leg_${i}`, 'leg_splayed', 'leg', 'Leg', legT, La, legT,
+          sx * (lx + runMid), frameTop / 2, sz * (lz + runMid),
+          { material: sp, explode: { x: sx * 0.4, y: -0.4, z: sz * 0.4 } });
+        p.rot = { x: -sz * s, y: 0, z: sx * s };
+        p.cutDim = { L: Math.round(La * 10) / 10, W: legT, T: legT };
+        p.angleNote = `compound end cut: splay ${s}° both ways — see the angle schedule in the steps`;
+        ground(p);
+        parts.push(p);
+      });
+      // Level rails and the footrest box: spans grow toward the floor as the
+      // legs run out. Offset of a leg centre at height y: t·(frameTop − y).
+      const off = y => t * (frameTop - y);
+      const railY = frameTop - railH / 2;
+      const mk = (id, name, w, h, d, x, y, z, legA, legB, note) => {
+        const p = part(id, id.replace(/_\d+$/, ''), /stretcher/.test(id) ? 'stretcher' : 'rail', name, w, h, d, x, y, z,
+          { material: sp, explode: { x: Math.sign(x), y: /stretcher/.test(id) ? -0.5 : 0, z: Math.sign(z) } });
+        if (note) p.angleNote = note;
+        parts.push(p);
+        // Joint positions land at each member end (the setout engine reads them).
+        const along = w >= d ? 'x' : 'z';
+        const half = (along === 'x' ? w : d) / 2;
+        const endA = { x, y, z }, endB = { x, y, z };
+        endA[along] = (along === 'x' ? x : z) - half;
+        endB[along] = (along === 'x' ? x : z) + half;
+        joints.push({ type: fj, a: id, b: legA, pos: endA });
+        joints.push({ type: fj, a: id, b: legB, pos: endB });
+      };
+      const shoulder = `shoulders cut at ${s}° (legs splay) — sliding bevel from the angle schedule`;
+      // Seat rails, flush with the legs' outside faces at rail height.
+      const oR = off(railY);
+      [[-1, 'rail_side_1', 'leg_1', 'leg_3'], [1, 'rail_side_2', 'leg_2', 'leg_4']].forEach(([sx, id, a, b]) => {
+        mk(id, 'Side rail', railT, railH, 2 * (lz + oR) - legT, sx * (lx + oR + legT / 2 - railT / 2), railY, 0, a, b, shoulder);
+      });
+      [[-1, 'rail_back_1', 'leg_1', 'leg_2'], [1, 'rail_front_1', 'leg_3', 'leg_4']].forEach(([sz, id, a, b]) => {
+        mk(id, sz < 0 ? 'Back rail' : 'Front rail', 2 * (lx + oR) - legT, railH, railT, 0, railY, sz * (lz + oR + legT / 2 - railT / 2), a, b, shoulder);
+      });
+      // Footrest: the box stretcher every stool carries (class rule).
+      const oS = off(strY);
+      [[-1, 'stretcher_side_1', 'leg_1', 'leg_3'], [1, 'stretcher_side_2', 'leg_2', 'leg_4']].forEach(([sx, id, a, b]) => {
+        mk(id, 'Side stretcher', secT, secH, 2 * (lz + oS) - legT, sx * (lx + oS), strY, 0, a, b, shoulder);
+      });
+      [[-1, 'stretcher_back_1', 'leg_1', 'leg_2'], [1, 'stretcher_front_1', 'leg_3', 'leg_4']].forEach(([sz, id, a, b]) => {
+        mk(id, sz < 0 ? 'Rear stretcher' : 'Footrest stretcher', 2 * (lx + oS) - legT, secH, secT, 0, strY, sz * (lz + oS), a, b, shoulder);
+      });
+      addSeatCore(spec, parts, joints, { W, D, Hs, seatT, railH, railT, cb, sp, slope: 0, postIds: [] });
+      return { parts, joints, openings: [], drawers: [] };
+    }
+
+    /* ---- chair ---- */
+    const postD = G.rearPostDepth(st);
+    const Hb = se.backHeight;
+    const slope = se.slopeDeg, tanS = Math.tan(rad(slope));
+    const lx = W / 2 - legT / 2;
+    const zPost = -(D / 2 - postD / 2), zFront = D / 2 - legT / 2;
+    // Seat top plane: full height at the FRONT edge, sloping down rearward.
+    const seatTopAt = z => Hs - tanS * (D / 2 - z);
+    const railTopAt = z => seatTopAt(z) - seatT;
+
+    // Rear posts: ONE straight piece, floor to crest. The class refuses sawn
+    // bends — rake lives in the slat offsets below.
+    [[-1, 1], [1, 2]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'rear_post', 'post', 'Rear post', legT, Hs + Hb, postD,
+        sx * lx, (Hs + Hb) / 2, zPost,
+        { material: sp, explode: { x: sx * 0.35, y: 0.2, z: -0.5 } }));
+    });
+    // Front legs run to the underside of the sloped seat. A box can't carry
+    // a beveled end, so the height is taken at the leg's REAR face (the
+    // lowest contact with the sloped underside) and the bevel is a cut note
+    // — exactly how the leg is really trimmed to meet a sloped seat.
+    const flH = railTopAt(zFront - legT / 2);
+    [[-1, 3], [1, 4]].forEach(([sx, i]) => {
+      const p = part(`leg_${i}`, 'leg', 'leg', 'Front leg', legT, flH, legT,
+        sx * lx, flH / 2, zFront,
+        { material: sp, explode: { x: sx * 0.35, y: -0.4, z: 0.4 } });
+      if (slope > 0) p.angleNote = `top end beveled ${slope}° to meet the sloped seat`;
+      parts.push(p);
+    });
+
+    // Seat rails. Side rails tilt with the seat slope (their shoulders carry
+    // the bevel); front/back rails stay level at their own band heights.
+    const sideSpan = D - legT - postD;
+    const zSideC = (postD - legT) / 2;
+    [[-1, 1, 'post_1', 'leg_3'], [1, 2, 'post_2', 'leg_4']].forEach(([sx, i, postId, legId]) => {
+      const p = part(`rail_side_${i}`, 'rail_side', 'rail', 'Side rail', railT, railH, sideSpan,
+        sx * (W / 2 - railT / 2), railTopAt(zSideC) - railH / 2, zSideC,
+        { material: sp, explode: { x: sx, y: 0, z: 0 } });
+      if (slope > 0) {
+        p.rot = { x: -slope, y: 0, z: 0 };
+        p.cutDim = { L: Math.round(sideSpan / Math.cos(rad(slope)) * 10) / 10, W: railH, T: railT };
+      }
+      parts.push(p);
+      joints.push({ type: fj, a: `rail_side_${i}`, b: postId, pos: { x: sx * lx, y: railTopAt(zPost + postD / 2) - railH / 2, z: zPost + postD / 2 } });
+      joints.push({ type: fj, a: `rail_side_${i}`, b: legId, pos: { x: sx * lx, y: railTopAt(zFront) - railH / 2, z: zFront - legT / 2 } });
+    });
+    // Front rail flush with the front-leg faces; back rail flush with the
+    // posts' FRONT faces (its body lives inside the post depth).
+    const zF = D / 2 - railT / 2;
+    const zBack = -D / 2 + postD - railT / 2;
+    parts.push(part('rail_front_1', 'rail_front', 'rail', 'Front rail', W - 2 * legT, railH, railT,
+      0, railTopAt(zF) - railH / 2, zF, { material: sp, explode: { x: 0, y: 0, z: 1 } }));
+    joints.push({ type: fj, a: 'rail_front_1', b: 'leg_3', pos: { x: -lx, y: railTopAt(zF) - railH / 2, z: zF } });
+    joints.push({ type: fj, a: 'rail_front_1', b: 'leg_4', pos: { x: lx, y: railTopAt(zF) - railH / 2, z: zF } });
+    parts.push(part('rail_back_1', 'rail_back', 'rail', 'Back seat rail', W - 2 * legT, railH, railT,
+      0, railTopAt(zBack) - railH / 2, zBack, { material: sp, explode: { x: 0, y: 0, z: -1 } }));
+    joints.push({ type: fj, a: 'rail_back_1', b: 'post_1', pos: { x: -lx, y: railTopAt(zBack) - railH / 2, z: zBack } });
+    joints.push({ type: fj, a: 'rail_back_1', b: 'post_2', pos: { x: lx, y: railTopAt(zBack) - railH / 2, z: zBack } });
+
+    // Stretchers: H (side pair + centre) or box (perimeter) at the stretcher line.
+    const strStyle = st.stretcher === 'box' ? 'box' : 'h';
+    [[-1, 1, 'post_1', 'leg_3'], [1, 2, 'post_2', 'leg_4']].forEach(([sx, i, postId, legId]) => {
+      parts.push(part(`stretcher_side_${i}`, 'stretcher_side', 'stretcher', 'Side stretcher', secT, secH, sideSpan,
+        sx * (W / 2 - secT / 2), strY, zSideC, { material: sp, explode: { x: sx, y: -0.5, z: 0 } }));
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: postId, pos: { x: sx * lx, y: strY, z: zPost + postD / 2 } });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: legId, pos: { x: sx * lx, y: strY, z: zFront - legT / 2 } });
+    });
+    if (strStyle === 'h') {
+      parts.push(part('stretcher_centre_1', 'stretcher_centre', 'stretcher', 'Centre stretcher', W - 2 * secT, secH, secT,
+        0, strY, zSideC, { material: sp, explode: { x: 0, y: -0.5, z: 0 } }));
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_1', pos: { x: -(W / 2 - secT), y: strY, z: zSideC } });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_2', pos: { x: W / 2 - secT, y: strY, z: zSideC } });
+    } else {
+      parts.push(part('stretcher_front_1', 'stretcher_front', 'stretcher', 'Front stretcher', W - 2 * legT, secH, secT,
+        0, strY, zFront, { material: sp, explode: { x: 0, y: -0.5, z: 1 } }));
+      joints.push({ type: fj, a: 'stretcher_front_1', b: 'leg_3', pos: { x: -lx, y: strY, z: zFront } });
+      joints.push({ type: fj, a: 'stretcher_front_1', b: 'leg_4', pos: { x: lx, y: strY, z: zFront } });
+      parts.push(part('stretcher_back_1', 'stretcher_back', 'stretcher', 'Rear stretcher', W - 2 * legT, secH, secT,
+        0, strY, zPost, { material: sp, explode: { x: 0, y: -0.5, z: -1 } }));
+      joints.push({ type: fj, a: 'stretcher_back_1', b: 'post_1', pos: { x: -lx, y: strY, z: zPost } });
+      joints.push({ type: fj, a: 'stretcher_back_1', b: 'post_2', pos: { x: lx, y: strY, z: zPost } });
+    }
+
+    /* Back: crest + slats between the posts, raked by opposed z-offsets
+     * within the post depth — the honest straight-post rake. Each member
+     * centres on the rake line through the post's mid-depth. */
+    const crestY = Hs + Hb - G.CREST_H / 2;
+    const slatYs = [Hs + G.SLAT_RISE];
+    if (Hb >= 420) slatYs.push((slatYs[0] + crestY) / 2);
+    const yMid = (crestY + slatYs[0]) / 2;
+    const tanR = Math.tan(rad(se.backRake));
+    const zOn = y => zPost - tanR * (y - yMid); // rake line (top leans rearward)
+    const backLen = W - 2 * legT;
+    const crest = part('crest_1', 'crest', 'crest', 'Crest rail', backLen, G.CREST_H, G.SLAT_T,
+      0, crestY, Math.round(zOn(crestY) * 10) / 10, { material: sp, explode: { x: 0, y: 0.8, z: -0.6 } });
+    if (se.backRake > 0) crest.angleNote = `mortise offset per setout — back rakes ${se.backRake}° via opposed offsets`;
+    parts.push(crest);
+    joints.push({ type: fj, a: 'crest_1', b: 'post_1', pos: { x: -lx, y: crestY, z: zOn(crestY) } });
+    joints.push({ type: fj, a: 'crest_1', b: 'post_2', pos: { x: lx, y: crestY, z: zOn(crestY) } });
+    slatYs.forEach((y, i) => {
+      parts.push(part(`slat_${i + 1}`, 'back_slat', 'slat', 'Back slat', backLen, G.SLAT_H, G.SLAT_T,
+        0, y, Math.round(zOn(y) * 10) / 10, { material: sp, explode: { x: 0, y: 0.3, z: -0.4 } }));
+      joints.push({ type: fj, a: `slat_${i + 1}`, b: 'post_1', pos: { x: -lx, y, z: zOn(y) } });
+      joints.push({ type: fj, a: `slat_${i + 1}`, b: 'post_2', pos: { x: lx, y, z: zOn(y) } });
+    });
+
+    addSeatCore(spec, parts, joints, {
+      W, D, Hs, seatT, railH, railT, cb, sp, slope,
+      postIds: ['post_1', 'post_2']
+    });
+    return { parts, joints, openings: [], drawers: [] };
+  }
+
+  /* Seat panel + corner blocks, shared by chair and stool. Corner blocks are
+   * STRUCTURE (they close the seat-frame racking loop) and ship as parts with
+   * their own dimensions; at the corners they bear on the leg/post too, so
+   * they are jointed to it as well — glued and screwed to everything they
+   * touch, exactly as fitted in the shop. */
+  function addSeatCore(spec, parts, joints, ctx) {
+    const { W, D, Hs, seatT, railH, railT, cb, sp, slope } = ctx;
+    const rad = d => d * Math.PI / 180;
+    const tanS = Math.tan(rad(slope || 0));
+    const seatTopAt = z => Hs - tanS * (D / 2 - z);
+    const stool = !ctx.postIds || !ctx.postIds.length;
+
+    // Corner blocks: touching both rails' inner faces at each corner.
+    const bx = W / 2 - railT - cb / 2, bz = D / 2 - railT - cb / 2;
+    const bh = Math.max(30, railH - 12);
+    const corners = [
+      { sx: -1, sz: 1, mates: stool ? ['leg_3'] : ['leg_3'], rails: ['rail_side_1', 'rail_front_1'] },
+      { sx: 1, sz: 1, mates: stool ? ['leg_4'] : ['leg_4'], rails: ['rail_side_2', 'rail_front_1'] },
+      { sx: -1, sz: -1, mates: stool ? ['leg_1'] : ['post_1'], rails: ['rail_side_1', 'rail_back_1'] },
+      { sx: 1, sz: -1, mates: stool ? ['leg_2'] : ['post_2'], rails: ['rail_side_2', 'rail_back_1'] }
+    ];
+    corners.forEach((c, i) => {
+      const z = c.sz * bz;
+      const y = seatTopAt(z) - seatT - 4 - bh / 2;
+      const id = `block_${i + 1}`;
+      const p = part(id, 'corner_block', 'corner_block', 'Corner block', cb, bh, cb,
+        c.sx * bx, Math.round(y * 10) / 10, z, { material: sp, explode: { x: c.sx * 0.2, y: -0.3, z: c.sz * 0.2 } });
+      p.angleNote = 'rip the blank at 45° across the corner — grain runs across the diagonal';
+      parts.push(p);
+      for (const m of [...c.rails, ...c.mates]) {
+        joints.push({ type: 'butt_screws', a: id, b: m, pos: { x: c.sx * bx, y, z }, noCutAllowance: true });
+      }
+    });
+
+    // Seat panel: full plan, notched around the rear posts (capture included
+    // in the panel size — no cut allowance), fastened so it can MOVE.
+    const seat = part('seat_1', 'seat_panel', 'seat', 'Seat', W, seatT, D,
+      0, Math.round((seatTopAt(0) - seatT / 2) * 10) / 10, 0,
+      { material: sp, explode: { x: 0, y: 1, z: 0 } });
+    if (slope > 0) {
+      seat.rot = { x: -slope, y: 0, z: 0 };
+      seat.cutDim = { L: W, W: D, T: seatT };
+    }
+    parts.push(seat);
+    joints.push({ type: 'butt_screws', a: 'seat_1', b: 'rail_side_1', pos: { x: -(W / 2 - railT / 2), y: seatTopAt(0) - seatT, z: 0 }, noCutAllowance: true });
+    joints.push({ type: 'butt_screws', a: 'seat_1', b: 'rail_side_2', pos: { x: W / 2 - railT / 2, y: seatTopAt(0) - seatT, z: 0 }, noCutAllowance: true });
+    for (const pid of ctx.postIds || []) {
+      joints.push({ type: 'butt_screws', a: 'seat_1', b: pid, pos: { x: (pid === 'post_1' ? -1 : 1) * (W / 2 - 20), y: seatTopAt(-D / 2 + 20) - seatT / 2, z: -D / 2 + 20 }, noCutAllowance: true });
+    }
+  }
+
+  /* ---------------- wall shelf (the 'wall_mounted' class) ----------------
+   * A French-cleat floating shelf: the wall half screwed to the studs, the
+   * shelf half glued and screwed under the shelf's rear edge, 45° faces
+   * interlocked. Modeled in ASSEMBLY space — y = 0 at the cleat bottom, the
+   * wall at z = −depth/2 — because the piece's datum is the mount plane, not
+   * the floor (the audit exempts mounted classes from floor invariants). */
+  function wallShelfBuild(spec) {
+    const o = spec.overall, st = spec.structure;
+    const G = BB.Classes.get('wall_mounted').geom;
+    const sp = spec.wood.species;
+    const parts = [], joints = [];
+    const T = st.topThickness, ch = G.CLEAT_H, ct = G.CLEAT_T;
+    const cleatLen = o.width - 20; // 10 mm shy each end so the shelf hides it
+    const zWall = -o.depth / 2;
+
+    parts.push(part('cleat_wall_1', 'cleat', 'cleat', 'Wall cleat', cleatLen, ch, ct,
+      0, ch / 2, zWall + ct / 2, { material: sp, explode: { x: 0, y: -0.5, z: -0.8 } }));
+    parts.push(part('cleat_shelf_1', 'cleat', 'cleat', 'Shelf cleat', cleatLen, ch, ct,
+      0, ch / 2, zWall + ct + ct / 2, { material: sp, explode: { x: 0, y: -0.2, z: -0.4 } }));
+    for (const p of parts) p.angleNote = 'one 45° rip makes both halves — bevel faces interlock';
+    parts.push(part('shelf_1', 'wall_shelf', 'shelf', 'Shelf', o.width, T, o.depth,
+      0, ch + T / 2, 0, { material: sp, explode: { x: 0, y: 1, z: 0.4 } }));
+
+    // The interlock is the french_cleat joint (external mate: the studs).
+    joints.push({ type: 'french_cleat', a: 'cleat_shelf_1', b: 'cleat_wall_1', pos: { x: 0, y: ch / 2, z: zWall + ct }, noCutAllowance: true });
+    joints.push({ type: 'butt_screws', a: 'cleat_shelf_1', b: 'shelf_1', pos: { x: 0, y: ch, z: zWall + ct + ct / 2 }, noCutAllowance: true });
+    return { parts, joints, openings: [], drawers: [] };
+  }
+
+  /* ---------------- bed (the 'bed' class) ----------------
+   * Knock-down platform bed: four posts, bolted rails, a slat deck on
+   * cleats, a centre rail with its own leg at queen width and up, and a
+   * board headboard. Slat count is SOLVED against the foam-warranty gap cap;
+   * everything else reads the class geometry (classes.js BED_GEOM). */
+  function bedBuild(spec) {
+    const st = spec.structure, b = spec.bed;
+    const G = BB.Classes.get('bed').geom;
+    const sp = spec.wood.species;
+    const parts = [], joints = [];
+    const m = G.SIZES[b.size];
+    const Wi = m.w + G.FIT_CLEARANCE, Li = m.l + G.FIT_CLEARANCE;
+    const railT = st.apronThickness, railH = st.apronHeight, postT = st.legThickness;
+    const deckY = b.platformHeight;              // slat TOP = mattress bottom
+    const railTop = deckY + G.MATTRESS_STOP;
+    const railY = railTop - railH / 2;
+    const lx = Wi / 2 + railT / 2;               // side-rail centreline
+    const px = Wi / 2 + railT - postT / 2;       // post outer face flush with rail
+    const lz = Li / 2 + railT / 2;
+    const pz = Li / 2 + railT - postT / 2;
+    const fj = 'kd_bolt';
+
+    // Posts: head pair runs to the headboard top (or just past the rail).
+    const headH = b.headboardHeight > 0 ? b.headboardHeight : railTop + 50;
+    const footH = railTop + 50;
+    [[-1, 1], [1, 2]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'bed_post_head', 'post', 'Headboard post', postT, headH, postT,
+        sx * px, headH / 2, -pz, { material: sp, explode: { x: sx * 0.35, y: 0.2, z: -0.5 } }));
+    });
+    [[-1, 3], [1, 4]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'bed_post_foot', 'post', 'Footboard post', postT, footH, postT,
+        sx * px, footH / 2, pz, { material: sp, explode: { x: sx * 0.35, y: -0.2, z: 0.5 } }));
+    });
+
+    // Rails: sides span the posts along the length; head/foot span the width.
+    const sideLen = 2 * pz - postT;
+    [[-1, 1, 'post_1', 'post_3'], [1, 2, 'post_2', 'post_4']].forEach(([sx, i, a, bId]) => {
+      parts.push(part(`rail_side_${i}`, 'bed_rail_side', 'rail', 'Side rail', railT, railH, sideLen,
+        sx * lx, railY, 0, { material: sp, explode: { x: sx, y: 0, z: 0 } }));
+      joints.push({ type: fj, a: `rail_side_${i}`, b: a, pos: { x: sx * lx, y: railY, z: -pz + postT / 2 } });
+      joints.push({ type: fj, a: `rail_side_${i}`, b: bId, pos: { x: sx * lx, y: railY, z: pz - postT / 2 } });
+    });
+    const endLen = 2 * px - postT;
+    [[-1, 'rail_head_1', 'post_1', 'post_2'], [1, 'rail_foot_1', 'post_3', 'post_4']].forEach(([sz, id, a, bId]) => {
+      parts.push(part(id, 'bed_rail_end', 'rail', sz < 0 ? 'Head rail' : 'Foot rail', endLen, railH, railT,
+        0, railY, sz * lz, { material: sp, explode: { x: 0, y: 0, z: sz } }));
+      joints.push({ type: fj, a: id, b: a, pos: { x: -px + postT / 2, y: railY, z: sz * lz } });
+      joints.push({ type: fj, a: id, b: bId, pos: { x: px - postT / 2, y: railY, z: sz * lz } });
+    });
+
+    // Cleats inside the side rails: slat bearing, dropped so slat top = deck.
+    const slatTPre = G.slatThickness(Wi >= G.CENTRE_RAIL_MIN_W ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w, sp);
+    const cleatY = deckY - slatTPre - G.CLEAT.h / 2;
+    [[-1, 1, 'rail_side_1'], [1, 2, 'rail_side_2']].forEach(([sx, i, railId]) => {
+      parts.push(part(`cleat_${i}`, 'bed_cleat', 'cleat', 'Slat cleat', G.CLEAT.w, G.CLEAT.h, sideLen,
+        sx * (Wi / 2 - G.CLEAT.w / 2), cleatY, 0, { material: sp, explode: { x: sx * 0.6, y: -0.3, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: `cleat_${i}`, b: railId, pos: { x: sx * Wi / 2, y: cleatY, z: 0 }, noCutAllowance: true });
+    });
+
+    // Centre rail + leg: mandatory at queen width and up (warranty rule).
+    const centre = Wi >= G.CENTRE_RAIL_MIN_W;
+    if (centre) {
+      const crH = 89; // 2x4 on edge
+      const crY = deckY - slatTPre - crH / 2;
+      // Runs between the head/foot rails' INNER faces — it bears on both.
+      const crLen = Li;
+      parts.push(part('rail_centre_1', 'bed_rail_centre', 'rail', 'Centre rail', 38, crH, crLen,
+        0, crY, 0, { material: sp, explode: { x: 0, y: -0.4, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: 'rail_centre_1', b: 'rail_head_1', pos: { x: 0, y: crY, z: -lz + railT / 2 }, noCutAllowance: true });
+      joints.push({ type: 'butt_screws', a: 'rail_centre_1', b: 'rail_foot_1', pos: { x: 0, y: crY, z: lz - railT / 2 }, noCutAllowance: true });
+      const legH2 = crY - crH / 2;
+      parts.push(part('leg_centre_1', 'bed_leg_centre', 'leg', 'Centre leg', 64, legH2, 38,
+        0, legH2 / 2, 0, { material: sp, explode: { x: 0, y: -0.6, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: 'leg_centre_1', b: 'rail_centre_1', pos: { x: 0, y: legH2, z: 0 }, noCutAllowance: true });
+    }
+
+    /* Slat deck: count solved so every gap ≤ SLAT_GAP_MAX (foam-warranty
+     * floor); SECTION solved by G.slatThickness against the knee case in
+     * the actual species (spans past 850 also floor at 25 for stiffness —
+     * the structural check verifies with the same span). The deck is inset
+     * clear of the corner posts, which stand proud of the rails into the
+     * interior. */
+    const slatSpan = centre ? Wi / 2 - 51 : Wi - 2 * G.CLEAT.w;
+    const slatT = G.slatThickness(slatSpan, sp);
+    const deckLen = Li - 2 * (postT - railT) - 6; // clear of both post intrusions
+    const n = Math.max(3, Math.ceil((deckLen - G.SLAT_W) / (G.SLAT_W + G.SLAT_GAP_MAX)) + 1);
+    const gap = (deckLen - n * G.SLAT_W) / (n - 1);
+    const slatLen = Wi - 6;
+    for (let i = 0; i < n; i++) {
+      const z = -deckLen / 2 + G.SLAT_W / 2 + i * (G.SLAT_W + gap);
+      const id = `slat_${i + 1}`;
+      parts.push(part(id, 'bed_slat', 'slat', 'Bed slat', slatLen, slatT, G.SLAT_W,
+        0, deckY - slatT / 2, Math.round(z * 10) / 10, { material: sp, explode: { x: 0, y: 0.6, z: 0 } }));
+      joints.push({ type: 'butt_screws', a: id, b: 'cleat_1', pos: { x: -Wi / 2 + G.CLEAT.w / 2, y: deckY - slatT, z }, noCutAllowance: true });
+      joints.push({ type: 'butt_screws', a: id, b: 'cleat_2', pos: { x: Wi / 2 - G.CLEAT.w / 2, y: deckY - slatT, z }, noCutAllowance: true });
+    }
+
+    // Headboard: three horizontal boards between the head posts.
+    if (b.headboardHeight > 0) {
+      const boardW = 140, boardT = 19;
+      const top = b.headboardHeight - 40;
+      const bottom = railTop + 60;
+      const span = top - bottom;
+      const nb = Math.max(2, Math.min(3, Math.floor(span / (boardW + 20)) + 1));
+      const step2 = nb > 1 ? (span - boardW) / (nb - 1) : 0;
+      for (let i = 0; i < nb; i++) {
+        const y = bottom + boardW / 2 + i * step2;
+        const id = `hboard_${i + 1}`;
+        parts.push(part(id, 'bed_hboard', 'headboard', 'Headboard board', endLen, boardW, boardT,
+          0, Math.round(y * 10) / 10, -pz, { material: sp, explode: { x: 0, y: 0.3, z: -0.6 } }));
+        joints.push({ type: fj, a: id, b: 'post_1', pos: { x: -px + postT / 2, y, z: -pz } });
+        joints.push({ type: fj, a: id, b: 'post_2', pos: { x: px - postT / 2, y, z: -pz } });
+      }
+    }
+    return { parts, joints, openings: [], drawers: [] };
+  }
+
   /* ---------------- custom (novel) compositions ----------------
    * The AI composes primitives + a connection graph; correction has already
    * grounded, centered, and canonicalized them. This builder is a straight
@@ -727,6 +1259,9 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (t === 'nightstand') m = nightstand(spec);
     else if (t === 'cabinet') m = cabinet(spec);
     else if (t === 'custom') m = customBuild(spec);
+    else if (t === 'chair') m = chairBuild(spec);
+    else if (t === 'wall_shelf') m = wallShelfBuild(spec);
+    else if (t === 'bed') m = bedBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
     // Round sizes/positions to 0.1 mm so exports and cut lists are stable.
