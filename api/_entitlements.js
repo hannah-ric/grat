@@ -20,6 +20,12 @@ const FREE = Object.freeze({
 const PRO = Object.freeze({
   plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500
 });
+// The env-configured admin account (api/_admin.js): no caps at all. A null
+// aiMonthlyLimit means NO ceiling — gates must treat null as unlimited, never
+// compare against it.
+const ADMIN = Object.freeze({
+  plan: 'admin', label: 'Admin', projectLimit: null, aiMonthlyLimit: null
+});
 const ACTIVE_STATUSES = new Set(['active', 'trialing']);
 
 const subscriptionKey = uid => `bb:${uid}:subscription`;
@@ -85,18 +91,21 @@ async function addTokens(uid, n) {
 /* req is optional request context: when present, the client IP rides along to
  * Credits.state so the lazy signup grant is subject to the per-IP farming cap
  * (a fresh account's FIRST contact is usually the auth?me probe → here). */
-async function statusFor(uid, req) {
-  const ctx = req ? { ip: Credits.clientIp(req) } : undefined;
+async function statusFor(uid, req, opts) {
+  const admin = !!(opts && opts.admin);
+  // The admin's status reads never consume a per-IP signup-grant slot — the
+  // account is the operator's own, not a farmable free tier.
+  const ctx = req && !admin ? { ip: Credits.clientIp(req) } : undefined;
   const [subscription, usage, credits] = await Promise.all([
     getSubscription(uid), getUsage(uid),
     Credits.state(uid, ctx).catch(() => ({ configured: false, balance: 0, purchased: 0 }))
   ]);
   const isPro = !!(subscription && ACTIVE_STATUSES.has(subscription.status));
-  let entitlements = isPro ? PRO : FREE;
+  let entitlements = admin ? ADMIN : isPro ? PRO : FREE;
   // A paying credits customer is not project-capped: anyone who has ever
   // purchased a pack keeps unlimited saved projects (the old Pro perk moves
   // to the new paying cohort so no capability becomes unreachable).
-  if (!isPro && credits.purchased > 0) entitlements = Object.freeze(Object.assign({}, FREE, { projectLimit: null }));
+  if (!admin && !isPro && credits.purchased > 0) entitlements = Object.freeze(Object.assign({}, FREE, { projectLimit: null }));
   return {
     plan: entitlements.plan,
     entitlements,
@@ -111,4 +120,4 @@ async function statusFor(uid, req) {
   };
 }
 
-module.exports = { FREE, PRO, ACTIVE_STATUSES, getSubscription, setSubscription, getUsage, incrementAI, getTokenUsage, addTokens, statusFor };
+module.exports = { FREE, PRO, ADMIN, ACTIVE_STATUSES, getSubscription, setSubscription, getUsage, incrementAI, getTokenUsage, addTokens, statusFor };

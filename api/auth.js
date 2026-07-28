@@ -35,6 +35,7 @@ const crypto = require('crypto');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
 const P = require('./_passwords.js');
+const Admin = require('./_admin.js');
 const Credits = require('./_credits.js');
 const Env = require('./_env-check.js');
 const Log = require('./_log.js');
@@ -132,16 +133,38 @@ const PASSWORD_ERROR_STATUS = {
 const EXPECTED_PASSWORD_ERROR = new Set(['email_taken', 'too_many_attempts', 'invalid_email', 'weak_password', 'invalid_password', 'invalid_credentials', 'unknown_action', 'bad_request']);
 
 async function handlePassword(req, res) {
-  if (!P.available()) return sendJSON(res, 404, { error: 'password auth not configured' });
+  if (!P.available() && !Admin.available()) return sendJSON(res, 404, { error: 'password auth not configured' });
   let body;
   try { body = await readBody(req); } catch (e) { return sendJSON(res, 400, { error: 'bad_request' }); }
   const action = body && body.action;
+  const fail = code => Object.assign(new Error(code), { code });
   try {
-    let user;
-    if (action === 'register') user = await P.register(body);
-    else if (action === 'login') user = await P.login(body, { ip: Credits.clientIp(req) });
-    else throw Object.assign(new Error('unknown_action'), { code: 'unknown_action' });
-    return sendJSON(res, 200, { ok: true, user: { name: user.name, provider: user.provider, avatar: null } }, [S.sessionCookieFor(user, req)]);
+    let user = null;
+    /* Env-configured admin login (api/_admin.js) rides the SAME form POST: the
+     * shared sign-in form sends the identifier as `email` (a bare `username`
+     * field is honored too). A non-match falls through to the ordinary account
+     * path without a hint, so probing can't tell admin from a wrong password.
+     * Failed attempts feed the in-memory throttle here AND (via the fall-
+     * through) _passwords.js's durable per-IP throttle when KV exists. */
+    if (action === 'login' && Admin.available()) {
+      const ip = Credits.clientIp(req);
+      if (Admin.throttled(ip)) throw fail('too_many_attempts');
+      if (Admin.matches(body.email !== undefined ? body.email : body.username, body.password)) {
+        Admin.clearFailures(ip);
+        user = Admin.sessionUser();
+      } else {
+        Admin.noteFailure(ip);
+        if (!P.available()) throw fail('invalid_credentials');
+      }
+    }
+    if (!user) {
+      if (action === 'register') user = await P.register(body);
+      else if (action === 'login') user = await P.login(body, { ip: Credits.clientIp(req) });
+      else throw fail('unknown_action');
+    }
+    const shape = { name: user.name, provider: user.provider, avatar: null };
+    if (user.provider === 'admin') shape.admin = true;
+    return sendJSON(res, 200, { ok: true, user: shape }, [S.sessionCookieFor(user, req)]);
   } catch (e) {
     const code = (e && e.code) || 'auth_failed';
     if (!EXPECTED_PASSWORD_ERROR.has(code)) Log.report('auth', 'password_' + (action || 'unknown') + '_failed', e);
@@ -193,15 +216,24 @@ module.exports = async function handler(req, res) {
 
   // Status probe — the ONE call the client always makes. Never errors.
   if (q.get('me')) {
-    const sess = S.sessionFrom(req);
+    let sess = S.sessionFrom(req);
+    // Rotation is revocation: an admin session minted under OLD credentials
+    // carries a stale key fingerprint and reads as signed out (api/_admin.js).
+    if (sess && sess.p === 'admin' && !Admin.isAdmin(sess)) sess = null;
+    const admin = Admin.isAdmin(sess);
     let billing = null;
     if (sess) {
-      try { billing = await E.statusFor(sess.uid, req); } catch (error) { Log.report('auth', 'billing_lookup_failed', error); billing = null; }
+      try { billing = await E.statusFor(sess.uid, req, admin ? { admin: true } : undefined); } catch (error) { Log.report('auth', 'billing_lookup_failed', error); billing = null; }
+    }
+    let user = null;
+    if (sess) {
+      user = { name: sess.name, provider: sess.p, avatar: sess.av || null };
+      if (admin) user.admin = true;
     }
     return sendJSON(res, 200, {
-      user: sess ? { name: sess.name, provider: sess.p, avatar: sess.av || null } : null,
+      user,
       providers: providersAvailable(),
-      passwordAuth: P.available(),
+      passwordAuth: P.available() || Admin.available(),
       storage: storageConfigured(),
       billing
     });

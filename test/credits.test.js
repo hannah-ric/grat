@@ -50,7 +50,8 @@ const cleanEnv = () => {
   for (const k of ['AUTH_SECRET', 'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
     'BB_KV_FILE', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY', 'APP_ORIGIN',
     'STRIPE_CREDIT_PACK_1_PRICE_ID', 'STRIPE_CREDIT_PACK_3_PRICE_ID', 'STRIPE_CREDIT_PACK_10_PRICE_ID', 'STRIPE_CREDIT_PACK_25_PRICE_ID',
-    'STRIPE_PRO_MONTHLY_PRICE_ID', 'STRIPE_PRO_YEARLY_PRICE_ID']) delete process.env[k];
+    'STRIPE_PRO_MONTHLY_PRICE_ID', 'STRIPE_PRO_YEARLY_PRICE_ID',
+    'BB_ADMIN_USER', 'BB_ADMIN_PASSWORD', 'BB_ADMIN_PASSWORD_SCRYPT']) delete process.env[k];
 };
 function useTempKV() {
   const file = path.join(os.tmpdir(), 'bb-credit-kv-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.json');
@@ -223,6 +224,32 @@ const issue = (uid, body) => {
     eq(res3.statusCode, 402, 'a new design with zero credits is refused');
     eq(json(res3).error, 'insufficient_credits', 'with a branchable code');
     drop();
+  }
+
+  section('blueprint: the env-configured admin issues without spending credits');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    process.env.AUTH_SECRET = SECRET;
+    process.env.BB_ADMIN_USER = 'shopkeeper';
+    process.env.BB_ADMIN_PASSWORD = 'open-sesame-9';
+    const Admin = require('../api/_admin.js');
+    const adminUser = Admin.sessionUser();
+    const headers = { cookie: S.sessionCookieFor(adminUser, fakeReq('/')).split(';')[0] };
+    const post = body => { const r = fakeRes(); return blueprint(fakeReq('/api/blueprint', { method: 'POST', headers, body }), r).then(() => r); };
+
+    const first = json(await post({ spec: VALID_SPEC }));
+    ok(first.ok === true && first.charged === false, 'first issuance is free for the admin');
+    const other = JSON.parse(JSON.stringify(VALID_SPEC));
+    other.overall.width = 900; other.meta.name = 'Second admin piece';
+    const second = json(await post({ spec: other }));
+    ok(second.ok === true && second.charged === false && second.id !== first.id,
+      'a second distinct design is also free — where a free account would 402');
+    const led = await Credits.ledgerFor(adminUser.uid);
+    ok(!led.some(e => e.type === 'charge'), 'no charge ever lands on the admin ledger');
+    eq((await Credits.state(adminUser.uid)).balance, 1, 'the (unused) signup credit is untouched');
+    drop();
+    cleanEnv();
   }
 
   section('blueprint: an in-window piece-type morph stays free but is written down (pricing telemetry)');

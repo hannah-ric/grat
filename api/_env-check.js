@@ -135,6 +135,16 @@ function evaluate() {
       : 'No sign-in method is configured, so no one can sign in and billing/Pro checkout is unreachable. Either set AUTH_SECRET + a KV store (enables email + password) or add GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (or the GitHub pair).'
   });
 
+  // Admin login (api/_admin.js) is a PAIR: BB_ADMIN_USER plus a password
+  // (BB_ADMIN_PASSWORD or BB_ADMIN_PASSWORD_SCRYPT). Fully unset is fine —
+  // the feature is optional — but half-set means someone tried and failed.
+  const adminUser = !!process.env.BB_ADMIN_USER;
+  const adminPass = !!(process.env.BB_ADMIN_PASSWORD || process.env.BB_ADMIN_PASSWORD_SCRYPT);
+  if (adminUser !== adminPass) advisory.push({
+    key: 'BB_ADMIN_USER + BB_ADMIN_PASSWORD',
+    remedy: 'Admin login is half-configured, so it is DISABLED. Set both BB_ADMIN_USER and BB_ADMIN_PASSWORD (8+ chars; or BB_ADMIN_PASSWORD_SCRYPT), or unset both.'
+  });
+
   return { missing, advisory };
 }
 

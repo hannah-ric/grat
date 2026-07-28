@@ -16,7 +16,8 @@ var BB = globalThis.BB = globalThis.BB || {};
   // purchase gates: access is decided by whether the DESIGN is credited.
   const TIERS = {
     free: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 200 },
-    pro: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500 } // legacy, honored not sold
+    pro: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500 }, // legacy, honored not sold
+    admin: { plan: 'admin', label: 'Admin', projectLimit: null, aiMonthlyLimit: null } // env-configured operator (api/_admin.js)
   };
   const FREE = TIERS.free;
   // Launch pricing (display only — the Stripe Prices are authoritative).
@@ -40,7 +41,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * makes them paid is having purchased, not the current balance. */
   function tier() {
     const s = status();
-    if (s.plan === 'pro') return 'paid';
+    if (s.plan === 'pro' || s.plan === 'admin') return 'paid';
     const purchased = s.credits && typeof s.credits.purchased === 'number' ? s.credits.purchased : 0;
     return purchased > 0 ? 'paid' : 'free';
   }
