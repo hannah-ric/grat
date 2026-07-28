@@ -195,8 +195,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       screw: 0.06, pocket: 0.08, dowel: 0.1, figure8: 0.8,
       biscuit: 0.15, loose_tenon: 0.5, kd_bolt: 1.5, spline: 0.4
     };
+    /* Outdoor duty (2026-08 exposure model): corrosion is a hard spec on the
+     * shopping list, not an afterthought — every metal fastener line carries
+     * it (stainless or hot-dip galvanized; WRCLA guidance — electroplated
+     * zinc is too thin, and plain steel iron-stains tannic species). */
+    const corrode = K.isOutdoor(spec) ? ` — ${K.OUTDOOR_FASTENER_SPEC} (outdoor duty)` : '';
     for (const c of engineCounts) {
-      const label = c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${drill(c.pilotMM)})` : '');
+      const label = (c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${drill(c.pilotMM)})` : ''))
+        + (c.kind === 'dowel' || c.kind === 'loose_tenon' || c.kind === 'biscuit' || c.kind === 'spline' ? '' : corrode);
       const detail = c.kind === 'figure8' ? 'top attachment — allows seasonal movement'
         : c.kind === 'pocket' ? 'per the pocket-hole layout in the steps'
         : c.kind === 'dowel' ? `drill ${drill(c.pilotMM)}, positions in the steps`
@@ -236,7 +242,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         } else {
           items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         }
-        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})${corrode}`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
       }
       // Pull lines print the EFFECTIVE style — what pullSpec actually fitted
       // — so the label and the boring instructions can never disagree. A
@@ -261,7 +267,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else {
         items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
       }
-      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})${corrode}`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
     /* Door hardware (X-07). Counts come from the same BB.HW rule the hinge
      * check uses, so the BOM and the integrity panel can never disagree
@@ -330,8 +336,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // The user's climate preference reaches the bench: ΔMC drives the
     // wooden-runner fitting clearance, exactly as it drives the movement
     // checks. Default temperate — a plan without a stated climate keeps
-    // the 4% swing.
+    // the 4% swing. The corrected spec's EXPOSURE outranks the climate
+    // preference (2026-08 outdoor model), same boundary as the movement math.
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    const dMC = K.effectiveDMC(spec.exposure, climate);
+    const swingLabel = K.isOutdoor(spec) ? `${spec.exposure} outdoor swing` : `${climate} indoor swing`;
     const boxJ = K.JOINERY[spec.joinery.box];
     /* THE formatting rule for every emitter in this file (audit M-01, and
      * D-05 which caught the call sites the first pass missed):
@@ -384,9 +393,9 @@ var BB = globalThis.BB = globalThis.BB || {};
           gearIds, { drawer: d.index }));
       } else {
         const sp = K.WOOD_SPECIES[spec.wood.species];
-        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, K.CLIMATE_DMC[climate]) : 2;
+        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, dMC) : 2;
         out.push(step(`dr${n}_runners`, `Drawer ${n}: fit wood runners`,
-          `Glue and screw the hardwood runners level in the opening (they're in the cut list), with the rail above as the kicker so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, ${climate} indoor swing), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
+          `Glue and screw the hardwood runners level in the opening (they're in the cut list), with the rail above as the kicker so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, ${swingLabel}), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
           gearIds, { drawer: d.index }));
       }
       out.push(step(`dr${n}_hang`, `Drawer ${n}: hang the box`,
@@ -516,6 +525,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (narrowRip) notes.push(`Several rips finish under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
     if (stockPlan && stockPlan.mode === 'rough') notes.push('Rough stock can hide staples and grit — inspect and scrub edges before it touches jointer knives.');
     if (integrity && integrity.antiTip) notes.push('This piece requires the wall anchor before it goes into service — it is in the steps and the BOM.');
+    /* Outdoor duty (2026-08 exposure model): the maintenance truths that keep
+     * an outdoor build alive — corrosion spec, end-grain sealing, and the
+     * recoat schedule — belong in the plan, not in folklore. */
+    if (K.isOutdoor(spec)) {
+      notes.push(`This is an outdoor build: every metal fastener and fitting must be ${K.OUTDOOR_FASTENER_SPEC} (the BOM says so on each line), leg bottoms and other end grain get sealed before assembly, and the exterior finish is a maintenance item — recoat before it peels, because a failed film traps water against the wood.`);
+      if (spec.exposure === 'exposed') notes.push('Keep the feet off soil and grass (pavers or glides) — ground contact is preservative-treated territory this plan does not cover.');
+    }
     out.push(step('safety', 'Shop safety for this build', notes.join(' '), []));
   }
   /* Milling sequence when the stock plan says rough lumber (audit F-S3-2). */
@@ -663,17 +679,21 @@ var BB = globalThis.BB = globalThis.BB || {};
     const top = model.parts.find(p => p.id === 'top_1');
     const topName = top ? top.name.toLowerCase() : 'top';
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    // Exposure outranks the indoor climate preference (2026-08): the same
+    // ΔMC boundary the movement checks run on.
+    const topDMC = K.effectiveDMC(spec.exposure, climate);
+    const topSwing = K.isOutdoor(spec) ? `${spec.exposure} outdoor swing` : `${climate} indoor swing`;
     const topKey = top && K.WOOD_SPECIES[top.material] ? top.material : spec.wood.species;
     const topSp = K.WOOD_SPECIES[topKey];
     // Cross-grain width, measured exactly as the integrity engine measures it
     // for the movement check: the panel dimension across the grain.
     const crossW = top ? Math.min(top.size.w, top.size.d) : 0;
     const moves = !!(topSp && !topSp.sheet && crossW > 0);
-    const mv = moves ? K.movementMM(crossW, topKey, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    const mv = moves ? K.movementMM(crossW, topKey, 'tangential', topDMC) : 0;
     out.push(step('s3', `Attach the ${topName}`,
       `Center the ${topName} and fasten it from below with figure-8s or buttons — never glue a solid ${topName} to its base. ` +
       (moves
-        ? `This one travels about ${fine(mv)} across its ${len(crossW)} width between a dry winter and a damp summer (${topSp.label.toLowerCase()}, ${climate} indoor swing) and effectively nothing along its length, so every fastener has to hold it DOWN while letting it slide ACROSS the grain: set each figure-8 with its long axis running across the ${topName}'s grain so it can swivel, or cut the buttons' tongues to ride in a kerf running the same way. `
+        ? `This one travels about ${fine(mv)} across its ${len(crossW)} width between a dry winter and a damp summer (${topSp.label.toLowerCase()}, ${topSwing}) and effectively nothing along its length, so every fastener has to hold it DOWN while letting it slide ACROSS the grain: set each figure-8 with its long axis running across the ${topName}'s grain so it can swivel, or cut the buttons' tongues to ride in a kerf running the same way. `
         : `Hold it down without pinning it: a ${topName} that cannot move is one that splits. `) +
       `Snug, not crushed — a fastener torqued solid is a glued top with extra steps, and the crack turns up two winters later. Check the overhang is even on all four sides before you drill anything.`,
       ['top_1']));
@@ -734,7 +754,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const seatPart = model.parts.find(p => p.id === 'seat_1');
     const crossW = seatPart ? Math.min(seatPart.size.w, seatPart.size.d) : 0;
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
-    const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    // Exposure outranks the indoor climate preference (2026-08 outdoor model).
+    const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.effectiveDMC(spec.exposure, climate)) : 0;
     out.push(step('s5', 'Fit and fasten the seat — held down, never pinned',
       `${stool ? 'Set the seat on the frame' : 'Notch the seat around the rear posts (the cut list size already includes the capture), then set it on the frame'} with even overhang and fasten it from BELOW through the corner blocks with screws in SLOTTED holes run across the grain${se.slopeDeg ? `, letting the ${U().fmtDeg(se.slopeDeg)} slope follow the rails` : ''}. This seat travels about ${fine(mv)} across its ${len(crossW)} width between seasons — a screw pinned solid is a split seat two winters out. Snug, not crushed.`,
       ['seat_1']));

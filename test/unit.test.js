@@ -1392,7 +1392,11 @@ section('prompt budget: hard ceiling with measured headroom');
   // 2760 → 2900 for the bed class: the "bd" key with the mattress-size enum
   // and the bunk/crib/murphy refusal line — cribs especially are federal
   // safety law, and a model that cannot say why it refuses will improvise.
-  ok(tokens <= 2900, `system prompt stays under the 2900-token ceiling (measured ${tokens})`);
+  // 2900 → 3050 for the outdoor exposure overlay (2026-08): the "ex" key with
+  // its EXP enum plus the routing/refusal doctrine (~115 tokens) — the
+  // refusals are again the load-bearing spend: a model that cannot say why
+  // exposed sheet goods and exposed wall shelves are refused will guess.
+  ok(tokens <= 3050, `system prompt stays under the 3050-token ceiling (measured ${tokens})`);
   ok(tokens > 800, `and is not accidentally hollow (measured ${tokens})`);
   ok((sys.match(/LEVEL MATRIX:/g) || []).length === 1, 'the level matrix TABLE rides the prompt exactly once (the joint-slots line may reference it)');
   ok(Codec.estimateTokens(AI.VISION_PROMPT) <= 320, `vision prompt bounded (${Codec.estimateTokens(AI.VISION_PROMPT)})`);
@@ -2229,7 +2233,7 @@ section('V-05 · __proto__ in a share code leaves Object.prototype clean');
     // survives decode.
     const decoded = Codec.decode(JSON.parse(JSON.stringify(wire)));
     ok(!Object.prototype.hasOwnProperty.call(decoded, '__proto__'), `${what}: decode() never copies an own __proto__ key onto the spec`);
-    eq(Object.keys(decoded).sort(), ['bed', 'custom', 'doors', 'drawers', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'seat', 'specVersion', 'structure', 'wall', 'wood'],
+    eq(Object.keys(decoded).sort(), ['bed', 'custom', 'doors', 'drawers', 'exposure', 'finish', 'hardware', 'joinery', 'meta', 'overall', 'seat', 'specVersion', 'structure', 'wall', 'wood'],
       `${what}: decode() emits exactly the spec schema and nothing else`);
   }
   // The partial-merge path (AI refinement diffs) rides the same whitelist.

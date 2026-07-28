@@ -393,6 +393,30 @@ const summarize = (name, r, ig, extra) => {
     ok(hero.kind === 'new' && hero.spec.meta.template === 'nightstand' && hero.spec.drawers.count === 2,
       'the hero placeholder still builds its 2-drawer walnut nightstand', hero.kind);
 
+    /* Outdoor exposure (2026-08): the outdoor WORD is the whole intent — code
+     * routes species, glue, finish, fasteners, and ΔMC, and the corrections
+     * are TOLD, never silent. */
+    const teak = say('a teak garden bench');
+    ok(teak.kind === 'new' && teak.spec.meta.template === 'bench' && teak.spec.wood.species === 'teak' && teak.spec.exposure === 'exposed',
+      '"a teak garden bench" creates an exposed teak bench', teak.kind + ' ' + (teak.spec && teak.spec.exposure));
+    const teakCor = Spec.correctSpec(teak.spec);
+    ok(teakCor.wood.species === 'teak' && teakCor.finish === 'spar_urethane',
+      'teak survives exposed (outdoor-rated) and the finish routes exterior', JSON.stringify([teakCor.wood.species, teakCor.finish]));
+    ok(K.recommendGlue(teakCor).glue.key === 'epoxy_slow', 'outdoor teak still takes the oily-species epoxy', K.recommendGlue(teakCor).glue.key);
+    const patioDesk = say('an oak desk for the patio');
+    ok(patioDesk.kind === 'new' && patioDesk.spec.meta.template === 'desk' && patioDesk.spec.exposure === 'exposed',
+      '"an oak desk for the patio" creates an exposed desk', patioDesk.kind);
+    const patioCor = Spec.correctSpec(patioDesk.spec);
+    ok(patioCor.wood.species === 'white_oak', 'red oak is corrected to white oak for the weather', patioCor.wood.species);
+    ok(Spec.correctionNotes(patioDesk.spec, patioCor).some(n => /decay-resistant/.test(n)),
+      'and the substitution is told, never silent', Spec.correctionNotes(patioDesk.spec, patioCor).join(' | '));
+    const porchShelf = say('a walnut bookshelf for the covered porch');
+    ok(porchShelf.kind === 'new' && porchShelf.spec.exposure === 'covered',
+      'porch words read as covered outdoor duty', porchShelf.kind + ' ' + (porchShelf.spec && porchShelf.spec.exposure));
+    const deckShelf = say('build a floating shelf for the deck on studs');
+    ok(deckShelf.kind === 'info' && /dry-service/.test(deckShelf.text || ''),
+      'an exposed wall shelf is refused at the parser with the NDS dry-service reason', deckShelf.kind);
+
     out.cases.push({ name: 'offline parser edges (X-01/04/06/08)', rows });
     console.log('\n■ offline parser edges (X-01/04/06/08):');
     for (const r of rows) console.log(`   ${JSON.stringify(r.text)} → ${r.kind}: ${r.detail}`);

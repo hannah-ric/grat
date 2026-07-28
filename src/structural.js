@@ -460,7 +460,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     const allowed = K.jointsForLevel(level);
     const surfaces = surfacesOf(spec, model, opts.loadChoices, opts.defaultLoad);
     const byId = new Map(parts.map(p => [p.id, p]));
-    const dMC = K.CLIMATE_DMC[opts.climate] !== undefined ? K.CLIMATE_DMC[opts.climate] : K.CLIMATE_DMC.temperate;
+    /* ΔMC: the corrected spec's exposure outranks the indoor climate
+     * preference (2026-08 outdoor model) — an exposed build swings on the
+     * outdoor EMC range (K.EXPOSURE_DMC, Wood Handbook ch. 13 sourced), an
+     * interior build keeps the CLIMATE_DMC behavior byte-identically. */
+    const dMC = K.effectiveDMC(spec.exposure, opts.climate);
 
     /* ---- custom hard guarantees: connectivity, stand, load paths, collisions ---- */
     let grounded = new Set();

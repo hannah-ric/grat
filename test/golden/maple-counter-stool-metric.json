@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 10,
   "meta": {
    "name": "Maple Counter Stool",
    "template": "chair",
@@ -36,6 +36,7 @@
    "box": "pocket_screws"
   },
   "finish": "hardwax_oil",
+  "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
    "hinge": "euro_cup"

@@ -472,7 +472,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       // Prompt budget: hard ceiling, measured, with the ANSWER shape legal.
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2900-token ceiling', tk <= 2900 && tk > 800, tk + ' tokens', '≤ 2900'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07)
+      test('hardening', 'system prompt under the 3050-token ceiling', tk <= 3050 && tk > 800, tk + ' tokens', '≤ 3050'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07), then the outdoor exposure overlay's "ex" key and routing/refusal doctrine (2026-08)
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
 
@@ -691,6 +691,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       const reDiff = imported.spec ? firstDiff(drawerSpec, Spec.correctSpec(imported.spec)) : 'decode failed';
       test('codec', 'share code round-trips to an identical design', share.startsWith('BB4:') && !reDiff, reDiff || share.slice(0, 24) + '…', 'BB4:… → identical spec');
       test('codec', 'share code rejects garbage gracefully', !!Codec.fromShareCode('BB4:!!!').error && !!Codec.fromShareCode('hello').error, 'errors returned', 'errors returned');
+
+      // Outdoor exposure (2026-08): interior never rides the wire (old codes
+      // stay byte-identical); an outdoor choice rides and survives.
+      test('codec', 'interior designs carry no "ex" wire key', !('ex' in Codec.encode(seed)), Object.keys(Codec.encode(seed)).join(','), 'no ex');
+      const exposedSpec = Spec.correctSpec({ meta: { name: 'ST outdoor', template: 'bench', units: 'mm' }, wood: { species: 'white_oak' }, exposure: 'exposed' });
+      const exBack = Spec.correctSpec(Codec.fromShareCode(Codec.toShareCode(exposedSpec)).spec);
+      test('codec', 'exposure survives the share-code round trip', exBack.exposure === 'exposed' && exBack.finish === 'spar_urethane', `${exBack.exposure} / ${exBack.finish}`, 'exposed / spar_urethane');
     }
 
     /* ============ migration ============ */

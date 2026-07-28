@@ -31,7 +31,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * through the migration registry on load — a saved design must never fail
    * to open. From Phase 4 forward, EVERY schema change adds a migration here.
    */
-  const SPEC_VERSION = 9;
+  const SPEC_VERSION = 10;
   const migrations = {
     /* v3 → v4: Phase 1–3 specs had no specVersion and no `custom` section.
      * Stamp the version, initialise custom to null, and normalise the legacy
@@ -99,6 +99,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       const out = clone(s) || {};
       out.specVersion = 9;
       if (out.bed === undefined) out.bed = null;
+      return out;
+    },
+    /* v9 -> v10: the outdoor exposure model added one field. Every design
+     * saved before it was designed for the indoors — interior EMC swings,
+     * interior glue, interior finishes — so absence becomes the explicit
+     * interior default: the truth about what that design was, exactly the
+     * v4→v5 unbraced doctrine. */
+    9: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 10;
+      if (out.exposure === undefined) out.exposure = 'interior';
       return out;
     }
   };
@@ -168,6 +179,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
+      exposure: 'interior',
       hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
       doors: null,
@@ -413,7 +425,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     'structure.shelfThickness': 'shelf thickness', 'structure.sideThickness': 'side thickness',
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
-    'finish': 'finish', 'hardware.pull': 'pull style',
+    'finish': 'finish', 'exposure': 'exposure', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners',
     'seat.width': 'seat width', 'seat.depth': 'seat depth', 'seat.height': 'seat height',
     'seat.slopeDeg': 'seat slope', 'seat.backHeight': 'back height', 'seat.backRake': 'back rake',
@@ -1137,6 +1149,28 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* Outdoor-exposure disclosures (2026-08): the species substitution and the
+   * finish routing are silent, deterministic corrections — so they are said
+   * here, the founding style. speciesNotes stays quiet for this case on
+   * purpose (the asked-for species IS a valid solid species). */
+  function exposureNotes(raw, cor, notes) {
+    if (!cor || !['covered', 'exposed'].includes(cor.exposure)) return;
+    const wantSp = raw && isObj(raw.wood) ? raw.wood.species : undefined;
+    if (cor.exposure === 'exposed' && typeof wantSp === 'string' && cor.wood && wantSp !== cor.wood.species) {
+      const sp = K.WOOD_SPECIES[wantSp];
+      if (sp && !sp.sheet && !sp.outdoor) {
+        notes.push(`${sp.label} isn’t decay-resistant — left in the weather it rots at the joints and checks in the sun, so this exposed build is corrected to ${fmtValue('wood.species', cor.wood.species)}. Even durable species are durable in heartwood only (sapwood of every species is perishable — cull it for outdoor parts). Ask for a covered spot to keep ${sp.label.toLowerCase()}.`);
+      }
+    }
+    const wantFin = raw ? raw.finish : undefined;
+    if (typeof wantFin === 'string' && wantFin !== cor.finish) {
+      const f = K.FINISHES.find(x => x.key === wantFin);
+      if (f && !f.exterior) {
+        notes.push(`${f.label} is an interior finish — sun and water fail it outdoors, so the ${cor.exposure} build carries ${fmtValue('finish', cor.finish)} (exterior-rated: UV blockers and a flexible film; recoat before it ever peels).`);
+      }
+    }
+  }
+
   /* A drawer bank asked of a template that has no opening to put one in. */
   function drawerNote(raw, cor, notes) {
     const want = raw && raw.drawers;
@@ -1179,6 +1213,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       drawerNote(raw, correctedSpec, notes);
       seatNotes(raw, correctedSpec, notes);
       bedNotes(raw, correctedSpec, notes);
+      exposureNotes(raw, correctedSpec, notes);
     }
     return [...new Set(notes)];
   }
@@ -1345,6 +1380,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     const sheetSp = K.WOOD_SPECIES[s.wood.sheetSpecies];
     if (!sheetSp || !sheetSp.sheet) s.wood.sheetSpecies = 'baltic_birch';
 
+    /* ---- outdoor exposure (2026-08, the exposure overlay) ----
+     * One field routes the material consequences; junk falls to interior.
+     * EXPOSED corrects a non-durable species to the deterministic durable
+     * substitute (the species table's `outdoor` flags are the authority;
+     * exposureNotes tells the substitution) — the bed class's glued-rail
+     * override pattern. COVERED keeps the species and validation carries the
+     * durability advisory instead. Idempotent: a durable species and an
+     * exterior finish both pass through untouched. */
+    s.exposure = K.EXPOSURES.includes(s.exposure) ? s.exposure : 'interior';
+    if (s.exposure === 'exposed') {
+      s.wood.species = K.outdoorSubstitute(s.wood.species);
+    }
+
     st.topThickness = applyDim('structure.topThickness', st.topThickness);
     st.legThickness = applyDim('structure.legThickness', st.legThickness);
     st.apronThickness = applyDim('structure.apronThickness', st.apronThickness);
@@ -1508,6 +1556,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.joinery.frame = BB.Classes.get('seating').enforceFrameJoint(s.joinery.frame, lvl);
     }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
+    /* Outdoor finish routing: only an exterior-rated film survives outdoors
+     * (UV blockers + flex — spar_urethane is the catalog's exterior row), so
+     * covered and exposed builds are corrected onto it and exposureNotes
+     * tells. Interior designs are untouched byte-for-byte. */
+    if (s.exposure !== 'interior') {
+      const finRow = K.FINISHES.find(f => f.key === s.finish);
+      if (!finRow || !finRow.exterior) s.finish = 'spar_urethane';
+    }
 
     // Hardware style intent (2026 expansion): the AI proposes a pull STYLE;
     // code owns every count, size, spacing, and bore (BB.HW).
@@ -1844,6 +1900,41 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* ---- outdoor exposure (2026-08): refusals and named advisories ----
+     * Sheet goods have no exterior-rated row in the catalog, so an EXPOSED
+     * design that actually consumes sheet stock is refused with the reason
+     * (covered gets the advisory — sheltered from direct wetting, but with
+     * no rating to lean on). Water traps are NAMED, never silent: end grain
+     * at the leg bottoms wicks, horizontal surfaces pond. A wall shelf
+     * cannot be exposed: its anchor math uses NDS dry-service withdrawal
+     * values (MC ≤ 19%), and direct wetting crosses into wet service (NDS
+     * wet-service factor CM = 0.7 on withdrawal) — a derating the
+     * wall_mounted class does not carry. */
+    if (spec.exposure === 'covered' || spec.exposure === 'exposed') {
+      const exposed = spec.exposure === 'exposed';
+      const sheetParts = model && model.parts
+        ? model.parts.filter(p => K.WOOD_SPECIES[p.material] && K.WOOD_SPECIES[p.material].sheet) : [];
+      if (sheetParts.length) {
+        const names = [...new Set(sheetParts.map(p => p.name.toLowerCase()))].slice(0, 3).join(', ');
+        if (exposed) {
+          errors.push({ id: 'out_sheet', text: `This exposed build uses interior sheet stock (${names}) and no exterior-rated sheet good exists in this catalog — interior plywood delaminates and MDF swells the first time rain finds it. Remove the sheet parts (drawers, back panel), put the piece under cover, or keep it indoors. A guessed exterior rating would be worse than this refusal.` });
+        } else {
+          advisories.push({ id: 'out_sheet', text: `Covered outdoors, the sheet parts (${names}) stay out of the rain but carry no exterior rating — seal every edge, keep them off wet floors, and know that direct weather would be a refusal, not an upgrade.` });
+        }
+      }
+      if (exposed && t === 'wall_shelf') {
+        errors.push({ id: 'out_mount', text: 'A wall shelf can’t hang in direct weather: the anchor math uses NDS dry-service withdrawal values (moisture content ≤ 19%), and rain-wetted framing crosses into wet service — NDS derates withdrawal to 0.7×, a factor this model doesn’t carry. A covered porch wall stays dry-service and is fine.' });
+      }
+      const spx = K.WOOD_SPECIES[spec.wood.species];
+      if (!exposed && spx && !spx.outdoor) {
+        advisories.push({ id: 'out_species', text: `${spx.label} isn’t decay-resistant — a roof keeps the rain off, but expect faster greying and bigger seasonal movement than indoors, and never let it stand wet. In direct weather it would be corrected to a durable species.` });
+      }
+      if (exposed && t !== 'wall_shelf') {
+        advisories.push({ id: 'out_legs', text: 'Leg bottoms are end grain — they wick standing water like a straw. Seal them (thinned epoxy or extra finish coats), chamfer the bottom edges, and keep the feet on pavers or glides, never soil or grass: ground contact needs preservative-treated stock this catalog doesn’t carry.' });
+        advisories.push({ id: 'out_drain', text: 'Water must drain, not sit: upward-facing end grain and open joint mouths trap rain, so orient mortises and slots where they can’t hold water, seal every exposed end-grain surface, and let horizontal surfaces shed (a slight slope or slat gaps). Recoat the finish before it peels — a failed film traps water against the wood.' });
+      }
+    }
+
     /* Bed human factors: the platform band, said with its consequence. */
     if (t === 'bed' && spec.bed && BB.Classes) {
       const row = K.ergoRow('platform_bed_height');
@@ -1864,15 +1955,21 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
-    // Outdoor hardware truth (2026 hardware expansion): an exterior finish
-    // on a tannin-rich species means plain-steel hardware streaks black.
+    // Outdoor hardware truth (2026 hardware expansion; extended by the 2026-08
+    // exposure model): outdoor duty means corrosion-resistant fittings, and a
+    // tannin-rich species (oak, cedar — WRCLA/Real Cedar guidance) earns the
+    // iron-stain warning by name.
     const finRow = K.FINISHES.find(f => f.key === spec.finish);
     const spRow = K.WOOD_SPECIES[spec.wood.species];
+    const outdoorDuty = K.isOutdoor(spec);
     if (finRow && finRow.exterior && BB.HW && spRow &&
-      (spRow.outdoor || BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key))) {
+      (outdoorDuty || spRow.outdoor || BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key))) {
+      const tannic = BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key);
       advisories.push({
         id: 'hw_outdoor',
-        text: `Outdoor duty: every screw, hinge, and fitting should be stainless, brass, or galvanized — plain steel streaks tannin-rich ${spRow.label.toLowerCase()} black in the rain.`
+        text: tannic
+          ? `Outdoor duty: every screw, hinge, and fitting must be ${K.OUTDOOR_FASTENER_SPEC} — plain steel reacts with tannin-rich ${spRow.label.toLowerCase()} and streaks it blue-black in the rain (electroplated zinc is too thin to last).`
+          : `Outdoor duty: every screw, hinge, and fitting must be ${K.OUTDOOR_FASTENER_SPEC} — plain and electroplated steel rust outdoors, and the BOM's fastener lines say so.`
       });
     }
     // Push-to-open needs a gap to push through: overlay fronts sit proud

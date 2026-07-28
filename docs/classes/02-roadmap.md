@@ -64,7 +64,7 @@ the display-boundary rule). Missing for the full class: door sag over span
 tall pairs, and catches/stays as load-rated hardware. Low risk, low effort;
 ranked here only because it is an increment, not an absence.
 
-## 5. Outdoor furniture — driver: knowledge exists, exposure model doesn't
+## 5. Outdoor furniture — BUILT (2026-08, see 06-outdoor.md)
 
 Species durability (`outdoor` flags), exterior finishes, tannin/corrosion
 advisories, and Type-I glue routing already exist. What's missing is the
@@ -72,6 +72,16 @@ exposure model: wet-cycle movement (ΔMC well past the 6 % indoor ceiling),
 drainage as geometry (slat gaps, no water-trapping mortises), fastener
 corrosion as a hard gate rather than an advisory, and ground-contact rules.
 Moderate risk; demand is seasonal.
+Built as a cross-class overlay, not a template: one spec field
+(`exposure`, specVersion 10, wire key `ex`) routes durable-species
+correction (non-durable exposed → told substitution), Type-I glue, the
+exterior finish, stainless/hot-dip-galvanized fastener lines, and a
+Wood-Handbook-sourced outdoor ΔMC (covered 6 / exposed 12) through the one
+pipeline. Interior sheet goods exposed are refused (no exterior-rated sheet
+in the catalog); exposed wall shelves are refused (NDS dry-service anchor
+math); water traps and ground contact are named advisories. Wet-cycle
+drainage GEOMETRY (slat-top templates, drained mortises) remains future
+work — the advisories carry it honestly until a slat-top surface exists.
 
 ## 6. Children's furniture — driver: regulatory weight, deliberately last
 

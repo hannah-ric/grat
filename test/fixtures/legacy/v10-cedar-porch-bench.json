@@ -1,0 +1,66 @@
+{
+  "why": "The current-version anchor (v10), and the corpus's only OUTDOOR design. The exposure field arrived with the 2026-08 outdoor model; a covered porch bench saved today must still open as an outdoor build — the Type-I glue line, the exterior finish, the corrosion-spec fastener lines, and the outdoor ΔMC in the movement math all key off this one field, so losing it would silently turn a porch bench back into indoor furniture.",
+  "version": 10,
+  "kind": "spec",
+  "expect": {
+    "template": "bench",
+    "name": "Cedar Porch Bench",
+    "species": "western_red_cedar",
+    "units": "in",
+    "minParts": 9
+  },
+  "expectAfterMigration": {
+    "specVersion": 10,
+    "exposure": "covered",
+    "finish": "spar_urethane"
+  },
+  "spec": {
+    "specVersion": 10,
+    "meta": {
+      "name": "Cedar Porch Bench",
+      "template": "bench",
+      "level": "beginner",
+      "units": "in"
+    },
+    "overall": {
+      "width": 1219.2,
+      "depth": 381,
+      "height": 457.2
+    },
+    "wood": {
+      "species": "western_red_cedar",
+      "sheetSpecies": "baltic_birch"
+    },
+    "structure": {
+      "topThickness": 38,
+      "legThickness": 60,
+      "apronHeight": 80,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 0,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": true,
+      "toeKick": false,
+      "stretcher": "none",
+      "stretcherHeight": 280
+    },
+    "joinery": {
+      "frame": "pocket_screws",
+      "case": "butt_screws",
+      "box": "pocket_screws"
+    },
+    "finish": "spar_urethane",
+    "exposure": "covered",
+    "hardware": {
+      "pull": "bar_pull",
+      "hinge": "euro_cup"
+    },
+    "drawers": null,
+    "doors": null,
+    "custom": null,
+    "seat": null,
+    "wall": null,
+    "bed": null
+  }
+}

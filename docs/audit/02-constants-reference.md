@@ -18,6 +18,9 @@ a value, the new home is noted in the register.
 | Baltic birch ply (effective) | 10.0 / 55 / 0.68 / 1260 / ~0 / ~0 | knowledge.js:85 | ~20%+ reduction vs solid birch for cross-plies; movement exempt ✓ |
 | WIDE_TOP_MM | 500 | knowledge.js:95 | movement advisory trigger |
 | CLIMATE_DMC | arid 2 / temperate 4 / humid 6 (%MC) | knowledge.js:295 | indoor seasonal swing |
+| EXPOSURE_DMC (2026-08) | covered 6 / exposed 12 (%MC) | knowledge.js (outdoor exposure block) | covered: WH GTR-282 Table 13-2 exterior installation MC 12% avg, 9–14% range, widened for humid-coastal FPL-RN-0268 monthly spans (verified-approximate); exposed: ≈7% sun-dried low to the 19% NDS dry/wet-service boundary = 12 pts (documented derivation, verified-approximate) |
+| outdoorSubstitute rule (2026-08) | costTier 1 → western_red_cedar, else white_oak | knowledge.js (outdoor exposure block) | species table `outdoor` flags are the authority; heartwood-only durability disclosed in the correction note |
+| OUTDOOR_FASTENER_SPEC (2026-08) | stainless or hot-dip galvanized | knowledge.js (outdoor exposure block) | WRCLA / Real Cedar installation guidance (electroplated zinc too thin; tannin iron-stain on oak/cedar) |
 | movementMM formula | width × (ct\|cr) × ΔMC | knowledge.js:296-301 | Wood Handbook ch. 13 dimensional change |
 | SOLID_THICKNESS snap | [12,15,19,20,25,32,38,45] | knowledge.js:304 | |
 | SHEET_THICKNESS snap | [6,12,18] | knowledge.js:305 | |

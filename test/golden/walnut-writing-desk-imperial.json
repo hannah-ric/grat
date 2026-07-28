@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 10,
   "meta": {
    "name": "Writing Desk",
    "template": "desk",
@@ -36,6 +36,7 @@
    "box": "locking_rabbet"
   },
   "finish": "hardwax_oil",
+  "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
    "hinge": "euro_cup"

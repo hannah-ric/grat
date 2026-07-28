@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 10,
   "meta": {
    "name": "Sideboard Cabinet",
    "template": "cabinet",
@@ -36,6 +36,7 @@
    "box": "half_blind_dovetail"
   },
   "finish": "danish_oil",
+  "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
    "hinge": "euro_cup"

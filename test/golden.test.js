@@ -201,6 +201,46 @@ const CORPUS = [
       wood: { species: 'pine' },
       bed: { size: 'twin', headboardHeight: 0, platformHeight: 300 }
     }
+  },
+
+  /* ---- outdoor exposure overlay (2026-08, roadmap item 5): a nominal
+   * exposed cedar garden bench — an interior finish is asked for and the
+   * exterior routing (spar_urethane, Type-I glue line, corrosion-spec
+   * fastener labels, outdoor ΔMC in the movement checks, the out_legs /
+   * out_drain water-trap advisories) is frozen — and the correction boundary:
+   * a pine patio table whose species is corrected to the deterministic
+   * durable substitute (costTier 1 → western_red_cedar) and told. */
+  {
+    /* Cedar is soft (MOE 7.7, MOR 52): the sound exposed bench carries a
+     * thick seat, a deep M&T apron band, and the joints that survive cedar's
+     * low SG — sections a cedar bench genuinely needs, frozen passing. */
+    name: 'cedar-garden-bench-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Cedar Garden Bench', template: 'bench', level: 'advanced', units: 'in' },
+      wood: { species: 'western_red_cedar' },
+      structure: { topThickness: 38, apronHeight: 100, apronThickness: 25 },
+      joinery: { frame: 'mortise_tenon' },
+      exposure: 'exposed',
+      finish: 'danish_oil' // interior finish asked for — the exterior routing is the frozen behavior
+    }
+  },
+  {
+    /* The frozen verdict is ADVISORY on duty:top_1 — cedar is soft (Janka
+     * 350) and a cedar dining surface dents, which is exactly the kind of
+     * truth the corpus exists to hold still. Joints are M&T because cedar's
+     * SG 0.32 halves screw/dowel capacities below the load path — real
+     * cedar tables are M&T for the same reason. */
+    name: 'pine-patio-table-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Patio Table', template: 'table', level: 'advanced', units: 'mm' },
+      overall: { width: 1200, depth: 700, height: 740 },
+      wood: { species: 'pine' }, // not decay-resistant: corrected to western_red_cedar, and told
+      structure: { topThickness: 32, apronHeight: 100, apronThickness: 25 },
+      joinery: { frame: 'mortise_tenon' },
+      exposure: 'exposed'
+    }
   }
 ];
 
