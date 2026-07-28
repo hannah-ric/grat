@@ -5020,13 +5020,310 @@ body.ph-open .porch::after { display: none; }
 (function () {
   'use strict';
   const K = BB.K;
+  const registry = new Map();
+  function register(cls) { registry.set(cls.key, cls); }
+  function get(key) { return registry.get(key) || null; }
+  function all() { return [...registry.values()]; }
+  function forTemplate(t) {
+    for (const c of registry.values()) if (c.templates.includes(t)) return c;
+    return null;
+  }
+  function validateContract(cls) {
+    const p = [];
+    const need = (cond, msg) => { if (!cond) p.push(cls.key + ': ' + msg); };
+    need(cls.key && typeof cls.key === 'string', 'class key missing');
+    need(Array.isArray(cls.templates) && cls.templates.length, 'templates missing');
+    const fam = cls.family || {};
+    need(Array.isArray(fam.rules) && fam.rules.length, 'family.rules missing');
+    for (const r of fam.rules || []) {
+      need(r.path && r.ownedBy, `family rule needs path+ownedBy (${r.path})`);
+      if (r.ownedBy === 'Spec.DIM_RULES') {
+        need(BB.Spec && BB.Spec.DIM_RULES && BB.Spec.DIM_RULES[r.path],
+          `family rule ${r.path} not found in Spec.DIM_RULES`);
+      }
+    }
+    need(Array.isArray(fam.couplings) && fam.couplings.length, 'family.couplings missing — a family with no coupling rules is a template, not a class');
+    for (const c of fam.couplings || []) need(c.id && c.rule && c.enforcedBy, `coupling ${c.id || '?'} needs id+rule+enforcedBy`);
+    need(Array.isArray(cls.humanFactors) && cls.humanFactors.length, 'humanFactors missing');
+    for (const h of cls.humanFactors || []) {
+      need(h.key && h.label && typeof h.min === 'number' && typeof h.max === 'number' && h.min <= h.max,
+        `human factor ${h.key || '?'} malformed`);
+      need(h.source && h.source.length > 8, `human factor ${h.key || '?'} has no source`);
+    }
+    need(Array.isArray(cls.loadCases) && cls.loadCases.length, 'loadCases missing');
+    for (const lc of cls.loadCases || []) {
+      for (const f of ['id', 'label', 'magnitude', 'apply', 'direction', 'duration', 'acceptance', 'source', 'traceability']) {
+        need(lc[f] !== undefined && lc[f] !== '', `load case ${lc.id || '?'} missing ${f}`);
+      }
+      need(['standard', 'derivation'].includes(lc.traceability), `load case ${lc.id || '?'} traceability must be standard|derivation`);
+      if (lc.ownedBy && lc.ownedBy.startsWith('Structural.LOAD_PRESETS.')) {
+        const k = lc.ownedBy.slice('Structural.LOAD_PRESETS.'.length);
+        need(BB.Structural && BB.Structural.LOAD_PRESETS[k], `load case ${lc.id} names a missing preset ${k}`);
+      }
+    }
+    const jr = cls.jointRules || {};
+    need(Array.isArray(jr.connections) && jr.connections.length, 'jointRules.connections missing');
+    for (const c of jr.connections || []) {
+      need(c.connection && Array.isArray(c.required) && Array.isArray(c.prohibited) && c.reason,
+        `joint rule ${c.connection || '?'} needs connection/required/prohibited/reason`);
+      for (const j of [...(c.required || []), ...(c.prohibited || [])]) {
+        need(!!K.JOINERY[j], `joint rule ${c.connection} names unknown joint ${j}`);
+      }
+    }
+    need(Array.isArray(cls.failureModes) && cls.failureModes.length, 'failureModes missing');
+    for (const m of cls.failureModes || []) {
+      need(m.id && m.mode, `failure mode ${m.id || '?'} malformed`);
+      need((Array.isArray(m.checkIds) && m.checkIds.length) || m.guard,
+        `failure mode ${m.id} names neither checkIds nor a correction guard`);
+      need(m.fixture, `failure mode ${m.id} names no proving fixture/test`);
+    }
+    need(Array.isArray(cls.hardware), 'hardware missing (may be empty only with reason)');
+    for (const h of cls.hardware || []) {
+      need(h.id && h.item && h.when && h.capacity && h.matchedTo, `hardware ${h.id || '?'} needs item/when/capacity/matchedTo`);
+    }
+    const asm = cls.assembly || {};
+    need(Array.isArray(asm.sequence) && asm.sequence.length >= 3, 'assembly.sequence missing/too thin');
+    need(Array.isArray(asm.jigs) && asm.jigs.length, 'assembly.jigs missing');
+    need(Array.isArray(asm.checks) && asm.checks.length, 'assembly.checks (squareness/angle) missing');
+    need(Array.isArray(cls.refusals) && cls.refusals.length, 'refusals missing — a class that can build anything asked of it is lying');
+    for (const r of cls.refusals || []) {
+      need(r.id && r.shape && r.reason && r.surface, `refusal ${r.id || '?'} needs shape/reason/surface`);
+    }
+    const fx = cls.fixtures || {};
+    need(Array.isArray(fx.golden) && fx.golden.length, 'fixtures.golden missing');
+    need(Array.isArray(fx.bad) && fx.bad.length, 'fixtures.bad missing');
+    return p;
+  }
+  function runChecklist(template, res) {
+    const cls = forTemplate(template);
+    if (!cls) return null;
+    const ids = []
+      .concat(((res && res.integrity && res.integrity.checks) || []).map(c => ({ id: c.id, status: c.status })))
+      .concat(((res && res.validation && res.validation.errors) || []).map(e => ({ id: e.id, status: 'fail' })))
+      .concat(((res && res.validation && res.validation.advisories) || []).map(a => ({ id: a.id, status: 'advisory' })));
+    return cls.failureModes.map(m => {
+      if (m.guard) return { id: m.id, mode: m.mode, covered: true, guard: m.guard, fired: false, status: 'guarded' };
+      const hits = ids.filter(x => m.checkIds.some(px => x.id === px || x.id.startsWith(px)));
+      const worst = hits.reduce((w, h) => (h.status === 'fail' ? 'fail' : h.status === 'advisory' && w !== 'fail' ? 'advisory' : w), 'pass');
+      const absent = m.conditional ? 'n/a' : 'uncovered';
+      return { id: m.id, mode: m.mode, covered: hits.length > 0, fired: hits.some(h => h.status !== 'pass'), status: hits.length ? worst : absent };
+    });
+  }
+  register({
+    key: 'frame_table',
+    label: 'Tables, desks & benches (leg-and-apron frame)',
+    templates: ['table', 'desk', 'bench'],
+    family: {
+      rules: [
+        { path: 'overall.width', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.depth', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.height', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.topThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.legThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.apronHeight', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.apronThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.stretcherHeight', ownedBy: 'Spec.DIM_RULES' }
+      ],
+      couplings: [
+        { id: 'apron_under_top', rule: 'apronHeight ≤ height − topThickness − 60: the apron band must leave leg below the top', enforcedBy: 'Spec.correctSpec geometry-sanity clamp' },
+        { id: 'leg_vs_footprint', rule: 'legThickness ≤ min(width, depth)/4, snapped DOWN the post-stock table', enforcedBy: 'Spec.correctSpec legCap (audit E-04)' },
+        { id: 'stretcher_on_leg', rule: 'stretcher centreline ∈ [floor+100, apron underside − 90] — it must land on the leg with clamp room', enforcedBy: 'Spec.correctSpec stretcher clamp (X-07)' }
+      ]
+    },
+    humanFactors: [
+      { key: 'dining_height', label: 'Dining table height', min: 730, max: 760, unit: 'mm', source: 'K.ERGONOMICS dining_height (Panero & Zelnik, Human Dimension & Interior Space; trade convention 29–30 in)' },
+      { key: 'desk_height', label: 'Desk height', min: 720, max: 750, unit: 'mm', source: 'K.ERGONOMICS desk_height (BIFMA G1 ergonomics guideline seated worksurface band)' },
+      { key: 'bench_seat', label: 'Bench seat height', min: 430, max: 480, unit: 'mm', source: 'K.ERGONOMICS bench_seat (Panero & Zelnik seat-height band)' }
+    ],
+    loadCases: [
+      { id: 'worktop_dist', label: 'Distributed working load', magnitude: '75 kg spread over the top', apply: 'uniform over the span', direction: 'gravity', duration: 'functional (short-term)', acceptance: 'sag ≤ L/300; bending margin ≥ 1 at MOR/4', source: 'BIFMA X5.5 distributed functional load (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.worktop' },
+      { id: 'worktop_edge', label: 'Concentrated lean at the edge', magnitude: '90 kg point', apply: 'worst midspan / overhang edge', direction: 'gravity', duration: 'functional', acceptance: 'sag ≤ L/300 (span) and ≤ L/150 (overhang); strength margin ≥ 1', source: 'BIFMA X5.5 concentrated functional load (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.worktop' },
+      { id: 'bench_seat', label: 'Seated people on a bench', magnitude: '136 kg per 550 mm seat', apply: 'point at midspan + spread for extra seats', direction: 'gravity', duration: 'functional', acceptance: 'sag ≤ L/300; strength margin ≥ 1; joint margin ≥ 1.5', source: 'aligned to BIFMA X5.4 drop-test proof mass 300 lb (136 kg); functional drop mass is 225 lb — design load sits above functional', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.seating' },
+      { id: 'shelf_books', label: 'Lower shelf under books', magnitude: '60 kg/m', apply: 'uniform, sustained', direction: 'gravity', duration: 'sustained (×2 creep, Wood Handbook ch. 4)', acceptance: 'long-term sag ≤ L/300', source: 'BIFMA X5.9 shelf load 40 lb/ft (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'apron → leg', required: ['mortise_tenon', 'dowels', 'pocket_screws', 'loose_tenon', 'kd_bolt', 'half_lap', 'bridle'], prohibited: ['biscuits', 'edge_glue'], reason: 'the apron-leg joint carries the apron end reaction (frame model, audit F-S2-1/G5); biscuits are an alignment aid and edge glue is a panel operation — neither attaches a rail to a leg. The level matrix gates further; the joint-adequacy check prices whatever is chosen.' },
+        { connection: 'top → apron', required: ['butt_screws'], prohibited: ['edge_glue'], reason: 'a solid top must move across its grain: figure-8s/buttons in slotted or pivoting fittings, never glue (movement check + FE-H1).' },
+        { connection: 'stretcher → leg', required: ['mortise_tenon', 'dowels', 'pocket_screws', 'loose_tenon', 'half_lap'], prohibited: ['biscuits'], reason: 'the stretcher shortens the leg’s unbraced length — its joint takes the frame slot’s own gating (X-07).' }
+      ]
+    },
+    failureModes: [
+      { id: 'top_sag', mode: 'top sags between aprons under load', checkIds: ['sag:top_1', 'sag:apron:'], fixture: 'audit F-S2-1', realWorld: 'dished tabletops' },
+      { id: 'member_rupture', mode: 'apron or top passes deflection but fails in bending', checkIds: ['str:'], fixture: 'audit F-S2-1 / handcalc [2]', realWorld: 'cracked aprons under a sat-on table edge' },
+      { id: 'overhang_dive', mode: 'a person leans on an overhang and it dives', checkIds: ['cant:'], conditional: true, fixture: 'handcalc [overhang]', realWorld: 'tip-edge failures on cantilevered tops' },
+      { id: 'racking', mode: 'frame racks side-to-side (wobbles) under horizontal use loads', checkIds: ['rack'], fixture: 'unit racking sections', realWorld: 'loose wobbly tables' },
+      { id: 'leg_buckle', mode: 'slender legs bow under load', checkIds: ['slender'], fixture: 'unit slenderness sections', realWorld: 'spindly hall tables' },
+      { id: 'movement_split', mode: 'captured cross-grain panel splits with the seasons', checkIds: ['move:'], fixture: 'audit F-S2-3', realWorld: 'split solid tops screwed rigid' },
+      { id: 'joint_overload', mode: 'weakest frame joint below its load share', checkIds: ['joints'], fixture: 'audit G5', realWorld: 'aprons torn off their legs' },
+      { id: 'tipping', mode: 'piece tips when top-loaded at the edge', checkIds: ['tip'], fixture: 'audit M-18', realWorld: 'tall narrow pieces going over' }
+    ],
+    hardware: [
+      { id: 'top_fasteners', item: 'figure-8 fasteners / tabletop buttons', when: 'every solid top', capacity: 'hold-down only; movement is released by design', matchedTo: 'seasonal travel computed by K.movementMM — the same number the movement check reports' },
+      { id: 'antitip', item: 'anti-tip wall anchor kit', when: 'tip margin below gate', capacity: 'per kit rating', matchedTo: 'tipping checks (mandatory BOM line when they fire, audit M-18)' }
+    ],
+    assembly: {
+      sequence: ['layout', 's1 (end frames)', 's2 (join frames)', 'base_check (cure + rock check)', 's3 (attach top floating)'],
+      jigs: ['cabinetmaker’s triangle marking', 'one reference face/edge per leg', 'stop block for foot-aligned stretcher setout'],
+      checks: ['equal diagonals on each end frame', 'wind (twist) sighted along clamp bars', 'diagonals across the closed base', 'leg tops in one plane', 'one-foot trim rule on a rocking base']
+    },
+    refusals: [
+      { id: 'no_wall_hang', shape: 'wall-hung / floating variants of a frame piece', reason: 'anchor pullout and stud engagement are a different class (wall-mounted) not yet generated soundly', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule' },
+      { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' }
+    ],
+    fixtures: {
+      golden: ['seed-table-imperial', 'shaker-table-imperial', 'custom-bench-metric'],
+      bad: ['audit F-S2-1 (apron-model regression)', 'unit geometric-buildability sections', 'battery boundary fixtures']
+    }
+  });
+  const DESIGN_BASIS_SEATING =
+    'Seating checks are BENCHMARKED against ANSI/BIFMA X5.1 / X5.4 magnitudes ' +
+    '(pinned from accredited-lab summaries; the standards themselves are ' +
+    'paywalled) and against documented derivations for the rear-tilt case. ' +
+    'Residential dining chairs are not formally covered by BIFMA, and ' +
+    'compliance would require physical testing of a built chair — these are ' +
+    'engineering benchmarks, not a compliance claim.';
+  const SEAT_LOADS = {
+    SEAT_STATIC_N: 1334,
+    BACK_STATIC_N: 667,
+    LEG_STATIC_N: 334,
+    CYCLIC_MASS_KG: 57,
+    CYCLIC_CYCLES: 100000,
+    CYCLIC_CAPACITY_FACTOR: 0.5,
+    TILT_OCCUPANT_N: 1334,
+    FOOTREST_STEP_N: 1334
+  };
+  const SEAT_GEOM = {
+    CREST_H: 75,          // crest rail height (vertical)
+    SLAT_H: 60,           // back slat height
+    SLAT_T: 16,           // back slat thickness (thinner than the post, so rake can offset)
+    SLAT_RISE: 170,       // bottom slat centreline above the seat (lumbar)
+    REAR_POST_MIN_D: 45,  // rear posts run deeper fore-aft than wide: bending is about that axis
+    MORTISE_DERATE: 10,   // mm of post width lost to the rail mortise at the max-moment section
+    CORNER_BLOCK: 60,     // corner block leg length
+    FOOTREST_DROP: 230,   // footrest below the seat (K.ERGONOMICS bar_stool_seat note)
+    COUNTER_DROP: 270,    // seat below the counter it serves (midpoint of the 250–300 window)
+    rearPostDepth(st) { return Math.max(st.legThickness || 38, this.REAR_POST_MIN_D); },
+    backRakeMax(st, seat) {
+      const off = Math.max(0, this.rearPostDepth(st) - this.SLAT_T);
+      const span = Math.max(120, (seat.backHeight - this.CREST_H / 2) - this.SLAT_RISE);
+      return Math.round(Math.atan(off / span) * 180 / Math.PI * 10) / 10;
+    }
+  };
+  const SEAT_FRAME_ALLOWED = ['mortise_tenon', 'loose_tenon', 'kd_bolt'];
+  const SEAT_FRAME_DEFAULT = { beginner: 'kd_bolt', intermediate: 'loose_tenon', advanced: 'mortise_tenon' };
+  function enforceFrameJoint(joint, level) {
+    if (SEAT_FRAME_ALLOWED.includes(joint) && K.jointAllowed(joint, level, 'frame')) return joint;
+    return SEAT_FRAME_DEFAULT[level] || SEAT_FRAME_DEFAULT.beginner;
+  }
+  register({
+    key: 'seating',
+    label: 'Seating (dining chairs, counter & bar stools)',
+    templates: ['chair'],
+    geom: SEAT_GEOM,
+    loads: SEAT_LOADS,
+    enforceFrameJoint,
+    DESIGN_BASIS_SEATING,
+    family: {
+      rules: [
+        { path: 'seat.width', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'seat.depth', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'seat.height', ownedBy: 'Spec.DIM_RULES' }
+      ],
+      couplings: [
+        { id: 'counter_drop', rule: 'a stool serving a stated counter takes seat height = counter − 250…300 (snap to −270); a stool with NO counter stated is asked for one', enforcedBy: 'Spec.correctSeat + validate chair block' },
+        { id: 'rake_from_posts', rule: 'backRake ≤ atan((legThickness − slatT) / slat span): straight rear posts only — more rake needs a sawn/bent leg (refused, short grain)', enforcedBy: 'Spec.correctSeat via SEAT_GEOM.backRakeMax' },
+        { id: 'splay_stool_only', rule: 'leg splay 0–10° on stools; 0 on backed chairs (the offset-rail rake geometry assumes vertical posts)', enforcedBy: 'Spec.correctSeat' },
+        { id: 'envelope_derived', rule: 'overall = seat plan + splay run; height = seat + back rise — the audit envelope always contains the splayed feet', enforcedBy: 'Spec.correctSpec chair block' },
+        { id: 'footrest_drop', rule: 'stool footrest (box stretcher) top ≈ 230 below the seat; stools ALWAYS carry it — it is structure and ergonomics at once', enforcedBy: 'Spec.correctSpec chair block' },
+        { id: 'rail_band', rule: 'seat-rail band ≤ seat height − topThickness − 160 so the stretcher and knee room survive', enforcedBy: 'Spec.correctSpec chair block' }
+      ]
+    },
+    humanFactors: [
+      { key: 'dining_seat_height', label: 'Dining seat height', min: 430, max: 460, unit: 'mm', source: 'Panero & Zelnik, Human Dimension & Interior Space (16.5–18 in); trade convention for 730–760 tables' },
+      { key: 'seat_depth', label: 'Seat depth', min: 400, max: 430, unit: 'mm', source: 'Panero & Zelnik buttock–popliteal 5th percentile female fit; deeper cuts circulation at the knee' },
+      { key: 'seat_width', label: 'Seat width', min: 400, max: 500, unit: 'mm', source: 'Panero & Zelnik hip breadth + clothing allowance' },
+      { key: 'seat_slope', label: 'Seat slope (rearward)', min: 0, max: 8, unit: 'deg', source: 'chairmaking convention 3–5°; BIFMA G1 task-seat pan range' },
+      { key: 'back_rake', label: 'Back rake off vertical', min: 0, max: 8, unit: 'deg', source: 'chairmaking convention: a few degrees off vertical for dining; more is lounge territory' },
+      { key: 'back_rise', label: 'Crest above the seat', min: 380, max: 600, unit: 'mm', source: 'lumbar-to-shoulder support band, Panero & Zelnik' },
+      { key: 'counter_stool_seat', label: 'Counter stool seat height', min: 610, max: 660, unit: 'mm', source: 'K.ERGONOMICS counter_stool_seat (for 900 counters, 250–300 below the surface)' },
+      { key: 'bar_stool_seat', label: 'Bar stool seat height', min: 730, max: 780, unit: 'mm', source: 'K.ERGONOMICS bar_stool_seat (for 1060+ bars; footrest 230 below seat)' }
+    ],
+    loadCases: [
+      { id: 'seat_static', label: 'Seat static load', magnitude: '1334 N (136 kg)', apply: 'centre of the seat panel', direction: 'gravity', duration: 'functional, 1 min class', acceptance: 'seat sag ≤ L/300; seat + rail bending margin ≥ 1 at MOR/4; joint margin ≥ 1.5', source: 'aligned to BIFMA X5.1 §8 / X5.4 drop-test proof mass 300 lb (functional is 225 lb); no static seat test exists in the standard', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.seating' },
+      { id: 'back_static', label: 'Back static load', magnitude: '667 N (150 lbf)', apply: 'crest rail (test point is ≤ 406 mm above seat — crest is the longer, conservative lever)', direction: 'horizontal, rearward', duration: 'functional, 1 min', acceptance: 'rear-post net-section bending margin ≥ 1 at MOR/4 (mortise derated); slat/crest joints hold', source: 'ANSI/BIFMA X5.1-2017 §5/§6 back strength functional 150 lbf (Manufacturing Solutions Center lab summary)', traceability: 'standard' },
+      { id: 'rear_tilt', label: 'Rear tilt — user on two legs', magnitude: '1334 N occupant on the rear legs + 667 N at the crest', apply: 'occupant over the rear-leg line; back force at the crest', direction: 'gravity + horizontal', duration: 'repeated abuse case', acceptance: 'side-rail↔rear-post joint couple margin ≥ 1 (≥ 1.5 to pass clean), resolved over the rail–stretcher arm', source: 'documented derivation (no standard tests two-leg tilt); arithmetic shown in test/handcalc.js', traceability: 'derivation' },
+      { id: 'front_leg', label: 'Front leg strength', magnitude: '334 N (75 lbf)', apply: 'at the foot, horizontal (worst lever to the stretcher)', direction: 'horizontal, front and side', duration: 'functional, 1 min', acceptance: 'leg bending margin ≥ 1 at MOR/4 over the unbraced segment', source: 'ANSI/BIFMA X5.4-2012 §16 leg strength functional 75 lb (Manufacturing Solutions Center summary); application height unpublished — foot chosen as conservative derivation', traceability: 'standard' },
+      { id: 'cyclic_durability', label: 'Cyclic seating durability', magnitude: '57 kg × 100 000 cycles', apply: 'seat, repeated', direction: 'gravity', duration: 'cyclic', acceptance: 'joint margins ≥ 1 at HALF capacity (cyclic factor 0.5) under the static seat case', source: 'ANSI/BIFMA X5.1 §10.3 / X5.4-2020 durability (SGS/Kokuyo summaries); 0.5 capacity factor per Eckelman furniture-engineering practice (derivation)', traceability: 'derivation' },
+      { id: 'footrest_step', label: 'Stool footrest step-up', magnitude: '1334 N point', apply: 'midspan of the footrest stretcher', direction: 'gravity', duration: 'functional', acceptance: 'stretcher bending margin ≥ 1 at MOR/4', source: 'derivation: full body weight on one foot while mounting — the load every bar stool actually sees', traceability: 'derivation' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'side rail → rear post (and all seat-frame rails → legs)', required: SEAT_FRAME_ALLOWED, prohibited: ['butt_screws', 'pocket_screws', 'biscuits', 'dowels'], reason: 'the rear-tilt couple puts ≈ 750 N through each side joint (handcalc); screws top out ≈ 1.35× margin in the densest stocked species and biscuits/dowels sit at 0.8–1.35× — all below the 1.5× gate, and halved again under the cyclic factor. Mortise & tenon (or loose tenon / bolted barrel-nut) carries it at 3× in oak. This is why a screwed chair loosens in a year.' },
+        { connection: 'back slats / crest → rear posts', required: ['mortise_tenon', 'loose_tenon', 'kd_bolt'], prohibited: ['butt_screws', 'pocket_screws'], reason: 'the back force levers slats in withdrawal — screws into post side grain work loose; housed tenons do not. Follows the frame slot mandate.' },
+        { connection: 'corner blocks → rails', required: ['butt_screws'], prohibited: [], reason: 'corner blocks are glued and screwed across the corner — structure of the seat frame (they close the racking loop), listed as parts with their own dimensions, but their fastening is honestly screws + glue.' },
+        { connection: 'seat panel → rails/posts', required: ['butt_screws'], prohibited: ['edge_glue'], reason: 'a solid seat moves across the grain: screws in slotted holes / buttons, notched around the posts with capture in the panel size — never glued down (movement check).' }
+      ]
+    },
+    failureModes: [
+      { id: 'rear_tilt_racking', mode: 'side rail–rear leg joints fail from repeated rear-tilt racking', checkIds: ['chair:tilt'], fixture: 'audit SEAT bad-fixture: screwed side rail; handcalc rear-tilt section', realWorld: 'the classic loose-then-broken dining chair' },
+      { id: 'short_grain_rear_leg', mode: 'sawn/curved rear leg breaks at short grain under the back load', guard: 'Spec.correctSeat clamps backRake to straight-post capability and seatNotes refuses the rest (validate re-checks as defense)', checkIds: ['chair:rake'], fixture: 'audit SEAT bad-fixture: 8°+ rake request → refusal note + clamp', realWorld: 'rear legs snapping at the bend' },
+      { id: 'back_post_rupture', mode: 'rear post breaks at the rail mortise under the back load', checkIds: ['chair:back'], fixture: 'handcalc back-post section; pine chair fixture fails honestly', realWorld: 'posts cracking at the seat joint — the max-moment, min-section point' },
+      { id: 'seat_collapse', mode: 'seat panel or rails fail under the seated load', checkIds: ['sag:seat_1', 'str:seat_1', 'sag:apron:seat_1', 'str:apron:seat_1'], fixture: 'golden chair fixtures freeze the margins', realWorld: 'split seats, cracked rails' },
+      { id: 'leg_snap', mode: 'front leg snaps under lateral load', checkIds: ['chair:leg'], fixture: 'handcalc leg section', realWorld: 'legs kicked out sideways' },
+      { id: 'cyclic_loosening', mode: 'joints loosen under 100k sit-down cycles', checkIds: ['chair:cyclic'], fixture: 'audit SEAT cyclic section (pine fails, oak passes)', realWorld: 'the wobbly chair that was fine when new' },
+      { id: 'stool_wrong_height', mode: 'stool sized to the wrong counter', conditional: true, guard: 'Spec.correctSeat counter coupling snaps height into the 250–300 drop window and seatNotes says so; validate asks when no counter is given', checkIds: ['chair:counter'], fixture: 'audit SEAT bad-fixture: 900-counter stool asked at 750 seat', realWorld: 'knees jammed under the bar / dangling perch' },
+      { id: 'ergonomic_miss', mode: 'seat height/depth outside the human-factors band', checkIds: ['ergo_seat'], conditional: true, fixture: 'audit SEAT bad-fixture: 550 seat height on a dining chair', realWorld: 'chairs nobody wants to sit in' },
+      { id: 'grain_orientation', mode: 'splayed leg sawn from a vertical blank (grain runout) instead of ripped with the grain', checkIds: ['chair:grain'], fixture: 'audit SEAT grain section', realWorld: 'splayed stool legs shearing along the runout' },
+      { id: 'footrest_break', mode: 'stool footrest stretcher breaks under a mounting step', checkIds: ['chair:foot'], conditional: true, fixture: 'handcalc footrest section', realWorld: 'bar stool rungs snapping underfoot' },
+      { id: 'seat_movement_split', mode: 'solid seat glued/pinned rigid splits across the grain', checkIds: ['move:seat_1'], fixture: 'movement check on golden chair fixtures', realWorld: 'seasonal seat cracks at the fasteners' }
+    ],
+    hardware: [
+      { id: 'corner_block_screws', item: '#8 × 32 wood screws, 2 per block face (glue + screws)', when: 'every seat frame (4 corner blocks)', capacity: 'screw shear ≥ 500 N each (JOINT_RATING butt_screws basis)', matchedTo: 'racking share of the seat frame; blocks close the frame loop — counted by the fastener engine so BOM = drilling instructions' },
+      { id: 'seat_fixing', item: '#8 screws in slotted/oversize holes through the corner blocks (or figure-8s)', when: 'solid seat panels', capacity: 'hold-down only', matchedTo: 'seasonal movement computed by K.movementMM — fixing must release it' },
+      { id: 'kd_hardware', item: 'M6 furniture bolts + barrel nuts, 2 per rail end', when: 'joinery.frame = kd_bolt', capacity: '1800 N per joint class (JOINT_RATING kd_bolt), SG-scaled', matchedTo: 'rear-tilt couple demand (≈ 750 N nominal) with re-snug schedule in the steps' }
+    ],
+    assembly: {
+      sequence: [
+        'layout (both rear posts marked together, feet against a stop)',
+        'back sub-assembly: slats + crest into the posts (rake set by the offset mortises)',
+        'side frames: front leg + side rail + side stretcher to the back assembly, one side at a time',
+        'closing: front/back rails + remaining stretchers, clamped square',
+        'corner blocks: glued + screwed across each seat-frame corner',
+        'seat: notched around the posts, fastened to move',
+        'cure + rock check, then load'
+      ],
+      jigs: ['story stick for post mortise heights (mark all posts together, feet aligned on a stop)', 'sliding bevel set from the printed angle schedule (splay/rake shoulders)', 'drilling jig for barrel-nut bores (kd builds) — both bores off the same reference face', 'drawbore pins optional at advanced M&T (offset 1.5 mm)'],
+      checks: ['equal diagonals across the seat frame before the glue tacks', 'back assembly checked for wind against a flat bench', 'seat frame checked LEVEL side-to-side and sloped only front-to-back by the stated slope', 'stool legs: all four feet on the flat, trim ONE proud foot', 'compound shoulders test-fitted dry before glue']
+    },
+    refusals: [
+      { id: 'no_upholstery', shape: 'upholstered or slip seats', reason: 'the frame becomes its own part set with foam/fabric clearances not modeled soundly yet — a guessed slip-seat rebate is worse than a refusal', surface: 'seatNotes correction note + intent parser + SCHEMA_DOC' },
+      { id: 'no_arms', shape: 'armchairs', reason: 'arm joints carry their own BIFMA load cases (vertical 169 lbf / horizontal 100 lbf functional) not modeled', surface: 'seatNotes + intent parser + SCHEMA_DOC' },
+      { id: 'no_sawn_rear_legs', shape: 'back rake beyond straight-post capability (sawn/curved/steam-bent rear legs)', reason: 'sawing the bend puts short grain at the highest-moment point — the real-world rear-leg failure; lamination/steam-bending are outside the tool', surface: 'correctSeat clamp + seatNotes + validate defense check' },
+      { id: 'no_rockers_folders', shape: 'rockers, folding chairs, swivel or height-adjust mechanisms', reason: 'mechanisms are not expressible (every joint is fixed except kd_bolt) and their load paths are unmodeled', surface: 'SCHEMA_DOC + intent parser' },
+      { id: 'no_chair_splay', shape: 'splayed legs on a backed chair', reason: 'the straight-post rake geometry assumes vertical posts; splayed backed chairs need compound-raked joinery not yet generated soundly', surface: 'correctSeat forces splay 0 + seatNotes' }
+    ],
+    fixtures: {
+      golden: ['oak-dining-chair-imperial', 'maple-counter-stool-metric', 'walnut-chair-boundary-metric'],
+      bad: ['audit SEAT-1 screwed side rail', 'audit SEAT-2 sawn rear leg (rake refusal)', 'audit SEAT-3 stool vs wrong counter', 'audit SEAT-4 seat height outside human factors', 'audit SEAT-5 upholstery/arms refusal', 'audit SEAT-6 pine cyclic honest-fail']
+    }
+  });
+  BB.Classes = {
+    register, get, all, forTemplate, validateContract, runChecklist,
+    DESIGN_BASIS_SEATING
+  };
+})();</script>
+<script>var BB = globalThis.BB = globalThis.BB || {};
+(function () {
+  'use strict';
+  const K = BB.K;
   const Geo = BB.Geo;
   const U = () => BB.Units;
-  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom'];
+  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
   const FRAME_TEMPLATES = ['table', 'desk', 'bench'];
-  const SPEC_VERSION = 6;
+  const SPEC_VERSION = 7;
   const migrations = {
     3: function (s) {
       const out = clone(s) || {};
@@ -5050,6 +5347,12 @@ body.ph-open .porch::after { display: none; }
       if (out.doors === undefined) out.doors = null;
       if (!isObj(out.hardware)) out.hardware = {};
       if (out.hardware.hinge === undefined) out.hardware.hinge = 'euro_cup';
+      return out;
+    },
+    6: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 7;
+      if (out.seat === undefined) out.seat = null;
       return out;
     }
   };
@@ -5096,9 +5399,23 @@ body.ph-open .porch::after { display: none; }
       hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
       doors: null,
-      custom: null
+      custom: null,
+      seat: null
     };
     const t = base.meta.template;
+    if (t === 'chair') {
+      base.meta.name = 'Dining Chair';
+      Object.assign(base.overall, { width: 430, depth: 420, height: 915 });
+      base.seat = {
+        width: 430, depth: 420, height: 445, slopeDeg: 3,
+        backHeight: 470, backRake: 4, splayDeg: 0, counterHeight: null
+      };
+      Object.assign(base.structure, {
+        topThickness: 20, legThickness: 38, apronHeight: 65, apronThickness: 25,
+        apronInset: 0, stretcher: 'h', stretcherHeight: 200
+      });
+      base.joinery.frame = 'kd_bolt';
+    }
     if (t === 'custom') {
       base.custom = defaultCustom();
       Object.assign(base.overall, { width: 1100, depth: 350, height: 468 });
@@ -5262,9 +5579,12 @@ body.ph-open .porch::after { display: none; }
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
     'finish': 'finish', 'hardware.pull': 'pull style',
-    'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
+    'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners',
+    'seat.width': 'seat width', 'seat.depth': 'seat depth', 'seat.height': 'seat height',
+    'seat.slopeDeg': 'seat slope', 'seat.backHeight': 'back height', 'seat.backRake': 'back rake',
+    'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height'
   };
-  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|custom\.part\.(len|wid|thk)$)/;
+  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|seat\.(width|depth|height|backHeight|counterHeight)$|custom\.part\.(len|wid|thk)$)/;
   function fmtValue(path, v) {
     if (typeof v === 'number' && MM_PATHS.test(path)) return U().fmtLength(v);
     if (typeof v === 'boolean') return v ? 'on' : 'off';
@@ -5523,7 +5843,10 @@ body.ph-open .porch::after { display: none; }
     'structure.apronInset': { min: 0, max: 30, def: 12 },
     'structure.shelfThickness': { min: 12, max: 32, def: 19, stock: K.SOLID_THICKNESS },
     'structure.sideThickness': { min: 12, max: 25, def: 18, stock: [12, 15, 18, 19, 25] },
-    'structure.stretcherHeight': { min: 100, max: 600, def: 280 }
+    'structure.stretcherHeight': { min: 100, max: 600, def: 280 },
+    'seat.width': { min: 300, max: 700, def: 430 },
+    'seat.depth': { min: 300, max: 550, def: 420 },
+    'seat.height': { min: 380, max: 850, def: 445 }
   };
   const STRETCHERS = ['none', 'h', 'box'];
   const DOOR_TEMPLATES = ['cabinet', 'bookshelf'];
@@ -5641,7 +5964,9 @@ body.ph-open .porch::after { display: none; }
   const at = (o, sec, key) => (o && o[sec] && typeof o[sec] === 'object' ? o[sec][key] : undefined);
   function dimensionNotes(raw, cor, notes) {
     const fmt = mm => U().fmtLength(mm);
+    const isChair = at(cor, 'meta', 'template') === 'chair';
     for (const path of Object.keys(DIM_RULES)) {
+      if (isChair && path.startsWith('overall.')) continue;
       const dot = path.indexOf('.');
       const sec = path.slice(0, dot), key = path.slice(dot + 1);
       const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
@@ -5704,6 +6029,39 @@ body.ph-open .porch::after { display: none; }
       notes.push(`${j.label} is ${art} ${j.level} joint and this design is set to ${level} — the ${PATH_LABELS['joinery.' + kind]} falls back to ${fmtValue('joinery.' + kind, got)}.`);
     }
   }
+  function seatNotes(raw, cor, notes) {
+    if (!cor || at(cor, 'meta', 'template') !== 'chair' || !cor.seat) return;
+    const rawSeat = raw && isObj(raw.seat) ? raw.seat : {};
+    const seat = cor.seat;
+    const fmt = mm => U().fmtLength(mm);
+    if (rawSeat.upholstered || rawSeat.slipSeat || rawSeat.upholstery) {
+      notes.push('Upholstered and slip seats aren’t generated: the seat frame becomes its own part set with foam and fabric clearances this tool doesn’t model soundly yet — the design carries a solid wood seat.');
+    }
+    if (rawSeat.arms || rawSeat.armrests) {
+      notes.push('Arms aren’t generated: arm joints carry their own load cases (BIFMA arm strength) this tool doesn’t model yet — the design is a side chair.');
+    }
+    const wantRake = num(rawSeat.backRake, null);
+    if (wantRake !== null && seat.backHeight > 0 && wantRake - seat.backRake > 0.25) {
+      notes.push(`A ${wantRake}° back rake needs a sawn or steam-bent rear leg — sawing the bend puts short grain at exactly the point the rear-tilt load breaks chairs, so this tool stops at what straight rear posts give: ${seat.backRake}°.`);
+    }
+    const wantSplay = num(rawSeat.splayDeg, null);
+    if (wantSplay !== null && wantSplay > 0.25 && seat.backHeight > 0) {
+      notes.push('Leg splay is a stool feature — a backed chair in this class keeps vertical legs (the back’s rake geometry assumes them).');
+    }
+    if (seat.counterHeight !== null) {
+      const wantH = num(rawSeat.height, null);
+      if (wantH !== null && Math.abs(wantH - seat.height) > 5) {
+        notes.push(`A seat serving a ${fmt(seat.counterHeight)} counter sits 250–300 mm below it — the ${fmt(wantH)} asked for was moved to ${fmt(seat.height)}.`);
+      }
+    }
+    const wantJ = raw && isObj(raw.joinery) ? raw.joinery.frame : undefined;
+    if (typeof wantJ === 'string' && cor.joinery && wantJ !== cor.joinery.frame && K.JOINERY[wantJ]) {
+      const lvl = at(cor, 'meta', 'level');
+      if (K.jointAllowed(wantJ, K.LEVELS.includes(lvl) ? lvl : 'beginner', 'frame')) {
+        notes.push(`${K.JOINERY[wantJ].label} can’t hold a chair’s seat frame — the rear-tilt case racks the side-rail joints beyond what screws or dowels carry at any skill level (see the Safety tab), so the frame uses ${fmtValue('joinery.frame', cor.joinery.frame)}.`);
+      }
+    }
+  }
   function drawerNote(raw, cor, notes) {
     const want = raw && raw.drawers;
     if (!want || typeof want !== 'object' || !cor || cor.drawers) return;
@@ -5738,6 +6096,7 @@ body.ph-open .porch::after { display: none; }
       speciesNotes(raw, correctedSpec, notes);
       joineryNotes(raw, correctedSpec, notes);
       drawerNote(raw, correctedSpec, notes);
+      seatNotes(raw, correctedSpec, notes);
     }
     return [...new Set(notes)];
   }
@@ -5807,6 +6166,34 @@ body.ph-open .porch::after { display: none; }
     }
     return out;
   }
+  function correctSeat(s) {
+    const C = BB.Classes ? BB.Classes.get('seating') : null;
+    const G = C ? C.geom : null;
+    const se = isObj(s.seat) ? s.seat : {};
+    const out = {};
+    out.width = applyDim('seat.width', se.width);
+    out.depth = applyDim('seat.depth', se.depth);
+    const bhRaw = num(se.backHeight, 470);
+    out.backHeight = bhRaw <= 0 ? 0 : Math.round(clamp(bhRaw, 380, 600));
+    const stool = out.backHeight === 0;
+    out.counterHeight = num(se.counterHeight, null);
+    if (out.counterHeight !== null) out.counterHeight = r1(clamp(out.counterHeight, 700, 1300));
+    let h = applyDim('seat.height', se.height);
+    if (out.counterHeight !== null) {
+      const drop = G ? G.COUNTER_DROP : 270;
+      const lo = out.counterHeight - 300, hi = out.counterHeight - 250;
+      if (h < lo || h > hi) h = out.counterHeight - drop;
+    } else if (!stool) {
+      h = clamp(h, 380, 500); // a chair with no counter named is dining seating
+    }
+    out.height = r1(h);
+    out.slopeDeg = stool ? 0 : r1(clamp(num(se.slopeDeg, 3), 0, 8));
+    out.splayDeg = stool ? r1(clamp(num(se.splayDeg, 4), 0, 10)) : 0;
+    let rake = clamp(num(se.backRake, 4), 0, 8);
+    if (!stool && G) rake = Math.min(rake, G.backRakeMax(s.structure, out));
+    out.backRake = r1(stool ? 0 : Math.max(0, rake));
+    return out;
+  }
   function correctSpec(raw) {
     raw = migrateSpec(raw);
     const template = TEMPLATES.includes(raw && raw.meta && raw.meta.template) ? raw.meta.template : 'table';
@@ -5835,14 +6222,39 @@ body.ph-open .porch::after { display: none; }
     st.shelfCount = clamp(Math.round(num(st.shelfCount, SHELF_COUNT.def)), SHELF_COUNT.min, SHELF_COUNT.max);
     st.backPanel = !!st.backPanel;
     st.toeKick = template === 'cabinet' ? !!st.toeKick : false;
-    st.stretcher = (FRAME_TEMPLATES.includes(template) && STRETCHERS.includes(st.stretcher)) ? st.stretcher : 'none';
+    st.stretcher = ((FRAME_TEMPLATES.includes(template) || template === 'chair') && STRETCHERS.includes(st.stretcher)) ? st.stretcher : 'none';
     st.stretcherHeight = applyDim('structure.stretcherHeight', st.stretcherHeight);
+    if (template === 'chair') {
+      s.seat = correctSeat(s);
+      const seat = s.seat;
+      const stool = seat.backHeight === 0;
+      const G = BB.Classes ? BB.Classes.get('seating').geom : null;
+      st.apronHeight = Math.min(st.apronHeight, Math.max(50, seat.height - st.topThickness - 160));
+      const railBottom = seat.height - st.topThickness - st.apronHeight;
+      if (stool) {
+        st.stretcher = 'box';
+        const drop = G ? G.FOOTREST_DROP : 230;
+        st.stretcherHeight = Math.round(clamp(seat.height - drop, 100, Math.max(100, railBottom - 60)));
+      } else {
+        if (!STRETCHERS.includes(st.stretcher) || st.stretcher === 'none') {
+          st.stretcher = 'h';
+          st.stretcherHeight = Math.round(seat.height * 0.45);
+        }
+        st.stretcherHeight = Math.round(clamp(st.stretcherHeight, 100, Math.max(100, railBottom - 60)));
+      }
+      const run = seat.splayDeg > 0 ? Math.tan(seat.splayDeg * Math.PI / 180) * (seat.height - st.topThickness) : 0;
+      o.width = r1(seat.width + 2 * run);
+      o.depth = r1(seat.depth + 2 * run);
+      o.height = r1(seat.height + seat.backHeight);
+    } else {
+      s.seat = null;
+    }
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
     const legCap = Math.floor(Math.min(o.width, o.depth) / 4);
     if (st.legThickness > legCap) {
       st.legThickness = K.POST_THICKNESS.filter(t => t <= legCap).pop() || K.POST_THICKNESS[0];
     }
-    if (st.stretcher !== 'none') {
+    if (st.stretcher !== 'none' && template !== 'chair') {
       const apronUnderside = o.height - st.topThickness - st.apronHeight;
       const ceiling = apronUnderside - STRETCHER_APRON_GAP;
       const floor_ = STRETCHER_FLOOR_MIN;
@@ -5853,6 +6265,9 @@ body.ph-open .porch::after { display: none; }
     const lvl = s.meta.level;
     for (const kind of ['frame', 'case', 'box']) {
       if (!K.jointAllowed(s.joinery[kind], lvl, kind)) s.joinery[kind] = K.JOINT_DEFAULTS[lvl][kind];
+    }
+    if (template === 'chair' && BB.Classes) {
+      s.joinery.frame = BB.Classes.get('seating').enforceFrameJoint(s.joinery.frame, lvl);
     }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
     s.hardware = s.hardware && typeof s.hardware === 'object' ? s.hardware : {};
@@ -6041,6 +6456,29 @@ body.ph-open .porch::after { display: none; }
           });
         }
       }
+    }
+    if (t === 'chair' && spec.seat && BB.Classes) {
+      const hf = Object.fromEntries(BB.Classes.get('seating').humanFactors.map(h => [h.key, h]));
+      const se = spec.seat;
+      const stool = se.backHeight === 0;
+      const band = (row, v, id, what) => {
+        if (!row || (v >= row.min && v <= row.max)) return;
+        const dir = v > row.max ? 'above' : 'below';
+        advisories.push({ id, text: `${fmt(v)} is ${dir} the ${fmt(row.min)} to ${fmt(row.max)} ${what} band (${row.source.split('(')[0].trim()}).` });
+      };
+      if (!stool) {
+        band(hf.dining_seat_height, se.height, 'ergo_seat_height', 'dining seat height');
+      } else if (se.counterHeight === null) {
+        const c = hf.counter_stool_seat, b = hf.bar_stool_seat;
+        const inC = c && se.height >= c.min && se.height <= c.max;
+        const inB = b && se.height >= b.min && se.height <= b.max;
+        const inBench = se.height >= 430 && se.height <= 480; // a low perch stool is legitimate
+        if (!inC && !inB && !inBench) {
+          advisories.push({ id: 'ergo_seat_height', text: `${fmt(se.height)} matches no seating band (dining ${fmt(430)}–${fmt(480)}, counter ${fmt(c.min)}–${fmt(c.max)}, bar ${fmt(b.min)}–${fmt(b.max)}). Name the counter it serves and the height will be derived.` });
+        }
+      }
+      band(hf.seat_depth, se.depth, 'ergo_seat_depth', 'seat depth');
+      band(hf.seat_width, se.width, 'ergo_seat_width', 'seat width');
     }
     const finRow = K.FINISHES.find(f => f.key === spec.finish);
     const spRow = K.WOOD_SPECIES[spec.wood.species];
@@ -6644,6 +7082,207 @@ body.ph-open .porch::after { display: none; }
         { material: spec.wood.species, explode: { x: d.count === 2 ? (i === 1 ? -0.6 : 0.6) : 0, y: 0, z: 1.2 } }));
     }
   }
+  function chairBuild(spec) {
+    const st = spec.structure, se = spec.seat;
+    const G = BB.Classes.get('seating').geom;
+    const parts = [], joints = [];
+    const sp = spec.wood.species;
+    const fj = spec.joinery.frame;
+    const W = se.width, D = se.depth, Hs = se.height;
+    const seatT = st.topThickness, railH = st.apronHeight, railT = st.apronThickness;
+    const legT = st.legThickness;
+    const stool = se.backHeight === 0;
+    const rad = d => d * Math.PI / 180;
+    const secH = Math.max(45, Math.min(90, Math.round(railH * 0.75)));
+    const secT = railT;
+    const strY = st.stretcherHeight;
+    const cb = G.CORNER_BLOCK;
+    const ground = p => {
+      const cs = BB.Geo.obbCorners(BB.Geo.partOBB(p));
+      const dy = Math.min(...cs.map(c => c[1]));
+      if (Math.abs(dy) > 0.01) p.pos.y = Math.round((p.pos.y - dy) * 10) / 10;
+    };
+    if (stool) {
+      const s = se.splayDeg, t = Math.tan(rad(s));
+      const frameTop = Hs - seatT;
+      const thetaR = Math.atan(Math.SQRT2 * t) * 180 / Math.PI; // compound resultant
+      const lx = W / 2 - legT / 2, lz = D / 2 - legT / 2;
+      const La = frameTop / Math.cos(rad(thetaR)) - legT * Math.tan(rad(thetaR));
+      [[-1, -1, 1], [1, -1, 2], [-1, 1, 3], [1, 1, 4]].forEach(([sx, sz, i]) => {
+        const runMid = t * (frameTop / 2); // outward travel of the leg centre at mid-height
+        const p = part(`leg_${i}`, 'leg_splayed', 'leg', 'Leg', legT, La, legT,
+          sx * (lx + runMid), frameTop / 2, sz * (lz + runMid),
+          { material: sp, explode: { x: sx * 0.4, y: -0.4, z: sz * 0.4 } });
+        p.rot = { x: -sz * s, y: 0, z: sx * s };
+        p.cutDim = { L: Math.round(La * 10) / 10, W: legT, T: legT };
+        p.angleNote = `compound end cut: splay ${s}° both ways — see the angle schedule in the steps`;
+        ground(p);
+        parts.push(p);
+      });
+      const off = y => t * (frameTop - y);
+      const railY = frameTop - railH / 2;
+      const mk = (id, name, w, h, d, x, y, z, legA, legB, note) => {
+        const p = part(id, id.replace(/_\d+$/, ''), /stretcher/.test(id) ? 'stretcher' : 'rail', name, w, h, d, x, y, z,
+          { material: sp, explode: { x: Math.sign(x), y: /stretcher/.test(id) ? -0.5 : 0, z: Math.sign(z) } });
+        if (note) p.angleNote = note;
+        parts.push(p);
+        const along = w >= d ? 'x' : 'z';
+        const half = (along === 'x' ? w : d) / 2;
+        const endA = { x, y, z }, endB = { x, y, z };
+        endA[along] = (along === 'x' ? x : z) - half;
+        endB[along] = (along === 'x' ? x : z) + half;
+        joints.push({ type: fj, a: id, b: legA, pos: endA });
+        joints.push({ type: fj, a: id, b: legB, pos: endB });
+      };
+      const shoulder = `shoulders cut at ${s}° (legs splay) — sliding bevel from the angle schedule`;
+      const oR = off(railY);
+      [[-1, 'rail_side_1', 'leg_1', 'leg_3'], [1, 'rail_side_2', 'leg_2', 'leg_4']].forEach(([sx, id, a, b]) => {
+        mk(id, 'Side rail', railT, railH, 2 * (lz + oR) - legT, sx * (lx + oR + legT / 2 - railT / 2), railY, 0, a, b, shoulder);
+      });
+      [[-1, 'rail_back_1', 'leg_1', 'leg_2'], [1, 'rail_front_1', 'leg_3', 'leg_4']].forEach(([sz, id, a, b]) => {
+        mk(id, sz < 0 ? 'Back rail' : 'Front rail', 2 * (lx + oR) - legT, railH, railT, 0, railY, sz * (lz + oR + legT / 2 - railT / 2), a, b, shoulder);
+      });
+      const oS = off(strY);
+      [[-1, 'stretcher_side_1', 'leg_1', 'leg_3'], [1, 'stretcher_side_2', 'leg_2', 'leg_4']].forEach(([sx, id, a, b]) => {
+        mk(id, 'Side stretcher', secT, secH, 2 * (lz + oS) - legT, sx * (lx + oS), strY, 0, a, b, shoulder);
+      });
+      [[-1, 'stretcher_back_1', 'leg_1', 'leg_2'], [1, 'stretcher_front_1', 'leg_3', 'leg_4']].forEach(([sz, id, a, b]) => {
+        mk(id, sz < 0 ? 'Rear stretcher' : 'Footrest stretcher', 2 * (lx + oS) - legT, secH, secT, 0, strY, sz * (lz + oS), a, b, shoulder);
+      });
+      addSeatCore(spec, parts, joints, { W, D, Hs, seatT, railH, railT, cb, sp, slope: 0, postIds: [] });
+      return { parts, joints, openings: [], drawers: [] };
+    }
+    const postD = G.rearPostDepth(st);
+    const Hb = se.backHeight;
+    const slope = se.slopeDeg, tanS = Math.tan(rad(slope));
+    const lx = W / 2 - legT / 2;
+    const zPost = -(D / 2 - postD / 2), zFront = D / 2 - legT / 2;
+    const seatTopAt = z => Hs - tanS * (D / 2 - z);
+    const railTopAt = z => seatTopAt(z) - seatT;
+    [[-1, 1], [1, 2]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'rear_post', 'post', 'Rear post', legT, Hs + Hb, postD,
+        sx * lx, (Hs + Hb) / 2, zPost,
+        { material: sp, explode: { x: sx * 0.35, y: 0.2, z: -0.5 } }));
+    });
+    const flH = railTopAt(zFront - legT / 2);
+    [[-1, 3], [1, 4]].forEach(([sx, i]) => {
+      const p = part(`leg_${i}`, 'leg', 'leg', 'Front leg', legT, flH, legT,
+        sx * lx, flH / 2, zFront,
+        { material: sp, explode: { x: sx * 0.35, y: -0.4, z: 0.4 } });
+      if (slope > 0) p.angleNote = `top end beveled ${slope}° to meet the sloped seat`;
+      parts.push(p);
+    });
+    const sideSpan = D - legT - postD;
+    const zSideC = (postD - legT) / 2;
+    [[-1, 1, 'post_1', 'leg_3'], [1, 2, 'post_2', 'leg_4']].forEach(([sx, i, postId, legId]) => {
+      const p = part(`rail_side_${i}`, 'rail_side', 'rail', 'Side rail', railT, railH, sideSpan,
+        sx * (W / 2 - railT / 2), railTopAt(zSideC) - railH / 2, zSideC,
+        { material: sp, explode: { x: sx, y: 0, z: 0 } });
+      if (slope > 0) {
+        p.rot = { x: -slope, y: 0, z: 0 };
+        p.cutDim = { L: Math.round(sideSpan / Math.cos(rad(slope)) * 10) / 10, W: railH, T: railT };
+      }
+      parts.push(p);
+      joints.push({ type: fj, a: `rail_side_${i}`, b: postId, pos: { x: sx * lx, y: railTopAt(zPost + postD / 2) - railH / 2, z: zPost + postD / 2 } });
+      joints.push({ type: fj, a: `rail_side_${i}`, b: legId, pos: { x: sx * lx, y: railTopAt(zFront) - railH / 2, z: zFront - legT / 2 } });
+    });
+    const zF = D / 2 - railT / 2;
+    const zBack = -D / 2 + postD - railT / 2;
+    parts.push(part('rail_front_1', 'rail_front', 'rail', 'Front rail', W - 2 * legT, railH, railT,
+      0, railTopAt(zF) - railH / 2, zF, { material: sp, explode: { x: 0, y: 0, z: 1 } }));
+    joints.push({ type: fj, a: 'rail_front_1', b: 'leg_3', pos: { x: -lx, y: railTopAt(zF) - railH / 2, z: zF } });
+    joints.push({ type: fj, a: 'rail_front_1', b: 'leg_4', pos: { x: lx, y: railTopAt(zF) - railH / 2, z: zF } });
+    parts.push(part('rail_back_1', 'rail_back', 'rail', 'Back seat rail', W - 2 * legT, railH, railT,
+      0, railTopAt(zBack) - railH / 2, zBack, { material: sp, explode: { x: 0, y: 0, z: -1 } }));
+    joints.push({ type: fj, a: 'rail_back_1', b: 'post_1', pos: { x: -lx, y: railTopAt(zBack) - railH / 2, z: zBack } });
+    joints.push({ type: fj, a: 'rail_back_1', b: 'post_2', pos: { x: lx, y: railTopAt(zBack) - railH / 2, z: zBack } });
+    const strStyle = st.stretcher === 'box' ? 'box' : 'h';
+    [[-1, 1, 'post_1', 'leg_3'], [1, 2, 'post_2', 'leg_4']].forEach(([sx, i, postId, legId]) => {
+      parts.push(part(`stretcher_side_${i}`, 'stretcher_side', 'stretcher', 'Side stretcher', secT, secH, sideSpan,
+        sx * (W / 2 - secT / 2), strY, zSideC, { material: sp, explode: { x: sx, y: -0.5, z: 0 } }));
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: postId, pos: { x: sx * lx, y: strY, z: zPost + postD / 2 } });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: legId, pos: { x: sx * lx, y: strY, z: zFront - legT / 2 } });
+    });
+    if (strStyle === 'h') {
+      parts.push(part('stretcher_centre_1', 'stretcher_centre', 'stretcher', 'Centre stretcher', W - 2 * secT, secH, secT,
+        0, strY, zSideC, { material: sp, explode: { x: 0, y: -0.5, z: 0 } }));
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_1', pos: { x: -(W / 2 - secT), y: strY, z: zSideC } });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_2', pos: { x: W / 2 - secT, y: strY, z: zSideC } });
+    } else {
+      parts.push(part('stretcher_front_1', 'stretcher_front', 'stretcher', 'Front stretcher', W - 2 * legT, secH, secT,
+        0, strY, zFront, { material: sp, explode: { x: 0, y: -0.5, z: 1 } }));
+      joints.push({ type: fj, a: 'stretcher_front_1', b: 'leg_3', pos: { x: -lx, y: strY, z: zFront } });
+      joints.push({ type: fj, a: 'stretcher_front_1', b: 'leg_4', pos: { x: lx, y: strY, z: zFront } });
+      parts.push(part('stretcher_back_1', 'stretcher_back', 'stretcher', 'Rear stretcher', W - 2 * legT, secH, secT,
+        0, strY, zPost, { material: sp, explode: { x: 0, y: -0.5, z: -1 } }));
+      joints.push({ type: fj, a: 'stretcher_back_1', b: 'post_1', pos: { x: -lx, y: strY, z: zPost } });
+      joints.push({ type: fj, a: 'stretcher_back_1', b: 'post_2', pos: { x: lx, y: strY, z: zPost } });
+    }
+    const crestY = Hs + Hb - G.CREST_H / 2;
+    const slatYs = [Hs + G.SLAT_RISE];
+    if (Hb >= 420) slatYs.push((slatYs[0] + crestY) / 2);
+    const yMid = (crestY + slatYs[0]) / 2;
+    const tanR = Math.tan(rad(se.backRake));
+    const zOn = y => zPost - tanR * (y - yMid); // rake line (top leans rearward)
+    const backLen = W - 2 * legT;
+    const crest = part('crest_1', 'crest', 'crest', 'Crest rail', backLen, G.CREST_H, G.SLAT_T,
+      0, crestY, Math.round(zOn(crestY) * 10) / 10, { material: sp, explode: { x: 0, y: 0.8, z: -0.6 } });
+    if (se.backRake > 0) crest.angleNote = `mortise offset per setout — back rakes ${se.backRake}° via opposed offsets`;
+    parts.push(crest);
+    joints.push({ type: fj, a: 'crest_1', b: 'post_1', pos: { x: -lx, y: crestY, z: zOn(crestY) } });
+    joints.push({ type: fj, a: 'crest_1', b: 'post_2', pos: { x: lx, y: crestY, z: zOn(crestY) } });
+    slatYs.forEach((y, i) => {
+      parts.push(part(`slat_${i + 1}`, 'back_slat', 'slat', 'Back slat', backLen, G.SLAT_H, G.SLAT_T,
+        0, y, Math.round(zOn(y) * 10) / 10, { material: sp, explode: { x: 0, y: 0.3, z: -0.4 } }));
+      joints.push({ type: fj, a: `slat_${i + 1}`, b: 'post_1', pos: { x: -lx, y, z: zOn(y) } });
+      joints.push({ type: fj, a: `slat_${i + 1}`, b: 'post_2', pos: { x: lx, y, z: zOn(y) } });
+    });
+    addSeatCore(spec, parts, joints, {
+      W, D, Hs, seatT, railH, railT, cb, sp, slope,
+      postIds: ['post_1', 'post_2']
+    });
+    return { parts, joints, openings: [], drawers: [] };
+  }
+  function addSeatCore(spec, parts, joints, ctx) {
+    const { W, D, Hs, seatT, railH, railT, cb, sp, slope } = ctx;
+    const rad = d => d * Math.PI / 180;
+    const tanS = Math.tan(rad(slope || 0));
+    const seatTopAt = z => Hs - tanS * (D / 2 - z);
+    const stool = !ctx.postIds || !ctx.postIds.length;
+    const bx = W / 2 - railT - cb / 2, bz = D / 2 - railT - cb / 2;
+    const bh = Math.max(30, railH - 12);
+    const corners = [
+      { sx: -1, sz: 1, mates: stool ? ['leg_3'] : ['leg_3'], rails: ['rail_side_1', 'rail_front_1'] },
+      { sx: 1, sz: 1, mates: stool ? ['leg_4'] : ['leg_4'], rails: ['rail_side_2', 'rail_front_1'] },
+      { sx: -1, sz: -1, mates: stool ? ['leg_1'] : ['post_1'], rails: ['rail_side_1', 'rail_back_1'] },
+      { sx: 1, sz: -1, mates: stool ? ['leg_2'] : ['post_2'], rails: ['rail_side_2', 'rail_back_1'] }
+    ];
+    corners.forEach((c, i) => {
+      const z = c.sz * bz;
+      const y = seatTopAt(z) - seatT - 4 - bh / 2;
+      const id = `block_${i + 1}`;
+      const p = part(id, 'corner_block', 'corner_block', 'Corner block', cb, bh, cb,
+        c.sx * bx, Math.round(y * 10) / 10, z, { material: sp, explode: { x: c.sx * 0.2, y: -0.3, z: c.sz * 0.2 } });
+      p.angleNote = 'rip the blank at 45° across the corner — grain runs across the diagonal';
+      parts.push(p);
+      for (const m of [...c.rails, ...c.mates]) {
+        joints.push({ type: 'butt_screws', a: id, b: m, pos: { x: c.sx * bx, y, z }, noCutAllowance: true });
+      }
+    });
+    const seat = part('seat_1', 'seat_panel', 'seat', 'Seat', W, seatT, D,
+      0, Math.round((seatTopAt(0) - seatT / 2) * 10) / 10, 0,
+      { material: sp, explode: { x: 0, y: 1, z: 0 } });
+    if (slope > 0) {
+      seat.rot = { x: -slope, y: 0, z: 0 };
+      seat.cutDim = { L: W, W: D, T: seatT };
+    }
+    parts.push(seat);
+    joints.push({ type: 'butt_screws', a: 'seat_1', b: 'rail_side_1', pos: { x: -(W / 2 - railT / 2), y: seatTopAt(0) - seatT, z: 0 }, noCutAllowance: true });
+    joints.push({ type: 'butt_screws', a: 'seat_1', b: 'rail_side_2', pos: { x: W / 2 - railT / 2, y: seatTopAt(0) - seatT, z: 0 }, noCutAllowance: true });
+    for (const pid of ctx.postIds || []) {
+      joints.push({ type: 'butt_screws', a: 'seat_1', b: pid, pos: { x: (pid === 'post_1' ? -1 : 1) * (W / 2 - 20), y: seatTopAt(-D / 2 + 20) - seatT / 2, z: -D / 2 + 20 }, noCutAllowance: true });
+    }
+  }
   function customBuild(spec) {
     const parts = [], joints = [];
     const c = spec.custom || { parts: [], connections: [] };
@@ -6684,6 +7323,7 @@ body.ph-open .porch::after { display: none; }
     else if (t === 'nightstand') m = nightstand(spec);
     else if (t === 'cabinet') m = cabinet(spec);
     else if (t === 'custom') m = customBuild(spec);
+    else if (t === 'chair') m = chairBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
     for (const p of m.parts) {
@@ -6758,7 +7398,7 @@ body.ph-open .porch::after { display: none; }
     display: { label: 'Display items', kind: 'udl', kgPerM: 10, sustained: true, basis: 'light display duty' },
     books:   { label: 'Books', kind: 'udl', kgPerM: 60, sustained: true, basis: 'BIFMA X5.9 shelf load, 40 lb/ft' },
     heavy:   { label: 'Heavy storage', kind: 'udl', kgPerM: 112, sustained: true, basis: 'BIFMA X5.9 high-density file load, 75 lb/ft' },
-    seating: { label: 'Seated people', kind: 'seat', kgSeat: 136, sustained: false, basis: 'BIFMA X5.4 seating functional load, 300 lbf' },
+    seating: { label: 'Seated people', kind: 'seat', kgSeat: 136, sustained: false, basis: 'aligned to BIFMA X5.1/X5.4 drop-test proof mass, 300 lb (functional drop is 225 lb)' },
     worktop: { label: 'Desk / table duty', kind: 'combo', kgDist: 75, kgEdge: 90, sustained: false, basis: 'BIFMA X5.5 distributed + concentrated functional loads' }
   };
   const PRESET_KEYS = ['display', 'books', 'heavy', 'seating', 'worktop'];
@@ -6914,6 +7554,20 @@ body.ph-open .porch::after { display: none; }
         push({
           id: p.id, part: p, label: p.role === 'top' ? 'Top panel' : `Shelf ${p.id.replace(/\D+/g, '') || 1}`,
           kind: 'shelf', model: 'ss', span: p.size.w, b: p.size.d, h: p.size.h, over: 0
+        });
+      }
+    } else if (t === 'chair') {
+      const seat = parts.find(p => p.id === 'seat_1');
+      const rails = parts.filter(p => p.id === 'rail_side_1' || p.id === 'rail_side_2');
+      if (seat && rails.length === 2 && spec.seat) {
+        const r = rails[0];
+        const railSpan = Math.max(100, Math.max(r.size.d, r.size.w));
+        const stripSpan = Math.max(80, spec.seat.width - 2 * spec.structure.apronThickness);
+        push({
+          id: seat.id, part: seat, label: 'Seat', kind: 'seat', model: 'ss',
+          span: stripSpan, b: seat.size.d, h: seat.size.h, over: 0,
+          apron: { id: r.id, span: railSpan, b: Math.min(r.size.w, r.size.d), h: r.size.h },
+          strip: { span: stripSpan, bEff: Math.min(seat.size.d, 0.5 * stripSpan + 100) }
         });
       }
     } else if (t === 'custom') {
@@ -7411,6 +8065,172 @@ body.ph-open .porch::after { display: none; }
         }
       }
     }
+    if (t === 'chair' && spec.seat && BB.Classes) {
+      const C = BB.Classes.get('seating');
+      const L = C.loads, G = C.geom;
+      const se = spec.seat, st2 = spec.structure;
+      const stool = se.backHeight === 0;
+      const fjKey = spec.joinery.frame;
+      const capJoint = (JOINT_RATING[fjKey] || JOINT_RATING.butt_screws).capN * sgF;
+      const jLabel = K.JOINERY[fjKey] ? K.JOINERY[fjKey].label.toLowerCase() : fjKey;
+      const railH = st2.apronHeight;
+      const railY = se.height - st2.topThickness - railH / 2;
+      const strYc = st2.stretcherHeight;
+      const arm = Math.max(30, railY - strYc);
+      const allow = sp.mor / SAFETY_FACTOR;
+      const crestY = se.height + se.backHeight - G.CREST_H / 2;
+      if (!stool) {
+        const M = (L.BACK_STATIC_N / 2) * (crestY - railY);
+        const R = M / arm;
+        const margin = capJoint / R;
+        const fixes = [];
+        if (margin < 1.5) {
+          const needArm = (R * arm) / (capJoint / 1.5);
+          const newY = Math.round(railY - needArm);
+          if (newY >= 100 && newY < strYc - 10) {
+            fixes.push({ id: 'tilt-arm', label: `Drop the stretchers to ${fmtLen(newY)}`, patch: { structure: { stretcherHeight: newY } } });
+          }
+          if (spec.meta.level === 'advanced' && fjKey !== 'mortise_tenon') {
+            fixes.push({ id: 'tilt-mt', label: 'Mortise & tenon the seat frame', patch: { joinery: { frame: 'mortise_tenon' } } });
+          }
+        }
+        checks.push({
+          id: 'chair:tilt', title: 'Rear tilt — user on two legs',
+          status: jointStatus(margin),
+          value: `${U().fmtPointLoad(R / GRAV)} per side joint vs ${U().fmtPointLoad(capJoint / GRAV)} capacity (${margin.toFixed(2)}×)`,
+          threshold: '≥ 1.5× on the side-rail↔rear-post joint couple (class contract, derivation)',
+          explain: `Tipped onto the rear legs, the ${U().fmtPointLoad(L.BACK_STATIC_N / GRAV)} back force (BIFMA X5.1 back functional magnitude) levers each side frame about its seat joints: M = ${Math.round(M).toLocaleString()} N·mm per side, resolved as a couple over the ${fmtLen(arm)} between the side rail and the side stretcher. This is why the class mandates ${jLabel}-grade joinery — screwed rails fail exactly here.`,
+          fixes,
+          data: { momentNmm: M, armMM: arm, demandN: R, capN: capJoint, marginRatio: margin },
+          prov: { rule: `rear tilt: M = (${L.BACK_STATIC_N}/2) × (${Math.round(crestY)} − ${Math.round(railY)}) = ${Math.round(M).toLocaleString()} N·mm; R = M/${Math.round(arm)} = ${Math.round(R)} N vs ${Math.round(capJoint)} N (${fjKey}, SG-scaled)` }
+        });
+        const postD = G.rearPostDepth(st2);
+        const bNet = Math.max(10, st2.legThickness - G.MORTISE_DERATE);
+        const Ipost = I_rect(bNet, postD);
+        const stressP = (M * (postD / 2)) / Ipost;
+        const marginP = allow / stressP;
+        const pFixes = [];
+        if (marginP < 1.25) {
+          const up = nextSolidUp(st2.legThickness);
+          if (up && up <= 100) pFixes.push({ id: 'post-up', label: `Thicken the rear posts to ${fmtLen(up)}`, patch: { structure: { legThickness: up } } });
+          const sol2 = solveSpeciesFix(spec.wood.species, 0, stressP, allow, 'str');
+          if (sol2) pFixes.push({ id: 'post-sp-' + sol2.key, label: `Switch to ${sol2.label.toLowerCase()}${sol2.partial ? PARTIAL_LIMIT : ''}`, patch: { wood: { species: sol2.key } } });
+        }
+        checks.push({
+          id: 'chair:back', title: 'Back strength — rear posts',
+          status: strStatus(marginP),
+          value: `net-section bending ${stressP.toFixed(1)} MPa · margin ${marginP.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR}) at the rail mortise, ${fmtLen(bNet)} × ${fmtLen(postD)} net section`,
+          explain: `${U().fmtPointLoad(L.BACK_STATIC_N / GRAV)} horizontal at the crest (ANSI/BIFMA X5.1-2017 §5/6 functional back load — applied at the crest, a LONGER lever than the standard's ≤406 mm point) bends each rear post about the section the side-rail mortise has already thinned. Straight grain is mandatory here — which is exactly why the class refuses sawn rear-leg bends.`,
+          fixes: pFixes,
+          data: { stressMPa: stressP, allowMPa: allow, momentNmm: M, netW: bNet, postD },
+          prov: { rule: `post bending: I = ${Math.round(bNet)}×${Math.round(postD)}³/12 = ${Math.round(Ipost).toLocaleString()} mm⁴; σ = M·c/I with M = ${Math.round(M).toLocaleString()} N·mm, c = ${postD / 2}` }
+        });
+      }
+      {
+        const legT2 = st2.legThickness;
+        const Mleg = L.LEG_STATIC_N * strYc;
+        const Ileg = I_rect(legT2, legT2);
+        const stressL = (Mleg * (legT2 / 2)) / Ileg;
+        const marginL = allow / stressL;
+        checks.push({
+          id: 'chair:leg', title: 'Leg strength',
+          status: strStatus(marginL),
+          value: `bending ${stressL.toFixed(1)} MPa at the stretcher line · margin ${marginL.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR})`,
+          explain: `${U().fmtPointLoad(L.LEG_STATIC_N / GRAV)} sideways at the foot (BIFMA X5.4 §16 leg-strength functional magnitude) bends the leg over the ${fmtLen(strYc)} below the stretcher brace.`,
+          fixes: marginL < 1 ? [{ id: 'leg-up', label: `Thicken legs to ${fmtLen(Math.min(100, legT2 + 7))}`, patch: { structure: { legThickness: Math.min(100, legT2 + 7) } } }] : [],
+          data: { stressMPa: stressL, allowMPa: allow },
+          prov: { rule: `leg bending: M = ${L.LEG_STATIC_N} × ${strYc} = ${Math.round(Mleg).toLocaleString()} N·mm; I = ${legT2}⁴/12` }
+        });
+      }
+      {
+        const perJoint = L.SEAT_STATIC_N / 4;
+        const marginC = (capJoint * L.CYCLIC_CAPACITY_FACTOR) / perJoint;
+        checks.push({
+          id: 'chair:cyclic', title: 'Cyclic seating durability',
+          status: jointStatus(marginC),
+          value: `${U().fmtPointLoad(perJoint / GRAV)} per joint vs ${U().fmtPointLoad(capJoint * L.CYCLIC_CAPACITY_FACTOR / GRAV)} cyclic capacity (${marginC.toFixed(2)}×)`,
+          threshold: `≥ 1.5× at half static joint capacity — stands in for ${L.CYCLIC_MASS_KG} kg × ${L.CYCLIC_CYCLES.toLocaleString()} cycles (X5.1 §10.3)`,
+          explain: marginC >= 1.5
+            ? `The ${jLabel} seat frame holds the seated load with cyclic headroom — the difference between a chair that is tight in year five and one that wobbles in year one.`
+            : `Under repeated seating the ${jLabel} joints work loose — this is the wobbly-chair failure. A stiffer species or mortise-and-tenon joinery buys the cyclic margin back.` + (fjKey === 'kd_bolt' ? ' Bolted frames additionally need their re-snug schedule honored (it is in the assembly steps).' : ''),
+          fixes: [],
+          data: { perJointN: perJoint, cyclicCapN: capJoint * L.CYCLIC_CAPACITY_FACTOR, marginRatio: marginC },
+          prov: { rule: `cyclic: ${L.SEAT_STATIC_N}/4 = ${Math.round(perJoint)} N vs ${Math.round(capJoint)} × ${L.CYCLIC_CAPACITY_FACTOR}` }
+        });
+      }
+      if (stool) {
+        const fr = parts.find(p => p.id === 'stretcher_front_1');
+        if (fr) {
+          const span = Math.max(100, Math.max(fr.size.w, fr.size.d));
+          const bF = Math.min(fr.size.w, fr.size.d), hF = fr.size.h;
+          const IF = I_rect(bF, hF);
+          const MF = (L.FOOTREST_STEP_N * span) / 4;
+          const stressF = (MF * (hF / 2)) / IF;
+          const marginF = allow / stressF;
+          checks.push({
+            id: 'chair:foot', title: 'Footrest under a mounting step',
+            status: strStatus(marginF),
+            value: `bending ${stressF.toFixed(1)} MPa · margin ${marginF.toFixed(1)}×`,
+            threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR})`,
+            explain: `Mounting a stool puts the full ${U().fmtPointLoad(L.FOOTREST_STEP_N / GRAV)} on one foot at the footrest midspan (class derivation) — the load every bar-stool rung actually sees, and why the footrest is sized as structure, not trim.`,
+            fixes: [],
+            data: { stressMPa: stressF, allowMPa: allow, spanMM: span },
+            prov: { rule: `footrest: M = PL/4 = ${L.FOOTREST_STEP_N}×${Math.round(span)}/4 = ${Math.round(MF).toLocaleString()} N·mm; I = ${Math.round(bF)}×${Math.round(hF)}³/12` }
+          });
+        }
+        checks.push(se.counterHeight === null ? {
+          id: 'chair:counter', title: 'Counter height', status: 'advisory',
+          value: `seat at ${fmtLen(se.height)} — no counter stated`,
+          threshold: 'seat 250–300 below the counter it serves',
+          explain: `No counter height was given, so the seat is at ${fmtLen(se.height)} on the standard band. Tell the app the real counter height and the seat will be re-derived 250–300 below it.`,
+          fixes: []
+        } : {
+          id: 'chair:counter', title: 'Counter height', status: 'pass',
+          value: `seat ${fmtLen(se.height)} for a ${fmtLen(se.counterHeight)} counter (drop ${fmtLen(se.counterHeight - se.height)})`,
+          threshold: 'seat 250–300 below the counter it serves',
+          explain: 'Seat height is derived from the stated counter — the coupling the class contract mandates.',
+          fixes: []
+        });
+      }
+      if (!stool) {
+        const maxRake = G.backRakeMax(st2, se);
+        const over = se.backRake > maxRake + 0.05;
+        checks.push({
+          id: 'chair:rake', title: 'Back rake vs straight rear posts',
+          status: over ? 'fail' : 'pass',
+          value: `${fmtDeg(se.backRake)} of ${fmtDeg(maxRake)} available from offsets`,
+          threshold: 'rake achievable by opposed offsets within the post depth — beyond it is a sawn/bent leg (refused: short grain)',
+          explain: over
+            ? 'This rake exceeds what straight rear posts can give. A sawn bend puts short grain at the post’s highest-moment point — the classic rear-leg break — so the class refuses the geometry rather than shipping it.'
+            : `The back rakes ${fmtDeg(se.backRake)} by offsetting the crest rearward and the slats forward inside the post depth — rear posts stay straight, grain stays continuous, no short grain anywhere.`,
+          fixes: [],
+          data: { rakeDeg: se.backRake, maxRakeDeg: maxRake }
+        });
+      }
+      {
+        const splayed = se.splayDeg > 0;
+        checks.push({
+          id: 'chair:grain', title: 'Grain orientation on legs',
+          status: splayed ? 'advisory' : 'pass',
+          value: splayed ? `${fmtDeg(se.splayDeg)} splay — blank orientation is load-bearing` : 'straight members — grain follows every leg',
+          threshold: 'grain runs the length of every leg; angled legs are ripped with the grain, never sawn from a vertical blank',
+          explain: splayed
+            ? `Splayed legs MUST be ripped with the grain running along the leg axis (the compound angle lives in the END cuts). Sawing the splay into a vertically-grained blank costs roughly a quarter of the bending strength at a 1-in-10 slope (Wood Handbook slope-of-grain data) — the cut list and steps carry the blank rule.`
+            : 'All legs and posts are straight members cut with continuous grain — the class geometry never creates runout.',
+          fixes: [],
+          data: { splayDeg: se.splayDeg }
+        });
+      }
+      checks.push({
+        id: 'chair:bifma', title: 'What these numbers are', status: 'pass',
+        value: 'benchmarked, not certified',
+        threshold: 'no compliance claim without physical testing',
+        explain: C.DESIGN_BASIS_SEATING,
+        fixes: []
+      });
+    }
     let antiTip = false, tip = null;
     {
       let mass = 0, mx = 0, my = 0, mz = 0;
@@ -7711,6 +8531,7 @@ body.ph-open .porch::after { display: none; }
         return { map, patch: { custom: { parts: (spec.custom && spec.custom.parts) || [], connections: conns } } };
       };
       for (const s of surfaces) {
+        if (t === 'chair') continue;
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
         let demand = null, apron = false; // G5: apron end reaction overrides N/count
@@ -7858,7 +8679,7 @@ body.ph-open .porch::after { display: none; }
         const mv = K.movementMM(crossW, pKey, 'tangential', dMC);
         let ctx = 'custom';
         if (!custom) {
-          if ((p.role === 'top' || p.role === 'seat') && TABLE_LIKE.includes(t)) ctx = 'floated';
+          if ((p.role === 'top' || p.role === 'seat') && (TABLE_LIKE.includes(t) || t === 'chair')) ctx = 'floated';
           else if (p.role === 'side') ctx = spec.structure.backPanel ? 'captured' : 'compatible';
           else if (p.role === 'shelf' && TABLE_LIKE.includes(t)) ctx = 'captured'; // notched around the legs
           else if (['top', 'bottom', 'shelf', 'seat'].includes(p.role)) ctx = 'compatible';
@@ -8692,7 +9513,8 @@ body.ph-open .porch::after { display: none; }
     if (THROUGH_JOINTS.includes(type)) return Math.max(0, Math.min(cap, Math.round(mateT)));
     return Math.max(0, Math.min(cap, Math.floor(mateT / 3)));
   }
-  const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth'];
+  const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth',
+    'post', 'stretcher', 'crest', 'slat', 'corner_block'];
   function cutList(spec, model) {
     const byId = new Map(model.parts.map(p => [p.id, p]));
     const ends = {};
@@ -8723,6 +9545,7 @@ body.ph-open .porch::after { display: none; }
       }
       const angles = BB.Geo.cutAngles(p.rot);
       if (angles) note = (note ? note + ' · ' : '') + BB.Geo.angleText(angles);
+      if (p.angleNote) note = (note ? note + ' · ' : '') + p.angleNote;
       if (p.prim === 'cylinder') note = (note ? note + ' · ' : '') + 'cylinder, Ø = width';
       const mat = K.WOOD_SPECIES[p.material] ? p.material : spec.wood.species;
       const isSheet = !!(K.WOOD_SPECIES[mat] && K.WOOD_SPECIES[mat].sheet);
@@ -9142,6 +9965,62 @@ body.ph-open .porch::after { display: none; }
       `Snug, not crushed — a fastener torqued solid is a glued top with extra steps, and the crack turns up two winters later. Check the overhang is even on all four sides before you drill anything.`,
       ['top_1']));
   }
+  function chairSteps(spec, model, out, opts, ctx) {
+    const { frP, ids } = ctx;
+    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const st = spec.structure, se = spec.seat || {};
+    const stool = !se.backHeight;
+    const kd = isKnockdown(spec.joinery.frame);
+    const rec = K.recommendGlue(spec);
+    const glue = rec && rec.glue;
+    const drawbore = spec.meta.level === 'advanced' && spec.joinery.frame === 'mortise_tenon';
+    const G = BB.Classes && BB.Classes.get('seating') ? BB.Classes.get('seating').geom : null;
+    const railBand = `${len(st.apronHeight)} rails, top edges ${len(st.topThickness)} below the finished seat height`;
+    if (stool) {
+      const s = se.splayDeg || 0;
+      const R = Math.round(Math.atan(Math.SQRT2 * Math.tan(s * Math.PI / 180)) * 180 / Math.PI * 10) / 10;
+      out.push(step('layout', 'Angle schedule and layout — before any cut',
+        `All four legs splay ${U().fmtDeg(s)} both ways. That compounds: the true tilt is ${U().fmtDeg(R)}, and it runs along the seat DIAGONAL — set a sliding bevel to ${U().fmtDeg(R)} and sight it 45° across the corner, or set the saw to blade bevel ${U().fmtDeg(s)} + miter ${U().fmtDeg(s)} for every leg end (both settings, same cut — that is what a compound angle means). RIP EACH LEG BLANK WITH THE GRAIN RUNNING ALONG THE LEG: the angles live in the end cuts only. Sawing the splay into an upright blank leaves grain running out the side of the leg, and that leg loses a quarter of its strength before anyone sits down. Mark all four legs together, feet against a stop, and pencil the cut-list name on each.`,
+        ids('leg_1', 'leg_2', 'leg_3', 'leg_4')));
+      out.push(step('s1', 'Two side frames first',
+        `Join a side rail and a side stretcher between each leg pair with ${frP} — the rail shoulders carry the ${U().fmtDeg(s)} splay, so fit them dry and check the frame against the floor plan before glue. ${kd ? KD_STEP_TEXT : `${glue.label} gives ${glue.openMin} minutes of open time — enough for one frame at a time, not four corners at once. Clamp in line with each rail, cauls under the jaws.`} Both frames get checked the same way: feet flat on the bench, diagonals equal, and the splay matching its mirror twin — build them against each other.`,
+        ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'rail_side_1', 'rail_side_2', 'stretcher_side_1', 'stretcher_side_2')));
+      out.push(step('s2', 'Close the frame — footrest included',
+        `Connect the frames with the front and back rails AND the front and rear stretchers in one clamp-up with ${frP}: the footrest box ties the splayed legs, and a frame closed without it cannot take it later. ${kd ? 'Bring the bolts up in stages, alternating sides, and re-measure the diagonals after every turn.' : `All eight shoulders seated before any clamp is driven home; ${glue.clampMin} minutes in the clamps.`} Check diagonals across the seat frame AND stand it on the flattest floor you have: four feet down, no rock — trim ONE proud foot if it rocks, never shim.`,
+        ids('rail_front_1', 'rail_back_1', 'stretcher_front_1', 'stretcher_back_1')));
+    } else {
+      const rakeLine = se.backRake > 0
+        ? ` The back rakes ${U().fmtDeg(se.backRake)} — not by bending anything, but by the mortise OFFSETS: the crest sits ${G ? len(Math.round(Math.tan(se.backRake * Math.PI / 180) * ((se.height + se.backHeight - G.CREST_H / 2) - (se.height + G.SLAT_RISE)) / 2 * 10) / 10) : 'its setout'} rearward of the post centreline and the bottom slat the same forward. Mark every mortise from the story stick, feet against a stop — two reference ends on one post is how a back finishes twisted.`
+        : ' The back is upright: every mortise centres on the post depth.';
+      out.push(step('layout', 'Story stick and layout — both posts marked together',
+        `The rear posts are the chair: one straight piece each, floor to crest, no sawn bends (a sawn bend is short grain at the exact point the back load bends the post — the classic broken chair). Stand both posts together, feet against a stop, and mark EVERY joint from one story stick: seat rails at ${railBand}, stretchers at ${len(st.stretcherHeight)}, slats and crest above.${rakeLine} Front legs get the same treatment from the same stick.`,
+        ids('post_1', 'post_2', 'leg_3', 'leg_4')));
+      out.push(step('s1', 'Back sub-assembly',
+        `Join the crest and slats between the two posts with ${frP}.${drawbore ? ' Advanced option earned here: DRAWBORE the crest tenons — offset the peg hole in the tenon ~1.5 mm toward the shoulder and the pin pulls the joint tight forever, clamps optional.' : ''} ${kd ? KD_STEP_TEXT : `Dry-fit, then glue; ${glue.label} allows ${glue.openMin} minutes.`} Check the back for wind on a flat bench and measure both diagonals — a twisted back telegraphs into every joint after it.`,
+        ids('post_1', 'post_2', 'crest_1', 'slat_1', 'slat_2')));
+      out.push(step('s2', 'Side frames onto the back',
+        `Join each side rail and side stretcher between a rear post and its front leg with ${frP} — the side rail's rear shoulder carries the ${U().fmtDeg(se.slopeDeg)} seat slope${se.slopeDeg ? ' (that is the bevel on the cut list)' : ''}. One side at a time, on the flat bench: rail top edges land exactly on the story-stick line, and the front leg stands square to the floor in BOTH planes while the glue is open.`,
+        ids('rail_side_1', 'rail_side_2', 'stretcher_side_1', 'stretcher_side_2', 'leg_3', 'leg_4')));
+      out.push(step('s3', 'Close the seat frame',
+        `Front rail between the legs, back rail between the posts${st.stretcher === 'h' ? ', and the centre stretcher tying the side stretchers at their midpoints — fit it dry first; it sets the frame width' : ', and the front/rear stretchers'} — with ${frP}, in one glue-up. ${kd ? 'Snug the bolts in rotation and re-check the diagonals after every pass; plan to re-snug after the first month and the first heating season — a bolted chair that nobody re-snugs is a wobbly chair.' : `Check the seat-frame diagonals equal BEFORE the glue tacks, and sight across the rails for wind.`} Then stand it: four feet on the flattest floor available, trim one proud foot if it rocks.`,
+        ids('rail_front_1', 'rail_back_1', 'stretcher_centre_1', 'stretcher_front_1', 'stretcher_back_1')));
+    }
+    out.push(step('s4', 'Corner blocks — structure, not trim',
+      `Glue and screw a corner block across each seat-frame corner, tight into the angle${stool ? '' : ' and against the leg or post'}. These blocks close the racking loop of the seat frame — the cyclic sit-down case counts on them — so they are on the cut list with their own dimensions, ripped at 45° so the grain runs across the diagonal. Two screws per face, pilots drilled, glue on every mating face.`,
+      ids('block_1', 'block_2', 'block_3', 'block_4')));
+    const seatPart = model.parts.find(p => p.id === 'seat_1');
+    const crossW = seatPart ? Math.min(seatPart.size.w, seatPart.size.d) : 0;
+    const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    out.push(step('s5', 'Fit and fasten the seat — held down, never pinned',
+      `${stool ? 'Set the seat on the frame' : 'Notch the seat around the rear posts (the cut list size already includes the capture), then set it on the frame'} with even overhang and fasten it from BELOW through the corner blocks with screws in SLOTTED holes run across the grain${se.slopeDeg ? `, letting the ${U().fmtDeg(se.slopeDeg)} slope follow the rails` : ''}. This seat travels about ${fine(mv)} across its ${len(crossW)} width between seasons — a screw pinned solid is a split seat two winters out. Snug, not crushed.`,
+      ['seat_1']));
+    out.push(step('s6', kd ? 'Snug, stand, and the re-snug schedule' : 'Cure before anyone sits',
+      kd
+        ? 'Nothing structural here is glued — go around every bolt once more with the key, then sit-test gently. Re-snug after the first week, the first month, and every heating season: the re-snug schedule IS the maintenance plan for a bolted chair.'
+        : `Clamps off at ${glue.clampMin} minutes, but ${glue.label} reaches full strength at ${glue.cureHrs} hours — no sitting, no rear-tilt testing, nothing, until then. Pare squeeze-out while rubbery. Then the acceptance test, gently: sit, shift, lean back a LITTLE — a new chair should feel dead, with no clicks and no give at any joint.`,
+      []));
+  }
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -9238,6 +10117,8 @@ body.ph-open .porch::after { display: none; }
       if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf', 'Notch the shelf around the legs and fasten it.', ['shelf_1']));
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
+    } else if (t === 'chair') {
+      chairSteps(spec, model, out, opts, { frP, ids });
     } else {
       frameSteps(spec, model, out, opts, { frP, ids });
     }
@@ -10135,7 +11016,8 @@ BlueprintBuddyImport.build
 <script>var BB = globalThis.BB = globalThis.BB || {};
 (function () {
   'use strict';
-  const TPL = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom'];
+  const TPL = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom',
+    'chair'];
   const SPC = ['red_oak', 'white_oak', 'hard_maple', 'walnut', 'cherry', 'ash', 'poplar', 'pine', 'baltic_birch',
     'douglas_fir', 'syp', 'spf', 'western_red_cedar', 'soft_maple', 'hickory', 'beech', 'yellow_birch',
     'red_alder', 'sapele', 'teak', 'mdf', 'hardwood_ply'];
@@ -10208,6 +11090,10 @@ BlueprintBuddyImport.build
       w.dr = [spec.doors.count, ix(FRONT, spec.doors.style, 1)];
       if (spec.hardware && spec.hardware.hinge && spec.hardware.hinge !== 'euro_cup') w.hh = ix(HNG, spec.hardware.hinge, 0);
     }
+    if (spec.seat && spec.meta.template === 'chair') {
+      w.se = [spec.seat.width, spec.seat.depth, spec.seat.height, spec.seat.slopeDeg,
+        spec.seat.backHeight, spec.seat.backRake, spec.seat.splayDeg, spec.seat.counterHeight || 0];
+    }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
       w.p = spec.custom.parts.map(encodePart);
@@ -10272,8 +11158,17 @@ BlueprintBuddyImport.build
       drawers: Array.isArray(w.d) && w.d.length
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
         : null,
-      custom: null
+      custom: null,
+      seat: null
     };
+    if (Array.isArray(w.se) && spec.meta.template === 'chair') {
+      const n = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+      spec.seat = {
+        width: n(w.se[0], 430), depth: n(w.se[1], 420), height: n(w.se[2], 445),
+        slopeDeg: n(w.se[3], 0), backHeight: n(w.se[4], 0), backRake: n(w.se[5], 0),
+        splayDeg: n(w.se[6], 0), counterHeight: w.se[7] ? n(w.se[7], null) : null
+      };
+    }
     if (Array.isArray(w.p) && spec.meta.template === 'custom') {
       const parts = w.p.map(decodePart).filter(Boolean);
       const conns = (Array.isArray(w.c) ? w.c : [])
@@ -10320,6 +11215,25 @@ BlueprintBuddyImport.build
         if (w.d.c !== undefined) patch.drawers.count = w.d.c;
         if (w.d.f !== undefined) patch.drawers.frontStyle = at(FRONT, w.d.f, undefined);
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
+      }
+    }
+    if (w.se !== undefined) {
+      if (Array.isArray(w.se)) {
+        patch.seat = {
+          width: w.se[0], depth: w.se[1], height: w.se[2], slopeDeg: w.se[3],
+          backHeight: w.se[4], backRake: w.se[5], splayDeg: w.se[6],
+          counterHeight: w.se[7] ? w.se[7] : null
+        };
+      } else if (w.se && typeof w.se === 'object') {
+        patch.seat = {};
+        if (w.se.w !== undefined) patch.seat.width = w.se.w;
+        if (w.se.d !== undefined) patch.seat.depth = w.se.d;
+        if (w.se.h !== undefined) patch.seat.height = w.se.h;
+        if (w.se.sl !== undefined) patch.seat.slopeDeg = w.se.sl;
+        if (w.se.bh !== undefined) patch.seat.backHeight = w.se.bh;
+        if (w.se.br !== undefined) patch.seat.backRake = w.se.br;
+        if (w.se.sp !== undefined) patch.seat.splayDeg = w.se.sp;
+        if (w.se.ch !== undefined) patch.seat.counterHeight = w.se.ch ? w.se.ch : null;
       }
     }
     const mapConns = (list, max) => list
@@ -10383,6 +11297,7 @@ BlueprintBuddyImport.build
     `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
+    'SEATING (t=7 chair): "se"=[seatW,seatD,seatH,slopeDeg,backHeight,backRake,splayDeg,counterH|0]. backHeight 0=stool (splay stools-only); counterH>0 derives seat height (ask when a stool names none). Code mandates tenon-class seat-frame joints (never screws). NOT buildable: upholstered/slip seats, arms, sawn or bent rear legs, rockers, folders — refuse or ask, never approximate.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
     'Mechanisms (hinge/lift-off/fold/slide) NOT expressible IN THE NOVEL GRAMMAR — every JNT is permanent except kd_bolt (tool-removable). Template doors ("dr") are the sole exception; a novel composition still cannot hinge anything. Otherwise build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
     'Everything must STAND ON THE FLOOR — hanging/wall/ceiling mounting does not exist (airborne parts are force-grounded); for such asks build the nearest floor-standing design and say so in "e", or ask.',
@@ -10543,13 +11458,13 @@ BlueprintBuddyImport.build
     '\\b(?:it|its|mine)\\b' +
     '|\\b(?:this|that|these|those)\\s+' + PIECE_NOUN + '\\b' +
     '|\\bmy\\s+(?:own\\s+|current\\s+|existing\\s+)?' + PIECE_NOUN + '\\b');
-  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, doors, or stretchers to brace the legs) and I’ll build it to standard proportions.';
+  const CAN_BUILD = 'Offline I can rough out a table — a work table at workbench height included — plus a desk, bench, chair or stool (counter and bar heights too), bookshelf, nightstand, or cabinet: name one (plus wood, size, drawers, doors, or stretchers to brace the legs) and I’ll build it to standard proportions.';
   const CAN_BUILD_CHIPS = ['A walnut nightstand with two drawers', 'A cabinet with doors', 'A desk in white oak'];
   const OUT_OF_SCOPE = [
     [/\bbeds?\b|\bbed[\s-]?frames?\b|\bheadboards?\b|\bbunks?\b|\bmurphy\b|\bcribs?\b|\bmattress(?:es)?\b/,
       'Beds are outside what I build — nothing here is sized to carry a mattress.', null],
-    [/\bchairs?\b|\bstools?\b|\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\bseating\b/,
-      'Chairs and stools are outside what I build; a bench is the seating I can make.', 'A bench in white oak'],
+    [/\bsofas?\b|\bcouch(?:es)?\b|\bottomans?\b|\brecliners?\b|\bchaises?\b/,
+      'Sofas and soft seating are outside what I build — upholstery is a different craft. A solid-wood dining chair, stool, or bench I can do.', 'A dining chair in red oak'],
     [/\b(?:floating|wall|hanging|wall[\s-]?mounted)\b[\w\s'’-]{0,20}?\bshel(?:f|ves)\b/,
       'Wall-hung and floating shelves are past what I build — everything I make stands on its own legs.', 'A bookshelf'],
     [/\bdressers?\b|\barmoires?\b|\bwardrobes?\b|\bcredenzas?\b|\bhutch(?:es)?\b|\bvanit(?:y|ies)\b/,
@@ -10581,7 +11496,7 @@ BlueprintBuddyImport.build
       const clause = src.slice(0, m.index).split(/[,.;:!?()]|\s[—–-]\s/).pop();
       return /(?:^|\s)(?:no|not|never|without|avoid|don'?t|do not|hate)(?:\s+[\w']+){0,2}\s*$/.test(clause);
     };
-    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table' };
+    const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
       if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
@@ -10596,6 +11511,20 @@ BlueprintBuddyImport.build
     const differentPiece = wantTemplate !== spec.meta.template ||
       (tmplWord === 'workbench' && !/workbench/i.test((spec.meta && spec.meta.name) || ''));
     const creating = (/\b(build|make|design|create|new|start)\b/.test(t) || bareDescription) && wantTemplate && differentPiece;
+    if (spec.meta.template === 'chair' || /\b(chairs?|stools?|armchairs?|barstools?)\b/.test(t)) {
+      if (/\bupholster\w*|\bpadded\b|\bcushion\w*|\bslip[- ]seat\b|\bfoam\b|\bfabric seat\b|\bleather seat\b/.test(t)) {
+        return { kind: 'info', text: 'I don’t generate upholstered or slip seats: the seat frame becomes its own part set with foam and fabric clearances I can’t model soundly yet, and a guessed frame is worse than a refusal. I can build the same chair with a solid wood seat — say the word.' };
+      }
+      if (/\barm[- ]?chairs?\b|\bwith arms\b|\barm[- ]?rests?\b/.test(t)) {
+        return { kind: 'info', text: 'I don’t generate arms yet: arm joints carry their own load cases (BIFMA arm strength, vertical and horizontal) that I don’t model, so I build side chairs only. Want the same chair without arms?' };
+      }
+      if (/\brock(er|ing)\b|\bfold(s|ing|able)?\b|\bswivel\w*\b|\bheight[- ]adjust\w*\b|\breclin\w*\b/.test(t)) {
+        return { kind: 'info', text: 'Rockers, folding chairs, and swivel or adjustable mechanisms aren’t buildable here — every connection I generate is fixed (or a barrel-nut bolt), and those load paths are unmodeled. A fixed dining chair or stool I can do soundly.' };
+      }
+      if (/\bsteam[- ]?bent\b|\bbent[- ]?wood\b|\bcurved (rear |back )?legs?\b|\bsculpted\b/.test(t)) {
+        return { kind: 'info', text: 'Curved or steam-bent rear legs are outside what I build soundly — sawing a bend from straight stock leaves short grain exactly where the back load breaks chairs, and I don’t model laminated bends. My chairs use straight rear posts with the back raked a few degrees by offset joinery.' };
+      }
+    }
     if (/\b(bigger|larger|smaller)\b/.test(t) && !/\b(wide|width|deep|depth|tall|height|high|%|percent)\b/.test(t)) {
       return { kind: 'question', question: 'Happy to resize — in which direction?', options: ['Wider', 'Deeper', 'Taller'] };
     }
@@ -10759,6 +11688,22 @@ BlueprintBuddyImport.build
         const row = K.ergoRow('workbench_height');
         if (row) { set('overall.height', Math.round((row.min + row.max) / 2)); benchHeight = true; }
       }
+      let stoolAsk = '';
+      if (wantTemplate === 'chair') {
+        const isStool = /stool/.test(tmplWord || '');
+        if (isStool) {
+          set('seat.backHeight', 0);
+          const cm = t.match(/(\d+(?:\.\d+)?\s*(?:mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?)\s*(?:counter|bar|island|worktop)/);
+          if (cm) {
+            const ch = parseLen(cm[1], spec);
+            if (ch) { set('seat.counterHeight', ch); notes.push(`counter ${BB.Units.fmtLength(ch)}`); }
+          } else if (/\bbar\b|barstool/.test(t)) { set('seat.counterHeight', 1060); notes.push('bar height'); }
+          else if (/\bcounter\b|\bisland\b|\bkitchen\b/.test(t)) { set('seat.counterHeight', 900); notes.push('counter height'); }
+          else stoolAsk = ' What counter or bar will it serve? Name its height and I’ll set the seat 250–300 mm below it.';
+        }
+        const sm = t.match(/seat\s*(?:height)?\s*(?:of|at|to|=)?\s*(\d+(?:\.\d+)?\s*(?:mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?)/);
+        if (sm) { const sh = parseLen(sm[1], spec); if (sh) set('seat.height', sh); }
+      }
       const base = BB.Spec.defaultSpec(wantTemplate);
       const merged = BB.Spec.deepMerge(base, patch);
       merged.meta.template = wantTemplate;
@@ -10769,6 +11714,9 @@ BlueprintBuddyImport.build
           kind: 'new', spec: merged,
           explain: `Roughed out a work table${benchHeight ? ' at workbench height' : ' at the height you asked for'}${drawerNote} — a sturdy table, not a laminated bench top with a vise, which is past what I can build. Refine away.`
         };
+      }
+      if (wantTemplate === 'chair') {
+        return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to the seating class's human-factors table${drawerNote} — solid wood seat, class-mandated seat-frame joinery (screwed rails don't survive the rear-tilt case).${stoolAsk || ' Refine away.'}` };
       }
       return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }
@@ -12154,6 +13102,31 @@ BlueprintBuddyImport.build
         'generated line present', 'generated line present');
     }
     {
+      for (const cls of BB.Classes.all()) {
+        const probs = BB.Classes.validateContract(cls);
+        test('classes', `contract holds: ${cls.key}`, probs.length === 0, probs.join('; ') || 'complete', 'complete');
+        const spec = Spec.correctSpec({ meta: { name: 'ct', template: cls.templates[0], level: 'advanced', units: 'mm' } });
+        const model = Parametric.build(spec);
+        const res = {
+          integrity: BB.Structural.computeIntegrity(spec, model, {}),
+          validation: Spec.validate(spec, model)
+        };
+        const rows = BB.Classes.runChecklist(cls.templates[0], res) || [];
+        const uncovered = rows.filter(r => r.status === 'uncovered' && !r.guard).map(r => r.id);
+        test('classes', `failure-mode checklist covered: ${cls.key}`, uncovered.length === 0,
+          uncovered.join(', ') || 'all modes examined', 'all modes examined');
+      }
+      const seat = BB.Classes.get('seating');
+      test('classes', 'seating: screwed seat frames are impossible post-correction',
+        ['pocket_screws', 'butt_screws', 'dowels', 'biscuits'].every(j =>
+          !['beginner', 'intermediate', 'advanced'].some(l => seat.enforceFrameJoint(j, l) === j)),
+        'all rewritten', 'all rewritten');
+      const chairSpec = Spec.correctSpec({ meta: { name: 'ct', template: 'chair', level: 'beginner', units: 'mm' }, seat: { backRake: 8 } });
+      test('classes', 'seating: rake clamps to straight-post capability',
+        chairSpec.seat.backRake <= seat.geom.backRakeMax(chairSpec.structure, chairSpec.seat) + 0.05,
+        String(chairSpec.seat.backRake), '≤ ' + seat.geom.backRakeMax(chairSpec.structure, chairSpec.seat));
+    }
+    {
       const KINDS = ['frame', 'case', 'box', 'panel'];
       let gap = null;
       for (const j of Object.values(K.JOINERY)) {
@@ -12284,7 +13257,7 @@ BlueprintBuddyImport.build
         humid && /humid indoor swing/.test(humid.text), humid ? 'humid named' : 'step missing', 'humid named');
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2500-token ceiling', tk <= 2500 && tk > 800, tk + ' tokens', '≤ 2500'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, then X-07's stretcher and door/hinge keys
+      test('hardening', 'system prompt under the 2620-token ceiling', tk <= 2620 && tk > 800, tk + ' tokens', '≤ 2620'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating-class keys + refusal doctrine (2026-07)
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
       const mode = Store.persistenceMode();
@@ -17462,14 +18435,18 @@ BlueprintBuddyImport.build
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
-    if (s.meta.template !== 'custom') {
+    if (s.meta.template === 'chair') {
+      body.append(dim('Seat width', 'seat.width', ...dimBounds('seat.width', 300, 700)));
+      body.append(dim('Seat depth', 'seat.depth', ...dimBounds('seat.depth', 300, 550)));
+      body.append(dim('Seat height', 'seat.height', ...dimBounds('seat.height', 380, 850)));
+    } else if (s.meta.template !== 'custom') {
       body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
       body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
       body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
     } else {
       body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
-    if (part.role === 'leg') body.append(dim('Leg thickness', 'structure.legThickness', 32, 100));
+    if (part.role === 'leg' || part.role === 'post') body.append(dim('Leg thickness', 'structure.legThickness', 32, 100));
     if (part.role === 'apron' || part.role === 'rail') body.append(dim('Apron height', 'structure.apronHeight', 60, 160));
     if (part.role === 'top' || part.role === 'seat') body.append(dim('Top thickness', 'structure.topThickness', 12, 45));
     if (part.role === 'shelf' || s.meta.template === 'bookshelf') {
@@ -17513,6 +18490,7 @@ BlueprintBuddyImport.build
     bookshelf: ['case'],
     nightstand: ['frame', 'case', 'box'],
     cabinet: ['frame', 'case', 'box'],
+    chair: ['frame'],
     custom: []
   };
   const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
@@ -17538,7 +18516,16 @@ BlueprintBuddyImport.build
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
-    if (s.meta.template !== 'custom') {
+    if (s.meta.template === 'chair') {
+      const stool = s.seat && s.seat.backHeight === 0;
+      body.append(paramSeg('Type', [['chair', 'Chair'], ['stool', 'Stool']], stool ? 'stool' : 'chair',
+        v => { merge({ seat: { backHeight: v === 'stool' ? 0 : 470 } }, 'manual'); renderAdjustBody(); }));
+      body.append(dim('Seat width', 'seat.width', ...dimBounds('seat.width', 300, 700)));
+      body.append(dim('Seat depth', 'seat.depth', ...dimBounds('seat.depth', 300, 550)));
+      body.append(dim('Seat height', 'seat.height', ...dimBounds('seat.height', 380, 850)));
+      body.append(dim('Seat thickness', 'structure.topThickness', ...dimBounds('structure.topThickness', 12, 45)));
+      body.append(dim('Leg thickness', 'structure.legThickness', ...dimBounds('structure.legThickness', 32, 100)));
+    } else if (s.meta.template !== 'custom') {
       body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
       body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
       body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
@@ -17594,6 +18581,8 @@ BlueprintBuddyImport.build
     for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
       const opts = Object.values(K.JOINERY)
         .filter(j => j.kinds.includes(slot) && allowed.includes(j.key))
+        .filter(j => !(s.meta.template === 'chair' && slot === 'frame' && BB.Classes &&
+          BB.Classes.get('seating').enforceFrameJoint(j.key, s.meta.level) !== j.key))
         .map(j => [j.key, j.label]);
       if (opts.length < 2) continue; // a list of one is not a choice
       body.append(paramSelect(SLOT_LABEL[slot], opts, s.joinery[slot],

@@ -680,6 +680,270 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* ---------------- seating: chair / stool (the 'seating' class) ----------------
+   * The engineering profile lives in BB.Classes ('seating'); this builds its
+   * geometry. Two honest constructions, both from straight stock:
+   *
+   *   chair  vertical rear posts running floor→crest (one piece, no sawn
+   *          bend — the class REFUSES sawn rear legs, short grain). The back
+   *          rake comes from offsetting the crest rearward and the slats
+   *          forward WITHIN the post depth; the seat slopes by tilting the
+   *          side rails and dropping the rear band, exactly as a rectilinear
+   *          chair is really built. Corner blocks are structure and ship as
+   *          parts.
+   *   stool  backHeight 0: four legs splayed outward in both planes
+   *          (compound angle), level rails, and a mandatory box-stretcher
+   *          footrest. Legs are straight rips — the instructions demand the
+   *          blank ripped WITH the grain along the leg axis, never sawn from
+   *          a vertical blank (grain runout, see chair:grain).
+   */
+  function chairBuild(spec) {
+    const st = spec.structure, se = spec.seat;
+    const G = BB.Classes.get('seating').geom;
+    const parts = [], joints = [];
+    const sp = spec.wood.species;
+    const fj = spec.joinery.frame;
+    const W = se.width, D = se.depth, Hs = se.height;
+    const seatT = st.topThickness, railH = st.apronHeight, railT = st.apronThickness;
+    const legT = st.legThickness;
+    const stool = se.backHeight === 0;
+    const rad = d => d * Math.PI / 180;
+    // Footrests carry a standing foot (chair:foot) — beefier than a table's
+    // stretcher, same stock thickness.
+    const secH = Math.max(45, Math.min(90, Math.round(railH * 0.75)));
+    const secT = railT;
+    const strY = st.stretcherHeight;
+    const cb = G.CORNER_BLOCK;
+
+    /* Ground a possibly-rotated part exactly: snap its lowest OBB corner to
+     * the floor plane (the compound end cut trims the real leg flush). */
+    const ground = p => {
+      const cs = BB.Geo.obbCorners(BB.Geo.partOBB(p));
+      const dy = Math.min(...cs.map(c => c[1]));
+      if (Math.abs(dy) > 0.01) p.pos.y = Math.round((p.pos.y - dy) * 10) / 10;
+    };
+
+    if (stool) {
+      const s = se.splayDeg, t = Math.tan(rad(s));
+      const frameTop = Hs - seatT;
+      const thetaR = Math.atan(Math.SQRT2 * t) * 180 / Math.PI; // compound resultant
+      const lx = W / 2 - legT / 2, lz = D / 2 - legT / 2;
+      // Axial length, trimmed a hair so the tilted top corners stay under the seat.
+      const La = frameTop / Math.cos(rad(thetaR)) - legT * Math.tan(rad(thetaR));
+      [[-1, -1, 1], [1, -1, 2], [-1, 1, 3], [1, 1, 4]].forEach(([sx, sz, i]) => {
+        const runMid = t * (frameTop / 2); // outward travel of the leg centre at mid-height
+        const p = part(`leg_${i}`, 'leg_splayed', 'leg', 'Leg', legT, La, legT,
+          sx * (lx + runMid), frameTop / 2, sz * (lz + runMid),
+          { material: sp, explode: { x: sx * 0.4, y: -0.4, z: sz * 0.4 } });
+        p.rot = { x: -sz * s, y: 0, z: sx * s };
+        p.cutDim = { L: Math.round(La * 10) / 10, W: legT, T: legT };
+        p.angleNote = `compound end cut: splay ${s}° both ways — see the angle schedule in the steps`;
+        ground(p);
+        parts.push(p);
+      });
+      // Level rails and the footrest box: spans grow toward the floor as the
+      // legs run out. Offset of a leg centre at height y: t·(frameTop − y).
+      const off = y => t * (frameTop - y);
+      const railY = frameTop - railH / 2;
+      const mk = (id, name, w, h, d, x, y, z, legA, legB, note) => {
+        const p = part(id, id.replace(/_\d+$/, ''), /stretcher/.test(id) ? 'stretcher' : 'rail', name, w, h, d, x, y, z,
+          { material: sp, explode: { x: Math.sign(x), y: /stretcher/.test(id) ? -0.5 : 0, z: Math.sign(z) } });
+        if (note) p.angleNote = note;
+        parts.push(p);
+        // Joint positions land at each member end (the setout engine reads them).
+        const along = w >= d ? 'x' : 'z';
+        const half = (along === 'x' ? w : d) / 2;
+        const endA = { x, y, z }, endB = { x, y, z };
+        endA[along] = (along === 'x' ? x : z) - half;
+        endB[along] = (along === 'x' ? x : z) + half;
+        joints.push({ type: fj, a: id, b: legA, pos: endA });
+        joints.push({ type: fj, a: id, b: legB, pos: endB });
+      };
+      const shoulder = `shoulders cut at ${s}° (legs splay) — sliding bevel from the angle schedule`;
+      // Seat rails, flush with the legs' outside faces at rail height.
+      const oR = off(railY);
+      [[-1, 'rail_side_1', 'leg_1', 'leg_3'], [1, 'rail_side_2', 'leg_2', 'leg_4']].forEach(([sx, id, a, b]) => {
+        mk(id, 'Side rail', railT, railH, 2 * (lz + oR) - legT, sx * (lx + oR + legT / 2 - railT / 2), railY, 0, a, b, shoulder);
+      });
+      [[-1, 'rail_back_1', 'leg_1', 'leg_2'], [1, 'rail_front_1', 'leg_3', 'leg_4']].forEach(([sz, id, a, b]) => {
+        mk(id, sz < 0 ? 'Back rail' : 'Front rail', 2 * (lx + oR) - legT, railH, railT, 0, railY, sz * (lz + oR + legT / 2 - railT / 2), a, b, shoulder);
+      });
+      // Footrest: the box stretcher every stool carries (class rule).
+      const oS = off(strY);
+      [[-1, 'stretcher_side_1', 'leg_1', 'leg_3'], [1, 'stretcher_side_2', 'leg_2', 'leg_4']].forEach(([sx, id, a, b]) => {
+        mk(id, 'Side stretcher', secT, secH, 2 * (lz + oS) - legT, sx * (lx + oS), strY, 0, a, b, shoulder);
+      });
+      [[-1, 'stretcher_back_1', 'leg_1', 'leg_2'], [1, 'stretcher_front_1', 'leg_3', 'leg_4']].forEach(([sz, id, a, b]) => {
+        mk(id, sz < 0 ? 'Rear stretcher' : 'Footrest stretcher', 2 * (lx + oS) - legT, secH, secT, 0, strY, sz * (lz + oS), a, b, shoulder);
+      });
+      addSeatCore(spec, parts, joints, { W, D, Hs, seatT, railH, railT, cb, sp, slope: 0, postIds: [] });
+      return { parts, joints, openings: [], drawers: [] };
+    }
+
+    /* ---- chair ---- */
+    const postD = G.rearPostDepth(st);
+    const Hb = se.backHeight;
+    const slope = se.slopeDeg, tanS = Math.tan(rad(slope));
+    const lx = W / 2 - legT / 2;
+    const zPost = -(D / 2 - postD / 2), zFront = D / 2 - legT / 2;
+    // Seat top plane: full height at the FRONT edge, sloping down rearward.
+    const seatTopAt = z => Hs - tanS * (D / 2 - z);
+    const railTopAt = z => seatTopAt(z) - seatT;
+
+    // Rear posts: ONE straight piece, floor to crest. The class refuses sawn
+    // bends — rake lives in the slat offsets below.
+    [[-1, 1], [1, 2]].forEach(([sx, i]) => {
+      parts.push(part(`post_${i}`, 'rear_post', 'post', 'Rear post', legT, Hs + Hb, postD,
+        sx * lx, (Hs + Hb) / 2, zPost,
+        { material: sp, explode: { x: sx * 0.35, y: 0.2, z: -0.5 } }));
+    });
+    // Front legs run to the underside of the sloped seat. A box can't carry
+    // a beveled end, so the height is taken at the leg's REAR face (the
+    // lowest contact with the sloped underside) and the bevel is a cut note
+    // — exactly how the leg is really trimmed to meet a sloped seat.
+    const flH = railTopAt(zFront - legT / 2);
+    [[-1, 3], [1, 4]].forEach(([sx, i]) => {
+      const p = part(`leg_${i}`, 'leg', 'leg', 'Front leg', legT, flH, legT,
+        sx * lx, flH / 2, zFront,
+        { material: sp, explode: { x: sx * 0.35, y: -0.4, z: 0.4 } });
+      if (slope > 0) p.angleNote = `top end beveled ${slope}° to meet the sloped seat`;
+      parts.push(p);
+    });
+
+    // Seat rails. Side rails tilt with the seat slope (their shoulders carry
+    // the bevel); front/back rails stay level at their own band heights.
+    const sideSpan = D - legT - postD;
+    const zSideC = (postD - legT) / 2;
+    [[-1, 1, 'post_1', 'leg_3'], [1, 2, 'post_2', 'leg_4']].forEach(([sx, i, postId, legId]) => {
+      const p = part(`rail_side_${i}`, 'rail_side', 'rail', 'Side rail', railT, railH, sideSpan,
+        sx * (W / 2 - railT / 2), railTopAt(zSideC) - railH / 2, zSideC,
+        { material: sp, explode: { x: sx, y: 0, z: 0 } });
+      if (slope > 0) {
+        p.rot = { x: -slope, y: 0, z: 0 };
+        p.cutDim = { L: Math.round(sideSpan / Math.cos(rad(slope)) * 10) / 10, W: railH, T: railT };
+      }
+      parts.push(p);
+      joints.push({ type: fj, a: `rail_side_${i}`, b: postId, pos: { x: sx * lx, y: railTopAt(zPost + postD / 2) - railH / 2, z: zPost + postD / 2 } });
+      joints.push({ type: fj, a: `rail_side_${i}`, b: legId, pos: { x: sx * lx, y: railTopAt(zFront) - railH / 2, z: zFront - legT / 2 } });
+    });
+    // Front rail flush with the front-leg faces; back rail flush with the
+    // posts' FRONT faces (its body lives inside the post depth).
+    const zF = D / 2 - railT / 2;
+    const zBack = -D / 2 + postD - railT / 2;
+    parts.push(part('rail_front_1', 'rail_front', 'rail', 'Front rail', W - 2 * legT, railH, railT,
+      0, railTopAt(zF) - railH / 2, zF, { material: sp, explode: { x: 0, y: 0, z: 1 } }));
+    joints.push({ type: fj, a: 'rail_front_1', b: 'leg_3', pos: { x: -lx, y: railTopAt(zF) - railH / 2, z: zF } });
+    joints.push({ type: fj, a: 'rail_front_1', b: 'leg_4', pos: { x: lx, y: railTopAt(zF) - railH / 2, z: zF } });
+    parts.push(part('rail_back_1', 'rail_back', 'rail', 'Back seat rail', W - 2 * legT, railH, railT,
+      0, railTopAt(zBack) - railH / 2, zBack, { material: sp, explode: { x: 0, y: 0, z: -1 } }));
+    joints.push({ type: fj, a: 'rail_back_1', b: 'post_1', pos: { x: -lx, y: railTopAt(zBack) - railH / 2, z: zBack } });
+    joints.push({ type: fj, a: 'rail_back_1', b: 'post_2', pos: { x: lx, y: railTopAt(zBack) - railH / 2, z: zBack } });
+
+    // Stretchers: H (side pair + centre) or box (perimeter) at the stretcher line.
+    const strStyle = st.stretcher === 'box' ? 'box' : 'h';
+    [[-1, 1, 'post_1', 'leg_3'], [1, 2, 'post_2', 'leg_4']].forEach(([sx, i, postId, legId]) => {
+      parts.push(part(`stretcher_side_${i}`, 'stretcher_side', 'stretcher', 'Side stretcher', secT, secH, sideSpan,
+        sx * (W / 2 - secT / 2), strY, zSideC, { material: sp, explode: { x: sx, y: -0.5, z: 0 } }));
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: postId, pos: { x: sx * lx, y: strY, z: zPost + postD / 2 } });
+      joints.push({ type: fj, a: `stretcher_side_${i}`, b: legId, pos: { x: sx * lx, y: strY, z: zFront - legT / 2 } });
+    });
+    if (strStyle === 'h') {
+      parts.push(part('stretcher_centre_1', 'stretcher_centre', 'stretcher', 'Centre stretcher', W - 2 * secT, secH, secT,
+        0, strY, zSideC, { material: sp, explode: { x: 0, y: -0.5, z: 0 } }));
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_1', pos: { x: -(W / 2 - secT), y: strY, z: zSideC } });
+      joints.push({ type: fj, a: 'stretcher_centre_1', b: 'stretcher_side_2', pos: { x: W / 2 - secT, y: strY, z: zSideC } });
+    } else {
+      parts.push(part('stretcher_front_1', 'stretcher_front', 'stretcher', 'Front stretcher', W - 2 * legT, secH, secT,
+        0, strY, zFront, { material: sp, explode: { x: 0, y: -0.5, z: 1 } }));
+      joints.push({ type: fj, a: 'stretcher_front_1', b: 'leg_3', pos: { x: -lx, y: strY, z: zFront } });
+      joints.push({ type: fj, a: 'stretcher_front_1', b: 'leg_4', pos: { x: lx, y: strY, z: zFront } });
+      parts.push(part('stretcher_back_1', 'stretcher_back', 'stretcher', 'Rear stretcher', W - 2 * legT, secH, secT,
+        0, strY, zPost, { material: sp, explode: { x: 0, y: -0.5, z: -1 } }));
+      joints.push({ type: fj, a: 'stretcher_back_1', b: 'post_1', pos: { x: -lx, y: strY, z: zPost } });
+      joints.push({ type: fj, a: 'stretcher_back_1', b: 'post_2', pos: { x: lx, y: strY, z: zPost } });
+    }
+
+    /* Back: crest + slats between the posts, raked by opposed z-offsets
+     * within the post depth — the honest straight-post rake. Each member
+     * centres on the rake line through the post's mid-depth. */
+    const crestY = Hs + Hb - G.CREST_H / 2;
+    const slatYs = [Hs + G.SLAT_RISE];
+    if (Hb >= 420) slatYs.push((slatYs[0] + crestY) / 2);
+    const yMid = (crestY + slatYs[0]) / 2;
+    const tanR = Math.tan(rad(se.backRake));
+    const zOn = y => zPost - tanR * (y - yMid); // rake line (top leans rearward)
+    const backLen = W - 2 * legT;
+    const crest = part('crest_1', 'crest', 'crest', 'Crest rail', backLen, G.CREST_H, G.SLAT_T,
+      0, crestY, Math.round(zOn(crestY) * 10) / 10, { material: sp, explode: { x: 0, y: 0.8, z: -0.6 } });
+    if (se.backRake > 0) crest.angleNote = `mortise offset per setout — back rakes ${se.backRake}° via opposed offsets`;
+    parts.push(crest);
+    joints.push({ type: fj, a: 'crest_1', b: 'post_1', pos: { x: -lx, y: crestY, z: zOn(crestY) } });
+    joints.push({ type: fj, a: 'crest_1', b: 'post_2', pos: { x: lx, y: crestY, z: zOn(crestY) } });
+    slatYs.forEach((y, i) => {
+      parts.push(part(`slat_${i + 1}`, 'back_slat', 'slat', 'Back slat', backLen, G.SLAT_H, G.SLAT_T,
+        0, y, Math.round(zOn(y) * 10) / 10, { material: sp, explode: { x: 0, y: 0.3, z: -0.4 } }));
+      joints.push({ type: fj, a: `slat_${i + 1}`, b: 'post_1', pos: { x: -lx, y, z: zOn(y) } });
+      joints.push({ type: fj, a: `slat_${i + 1}`, b: 'post_2', pos: { x: lx, y, z: zOn(y) } });
+    });
+
+    addSeatCore(spec, parts, joints, {
+      W, D, Hs, seatT, railH, railT, cb, sp, slope,
+      postIds: ['post_1', 'post_2']
+    });
+    return { parts, joints, openings: [], drawers: [] };
+  }
+
+  /* Seat panel + corner blocks, shared by chair and stool. Corner blocks are
+   * STRUCTURE (they close the seat-frame racking loop) and ship as parts with
+   * their own dimensions; at the corners they bear on the leg/post too, so
+   * they are jointed to it as well — glued and screwed to everything they
+   * touch, exactly as fitted in the shop. */
+  function addSeatCore(spec, parts, joints, ctx) {
+    const { W, D, Hs, seatT, railH, railT, cb, sp, slope } = ctx;
+    const rad = d => d * Math.PI / 180;
+    const tanS = Math.tan(rad(slope || 0));
+    const seatTopAt = z => Hs - tanS * (D / 2 - z);
+    const stool = !ctx.postIds || !ctx.postIds.length;
+
+    // Corner blocks: touching both rails' inner faces at each corner.
+    const bx = W / 2 - railT - cb / 2, bz = D / 2 - railT - cb / 2;
+    const bh = Math.max(30, railH - 12);
+    const corners = [
+      { sx: -1, sz: 1, mates: stool ? ['leg_3'] : ['leg_3'], rails: ['rail_side_1', 'rail_front_1'] },
+      { sx: 1, sz: 1, mates: stool ? ['leg_4'] : ['leg_4'], rails: ['rail_side_2', 'rail_front_1'] },
+      { sx: -1, sz: -1, mates: stool ? ['leg_1'] : ['post_1'], rails: ['rail_side_1', 'rail_back_1'] },
+      { sx: 1, sz: -1, mates: stool ? ['leg_2'] : ['post_2'], rails: ['rail_side_2', 'rail_back_1'] }
+    ];
+    corners.forEach((c, i) => {
+      const z = c.sz * bz;
+      const y = seatTopAt(z) - seatT - 4 - bh / 2;
+      const id = `block_${i + 1}`;
+      const p = part(id, 'corner_block', 'corner_block', 'Corner block', cb, bh, cb,
+        c.sx * bx, Math.round(y * 10) / 10, z, { material: sp, explode: { x: c.sx * 0.2, y: -0.3, z: c.sz * 0.2 } });
+      p.angleNote = 'rip the blank at 45° across the corner — grain runs across the diagonal';
+      parts.push(p);
+      for (const m of [...c.rails, ...c.mates]) {
+        joints.push({ type: 'butt_screws', a: id, b: m, pos: { x: c.sx * bx, y, z }, noCutAllowance: true });
+      }
+    });
+
+    // Seat panel: full plan, notched around the rear posts (capture included
+    // in the panel size — no cut allowance), fastened so it can MOVE.
+    const seat = part('seat_1', 'seat_panel', 'seat', 'Seat', W, seatT, D,
+      0, Math.round((seatTopAt(0) - seatT / 2) * 10) / 10, 0,
+      { material: sp, explode: { x: 0, y: 1, z: 0 } });
+    if (slope > 0) {
+      seat.rot = { x: -slope, y: 0, z: 0 };
+      seat.cutDim = { L: W, W: D, T: seatT };
+    }
+    parts.push(seat);
+    joints.push({ type: 'butt_screws', a: 'seat_1', b: 'rail_side_1', pos: { x: -(W / 2 - railT / 2), y: seatTopAt(0) - seatT, z: 0 }, noCutAllowance: true });
+    joints.push({ type: 'butt_screws', a: 'seat_1', b: 'rail_side_2', pos: { x: W / 2 - railT / 2, y: seatTopAt(0) - seatT, z: 0 }, noCutAllowance: true });
+    for (const pid of ctx.postIds || []) {
+      joints.push({ type: 'butt_screws', a: 'seat_1', b: pid, pos: { x: (pid === 'post_1' ? -1 : 1) * (W / 2 - 20), y: seatTopAt(-D / 2 + 20) - seatT / 2, z: -D / 2 + 20 }, noCutAllowance: true });
+    }
+  }
+
   /* ---------------- custom (novel) compositions ----------------
    * The AI composes primitives + a connection graph; correction has already
    * grounded, centered, and canonicalized them. This builder is a straight
@@ -727,6 +991,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (t === 'nightstand') m = nightstand(spec);
     else if (t === 'cabinet') m = cabinet(spec);
     else if (t === 'custom') m = customBuild(spec);
+    else if (t === 'chair') m = chairBuild(spec);
     else m = tableLike(spec);
     m.bounds = { w: spec.overall.width, d: spec.overall.depth, h: spec.overall.height };
     // Round sizes/positions to 0.1 mm so exports and cut lists are stable.

@@ -2576,14 +2576,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         () => done());
     };
 
-    if (s.meta.template !== 'custom') {
+    if (s.meta.template === 'chair') {
+      // Seating derives its overall from the seat family — the seat gets the
+      // sliders, or the inspector would offer knobs correction overrules.
+      body.append(dim('Seat width', 'seat.width', ...dimBounds('seat.width', 300, 700)));
+      body.append(dim('Seat depth', 'seat.depth', ...dimBounds('seat.depth', 300, 550)));
+      body.append(dim('Seat height', 'seat.height', ...dimBounds('seat.height', 380, 850)));
+    } else if (s.meta.template !== 'custom') {
       body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
       body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
       body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
     } else {
       body.append(el('p', '', '<span class="txt-small txt-muted">Novel composition: refine dimensions through the chat — code re-validates the whole structure on every change.</span>'));
     }
-    if (part.role === 'leg') body.append(dim('Leg thickness', 'structure.legThickness', 32, 100));
+    if (part.role === 'leg' || part.role === 'post') body.append(dim('Leg thickness', 'structure.legThickness', 32, 100));
     if (part.role === 'apron' || part.role === 'rail') body.append(dim('Apron height', 'structure.apronHeight', 60, 160));
     if (part.role === 'top' || part.role === 'seat') body.append(dim('Top thickness', 'structure.topThickness', 12, 45));
     if (part.role === 'shelf' || s.meta.template === 'bookshelf') {
@@ -2645,6 +2651,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     bookshelf: ['case'],
     nightstand: ['frame', 'case', 'box'],
     cabinet: ['frame', 'case', 'box'],
+    chair: ['frame'],
     custom: []
   };
   const SLOT_LABEL = { frame: 'Frame joints', case: 'Case joints', box: 'Drawer-box joints' };
@@ -2679,7 +2686,20 @@ var BB = globalThis.BB = globalThis.BB || {};
         v => { const p = {}; let o = p; const ks = path.split('.'); ks.slice(0, -1).forEach(k => o = o[k] = {}); o[ks[ks.length - 1]] = v; live(p); },
         () => done());
     };
-    if (s.meta.template !== 'custom') {
+    if (s.meta.template === 'chair') {
+      /* Seating: the OVERALL is derived from the seat family (splay widens
+       * the footprint, the back sets the height), so overall sliders would
+       * be controls correction silently overrules — the seat family gets
+       * the knobs instead, on the same DIM_RULES bounds correction applies. */
+      const stool = s.seat && s.seat.backHeight === 0;
+      body.append(paramSeg('Type', [['chair', 'Chair'], ['stool', 'Stool']], stool ? 'stool' : 'chair',
+        v => { merge({ seat: { backHeight: v === 'stool' ? 0 : 470 } }, 'manual'); renderAdjustBody(); }));
+      body.append(dim('Seat width', 'seat.width', ...dimBounds('seat.width', 300, 700)));
+      body.append(dim('Seat depth', 'seat.depth', ...dimBounds('seat.depth', 300, 550)));
+      body.append(dim('Seat height', 'seat.height', ...dimBounds('seat.height', 380, 850)));
+      body.append(dim('Seat thickness', 'structure.topThickness', ...dimBounds('structure.topThickness', 12, 45)));
+      body.append(dim('Leg thickness', 'structure.legThickness', ...dimBounds('structure.legThickness', 32, 100)));
+    } else if (s.meta.template !== 'custom') {
       body.append(dim('Width', 'overall.width', ...dimBounds('overall.width', 250, 2400)));
       body.append(dim('Depth', 'overall.depth', ...dimBounds('overall.depth', 200, 1200)));
       body.append(dim('Height', 'overall.height', ...dimBounds('overall.height', 120, 2400)));
@@ -2755,6 +2775,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     for (const slot of (JOINERY_SLOTS[s.meta.template] || [])) {
       const opts = Object.values(K.JOINERY)
         .filter(j => j.kinds.includes(slot) && allowed.includes(j.key))
+        // Seating class mandate: the frame picker lists only joints the class
+        // accepts (screwed seat frames fail the rear-tilt case), so the
+        // control never offers what correction will overrule.
+        .filter(j => !(s.meta.template === 'chair' && slot === 'frame' && BB.Classes &&
+          BB.Classes.get('seating').enforceFrameJoint(j.key, s.meta.level) !== j.key))
         .map(j => [j.key, j.label]);
       if (opts.length < 2) continue; // a list of one is not a choice
       body.append(paramSelect(SLOT_LABEL[slot], opts, s.joinery[slot],

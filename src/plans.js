@@ -41,7 +41,10 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   /* Roles whose failure is structural: their rows carry the clear-stock note
    * (audit F-S3-7 — design values assume clear, straight-grained wood). */
-  const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth'];
+  const LOAD_BEARING_ROLES = ['leg', 'apron', 'rail', 'top', 'seat', 'shelf', 'side', 'bottom', 'plinth',
+    // Seating class (2026-07): every chair member is on a load path — the
+    // clear-stock note is the difference between a chair and kindling.
+    'post', 'stretcher', 'crest', 'slat', 'corner_block'];
 
   /* ---------------- cut list ---------------- */
   function cutList(spec, model) {
@@ -79,6 +82,9 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
       const angles = BB.Geo.cutAngles(p.rot);
       if (angles) note = (note ? note + ' · ' : '') + BB.Geo.angleText(angles);
+      // Class-supplied angle guidance (e.g. splayed-leg compound cuts) rides
+      // the row so the cut list never states an angle without a way to set it.
+      if (p.angleNote) note = (note ? note + ' · ' : '') + p.angleNote;
       if (p.prim === 'cylinder') note = (note ? note + ' · ' : '') + 'cylinder, Ø = width';
       const mat = K.WOOD_SPECIES[p.material] ? p.material : spec.wood.species;
       const isSheet = !!(K.WOOD_SPECIES[mat] && K.WOOD_SPECIES[mat].sheet);
@@ -669,6 +675,72 @@ var BB = globalThis.BB = globalThis.BB || {};
       ['top_1']));
   }
 
+  /* ---------------- seating: chair / stool ----------------
+   * The class contract's assembly template (classes.js 'seating'), realized
+   * against THIS design's numbers. Every dimension and angle is read from
+   * the spec/model; the sequence, jigs, and squareness checks are the
+   * contract's. A chair is sub-assemblies against a story stick — the back
+   * first (its offsets ARE the rake), then side frames, then the closing
+   * glue-up, then the structure everyone mistakes for trim (corner blocks),
+   * then a seat that is held down but never pinned. */
+  function chairSteps(spec, model, out, opts, ctx) {
+    const { frP, ids } = ctx;
+    const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
+    const st = spec.structure, se = spec.seat || {};
+    const stool = !se.backHeight;
+    const kd = isKnockdown(spec.joinery.frame);
+    const rec = K.recommendGlue(spec);
+    const glue = rec && rec.glue;
+    const drawbore = spec.meta.level === 'advanced' && spec.joinery.frame === 'mortise_tenon';
+    const G = BB.Classes && BB.Classes.get('seating') ? BB.Classes.get('seating').geom : null;
+    const railBand = `${len(st.apronHeight)} rails, top edges ${len(st.topThickness)} below the finished seat height`;
+
+    if (stool) {
+      const s = se.splayDeg || 0;
+      const R = Math.round(Math.atan(Math.SQRT2 * Math.tan(s * Math.PI / 180)) * 180 / Math.PI * 10) / 10;
+      out.push(step('layout', 'Angle schedule and layout — before any cut',
+        `All four legs splay ${U().fmtDeg(s)} both ways. That compounds: the true tilt is ${U().fmtDeg(R)}, and it runs along the seat DIAGONAL — set a sliding bevel to ${U().fmtDeg(R)} and sight it 45° across the corner, or set the saw to blade bevel ${U().fmtDeg(s)} + miter ${U().fmtDeg(s)} for every leg end (both settings, same cut — that is what a compound angle means). RIP EACH LEG BLANK WITH THE GRAIN RUNNING ALONG THE LEG: the angles live in the end cuts only. Sawing the splay into an upright blank leaves grain running out the side of the leg, and that leg loses a quarter of its strength before anyone sits down. Mark all four legs together, feet against a stop, and pencil the cut-list name on each.`,
+        ids('leg_1', 'leg_2', 'leg_3', 'leg_4')));
+      out.push(step('s1', 'Two side frames first',
+        `Join a side rail and a side stretcher between each leg pair with ${frP} — the rail shoulders carry the ${U().fmtDeg(s)} splay, so fit them dry and check the frame against the floor plan before glue. ${kd ? KD_STEP_TEXT : `${glue.label} gives ${glue.openMin} minutes of open time — enough for one frame at a time, not four corners at once. Clamp in line with each rail, cauls under the jaws.`} Both frames get checked the same way: feet flat on the bench, diagonals equal, and the splay matching its mirror twin — build them against each other.`,
+        ids('leg_1', 'leg_2', 'leg_3', 'leg_4', 'rail_side_1', 'rail_side_2', 'stretcher_side_1', 'stretcher_side_2')));
+      out.push(step('s2', 'Close the frame — footrest included',
+        `Connect the frames with the front and back rails AND the front and rear stretchers in one clamp-up with ${frP}: the footrest box ties the splayed legs, and a frame closed without it cannot take it later. ${kd ? 'Bring the bolts up in stages, alternating sides, and re-measure the diagonals after every turn.' : `All eight shoulders seated before any clamp is driven home; ${glue.clampMin} minutes in the clamps.`} Check diagonals across the seat frame AND stand it on the flattest floor you have: four feet down, no rock — trim ONE proud foot if it rocks, never shim.`,
+        ids('rail_front_1', 'rail_back_1', 'stretcher_front_1', 'stretcher_back_1')));
+    } else {
+      const rakeLine = se.backRake > 0
+        ? ` The back rakes ${U().fmtDeg(se.backRake)} — not by bending anything, but by the mortise OFFSETS: the crest sits ${G ? len(Math.round(Math.tan(se.backRake * Math.PI / 180) * ((se.height + se.backHeight - G.CREST_H / 2) - (se.height + G.SLAT_RISE)) / 2 * 10) / 10) : 'its setout'} rearward of the post centreline and the bottom slat the same forward. Mark every mortise from the story stick, feet against a stop — two reference ends on one post is how a back finishes twisted.`
+        : ' The back is upright: every mortise centres on the post depth.';
+      out.push(step('layout', 'Story stick and layout — both posts marked together',
+        `The rear posts are the chair: one straight piece each, floor to crest, no sawn bends (a sawn bend is short grain at the exact point the back load bends the post — the classic broken chair). Stand both posts together, feet against a stop, and mark EVERY joint from one story stick: seat rails at ${railBand}, stretchers at ${len(st.stretcherHeight)}, slats and crest above.${rakeLine} Front legs get the same treatment from the same stick.`,
+        ids('post_1', 'post_2', 'leg_3', 'leg_4')));
+      out.push(step('s1', 'Back sub-assembly',
+        `Join the crest and slats between the two posts with ${frP}.${drawbore ? ' Advanced option earned here: DRAWBORE the crest tenons — offset the peg hole in the tenon ~1.5 mm toward the shoulder and the pin pulls the joint tight forever, clamps optional.' : ''} ${kd ? KD_STEP_TEXT : `Dry-fit, then glue; ${glue.label} allows ${glue.openMin} minutes.`} Check the back for wind on a flat bench and measure both diagonals — a twisted back telegraphs into every joint after it.`,
+        ids('post_1', 'post_2', 'crest_1', 'slat_1', 'slat_2')));
+      out.push(step('s2', 'Side frames onto the back',
+        `Join each side rail and side stretcher between a rear post and its front leg with ${frP} — the side rail's rear shoulder carries the ${U().fmtDeg(se.slopeDeg)} seat slope${se.slopeDeg ? ' (that is the bevel on the cut list)' : ''}. One side at a time, on the flat bench: rail top edges land exactly on the story-stick line, and the front leg stands square to the floor in BOTH planes while the glue is open.`,
+        ids('rail_side_1', 'rail_side_2', 'stretcher_side_1', 'stretcher_side_2', 'leg_3', 'leg_4')));
+      out.push(step('s3', 'Close the seat frame',
+        `Front rail between the legs, back rail between the posts${st.stretcher === 'h' ? ', and the centre stretcher tying the side stretchers at their midpoints — fit it dry first; it sets the frame width' : ', and the front/rear stretchers'} — with ${frP}, in one glue-up. ${kd ? 'Snug the bolts in rotation and re-check the diagonals after every pass; plan to re-snug after the first month and the first heating season — a bolted chair that nobody re-snugs is a wobbly chair.' : `Check the seat-frame diagonals equal BEFORE the glue tacks, and sight across the rails for wind.`} Then stand it: four feet on the flattest floor available, trim one proud foot if it rocks.`,
+        ids('rail_front_1', 'rail_back_1', 'stretcher_centre_1', 'stretcher_front_1', 'stretcher_back_1')));
+    }
+    out.push(step('s4', 'Corner blocks — structure, not trim',
+      `Glue and screw a corner block across each seat-frame corner, tight into the angle${stool ? '' : ' and against the leg or post'}. These blocks close the racking loop of the seat frame — the cyclic sit-down case counts on them — so they are on the cut list with their own dimensions, ripped at 45° so the grain runs across the diagonal. Two screws per face, pilots drilled, glue on every mating face.`,
+      ids('block_1', 'block_2', 'block_3', 'block_4')));
+    const seatPart = model.parts.find(p => p.id === 'seat_1');
+    const crossW = seatPart ? Math.min(seatPart.size.w, seatPart.size.d) : 0;
+    const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    out.push(step('s5', 'Fit and fasten the seat — held down, never pinned',
+      `${stool ? 'Set the seat on the frame' : 'Notch the seat around the rear posts (the cut list size already includes the capture), then set it on the frame'} with even overhang and fasten it from BELOW through the corner blocks with screws in SLOTTED holes run across the grain${se.slopeDeg ? `, letting the ${U().fmtDeg(se.slopeDeg)} slope follow the rails` : ''}. This seat travels about ${fine(mv)} across its ${len(crossW)} width between seasons — a screw pinned solid is a split seat two winters out. Snug, not crushed.`,
+      ['seat_1']));
+    out.push(step('s6', kd ? 'Snug, stand, and the re-snug schedule' : 'Cure before anyone sits',
+      kd
+        ? 'Nothing structural here is glued — go around every bolt once more with the key, then sit-test gently. Re-snug after the first week, the first month, and every heating season: the re-snug schedule IS the maintenance plan for a bolted chair.'
+        : `Clamps off at ${glue.clampMin} minutes, but ${glue.label} reaches full strength at ${glue.cureHrs} hours — no sitting, no rear-tilt testing, nothing, until then. Pare squeeze-out while rubbery. Then the acceptance test, gently: sit, shift, lean back a LITTLE — a new chair should feel dead, with no clicks and no give at any joint.`,
+      []));
+  }
+
   function assembly(spec, model, integrity, opts) {
     opts = opts || {};
     const out = [];
@@ -790,6 +862,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (has('shelf_1')) out.push(step('s3', 'Fit the lower shelf', 'Notch the shelf around the legs and fasten it.', ['shelf_1']));
       out.push(step('s4', 'Attach the top', 'Fasten the top with figure-8s so it can move with the seasons.', ['top_1']));
       drawerSteps(spec, model, out, opts);
+    } else if (t === 'chair') {
+      chairSteps(spec, model, out, opts, { frP, ids });
     } else {
       frameSteps(spec, model, out, opts, { frP, ids });
     }

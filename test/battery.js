@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
+const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'drafting.js', 'gltf.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'joinery3d.js', 'selftest.js'];
 for (const f of SRC) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
@@ -267,7 +267,7 @@ const summarize = (name, r, ig, extra) => {
      * answer. Every unmatched ask that reads like a piece routes to the honest
      * capability list, with the nearest expressible option as a chip. */
     const outOfScope = {};
-    for (const ask of ['bed frame', 'floating wall shelf', 'something for my entryway', 'a chair', 'a stool']) {
+    for (const ask of ['bed frame', 'floating wall shelf', 'something for my entryway', 'a sofa']) {
       const r = outOfScope[ask] = say(ask);
       ok(r.kind === 'question' && !EDIT_ASK.test(r.question), `"${ask}" never gets the edit-phrased answer`, r.question);
       ok(r.kind === 'question' && /rough out/.test(r.question), `"${ask}" gets the honest capability list`, r.question);
@@ -282,8 +282,36 @@ const summarize = (name, r, ig, extra) => {
     ok(!(outOfScope['bed frame'].options || []).some(o => /\bbed\b/i.test(o)), 'and no chip offers a bed', outOfScope['bed frame'].options);
     ok((outOfScope['floating wall shelf'].options || [])[0] === 'A bookshelf',
       'a wall shelf offers the bookshelf it does build', outOfScope['floating wall shelf'].options);
-    ok(/\bbench\b/i.test((outOfScope['a chair'].options || [])[0]),
-      'a chair offers the bench — the seating it does build', outOfScope['a chair'].options);
+    ok(/\bchair\b/i.test((outOfScope['a sofa'].options || [])[0]),
+      'a sofa offers the chair — the seating it does build now', outOfScope['a sofa'].options);
+
+    /* Seating class (2026-07): chairs and stools graduated from the
+     * out-of-scope list to a real engineering profile. The parser CREATES
+     * them, couples stools to their counters, and REFUSES the class's
+     * stated refusal shapes with the reason — never a silent approximation. */
+    const chAsk = say('a chair');
+    ok(chAsk.kind === 'new' && chAsk.spec.meta.template === 'chair' && chAsk.spec.seat.backHeight > 0,
+      '"a chair" builds a chair (seating class)', chAsk.kind);
+    ok(/rear-tilt/.test(chAsk.explain || ''), 'the chair ack names the class joinery mandate', chAsk.explain);
+    const stAsk = say('a stool');
+    ok(stAsk.kind === 'new' && stAsk.spec.seat.backHeight === 0,
+      '"a stool" builds a backless stool', stAsk.kind);
+    ok(/counter or bar/i.test(stAsk.explain || ''),
+      'a bare stool ASKS for the counter it serves', stAsk.explain);
+    const barAsk = say('a bar stool');
+    const barCor = barAsk.kind === 'new' ? Spec.correctSpec(barAsk.spec) : null;
+    ok(barCor && barCor.seat.counterHeight === 1060 &&
+      Math.abs(barCor.seat.height - (1060 - 270)) <= 1,
+      'a bar stool derives its seat height from bar height (post-correction)', barCor && JSON.stringify(barCor.seat));
+    const uph = say('an upholstered dining chair');
+    ok(uph.kind === 'info' && /upholster/i.test(uph.text) && /refus|can’t model|worse than/i.test(uph.text),
+      'upholstery is refused with the stated reason', uph.kind + ': ' + (uph.text || '').slice(0, 80));
+    const arm = say('build me an armchair');
+    ok(arm.kind === 'info' && /arm/i.test(arm.text || ''),
+      'arms are refused with the stated reason', arm.kind);
+    const rocker = say('a rocking chair');
+    ok(rocker.kind === 'info' && /rock/i.test(rocker.text || ''),
+      'rockers are refused with the stated reason', rocker.kind);
     const edit = say('make it fancier');
     ok(edit.kind === 'question' && EDIT_ASK.test(edit.question),
       'a genuine edit attempt that did not parse keeps the edit-phrased answer', edit.question);
@@ -299,7 +327,7 @@ const summarize = (name, r, ig, extra) => {
     ok(/work table/.test(wb.explain) && /not a laminated/.test(wb.explain),
       'the ack says plainly what it is and what it is not', wb.explain);
     ok(!/out a workbench/.test(wb.explain), 'the ack never calls the result a workbench', wb.explain);
-    const capability = outOfScope['a chair'].question;
+    const capability = outOfScope['a sofa'].question;
     ok(!/(?:^|[\s,])workbench(?:[\s,.]|$)/.test(capability.replace('at workbench height', '')),
       'the capability list never names a workbench as a piece it produces', capability);
     ok(/work table at workbench height/.test(capability), 'it names the honest thing instead', capability);

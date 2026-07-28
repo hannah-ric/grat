@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
+const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'drafting.js', 'gltf.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'joinery3d.js', 'selftest.js'];
 for (const f of SRC) {
   const p = path.join(__dirname, '..', 'src', f);
@@ -1833,9 +1833,13 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
   ok(glStep && / Dry-fit before glue\./.test(glStep.text),
     `glued custom connections keep the dry-fit suffix — got "${glStep && glStep.text}"`);
 
-  // No golden fixture uses kd_bolt, so this wording change cannot diff the
-  // corpus — assert it stays that way.
+  // The frame/case/custom goldens stay kd_bolt-free, so this wording change
+  // cannot diff them. The SEATING goldens (2026-07) legitimately bolt —
+  // kd_bolt is the class's beginner/default seat-frame joint, and their
+  // step text is deliberately frozen WITH the corpus.
+  const KD_GOLDENS = ['maple-counter-stool-metric.json', 'walnut-chair-boundary-metric.json'];
   for (const f of fs.readdirSync(path.join(__dirname, 'golden'))) {
+    if (KD_GOLDENS.includes(f)) continue;
     ok(!/kd_bolt/.test(fs.readFileSync(path.join(__dirname, 'golden', f), 'utf8')), `golden ${f} is kd_bolt-free`);
   }
 }

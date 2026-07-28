@@ -16,7 +16,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   const Geo = BB.Geo;
   const U = () => BB.Units;
 
-  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom'];
+  const TEMPLATES = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom', 'chair'];
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
   /* The templates Parametric.tableLike() builds: four legs tied by an apron
@@ -31,7 +31,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * through the migration registry on load — a saved design must never fail
    * to open. From Phase 4 forward, EVERY schema change adds a migration here.
    */
-  const SPEC_VERSION = 6;
+  const SPEC_VERSION = 7;
   const migrations = {
     /* v3 → v4: Phase 1–3 specs had no specVersion and no `custom` section.
      * Stamp the version, initialise custom to null, and normalise the legacy
@@ -72,6 +72,16 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (out.doors === undefined) out.doors = null;
       if (!isObj(out.hardware)) out.hardware = {};
       if (out.hardware.hinge === undefined) out.hardware.hinge = 'euro_cup';
+      return out;
+    },
+    /* v6 → v7: the seating class (chair/stool template) added a `seat`
+     * section. No pre-v7 design is a chair, so every old design gets an
+     * explicit null — same principle as doors and stretchers: absence is the
+     * truth about what that design was. */
+    6: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 7;
+      if (out.seat === undefined) out.seat = null;
       return out;
     }
   };
@@ -144,9 +154,29 @@ var BB = globalThis.BB = globalThis.BB || {};
       hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
       doors: null,
-      custom: null
+      custom: null,
+      seat: null
     };
     const t = base.meta.template;
+    if (t === 'chair') {
+      /* Seating class defaults (BB.Classes 'seating' owns the ranges and
+       * sources). Overall is DERIVED from the seat family by correction —
+       * the numbers here are just a sane pre-correction envelope. */
+      base.meta.name = 'Dining Chair';
+      Object.assign(base.overall, { width: 430, depth: 420, height: 915 });
+      base.seat = {
+        width: 430, depth: 420, height: 445, slopeDeg: 3,
+        backHeight: 470, backRake: 4, splayDeg: 0, counterHeight: null
+      };
+      Object.assign(base.structure, {
+        topThickness: 20, legThickness: 38, apronHeight: 65, apronThickness: 25,
+        apronInset: 0, stretcher: 'h', stretcherHeight: 200
+      });
+      /* Seat-frame joinery is CLASS-MANDATED (never screws) — see the
+       * seating contract in classes.js. The level default is applied by
+       * correction; this seed matches the beginner mandate. */
+      base.joinery.frame = 'kd_bolt';
+    }
     if (t === 'custom') {
       base.custom = defaultCustom();
       Object.assign(base.overall, { width: 1100, depth: 350, height: 468 });
@@ -343,9 +373,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
     'finish': 'finish', 'hardware.pull': 'pull style',
-    'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners'
+    'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners',
+    'seat.width': 'seat width', 'seat.depth': 'seat depth', 'seat.height': 'seat height',
+    'seat.slopeDeg': 'seat slope', 'seat.backHeight': 'back height', 'seat.backRake': 'back rake',
+    'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height'
   };
-  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|custom\.part\.(len|wid|thk)$)/;
+  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|seat\.(width|depth|height|backHeight|counterHeight)$|custom\.part\.(len|wid|thk)$)/;
 
   /* Diff-chip / inspector value rendering. Lengths route through BB.Units —
    * the current display preference, NOT a per-call unit, decides the text. */
@@ -712,7 +745,15 @@ var BB = globalThis.BB = globalThis.BB || {};
      * that collects dust and braces nothing near the top of the leg; too high
      * and it is a shin rail. Correction additionally caps it against the
      * actual leg — this table cannot know the piece's height. */
-    'structure.stretcherHeight': { min: 100, max: 600, def: 280 }
+    'structure.stretcherHeight': { min: 100, max: 600, def: 280 },
+    /* Seating family (BB.Classes 'seating' documents the sources): plan
+     * dimensions of the seat itself; height spans dining chairs (380–500)
+     * through bar stools (up to 850) — the chair/stool branch inside
+     * correctSeat narrows further, and the counter-height coupling can move
+     * height inside this range. */
+    'seat.width': { min: 300, max: 700, def: 430 },
+    'seat.depth': { min: 300, max: 550, def: 420 },
+    'seat.height': { min: 380, max: 850, def: 445 }
   };
   const STRETCHERS = ['none', 'h', 'box'];
   /* Doors (X-07). Templates with a front opening to close. A bookshelf
@@ -906,7 +947,12 @@ var BB = globalThis.BB = globalThis.BB || {};
    * real board is the deal — so it stays quiet. */
   function dimensionNotes(raw, cor, notes) {
     const fmt = mm => U().fmtLength(mm);
+    const isChair = at(cor, 'meta', 'template') === 'chair';
     for (const path of Object.keys(DIM_RULES)) {
+      // A chair's overall is DERIVED from the seat family (splay widens the
+      // footprint, the back sets the height) — the seat.* rows carry the
+      // user-facing refusals, so overall.* notes there would be noise.
+      if (isChair && path.startsWith('overall.')) continue;
       const dot = path.indexOf('.');
       const sec = path.slice(0, dot), key = path.slice(dot + 1);
       const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
@@ -990,6 +1036,49 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* Seating-class refusals and couplings, said out loud (the class contract
+   * in BB.Classes names each of these as a refusal condition or coupling
+   * rule; this is where they reach the user). */
+  function seatNotes(raw, cor, notes) {
+    if (!cor || at(cor, 'meta', 'template') !== 'chair' || !cor.seat) return;
+    const rawSeat = raw && isObj(raw.seat) ? raw.seat : {};
+    const seat = cor.seat;
+    const fmt = mm => U().fmtLength(mm);
+    /* Refusals: these keys are never minted by the codec, but a raw spec
+     * (share import, API POST) can carry them, and silently building
+     * something else would be a guess — worse than the refusal. */
+    if (rawSeat.upholstered || rawSeat.slipSeat || rawSeat.upholstery) {
+      notes.push('Upholstered and slip seats aren’t generated: the seat frame becomes its own part set with foam and fabric clearances this tool doesn’t model soundly yet — the design carries a solid wood seat.');
+    }
+    if (rawSeat.arms || rawSeat.armrests) {
+      notes.push('Arms aren’t generated: arm joints carry their own load cases (BIFMA arm strength) this tool doesn’t model yet — the design is a side chair.');
+    }
+    const wantRake = num(rawSeat.backRake, null);
+    if (wantRake !== null && seat.backHeight > 0 && wantRake - seat.backRake > 0.25) {
+      notes.push(`A ${wantRake}° back rake needs a sawn or steam-bent rear leg — sawing the bend puts short grain at exactly the point the rear-tilt load breaks chairs, so this tool stops at what straight rear posts give: ${seat.backRake}°.`);
+    }
+    const wantSplay = num(rawSeat.splayDeg, null);
+    if (wantSplay !== null && wantSplay > 0.25 && seat.backHeight > 0) {
+      notes.push('Leg splay is a stool feature — a backed chair in this class keeps vertical legs (the back’s rake geometry assumes them).');
+    }
+    if (seat.counterHeight !== null) {
+      const wantH = num(rawSeat.height, null);
+      if (wantH !== null && Math.abs(wantH - seat.height) > 5) {
+        notes.push(`A seat serving a ${fmt(seat.counterHeight)} counter sits 250–300 mm below it — the ${fmt(wantH)} asked for was moved to ${fmt(seat.height)}.`);
+      }
+    }
+    /* The class joint mandate, disclosed: a frame joint the LEVEL allows but
+     * the CLASS refuses (screws, biscuits, dowels on a seat frame) is a
+     * silent substitution unless said here. */
+    const wantJ = raw && isObj(raw.joinery) ? raw.joinery.frame : undefined;
+    if (typeof wantJ === 'string' && cor.joinery && wantJ !== cor.joinery.frame && K.JOINERY[wantJ]) {
+      const lvl = at(cor, 'meta', 'level');
+      if (K.jointAllowed(wantJ, K.LEVELS.includes(lvl) ? lvl : 'beginner', 'frame')) {
+        notes.push(`${K.JOINERY[wantJ].label} can’t hold a chair’s seat frame — the rear-tilt case racks the side-rail joints beyond what screws or dowels carry at any skill level (see the Safety tab), so the frame uses ${fmtValue('joinery.frame', cor.joinery.frame)}.`);
+      }
+    }
+  }
+
   /* A drawer bank asked of a template that has no opening to put one in. */
   function drawerNote(raw, cor, notes) {
     const want = raw && raw.drawers;
@@ -1030,6 +1119,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       speciesNotes(raw, correctedSpec, notes);
       joineryNotes(raw, correctedSpec, notes);
       drawerNote(raw, correctedSpec, notes);
+      seatNotes(raw, correctedSpec, notes);
     }
     return [...new Set(notes)];
   }
@@ -1117,6 +1207,56 @@ var BB = globalThis.BB = globalThis.BB || {};
     return out;
   }
 
+  /* ---------------- seating correction (the 'seating' class) ----------------
+   * The chair/stool template's family rules. The numbers and their sources
+   * live in the class contract (BB.Classes, 'seating'); this applies them.
+   * Deterministic, idempotent, silent — seatNotes() reports what was refused.
+   */
+  function correctSeat(s) {
+    const C = BB.Classes ? BB.Classes.get('seating') : null;
+    const G = C ? C.geom : null;
+    const se = isObj(s.seat) ? s.seat : {};
+    const out = {};
+    out.width = applyDim('seat.width', se.width);
+    out.depth = applyDim('seat.depth', se.depth);
+    /* Back: 0 = stool; otherwise the crest rides a fixed band ABOVE the seat
+     * (total back height moves with the seat, so a counter stool with a back
+     * stays proportioned). */
+    const bhRaw = num(se.backHeight, 470);
+    out.backHeight = bhRaw <= 0 ? 0 : Math.round(clamp(bhRaw, 380, 600));
+    const stool = out.backHeight === 0;
+    /* Counter coupling: a stool serving a stated counter GETS its seat height
+     * from it — 250 to 300 below the surface (the class contract cites the
+     * source). A height already inside that window is the user's own tweak
+     * and survives; anything else snaps to the 270 midpoint. */
+    out.counterHeight = num(se.counterHeight, null);
+    if (out.counterHeight !== null) out.counterHeight = r1(clamp(out.counterHeight, 700, 1300));
+    let h = applyDim('seat.height', se.height);
+    if (out.counterHeight !== null) {
+      const drop = G ? G.COUNTER_DROP : 270;
+      const lo = out.counterHeight - 300, hi = out.counterHeight - 250;
+      if (h < lo || h > hi) h = out.counterHeight - drop;
+    } else if (!stool) {
+      h = clamp(h, 380, 500); // a chair with no counter named is dining seating
+    }
+    out.height = r1(h);
+    // Stools carry level seats (you perch square); chairs slope a few
+    // degrees rearward per the human-factors table.
+    out.slopeDeg = stool ? 0 : r1(clamp(num(se.slopeDeg, 3), 0, 8));
+    /* Splay is a STOOL move: a backed chair in this class keeps vertical
+     * legs — the back's offset-rail rake geometry assumes them. */
+    out.splayDeg = stool ? r1(clamp(num(se.splayDeg, 4), 0, 10)) : 0;
+    /* Rake is bounded by what STRAIGHT rear posts can give: the crest rail
+     * and the bottom slat offset in opposite directions within the post
+     * depth. Asking for more means a sawn or bent rear leg — short grain at
+     * the bend, a real-world chair failure — so the class refuses it rather
+     * than building it (seatNotes says so). */
+    let rake = clamp(num(se.backRake, 4), 0, 8);
+    if (!stool && G) rake = Math.min(rake, G.backRakeMax(s.structure, out));
+    out.backRake = r1(stool ? 0 : Math.max(0, rake));
+    return out;
+  }
+
   /* ---------------- correction ----------------
    * Takes any proposed spec (AI or manual), returns the corrected spec the
    * whole app runs on. Deterministic, idempotent, never throws.
@@ -1159,9 +1299,51 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     /* Stretchers brace a leg-and-apron frame; there is nothing for them to
      * span on a carcass, so the whole idea is refused outside table-likes
-     * rather than silently built into a bookshelf. */
-    st.stretcher = (FRAME_TEMPLATES.includes(template) && STRETCHERS.includes(st.stretcher)) ? st.stretcher : 'none';
+     * rather than silently built into a bookshelf. Chairs run their own
+     * stretcher rules in the seating block below. */
+    st.stretcher = ((FRAME_TEMPLATES.includes(template) || template === 'chair') && STRETCHERS.includes(st.stretcher)) ? st.stretcher : 'none';
     st.stretcherHeight = applyDim('structure.stretcherHeight', st.stretcherHeight);
+
+    /* ---- seating (the 'seating' class family) ----
+     * The seat section is corrected first, then the OVERALL is derived from
+     * it — splayed stool legs widen the floor footprint, and the audit's
+     * envelope check judges parts against overall, so overall must be the
+     * true envelope, exactly as a custom piece derives its extents. */
+    if (template === 'chair') {
+      s.seat = correctSeat(s);
+      const seat = s.seat;
+      const stool = seat.backHeight === 0;
+      const G = BB.Classes ? BB.Classes.get('seating').geom : null;
+      /* Seat rails are the chair's structure: keep the rail band inside the
+       * seat height (rail bottom must clear the stretcher and the floor). */
+      st.apronHeight = Math.min(st.apronHeight, Math.max(50, seat.height - st.topThickness - 160));
+      const railBottom = seat.height - st.topThickness - st.apronHeight;
+      if (stool) {
+        /* A stool's footrest is structure AND ergonomics, not an option: the
+         * box stretcher braces the splayed legs and carries a standing foot.
+         * Its line comes from the footrest drop (class contract, sourced). */
+        st.stretcher = 'box';
+        const drop = G ? G.FOOTREST_DROP : 230;
+        st.stretcherHeight = Math.round(clamp(seat.height - drop, 100, Math.max(100, railBottom - 60)));
+      } else {
+        /* A chair is never unbraced: without stretchers the whole rear-tilt
+         * couple lands on the rail joints alone (see chair:tilt). 'none'
+         * arrives from the pre-seating migration defaults, so the height is
+         * re-derived from the seat rather than inherited from a table. */
+        if (!STRETCHERS.includes(st.stretcher) || st.stretcher === 'none') {
+          st.stretcher = 'h';
+          st.stretcherHeight = Math.round(seat.height * 0.45);
+        }
+        st.stretcherHeight = Math.round(clamp(st.stretcherHeight, 100, Math.max(100, railBottom - 60)));
+      }
+      const run = seat.splayDeg > 0 ? Math.tan(seat.splayDeg * Math.PI / 180) * (seat.height - st.topThickness) : 0;
+      // Mutate in place: `o` aliases s.overall for the rest of correction.
+      o.width = r1(seat.width + 2 * run);
+      o.depth = r1(seat.depth + 2 * run);
+      o.height = r1(seat.height + seat.backHeight);
+    } else {
+      s.seat = null;
+    }
 
     // Geometry sanity: aprons and legs must fit under the top.
     st.apronHeight = Math.min(st.apronHeight, Math.max(40, o.height - st.topThickness - 60));
@@ -1182,7 +1364,7 @@ var BB = globalThis.BB = globalThis.BB || {};
      * stretcher inside the apron on a low piece.
      * SECTION_MIN is the stretcher's own depth: it needs its own thickness of
      * clearance under the apron, or the two are the same piece of wood. */
-    if (st.stretcher !== 'none') {
+    if (st.stretcher !== 'none' && template !== 'chair') {
       const apronUnderside = o.height - st.topThickness - st.apronHeight;
       const ceiling = apronUnderside - STRETCHER_APRON_GAP;
       const floor_ = STRETCHER_FLOOR_MIN;
@@ -1199,6 +1381,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const lvl = s.meta.level;
     for (const kind of ['frame', 'case', 'box']) {
       if (!K.jointAllowed(s.joinery[kind], lvl, kind)) s.joinery[kind] = K.JOINT_DEFAULTS[lvl][kind];
+    }
+    /* Seating class mandate ON TOP of the level matrix: a chair's seat-frame
+     * joints resist the rear-tilt racking couple, and screws, biscuits, and
+     * dowels do not carry it at ANY level (the class contract shows the
+     * computed margins). The allowed set and per-level defaults live in
+     * BB.Classes ('seating'); seatNotes discloses the substitution. */
+    if (template === 'chair' && BB.Classes) {
+      s.joinery.frame = BB.Classes.get('seating').enforceFrameJoint(s.joinery.frame, lvl);
     }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
 
@@ -1462,6 +1652,36 @@ var BB = globalThis.BB = globalThis.BB || {};
           });
         }
       }
+    }
+
+    /* Seating human factors (the 'seating' class contract carries the table
+     * WITH sources; advisories never block — a boundary chair is legal, just
+     * named). The counter-coupling ask lives in the integrity checks
+     * (chair:counter); these are the body-fit bands. */
+    if (t === 'chair' && spec.seat && BB.Classes) {
+      const hf = Object.fromEntries(BB.Classes.get('seating').humanFactors.map(h => [h.key, h]));
+      const se = spec.seat;
+      const stool = se.backHeight === 0;
+      const band = (row, v, id, what) => {
+        if (!row || (v >= row.min && v <= row.max)) return;
+        const dir = v > row.max ? 'above' : 'below';
+        advisories.push({ id, text: `${fmt(v)} is ${dir} the ${fmt(row.min)} to ${fmt(row.max)} ${what} band (${row.source.split('(')[0].trim()}).` });
+      };
+      if (!stool) {
+        band(hf.dining_seat_height, se.height, 'ergo_seat_height', 'dining seat height');
+      } else if (se.counterHeight === null) {
+        // No counter named: judge against BOTH stool bands; outside both is
+        // a stool serving no surface anyone stated.
+        const c = hf.counter_stool_seat, b = hf.bar_stool_seat;
+        const inC = c && se.height >= c.min && se.height <= c.max;
+        const inB = b && se.height >= b.min && se.height <= b.max;
+        const inBench = se.height >= 430 && se.height <= 480; // a low perch stool is legitimate
+        if (!inC && !inB && !inBench) {
+          advisories.push({ id: 'ergo_seat_height', text: `${fmt(se.height)} matches no seating band (dining ${fmt(430)}–${fmt(480)}, counter ${fmt(c.min)}–${fmt(c.max)}, bar ${fmt(b.min)}–${fmt(b.max)}). Name the counter it serves and the height will be derived.` });
+        }
+      }
+      band(hf.seat_depth, se.depth, 'ergo_seat_depth', 'seat depth');
+      band(hf.seat_width, se.width, 'ergo_seat_width', 'seat width');
     }
 
     // Outdoor hardware truth (2026 hardware expansion): an exterior finish

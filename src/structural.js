@@ -122,7 +122,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     display: { label: 'Display items', kind: 'udl', kgPerM: 10, sustained: true, basis: 'light display duty' },
     books:   { label: 'Books', kind: 'udl', kgPerM: 60, sustained: true, basis: 'BIFMA X5.9 shelf load, 40 lb/ft' },
     heavy:   { label: 'Heavy storage', kind: 'udl', kgPerM: 112, sustained: true, basis: 'BIFMA X5.9 high-density file load, 75 lb/ft' },
-    seating: { label: 'Seated people', kind: 'seat', kgSeat: 136, sustained: false, basis: 'BIFMA X5.4 seating functional load, 300 lbf' },
+    /* 136 kg = the BIFMA X5.1 §8 / X5.4 drop-test PROOF mass (300 lb);
+     * the functional drop mass is 225 lb, and no static seat test exists in
+     * either standard — designing statically to the proof mass is the
+     * conservative, honestly-labeled alignment (2026-07 seating class). */
+    seating: { label: 'Seated people', kind: 'seat', kgSeat: 136, sustained: false, basis: 'aligned to BIFMA X5.1/X5.4 drop-test proof mass, 300 lb (functional drop is 225 lb)' },
     // Worktop loads are BIFMA FUNCTIONAL (short-term capability) loads — a
     // set table or a lean, not weight that sits for years — so no creep.
     worktop: { label: 'Desk / table duty', kind: 'combo', kgDist: 75, kgEdge: 90, sustained: false, basis: 'BIFMA X5.5 distributed + concentrated functional loads' }
@@ -323,6 +327,24 @@ var BB = globalThis.BB = globalThis.BB || {};
         push({
           id: p.id, part: p, label: p.role === 'top' ? 'Top panel' : `Shelf ${p.id.replace(/\D+/g, '') || 1}`,
           kind: 'shelf', model: 'ss', span: p.size.w, b: p.size.d, h: p.size.h, over: 0
+        });
+      }
+    } else if (t === 'chair') {
+      /* Seating: the SIDE RAILS are the beams (front-back), the seat is a
+       * plate strip spanning between them — the frame model the audit
+       * established for tables, applied to the seat frame. Kind 'seat' pins
+       * the seating preset. */
+      const seat = parts.find(p => p.id === 'seat_1');
+      const rails = parts.filter(p => p.id === 'rail_side_1' || p.id === 'rail_side_2');
+      if (seat && rails.length === 2 && spec.seat) {
+        const r = rails[0];
+        const railSpan = Math.max(100, Math.max(r.size.d, r.size.w));
+        const stripSpan = Math.max(80, spec.seat.width - 2 * spec.structure.apronThickness);
+        push({
+          id: seat.id, part: seat, label: 'Seat', kind: 'seat', model: 'ss',
+          span: stripSpan, b: seat.size.d, h: seat.size.h, over: 0,
+          apron: { id: r.id, span: railSpan, b: Math.min(r.size.w, r.size.d), h: r.size.h },
+          strip: { span: stripSpan, bEff: Math.min(seat.size.d, 0.5 * stripSpan + 100) }
         });
       }
     } else if (t === 'custom') {
@@ -903,6 +925,216 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* ---- seating load cases (the 'seating' class, BB.Classes) ----
+     * Chairs break where casework never does: cyclic, eccentric loads and a
+     * user tipped onto two legs. Magnitudes and their sources are pinned in
+     * the class contract (classes.js SEAT_LOADS); the arithmetic here is
+     * hand-verified in test/handcalc.js. */
+    if (t === 'chair' && spec.seat && BB.Classes) {
+      const C = BB.Classes.get('seating');
+      const L = C.loads, G = C.geom;
+      const se = spec.seat, st2 = spec.structure;
+      const stool = se.backHeight === 0;
+      const fjKey = spec.joinery.frame;
+      const capJoint = (JOINT_RATING[fjKey] || JOINT_RATING.butt_screws).capN * sgF;
+      const jLabel = K.JOINERY[fjKey] ? K.JOINERY[fjKey].label.toLowerCase() : fjKey;
+      const railH = st2.apronHeight;
+      const railY = se.height - st2.topThickness - railH / 2;
+      const strYc = st2.stretcherHeight;
+      const arm = Math.max(30, railY - strYc);
+      const allow = sp.mor / SAFETY_FACTOR;
+      const crestY = se.height + se.backHeight - G.CREST_H / 2;
+
+      if (!stool) {
+        /* (a) REAR TILT — the case that kills chairs. Occupant weight rides
+         * the rear legs (axial — posts carry it easily); the governing
+         * demand is the back force levering each side frame about its seat
+         * joints. Per side: M = (F/2)·(crest − rail); resisted as a couple
+         * between the side-rail joint and the side-stretcher joint. */
+        const M = (L.BACK_STATIC_N / 2) * (crestY - railY);
+        const R = M / arm;
+        const margin = capJoint / R;
+        const fixes = [];
+        if (margin < 1.5) {
+          // A lower stretcher lengthens the couple arm — solved, not guessed.
+          const needArm = (R * arm) / (capJoint / 1.5);
+          const newY = Math.round(railY - needArm);
+          if (newY >= 100 && newY < strYc - 10) {
+            fixes.push({ id: 'tilt-arm', label: `Drop the stretchers to ${fmtLen(newY)}`, patch: { structure: { stretcherHeight: newY } } });
+          }
+          if (spec.meta.level === 'advanced' && fjKey !== 'mortise_tenon') {
+            fixes.push({ id: 'tilt-mt', label: 'Mortise & tenon the seat frame', patch: { joinery: { frame: 'mortise_tenon' } } });
+          }
+        }
+        checks.push({
+          id: 'chair:tilt', title: 'Rear tilt — user on two legs',
+          status: jointStatus(margin),
+          value: `${U().fmtPointLoad(R / GRAV)} per side joint vs ${U().fmtPointLoad(capJoint / GRAV)} capacity (${margin.toFixed(2)}×)`,
+          threshold: '≥ 1.5× on the side-rail↔rear-post joint couple (class contract, derivation)',
+          explain: `Tipped onto the rear legs, the ${U().fmtPointLoad(L.BACK_STATIC_N / GRAV)} back force (BIFMA X5.1 back functional magnitude) levers each side frame about its seat joints: M = ${Math.round(M).toLocaleString()} N·mm per side, resolved as a couple over the ${fmtLen(arm)} between the side rail and the side stretcher. This is why the class mandates ${jLabel}-grade joinery — screwed rails fail exactly here.`,
+          fixes,
+          data: { momentNmm: M, armMM: arm, demandN: R, capN: capJoint, marginRatio: margin },
+          prov: { rule: `rear tilt: M = (${L.BACK_STATIC_N}/2) × (${Math.round(crestY)} − ${Math.round(railY)}) = ${Math.round(M).toLocaleString()} N·mm; R = M/${Math.round(arm)} = ${Math.round(R)} N vs ${Math.round(capJoint)} N (${fjKey}, SG-scaled)` }
+        });
+
+        /* (b) BACK STATIC — rear post bending at the rail mortise: the
+         * highest moment lands on the post's smallest net section. */
+        const postD = G.rearPostDepth(st2);
+        const bNet = Math.max(10, st2.legThickness - G.MORTISE_DERATE);
+        const Ipost = I_rect(bNet, postD);
+        const stressP = (M * (postD / 2)) / Ipost;
+        const marginP = allow / stressP;
+        const pFixes = [];
+        if (marginP < 1.25) {
+          const up = nextSolidUp(st2.legThickness);
+          if (up && up <= 100) pFixes.push({ id: 'post-up', label: `Thicken the rear posts to ${fmtLen(up)}`, patch: { structure: { legThickness: up } } });
+          const sol2 = solveSpeciesFix(spec.wood.species, 0, stressP, allow, 'str');
+          if (sol2) pFixes.push({ id: 'post-sp-' + sol2.key, label: `Switch to ${sol2.label.toLowerCase()}${sol2.partial ? PARTIAL_LIMIT : ''}`, patch: { wood: { species: sol2.key } } });
+        }
+        checks.push({
+          id: 'chair:back', title: 'Back strength — rear posts',
+          status: strStatus(marginP),
+          value: `net-section bending ${stressP.toFixed(1)} MPa · margin ${marginP.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR}) at the rail mortise, ${fmtLen(bNet)} × ${fmtLen(postD)} net section`,
+          explain: `${U().fmtPointLoad(L.BACK_STATIC_N / GRAV)} horizontal at the crest (ANSI/BIFMA X5.1-2017 §5/6 functional back load — applied at the crest, a LONGER lever than the standard's ≤406 mm point) bends each rear post about the section the side-rail mortise has already thinned. Straight grain is mandatory here — which is exactly why the class refuses sawn rear-leg bends.`,
+          fixes: pFixes,
+          data: { stressMPa: stressP, allowMPa: allow, momentNmm: M, netW: bNet, postD },
+          prov: { rule: `post bending: I = ${Math.round(bNet)}×${Math.round(postD)}³/12 = ${Math.round(Ipost).toLocaleString()} mm⁴; σ = M·c/I with M = ${Math.round(M).toLocaleString()} N·mm, c = ${postD / 2}` }
+        });
+      }
+
+      /* (c) LEG STRENGTH — X5.4 §16 magnitude (334 N functional) applied
+       * horizontally at the foot: the longest lever to the stretcher brace
+       * (application height is unpublished; the foot is the conservative
+       * reading, stated in the class contract). */
+      {
+        const legT2 = st2.legThickness;
+        const Mleg = L.LEG_STATIC_N * strYc;
+        const Ileg = I_rect(legT2, legT2);
+        const stressL = (Mleg * (legT2 / 2)) / Ileg;
+        const marginL = allow / stressL;
+        checks.push({
+          id: 'chair:leg', title: 'Leg strength',
+          status: strStatus(marginL),
+          value: `bending ${stressL.toFixed(1)} MPa at the stretcher line · margin ${marginL.toFixed(1)}×`,
+          threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR})`,
+          explain: `${U().fmtPointLoad(L.LEG_STATIC_N / GRAV)} sideways at the foot (BIFMA X5.4 §16 leg-strength functional magnitude) bends the leg over the ${fmtLen(strYc)} below the stretcher brace.`,
+          fixes: marginL < 1 ? [{ id: 'leg-up', label: `Thicken legs to ${fmtLen(Math.min(100, legT2 + 7))}`, patch: { structure: { legThickness: Math.min(100, legT2 + 7) } } }] : [],
+          data: { stressMPa: stressL, allowMPa: allow },
+          prov: { rule: `leg bending: M = ${L.LEG_STATIC_N} × ${strYc} = ${Math.round(Mleg).toLocaleString()} N·mm; I = ${legT2}⁴/12` }
+        });
+      }
+
+      /* (d) CYCLIC DURABILITY — 100 000 sit-downs (X5.1 §10.3 / X5.4-2020).
+       * Acceptance, not simulation: the seat-frame joints must carry the
+       * static seat case at HALF capacity (cyclic acceptable design load ≈
+       * half static — Eckelman practice; class contract names it a
+       * derivation). Demand: seat load through the four rail-end joint
+       * pairs; worst single joint takes a quarter. */
+      {
+        const perJoint = L.SEAT_STATIC_N / 4;
+        const marginC = (capJoint * L.CYCLIC_CAPACITY_FACTOR) / perJoint;
+        checks.push({
+          id: 'chair:cyclic', title: 'Cyclic seating durability',
+          status: jointStatus(marginC),
+          value: `${U().fmtPointLoad(perJoint / GRAV)} per joint vs ${U().fmtPointLoad(capJoint * L.CYCLIC_CAPACITY_FACTOR / GRAV)} cyclic capacity (${marginC.toFixed(2)}×)`,
+          threshold: `≥ 1.5× at half static joint capacity — stands in for ${L.CYCLIC_MASS_KG} kg × ${L.CYCLIC_CYCLES.toLocaleString()} cycles (X5.1 §10.3)`,
+          explain: marginC >= 1.5
+            ? `The ${jLabel} seat frame holds the seated load with cyclic headroom — the difference between a chair that is tight in year five and one that wobbles in year one.`
+            : `Under repeated seating the ${jLabel} joints work loose — this is the wobbly-chair failure. A stiffer species or mortise-and-tenon joinery buys the cyclic margin back.` + (fjKey === 'kd_bolt' ? ' Bolted frames additionally need their re-snug schedule honored (it is in the assembly steps).' : ''),
+          fixes: [],
+          data: { perJointN: perJoint, cyclicCapN: capJoint * L.CYCLIC_CAPACITY_FACTOR, marginRatio: marginC },
+          prov: { rule: `cyclic: ${L.SEAT_STATIC_N}/4 = ${Math.round(perJoint)} N vs ${Math.round(capJoint)} × ${L.CYCLIC_CAPACITY_FACTOR}` }
+        });
+      }
+
+      /* (e) STOOL FOOTREST — full body weight on one foot, midspan. */
+      if (stool) {
+        const fr = parts.find(p => p.id === 'stretcher_front_1');
+        if (fr) {
+          const span = Math.max(100, Math.max(fr.size.w, fr.size.d));
+          const bF = Math.min(fr.size.w, fr.size.d), hF = fr.size.h;
+          const IF = I_rect(bF, hF);
+          const MF = (L.FOOTREST_STEP_N * span) / 4;
+          const stressF = (MF * (hF / 2)) / IF;
+          const marginF = allow / stressF;
+          checks.push({
+            id: 'chair:foot', title: 'Footrest under a mounting step',
+            status: strStatus(marginF),
+            value: `bending ${stressF.toFixed(1)} MPa · margin ${marginF.toFixed(1)}×`,
+            threshold: `≤ ${allow.toFixed(1)} MPa (MOR ${sp.mor} ÷ ${SAFETY_FACTOR})`,
+            explain: `Mounting a stool puts the full ${U().fmtPointLoad(L.FOOTREST_STEP_N / GRAV)} on one foot at the footrest midspan (class derivation) — the load every bar-stool rung actually sees, and why the footrest is sized as structure, not trim.`,
+            fixes: [],
+            data: { stressMPa: stressF, allowMPa: allow, spanMM: span },
+            prov: { rule: `footrest: M = PL/4 = ${L.FOOTREST_STEP_N}×${Math.round(span)}/4 = ${Math.round(MF).toLocaleString()} N·mm; I = ${Math.round(bF)}×${Math.round(hF)}³/12` }
+          });
+        }
+        /* (f) COUNTER COUPLING — a stool is FOR a surface; not knowing the
+         * surface is itself a finding, never silence. */
+        checks.push(se.counterHeight === null ? {
+          id: 'chair:counter', title: 'Counter height', status: 'advisory',
+          value: `seat at ${fmtLen(se.height)} — no counter stated`,
+          threshold: 'seat 250–300 below the counter it serves',
+          explain: `No counter height was given, so the seat is at ${fmtLen(se.height)} on the standard band. Tell the app the real counter height and the seat will be re-derived 250–300 below it.`,
+          fixes: []
+        } : {
+          id: 'chair:counter', title: 'Counter height', status: 'pass',
+          value: `seat ${fmtLen(se.height)} for a ${fmtLen(se.counterHeight)} counter (drop ${fmtLen(se.counterHeight - se.height)})`,
+          threshold: 'seat 250–300 below the counter it serves',
+          explain: 'Seat height is derived from the stated counter — the coupling the class contract mandates.',
+          fixes: []
+        });
+      }
+
+      /* (g) RAKE DEFENSE — correction clamps rake to straight-post
+       * capability; this re-derives the cap so a spec that somehow escaped
+       * correction can never present a sawn-leg geometry as sound. */
+      if (!stool) {
+        const maxRake = G.backRakeMax(st2, se);
+        const over = se.backRake > maxRake + 0.05;
+        checks.push({
+          id: 'chair:rake', title: 'Back rake vs straight rear posts',
+          status: over ? 'fail' : 'pass',
+          value: `${fmtDeg(se.backRake)} of ${fmtDeg(maxRake)} available from offsets`,
+          threshold: 'rake achievable by opposed offsets within the post depth — beyond it is a sawn/bent leg (refused: short grain)',
+          explain: over
+            ? 'This rake exceeds what straight rear posts can give. A sawn bend puts short grain at the post’s highest-moment point — the classic rear-leg break — so the class refuses the geometry rather than shipping it.'
+            : `The back rakes ${fmtDeg(se.backRake)} by offsetting the crest rearward and the slats forward inside the post depth — rear posts stay straight, grain stays continuous, no short grain anywhere.`,
+          fixes: [],
+          data: { rakeDeg: se.backRake, maxRakeDeg: maxRake }
+        });
+      }
+
+      /* (h) GRAIN ORIENTATION — the blank rule for every angled leg: rip
+       * WITH the grain along the leg axis; never saw the angle into a
+       * vertical blank (slope-of-grain strength loss ~25–30% at 1-in-10,
+       * Wood Handbook slope-of-grain table; JLC/MDPI corroboration). */
+      {
+        const splayed = se.splayDeg > 0;
+        checks.push({
+          id: 'chair:grain', title: 'Grain orientation on legs',
+          status: splayed ? 'advisory' : 'pass',
+          value: splayed ? `${fmtDeg(se.splayDeg)} splay — blank orientation is load-bearing` : 'straight members — grain follows every leg',
+          threshold: 'grain runs the length of every leg; angled legs are ripped with the grain, never sawn from a vertical blank',
+          explain: splayed
+            ? `Splayed legs MUST be ripped with the grain running along the leg axis (the compound angle lives in the END cuts). Sawing the splay into a vertically-grained blank costs roughly a quarter of the bending strength at a 1-in-10 slope (Wood Handbook slope-of-grain data) — the cut list and steps carry the blank rule.`
+            : 'All legs and posts are straight members cut with continuous grain — the class geometry never creates runout.',
+          fixes: [],
+          data: { splayDeg: se.splayDeg }
+        });
+      }
+
+      /* (i) The benchmark disclosure — in the OUTPUT, not just the docs:
+       * never a compliance claim. */
+      checks.push({
+        id: 'chair:bifma', title: 'What these numbers are', status: 'pass',
+        value: 'benchmarked, not certified',
+        threshold: 'no compliance claim without physical testing',
+        explain: C.DESIGN_BASIS_SEATING,
+        fixes: []
+      });
+    }
+
     /* ---- tipping stability: COG from part volumes & density, empty and loaded ---- */
     let antiTip = false, tip = null;
     {
@@ -1273,6 +1505,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         return { map, patch: { custom: { parts: (spec.custom && spec.custom.parts) || [], connections: conns } } };
       };
       for (const s of surfaces) {
+        /* Chairs run their own joint cases (chair:tilt is the governing one,
+         * chair:cyclic the durability one) — the generic per-surface share
+         * would price the seat's movement screws as the load path, which is
+         * the wrong model for a frame the slab merely rests on. */
+        if (t === 'chair') continue;
         const N = totalLoadN(s.presetKey, s.span);
         let joint = null, count = 2, where = '', slot = null, endGrain = false;
         let demand = null, apron = false; // G5: apron end reaction overrides N/count
@@ -1459,7 +1696,7 @@ var BB = globalThis.BB = globalThis.BB || {};
          *  custom    — attachment unknown: warn with the fix, as before. */
         let ctx = 'custom';
         if (!custom) {
-          if ((p.role === 'top' || p.role === 'seat') && TABLE_LIKE.includes(t)) ctx = 'floated';
+          if ((p.role === 'top' || p.role === 'seat') && (TABLE_LIKE.includes(t) || t === 'chair')) ctx = 'floated';
           else if (p.role === 'side') ctx = spec.structure.backPanel ? 'captured' : 'compatible';
           else if (p.role === 'shelf' && TABLE_LIKE.includes(t)) ctx = 'captured'; // notched around the legs
           else if (['top', 'bottom', 'shelf', 'seat'].includes(p.role)) ctx = 'compatible';

@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
+const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js', 'classes.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'drafting.js', 'gltf.js', 'exports.js', 'history.js', 'codec.js', 'ai.js', 'store.js', 'gallery.js', 'joinery3d.js', 'selftest.js'];
 for (const f of SRC) vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
 const { Spec, Parametric, Plans, K, Structural, Packing, Units } = globalThis.BB;
@@ -97,6 +97,46 @@ const CORPUS = [
         ]
       }
     })
+  },
+
+  /* ---- seating class (2026-07): nominal chair (imperial), nominal counter
+   * stool (metric), and a boundary chair pushing every seat-family rule to
+   * its edge (metric) — the class contract's golden manifest. Refusal cases
+   * are frozen as exact-match assertions in audit.test.js (SEAT sections):
+   * a refusal produces notes and errors, not a plan to snapshot. */
+  {
+    name: 'oak-dining-chair-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Oak Dining Chair', template: 'chair', level: 'advanced', units: 'in' },
+      wood: { species: 'red_oak' },
+      joinery: { frame: 'mortise_tenon' },
+      finish: 'danish_oil'
+    }
+  },
+  {
+    name: 'maple-counter-stool-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Maple Counter Stool', template: 'chair', level: 'intermediate', units: 'mm' },
+      wood: { species: 'hard_maple' },
+      seat: { backHeight: 0, counterHeight: 900, splayDeg: 5 },
+      finish: 'hardwax_oil'
+    }
+  },
+  {
+    /* Boundary: every seat-family knob at (or past) its edge — width/depth
+     * at the band tops, seat height at the dining clamp, back rise at max,
+     * rake asked at 8° and CLAMPED by the straight-post rule, slope at max.
+     * Freezes both the clamps and the ergonomic advisories they trigger. */
+    name: 'walnut-chair-boundary-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Boundary Chair', template: 'chair', level: 'intermediate', units: 'mm' },
+      wood: { species: 'walnut' },
+      seat: { width: 520, depth: 460, height: 520, slopeDeg: 8, backHeight: 650, backRake: 8 },
+      structure: { legThickness: 45, topThickness: 25 }
+    }
   }
 ];
 

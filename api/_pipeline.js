@@ -24,7 +24,7 @@ const crypto = require('crypto');
 // porch, store, billing, gallery, selftest, joinery3d, jointview, provenance,
 // ai, history, icons for chrome) stay out — this list is the plan pipeline only.
 const SRC = ['knowledge.js', 'hardware.js', 'icons.js', 'materials.js', 'geometry.js', 'units.js',
-  'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
+  'classes.js', 'spec.js', 'parametric.js', 'structural.js', 'fasteners.js', 'packing.js',
   'plans.js', 'drafting.js', 'gltf.js', 'exports.js', 'codec.js'];
 
 /* Bump when the pipeline's OUTPUT contract changes in a way that should

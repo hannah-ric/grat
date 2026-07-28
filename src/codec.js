@@ -16,7 +16,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   'use strict';
 
   /* ---------------- enum tables (order is the wire contract — append only) ---------------- */
-  const TPL = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom'];
+  const TPL = ['table', 'desk', 'bench', 'bookshelf', 'nightstand', 'cabinet', 'custom',
+    // Seating class (2026-07) — appended; old share codes decode unchanged.
+    'chair'];
   const SPC = ['red_oak', 'white_oak', 'hard_maple', 'walnut', 'cherry', 'ash', 'poplar', 'pine', 'baltic_birch',
     // 2026 knowledge expansion — appended in this exact order; old share codes decode unchanged.
     'douglas_fir', 'syp', 'spf', 'western_red_cedar', 'soft_maple', 'hickory', 'beech', 'yellow_birch',
@@ -111,6 +113,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       w.dr = [spec.doors.count, ix(FRONT, spec.doors.style, 1)];
       if (spec.hardware && spec.hardware.hinge && spec.hardware.hinge !== 'euro_cup') w.hh = ix(HNG, spec.hardware.hinge, 0);
     }
+    /* Seating (2026-07): the seat section rides the wire only on a chair, so
+     * every earlier design still encodes byte-identically. Flat array, mm and
+     * degrees as integers/decimals; counterHeight 0 = "not given". */
+    if (spec.seat && spec.meta.template === 'chair') {
+      w.se = [spec.seat.width, spec.seat.depth, spec.seat.height, spec.seat.slopeDeg,
+        spec.seat.backHeight, spec.seat.backRake, spec.seat.splayDeg, spec.seat.counterHeight || 0];
+    }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
       w.p = spec.custom.parts.map(encodePart);
@@ -184,8 +193,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       drawers: Array.isArray(w.d) && w.d.length
         ? { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') }
         : null,
-      custom: null
+      custom: null,
+      seat: null
     };
+    if (Array.isArray(w.se) && spec.meta.template === 'chair') {
+      const n = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+      spec.seat = {
+        width: n(w.se[0], 430), depth: n(w.se[1], 420), height: n(w.se[2], 445),
+        slopeDeg: n(w.se[3], 0), backHeight: n(w.se[4], 0), backRake: n(w.se[5], 0),
+        splayDeg: n(w.se[6], 0), counterHeight: w.se[7] ? n(w.se[7], null) : null
+      };
+    }
     if (Array.isArray(w.p) && spec.meta.template === 'custom') {
       const parts = w.p.map(decodePart).filter(Boolean);
       const conns = (Array.isArray(w.c) ? w.c : [])
@@ -240,6 +258,27 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (w.d.c !== undefined) patch.drawers.count = w.d.c;
         if (w.d.f !== undefined) patch.drawers.frontStyle = at(FRONT, w.d.f, undefined);
         if (w.d.r !== undefined) patch.drawers.runner = at(RUN, w.d.r, undefined);
+      }
+    }
+    /* Seating refinements: full-array form or partial object
+     * {w,d,h,sl,bh,br,sp,ch}. "ch":0 clears the counter height. */
+    if (w.se !== undefined) {
+      if (Array.isArray(w.se)) {
+        patch.seat = {
+          width: w.se[0], depth: w.se[1], height: w.se[2], slopeDeg: w.se[3],
+          backHeight: w.se[4], backRake: w.se[5], splayDeg: w.se[6],
+          counterHeight: w.se[7] ? w.se[7] : null
+        };
+      } else if (w.se && typeof w.se === 'object') {
+        patch.seat = {};
+        if (w.se.w !== undefined) patch.seat.width = w.se.w;
+        if (w.se.d !== undefined) patch.seat.depth = w.se.d;
+        if (w.se.h !== undefined) patch.seat.height = w.se.h;
+        if (w.se.sl !== undefined) patch.seat.slopeDeg = w.se.sl;
+        if (w.se.bh !== undefined) patch.seat.backHeight = w.se.bh;
+        if (w.se.br !== undefined) patch.seat.backRake = w.se.br;
+        if (w.se.sp !== undefined) patch.seat.splayDeg = w.se.sp;
+        if (w.se.ch !== undefined) patch.seat.counterHeight = w.se.ch ? w.se.ch : null;
       }
     }
     /* Custom-grammar diffs stay surgical (A4): "p" and "c" are independent
@@ -328,6 +367,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
+    'SEATING (t=7 chair): "se"=[seatW,seatD,seatH,slopeDeg,backHeight,backRake,splayDeg,counterH|0]. backHeight 0=stool (splay stools-only); counterH>0 derives seat height (ask when a stool names none). Code mandates tenon-class seat-frame joints (never screws). NOT buildable: upholstered/slip seats, arms, sawn or bent rear legs, rockers, folders — refuse or ask, never approximate.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
     'Mechanisms (hinge/lift-off/fold/slide) NOT expressible IN THE NOVEL GRAMMAR — every JNT is permanent except kd_bolt (tool-removable). Template doors ("dr") are the sole exception; a novel composition still cannot hinge anything. Otherwise build the nearest fixed/kd_bolt design, say so in "e", or ask — never claim motion the parts lack.',
     // G10: the floor boundary was undocumented — the model kept proposing

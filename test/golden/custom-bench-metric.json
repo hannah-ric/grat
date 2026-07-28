@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 6,
+  "specVersion": 7,
   "meta": {
    "name": "Custom Bench",
    "template": "custom",
@@ -125,7 +125,8 @@
      "joint": "butt_screws"
     }
    ]
-  }
+  },
+  "seat": null
  },
  "validation": {
   "errors": [],

@@ -1,0 +1,621 @@
+{
+ "spec": {
+  "specVersion": 7,
+  "meta": {
+   "name": "Boundary Chair",
+   "template": "chair",
+   "level": "intermediate",
+   "units": "mm"
+  },
+  "overall": {
+   "width": 520,
+   "depth": 460,
+   "height": 1100
+  },
+  "wood": {
+   "species": "walnut",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 25,
+   "legThickness": 45,
+   "apronHeight": 65,
+   "apronThickness": 25,
+   "apronInset": 0,
+   "shelfCount": 0,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": false,
+   "stretcher": "h",
+   "stretcherHeight": 225
+  },
+  "joinery": {
+   "frame": "kd_bolt",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "wipe_poly",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": null,
+  "doors": null,
+  "custom": null,
+  "seat": {
+   "width": 520,
+   "depth": 460,
+   "backHeight": 600,
+   "counterHeight": null,
+   "height": 500,
+   "slopeDeg": 8,
+   "splayDeg": 0,
+   "backRake": 4.2
+  }
+ },
+ "validation": {
+  "errors": [],
+  "advisories": [
+   "ergo_seat_height",
+   "ergo_seat_depth",
+   "ergo_seat_width"
+  ]
+ },
+ "cutList": [
+  {
+   "name": "Seat",
+   "qty": 1,
+   "L": 520,
+   "W": 460,
+   "T": 25,
+   "material": "walnut",
+   "grain": "length",
+   "note": "bevel 8° · select straight-grained stock, free of knots",
+   "angles": {
+    "miter": 0,
+    "bevel": 8,
+    "compound": false,
+    "extreme": false
+   }
+  },
+  {
+   "name": "Rear post",
+   "qty": 2,
+   "L": 1100,
+   "W": 45,
+   "T": 45,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Crest rail",
+   "qty": 1,
+   "L": 430,
+   "W": 75,
+   "T": 16,
+   "material": "walnut",
+   "grain": "length",
+   "note": "mortise offset per setout — back rakes 4.2° via opposed offsets · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Front rail",
+   "qty": 1,
+   "L": 430,
+   "W": 65,
+   "T": 25,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Back seat rail",
+   "qty": 1,
+   "L": 430,
+   "W": 65,
+   "T": 25,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Back slat",
+   "qty": 2,
+   "L": 430,
+   "W": 60,
+   "T": 16,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Side rail",
+   "qty": 2,
+   "L": 373.6,
+   "W": 65,
+   "T": 25,
+   "material": "walnut",
+   "grain": "length",
+   "note": "bevel 8° · select straight-grained stock, free of knots",
+   "angles": {
+    "miter": 0,
+    "bevel": 8,
+    "compound": false,
+    "extreme": false
+   }
+  },
+  {
+   "name": "Centre stretcher",
+   "qty": 1,
+   "L": 470,
+   "W": 49,
+   "T": 25,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Front leg",
+   "qty": 2,
+   "L": 468.7,
+   "W": 45,
+   "T": 45,
+   "material": "walnut",
+   "grain": "length",
+   "note": "top end beveled 8° to meet the sloped seat · select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Side stretcher",
+   "qty": 2,
+   "L": 370,
+   "W": 49,
+   "T": 25,
+   "material": "walnut",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Corner block",
+   "qty": 4,
+   "L": 60,
+   "W": 60,
+   "T": 53,
+   "material": "walnut",
+   "grain": "length",
+   "note": "rip the blank at 45° across the corner — grain runs across the diagonal · select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "verdict": "pass",
+  "rackScore": 100,
+  "tip": {
+   "angEmpty": 22.13,
+   "angLoaded": 22.13,
+   "ratio": 2.391
+  },
+  "checks": [
+   {
+    "id": "sag:apron:seat_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.159,
+     "limitMM": 1.233,
+     "spanMM": 370
+    }
+   },
+   {
+    "id": "str:apron:seat_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:seat_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 0.57,
+     "limitMM": 1.567,
+     "spanMM": 470
+    }
+   },
+   {
+    "id": "str:seat_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "chair:tilt",
+    "status": "pass",
+    "data": {
+     "momentNmm": 206770,
+     "armMM": 217.5,
+     "demandN": 950.667,
+     "capN": 1980,
+     "marginRatio": 2.083
+    }
+   },
+   {
+    "id": "chair:back",
+    "status": "pass",
+    "data": {
+     "stressMPa": 17.504,
+     "allowMPa": 25.25,
+     "momentNmm": 206770,
+     "netW": 35,
+     "postD": 45
+    }
+   },
+   {
+    "id": "chair:leg",
+    "status": "pass",
+    "data": {
+     "stressMPa": 4.948,
+     "allowMPa": 25.25
+    }
+   },
+   {
+    "id": "chair:cyclic",
+    "status": "pass",
+    "data": {
+     "perJointN": 333.5,
+     "cyclicCapN": 990,
+     "marginRatio": 2.969
+    }
+   },
+   {
+    "id": "chair:rake",
+    "status": "pass",
+    "data": {
+     "rakeDeg": 4.2,
+     "maxRakeDeg": 4.2
+    }
+   },
+   {
+    "id": "chair:grain",
+    "status": "pass",
+    "data": {
+     "splayDeg": 0
+    }
+   },
+   {
+    "id": "chair:bifma",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "slender",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:seat_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 5.042,
+     "crossWidthMM": 460,
+     "context": "floated"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Black Walnut 19 x 64 x 1829 mm (1x3)",
+    "qty": 1,
+    "cost": 17.119
+   },
+   {
+    "label": "Black Walnut 19 x 89 x 1829 mm (1x4)",
+    "qty": 1,
+    "cost": 21.729
+   },
+   {
+    "label": "Black Walnut 89 x 89 x 1829 mm (4x4)",
+    "qty": 1,
+    "cost": 69.136
+   },
+   {
+    "label": "Black Walnut 25 x 89 x 2438 mm (5/4x4)",
+    "qty": 1,
+    "cost": 40.373
+   },
+   {
+    "label": "Black Walnut 25 x 89 x 3658 mm (5/4x4)",
+    "qty": 1,
+    "cost": 60.576
+   },
+   {
+    "label": "Black Walnut 45 x 64 x 3658 mm (8/4x3)",
+    "qty": 1,
+    "cost": 84.28
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x3",
+    "stockLen": 1829,
+    "offcut": 936,
+    "cuts": [
+     {
+      "name": "Back slat",
+      "len": 430,
+      "offset": 15
+     },
+     {
+      "name": "Back slat",
+      "len": 430,
+      "offset": 448
+     }
+    ]
+   },
+   {
+    "nominal": "1x4",
+    "stockLen": 1829,
+    "offcut": 1369,
+    "cuts": [
+     {
+      "name": "Crest rail",
+      "len": 430,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "4x4",
+    "stockLen": 1829,
+    "offcut": 1550,
+    "cuts": [
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 15
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 78
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 141
+     },
+     {
+      "name": "Corner block",
+      "len": 60,
+      "offset": 204
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3658,
+    "offcut": 20,
+    "cuts": [
+     {
+      "name": "Seat (strip 1/6)",
+      "len": 520,
+      "offset": 15
+     },
+     {
+      "name": "Seat (strip 2/6)",
+      "len": 520,
+      "offset": 538
+     },
+     {
+      "name": "Seat (strip 3/6)",
+      "len": 520,
+      "offset": 1061
+     },
+     {
+      "name": "Seat (strip 4/6)",
+      "len": 520,
+      "offset": 1584
+     },
+     {
+      "name": "Seat (strip 5/6)",
+      "len": 520,
+      "offset": 2107
+     },
+     {
+      "name": "Seat (strip 6/6)",
+      "len": 520,
+      "offset": 2630
+     },
+     {
+      "name": "Centre stretcher",
+      "len": 470,
+      "offset": 3153
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 2438,
+    "offcut": 45.8,
+    "cuts": [
+     {
+      "name": "Front rail",
+      "len": 430,
+      "offset": 15
+     },
+     {
+      "name": "Back seat rail",
+      "len": 430,
+      "offset": 448
+     },
+     {
+      "name": "Side rail",
+      "len": 373.6,
+      "offset": 881
+     },
+     {
+      "name": "Side rail",
+      "len": 373.6,
+      "offset": 1257.6
+     },
+     {
+      "name": "Side stretcher",
+      "len": 370,
+      "offset": 1634.2
+     },
+     {
+      "name": "Side stretcher",
+      "len": 370,
+      "offset": 2007.2
+     }
+    ]
+   },
+   {
+    "nominal": "8/4x3",
+    "stockLen": 3658,
+    "offcut": 481.6,
+    "cuts": [
+     {
+      "name": "Rear post",
+      "len": 1100,
+      "offset": 15
+     },
+     {
+      "name": "Rear post",
+      "len": 1100,
+      "offset": 1118
+     },
+     {
+      "name": "Front leg",
+      "len": 468.7,
+      "offset": 2221
+     },
+     {
+      "name": "Front leg",
+      "len": 468.7,
+      "offset": 2692.7
+     }
+    ]
+   }
+  ],
+  "sheets": [],
+  "totalCost": 293.21,
+  "wasteSolidPct": 58,
+  "wasteSheetPct": null
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 19 x 64 x 1829 mm (1x3)",
+    "qty": 1,
+    "price": 17.12
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 19 x 89 x 1829 mm (1x4)",
+    "qty": 1,
+    "price": 21.73
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 89 x 89 x 1829 mm (4x4)",
+    "qty": 1,
+    "price": 69.14
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 25 x 89 x 2438 mm (5/4x4)",
+    "qty": 1,
+    "price": 40.37
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 25 x 89 x 3658 mm (5/4x4)",
+    "qty": 1,
+    "price": 60.58
+   },
+   {
+    "kind": "lumber",
+    "label": "Black Walnut 45 x 64 x 3658 mm (8/4x3)",
+    "qty": 1,
+    "price": 84.28
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 10.3 bd ft (0.02 m³)",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 58%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "M6 × 50 mm furniture bolt + barrel nut",
+    "qty": 30,
+    "price": 45
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 64 mm wood screw (pilot 3.2 mm)",
+    "qty": 24,
+    "price": 1.44
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 50 mm wood screw (pilot 3.2 mm)",
+    "qty": 12,
+    "price": 0.72
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "finish",
+    "label": "Wipe-on polyurethane",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 366.38
+ },
+ "steps": [
+  "glueup1",
+  "thickness",
+  "layout",
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "s5",
+  "s6",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

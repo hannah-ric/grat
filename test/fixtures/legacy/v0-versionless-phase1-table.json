@@ -3,7 +3,7 @@
   "version": null,
   "kind": "spec",
   "expectAfterMigration": {
-    "specVersion": 6,
+    "specVersion": 7,
     "custom": null,
     "wood.sheetSpecies": "baltic_birch",
     "structure.stretcher": "none",
