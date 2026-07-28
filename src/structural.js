@@ -1685,6 +1685,122 @@ var BB = globalThis.BB = globalThis.BB || {};
           fixes
         });
       }
+
+      /* ---- doored-casework completion (roadmap item 4): droop, reveal,
+       * catches. All three read the casework class contract (CASE_GEOM) and
+       * the hardware catalog — hand arithmetic in test/handcalc.js. */
+      const caseCls = BB.Classes ? BB.Classes.get('casework') : null;
+      if (worst && caseCls) {
+        const G = caseCls.geom;
+        const dp = worst.part;
+        const inset = spec.doors.style === 'inset';
+        const nLeaves = spec.doors.count;
+
+        /* ---- door:sag — slab droop over the hinge couple ----
+         * What the app builds is a SLAB door: a one-piece panel. A slab
+         * cannot rack out of square — the panel is its own shear web
+         * (frame-and-panel doors rack at frame joints that do not exist
+         * here). What drops a slab door's free corner is the hinge couple:
+         * the leaf's weight at w/2 from the hinge line resolves as a
+         * horizontal force couple over the hinge spread s (gate statics,
+         * F = W·g·w/(2s)), and every millimetre the top hinge fixing
+         * yields reads as w/s millimetres of droop at the free edge —
+         * pure geometry. Droop is priced at the class's 0.5 mm design
+         * settlement (a documented derivation — no maker publishes one)
+         * against the fitted reveal. The width gate is the Blum-class
+         * chart rule, verified 2026-07 (ea.blum.com "Number of hinges"):
+         * "doors should have a height that is greater than their width",
+         * charts valid to 600 mm wide. A continuous (piano) hinge carries
+         * the whole edge and escapes both. */
+        {
+          const dd = G.doorDroop(hinge, dp.size.w, dp.size.h, worst.kg);
+          const vBudget = G.DOOR_REVEAL;
+          const sagStatus2 = dd.droopMM > vBudget ? 'fail'
+            : (dd.widerThanTall || dd.droopMM > vBudget / 2) ? 'advisory' : 'pass';
+          const sagFixes = [];
+          if (sagStatus2 !== 'pass') {
+            if (hinge.countRule !== 'fullLength') sagFixes.push({ id: 'hinge-piano', label: 'Hang it on a continuous (piano) hinge', patch: { hardware: { hinge: 'piano' } } });
+            if (nLeaves === 1) sagFixes.push({ id: 'door-pair', label: 'Split it into a pair of doors', patch: { doors: { count: 2 } } });
+          }
+          checks.push({
+            id: 'door:sag', title: 'Door droop',
+            status: sagStatus2,
+            value: `${fmtFine(dd.droopMM)} free-edge droop at ${fmtFine(G.HINGE_SETTLE_MM)} hinge settlement × ${dd.ampRatio} amplification (spread ${fmtLen(dd.spreadMM)})`,
+            threshold: `droop ≤ ${fmtFine(vBudget / 2)} clean, ≤ ${fmtFine(vBudget)} hard (the fitted reveal); leaf width ≤ height for two-point hinges (Blum chart rule)`,
+            explain: `A slab door cannot rack out of square — the panel is its own diagonal — so what drops the free corner is the hinge couple: ${U().fmtWeight(worst.kg)} at half the ${fmtLen(dp.size.w)} width puts ${Math.round(dd.coupleN)} N of horizontal pull on the top hinge fixing across the ${fmtLen(dd.spreadMM)} spread, and every millimetre it yields reads as ${dd.ampRatio} mm at the free edge.` +
+              (dd.widerThanTall ? ` This leaf is WIDER than it is tall — past the geometry the hinge count charts are written for (they stop at height > width); a wide-short door droops on any two-point hinge.` : '') +
+              (sagStatus2 === 'pass' ? ' Tall spread, modest width: the droop stays inside the fitted reveal.' : ''),
+            fixes: sagFixes,
+            data: { leafKg: worst.kg, spreadMM: dd.spreadMM, ampRatio: dd.ampRatio, droopMM: dd.droopMM, coupleN: dd.coupleN, widerThanTall: dd.widerThanTall },
+            prov: { rule: `couple F = ${worst.kg.toFixed(2)} kg × g × ${Math.round(dp.size.w)}/(2 × ${Math.round(dd.spreadMM)}) = ${Math.round(dd.coupleN)} N; droop = ${G.HINGE_SETTLE_MM} × ${Math.round(dp.size.w)}/${Math.round(dd.spreadMM)}` }
+          });
+        }
+
+        /* ---- door:reveal — seasonal movement vs the fitted air ----
+         * Slab leaves are solid wood: the leaf swings across its grain with
+         * the seasons (Wood Handbook coefficients — the same K.movementMM
+         * and ΔMC the move: checks use; sheet stock is exempt the same
+         * way). The hinge edge is pinned by its screws, so the whole
+         * half-swing from a mid-season fit arrives at the FREE edge: an
+         * inset leaf closes its reveal, a pair closes the meeting gap from
+         * both sides at once. Overlay singles simply ride over the case
+         * face; overlay pairs can be re-centred within the plate
+         * adjustment (±2 mm, Blum CLIP top spec — verified-approximate).
+         * Advisory, not fail: fitting in the humid season and easing the
+         * meeting stiles is the discipline every inset door has always
+         * needed — the check's job is to say the number out loud. */
+        {
+          const crossW = Math.min(dp.size.w, dp.size.h);
+          const swing = G.doorSwingMM(dp.size.w, dp.size.h, dp.material, dMC);
+          const closure = nLeaves * swing / 2;
+          const freeRide = !inset && nLeaves === 1;
+          const budget = inset ? G.DOOR_REVEAL : nLeaves * G.HINGE_ADJUST_MM;
+          const over = !freeRide && closure > budget;
+          const revFixes = [];
+          if (over && inset) revFixes.push({ id: 'door-overlay', label: 'Overlay the doors (forgiving style)', patch: { doors: { style: 'overlay' } } });
+          checks.push({
+            id: 'door:reveal', title: 'Reveal survival',
+            status: over ? 'advisory' : 'pass',
+            value: freeRide
+              ? `overlay single: ${fmtFine(swing)} seasonal swing rides over the case face`
+              : `${fmtFine(closure)} of ${inset ? (nLeaves === 2 ? 'meeting-gap' : 'reveal') : 'meeting-gap'} closure vs ${fmtFine(budget)} of fitted air`,
+            threshold: inset
+              ? `closure ≤ ${fmtFine(budget)} (the fitted reveal) — half of each leaf's full-swing movement arrives at the free edge`
+              : `closure ≤ ${fmtFine(budget)} (± ${fmtFine(G.HINGE_ADJUST_MM)} plate adjustment per door)`,
+            explain: swing === 0
+              ? 'Sheet stock is movement-exempt: cross-laminated plies restrain each other, so the reveal holds all year.'
+              : `Each ${fmtLen(crossW)} slab leaf swings ${fmtFine(swing)} across the grain between a dry winter and a damp summer; the hinge screws pin one edge, so half of that arrives at the free edge${nLeaves === 2 ? ' of BOTH leaves, meeting in the middle' : ''}.` +
+                (freeRide ? ' An overlay single just rides over the case face — nothing to bind against.' : over
+                  ? ` That outruns the fitted air: fit in the season you are in and expect the ${inset ? 'reveal' : 'centre gap'} to breathe — fit tight in the HUMID season so winter opens a gap instead of summer binding it. Quartersawn stock roughly halves the swing; ${inset ? 'an overlay style forgives the case edges entirely' : 'the plates re-centre what they can'}.`
+                  : ' Inside the fitted air — the reveal breathes but survives the year.'),
+            fixes: revFixes,
+            data: { crossWidthMM: crossW, swingMM: swing, closureMM: closure, budgetMM: freeRide ? null : budget },
+            prov: { rule: `swing = ${Math.round(crossW)} × ct × ${dMC}%; closure = ${nLeaves} × swing/2 = ${closure.toFixed(2)} mm vs ${freeRide ? 'n/a (overlay single)' : `${budget} mm`}` }
+          });
+        }
+
+        /* ---- door:catch — catches as load-rated hardware ----
+         * Selection is BB.HW.catchSpec — one pure function the BOM, this
+         * check, and the fitting step all call, so the label, the count,
+         * and the rating can never disagree (the hinge-count contract,
+         * extended to the keeper). */
+        {
+          const cs = BB.HW.catchSpec(worst.kg, dp.size.h, spec.hardware && spec.hardware.pull);
+          checks.push({
+            id: 'door:catch', title: 'Door catches',
+            status: cs.substituted ? 'advisory' : 'pass',
+            value: `${cs.count} × ${cs.label.toLowerCase()} per door — ${U().fmtWeight(cs.holdKg)} hold class, ${cs.marginRatio}× over the swing demand`,
+            threshold: `hold ≥ 1.5× the out-of-plumb swing force (m·g·sin 3° shared across ${cs.count} catch${cs.count > 1 ? 'es' : ''}); touch latches refuse leaves past ${U().fmtWeight(4)} (spring cap)`,
+            explain: (cs.count === 2 ? `At ${fmtLen(dp.size.h)} this leaf takes a catch top AND bottom, so both free corners are held flat against seasonal twist. ` : '') +
+              (cs.substituted
+                ? `A handleless front wants a touch latch, but at ${U().fmtWeight(worst.kg)} this leaf is past the ~${U().fmtWeight(4)} the pop-out spring can throw — an honest magnetic catch is fitted instead, and the front needs a pull after all.`
+                : `A case leaning 3° swings its own doors open; ${cs.count} × ${cs.label.toLowerCase()} holds ${U().fmtWeight(cs.holdKg * cs.count)} of class rating against a ${cs.demandN.toFixed(2)} N computed demand per catch.`),
+            fixes: [],
+            data: { countPerDoor: cs.count, holdN: cs.holdN, demandN: cs.demandN, marginRatio: cs.marginRatio, substituted: cs.substituted },
+            prov: { rule: `demand = ${worst.kg.toFixed(2)} kg × g × 0.05 / ${cs.count} = ${cs.demandN.toFixed(2)} N vs ${cs.holdN} N hold (${cs.label})` }
+          });
+        }
+      }
     }
 
     /* ---- leg slenderness: unbraced length / least thickness > 20 ---- */

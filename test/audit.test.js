@@ -3482,5 +3482,227 @@ section('BED-3 refusals with their regulations, and the basis disclosure');
   eq(rt.bed.size, spec.bed.size, 'the mattress size survives the codec roundtrip');
 }
 
+/* =========================================================================
+ * CASEWORK class (2026-07) — doored-casework completion (roadmap item 4).
+ * The retrofit contract (bookshelf / nightstand / cabinet) plus the three
+ * closures it shipped with: slab-door droop over the hinge couple
+ * (door:sag), reveal survival under seasonal movement (door:reveal), and
+ * catches as load-rated, code-selected hardware (door:catch /
+ * BB.HW.catchSpec). Written failing-test-first; hand arithmetic mirrored
+ * in test/handcalc.js.
+ * ========================================================================= */
+section('CASE-1 the casework contract holds and every failure mode is examined');
+{
+  const cls = BB.Classes.get('casework');
+  ok(!!cls, 'the casework class is registered');
+  eq(BB.Classes.validateContract(cls), [], 'contract complete: casework');
+  eq(cls.templates, ['cabinet', 'bookshelf', 'nightstand'], 'it covers the three carcass templates');
+  eq(BB.Classes.forTemplate('cabinet').key, 'casework', 'forTemplate resolves a cabinet to it');
+  // Nominal coverage: every non-conditional failure mode is examined live on
+  // every template of the class — a silently vanished check breaks this.
+  for (const tmpl of cls.templates) {
+    const { spec, model, report } = pipeline({ meta: { name: 'cov', template: tmpl, level: 'intermediate', units: 'mm' } });
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const rows = BB.Classes.runChecklist(tmpl, { integrity: integ, validation: report });
+    eq(rows.filter(r => r.status === 'uncovered').map(r => r.id), [], `no uncovered failure modes on a nominal ${tmpl}`);
+  }
+  // A doored design exercises the conditional door modes end to end.
+  const { spec, model, report } = pipeline({
+    meta: { name: 'covd', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true }, drawers: null,
+    doors: { count: 2, style: 'inset' }
+  });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const rows = BB.Classes.runChecklist('cabinet', { integrity: integ, validation: report });
+  for (const id of ['hinge_overload', 'door_droop', 'reveal_loss', 'door_unlatched']) {
+    ok(rows.find(r => r.id === id).covered, `door mode ${id} is examined on a doored cabinet`);
+  }
+  ok(rows.find(r => r.id === 'oversize_single_door').status === 'guarded', 'the oversize-single mode is correction-guarded');
+}
+
+section('CASE-2 slab-door droop is arithmetic: the hinge couple, by hand');
+{
+  /* Tall inset pair (the armoire golden, metric): cabinet 900×500×1900,
+   * sides 18, top 25, toe kick 90, no drawers → opening 109…1875 mm, so
+   * openH = 1766. Inset leaves: totalW = (900−36) − 4 = 860; leafW =
+   * (860 − 2)/2 = 429; leafH = 1766 − 4 = 1762. Red oak SG 0.63:
+   * leaf mass = 0.429 × 1.762 × 0.019 m³ × 630 kg/m³ = 9.048 kg.
+   * Hinge spread s = 1762 − 2×100 = 1562. Droop amplification w/s =
+   * 429/1562 = 0.2747; droop at 0.5 mm settlement = 0.1373 mm.
+   * Couple F = m·g·w/(2s) = 9.048 × 9.81 × 429 / 3124 = 12.19 N. */
+  const raw = {
+    meta: { name: 'Armoire', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true, topThickness: 25, sideThickness: 18 },
+    drawers: null, doors: { count: 2, style: 'inset' }
+  };
+  const { spec, model } = pipeline(raw);
+  const door = model.parts.find(p => p.role === 'door');
+  eq([Math.round(door.size.w), Math.round(door.size.h)], [429, 1762], 'leaf geometry matches the hand layout');
+  const sag = Structural.computeIntegrity(spec, model, {}).checks.find(c => c.id === 'door:sag');
+  ok(sag && sag.status === 'pass', 'a tall narrow leaf passes door:sag');
+  const kgHand = 0.429 * 1.762 * 0.019 * 630;
+  near(sag.data.leafKg, kgHand, 0.01, 'leaf mass = geometry × SG, by hand');
+  eq(sag.data.spreadMM, 1562, 'hinge spread = leafH − 2×100');
+  near(sag.data.ampRatio, 429 / 1562, 0.001, 'amplification = w/s');
+  near(sag.data.droopMM, 0.5 * 429 / 1562, 0.001, 'droop = settlement × w/s');
+  near(sag.data.coupleN, kgHand * 9.81 * 429 / (2 * 1562), 0.15, 'couple F = W·g·w/(2s)');
+  ok(!sag.data.widerThanTall, 'height > width: inside the Blum chart rule');
+
+  /* The boundary sideboard: a 1400 mm single is split by the guard and the
+   * resulting leaves are WIDER than tall — the chart rule fires as an
+   * advisory (a slab cannot rack, but a wide-short leaf droops on any
+   * two-point hinge), and the full-length-hinge fix genuinely clears it. */
+  const wideRaw = {
+    meta: { name: 'Sideboard', template: 'cabinet', level: 'beginner', units: 'mm' },
+    overall: { width: 1400, depth: 450, height: 750 }, wood: { species: 'beech' },
+    structure: { shelfCount: 1, toeKick: true, backPanel: true }, drawers: null,
+    doors: { count: 1, style: 'overlay' }
+  };
+  const wide = pipeline(wideRaw);
+  eq(wide.spec.doors.count, 2, 'the guard split the single into a pair');
+  const wsag = Structural.computeIntegrity(wide.spec, wide.model, {}).checks.find(c => c.id === 'door:sag');
+  eq(wsag.status, 'advisory', 'wider-than-tall leaves are an advisory, never silent');
+  ok(wsag.data.widerThanTall, 'and the flag names the Blum chart rule breach');
+  ok(wsag.fixes.some(f => f.id === 'hinge-piano'), 'a continuous-hinge remedy is offered');
+  const fixed = Spec.correctSpec(Spec.deepMerge(wide.spec, wsag.fixes.find(f => f.id === 'hinge-piano').patch));
+  const after = Structural.computeIntegrity(fixed, Parametric.build(fixed), {}).checks.find(c => c.id === 'door:sag');
+  eq(after.status, 'pass', 'a piano hinge carries the whole edge — applying the fix clears the check');
+  ok(!after.data.widerThanTall, 'the chart rule does not apply to a full-length hinge');
+}
+
+section('CASE-3 reveal survival: seasonal movement vs the fitted air, by hand');
+{
+  const raw = {
+    meta: { name: 'Armoire', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true, topThickness: 25, sideThickness: 18 },
+    drawers: null, doors: { count: 2, style: 'inset' }
+  };
+  const { spec, model } = pipeline(raw);
+  const rev = Structural.computeIntegrity(spec, model, {}).checks.find(c => c.id === 'door:reveal');
+  /* Hand: cross-grain width = min(429, 1762) = 429. Red oak ct = 0.00369,
+   * temperate ΔMC = 4% → swing = 429 × 0.00369 × 4 = 6.332 mm per leaf.
+   * Fitted mid-season, the hinge edge pinned: half the swing arrives at the
+   * free (meeting) edge of BOTH leaves → closure = 2 × 6.332/2 = 6.332 mm
+   * against 2 mm of fitted meeting reveal — the honest inset-slab advisory. */
+  const swingHand = 429 * K.WOOD_SPECIES.red_oak.ct * K.CLIMATE_DMC.temperate;
+  eq(rev.status, 'advisory', 'a solid inset pair is told about its seasonal swing');
+  near(rev.data.swingMM, swingHand, 0.01, 'swing = crossW × ct × ΔMC (same engine as the move: checks)');
+  near(rev.data.closureMM, 2 * swingHand / 2, 0.01, 'closure = count × swing/2');
+  eq(rev.data.budgetMM, 2, 'the budget is the fitted meeting reveal');
+  ok(/humid season/i.test(rev.explain) && /[Qq]uartersawn/.test(rev.explain),
+    'the advisory teaches the fitting discipline instead of just complaining');
+  // The offered remedy moves style to overlay, whose budget is the plate
+  // adjustment on both doors — demand unchanged, budget doubled.
+  const fix = rev.fixes.find(f => f.id === 'door-overlay');
+  ok(!!fix, 'an overlay remedy is offered');
+  const over = Spec.correctSpec(Spec.deepMerge(spec, fix.patch));
+  const orev = Structural.computeIntegrity(over, Parametric.build(over), {}).checks.find(c => c.id === 'door:reveal');
+  eq(orev.data.budgetMM, 4, 'overlay pair budget = ±2 mm plate adjustment per door');
+  ok(orev.data.closureMM / orev.data.budgetMM < rev.data.closureMM / rev.data.budgetMM,
+    'applying it improves the closure-to-budget ratio');
+  // An overlay SINGLE has nothing to bind against: the swing rides over the
+  // case face and the check says so as a pass.
+  const single = pipeline({
+    meta: { name: 'S', template: 'cabinet', level: 'beginner', units: 'mm' },
+    overall: { width: 560, depth: 400, height: 800 }, wood: { species: 'red_oak' },
+    drawers: null, doors: { count: 1, style: 'overlay' }
+  });
+  const srev = Structural.computeIntegrity(single.spec, single.model, {}).checks.find(c => c.id === 'door:reveal');
+  eq(srev.status, 'pass', 'an overlay single rides over the case face');
+  eq(srev.data.budgetMM, null, 'and prices no budget it does not have');
+}
+
+section('CASE-4 catches are load-rated hardware: one pure function, three surfaces');
+{
+  // The selection rule, straight from the corrected leaf — code, not taste.
+  const light = BB.HW.catchSpec(3, 900, 'bar_pull');
+  eq([light.key, light.count], ['magnetic', 1], 'a light short leaf takes one magnetic catch');
+  const heavyTall = BB.HW.catchSpec(9, 1700, 'bar_pull');
+  eq([heavyTall.key, heavyTall.count], ['roller_catch', 2], 'a heavy tall leaf takes roller catches top + bottom');
+  const touch = BB.HW.catchSpec(3.5, 900, 'none_touch');
+  eq([touch.key, !!touch.substituted], ['touch_latch', false], 'a handleless light front gets its touch latch');
+  const touchHeavy = BB.HW.catchSpec(6, 900, 'none_touch');
+  eq([touchHeavy.key, touchHeavy.substituted], ['magnetic', true],
+    'past the 4 kg spring cap the touch latch is DECLINED and the substitution carried');
+  /* Demand arithmetic: m·g·sin3° ≈ m·g·0.05 shared across the catches.
+   * 9 kg over 2 catches: 9 × 9.81 × 0.05 / 2 = 2.207 N; roller holds
+   * 4 kg = 39.24 N → margin 17.78×. */
+  near(heavyTall.demandN, 9 * 9.81 * 0.05 / 2, 0.01, 'demand = m·g·0.05/count, by hand');
+  near(heavyTall.marginRatio, (4 * 9.81) / (9 * 9.81 * 0.05 / 2), 0.05, 'margin = hold/demand');
+
+  // Three surfaces, one source: check = BOM = fitting step.
+  const { spec, model } = pipeline({
+    meta: { name: 'Armoire', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true }, drawers: null,
+    doors: { count: 2, style: 'inset' }
+  });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const chk = integ.checks.find(c => c.id === 'door:catch');
+  eq(chk.status, 'pass', 'rated catches pass on the nominal armoire');
+  eq(chk.data.countPerDoor, 2, 'a 1762 mm leaf takes a catch top AND bottom');
+  const bom = Plans.bom(spec, model, { integrity: integ });
+  const bomCatches = bom.items.filter(i => /catch|latch/i.test(i.label));
+  eq(bomCatches.length, 2, 'one catch line per door');
+  ok(bomCatches.every(i => i.qty === chk.data.countPerDoor), 'the BOM buys exactly the count the check rated');
+  ok(bomCatches.every(i => /top \+ bottom/i.test(i.label)), 'and says where they go');
+  const steps = Plans.assembly(spec, model, integ, {});
+  const hang = steps.find(s => s.id === 'doors_fit');
+  ok(/2 × roller catch/i.test(hang.text) && /top/i.test(hang.text) && /bottom/i.test(hang.text),
+    'the fitting step installs the same catches in the same places');
+
+  // The substitution reaches every surface too: a heavy handleless leaf.
+  const hh = pipeline({
+    meta: { name: 'HH', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 620, depth: 500, height: 1900 }, wood: { species: 'hickory' },
+    structure: { shelfCount: 2, toeKick: true, backPanel: true }, drawers: null,
+    doors: { count: 1, style: 'overlay' }, hardware: { pull: 'none_touch' }
+  });
+  const hInteg = Structural.computeIntegrity(hh.spec, hh.model, {});
+  const hChk = hInteg.checks.find(c => c.id === 'door:catch');
+  eq(hChk.status, 'advisory', 'an overwhelmed touch latch is an advisory, never silent');
+  ok(hChk.data.substituted, 'the substitution flag is carried');
+  const hBom = Plans.bom(hh.spec, hh.model, { integrity: hInteg });
+  const hLine = hBom.items.find(i => /catch|latch/i.test(i.label));
+  ok(/magnetic/i.test(hLine.label) && /declined/i.test(hLine.detail),
+    'the BOM buys the honest magnetic catch and says why');
+}
+
+section('CASE-5 casework refusals and disclosures: split guard, dropped doors, ergonomics');
+{
+  // The split guard is DISCLOSED (G10 doctrine): asking for one door across
+  // a wide case yields a pair and a note that says so.
+  const wideRaw = {
+    meta: { name: 'W', template: 'cabinet', level: 'beginner', units: 'mm' },
+    overall: { width: 1400, depth: 450, height: 750 }, doors: { count: 1, style: 'overlay' }
+  };
+  const wide = Spec.correctSpec(JSON.parse(JSON.stringify(wideRaw)));
+  eq(wide.doors.count, 2, 'the guard fires');
+  const notes = Spec.correctionNotes(wideRaw, wide);
+  ok(notes.some(n => /pair of doors/.test(n) && /swing radius/.test(n)),
+    `the split is disclosed — got ${JSON.stringify(notes)}`);
+  // Doors asked of a template with no case front are dropped AND told.
+  const deskRaw = { meta: { name: 'D', template: 'desk', level: 'beginner', units: 'mm' }, doors: { count: 2, style: 'overlay' } };
+  const desk = Spec.correctSpec(JSON.parse(JSON.stringify(deskRaw)));
+  eq(desk.doors, null, 'a desk has no case front — doors dropped');
+  const dNotes = Spec.correctionNotes(deskRaw, desk);
+  ok(dNotes.some(n => /no case front to hang doors on/.test(n)),
+    `and the drop is disclosed — got ${JSON.stringify(dNotes)}`);
+  // The wire doc says the same thing (the refusal's stated surface).
+  ok(/cabinet\/bookshelf only/.test(Codec.SCHEMA_DOC), 'SCHEMA_DOC scopes "dr" to case templates');
+  ok(/Mechanisms/.test(Codec.SCHEMA_DOC) && /sole exception/.test(Codec.SCHEMA_DOC),
+    'the mechanism doctrine (sliding/tambour refusal surface) is in the wire doc');
+  // Human-factors misses are named, never silent (the class's ergonomic_miss mode).
+  const tall = pipeline({ meta: { name: 'N', template: 'nightstand', level: 'beginner', units: 'mm' }, overall: { width: 500, depth: 400, height: 750 } });
+  ok(tall.report.advisories.some(a => a.id === 'ergo_nightstand_height'),
+    'an out-of-band nightstand height is named against K.ERGONOMICS');
+  // Idempotence: a corrected doored spec re-corrects to itself byte-for-byte.
+  const again = Spec.correctSpec(Spec.clone(wide));
+  eq(JSON.stringify(again.doors), JSON.stringify(wide.doors), 'the door correction is idempotent');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

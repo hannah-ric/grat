@@ -808,8 +808,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   const DOOR_STYLES = ['inset', 'overlay'];
   /* A single door past this width sags on its own hinges and needs a swing
    * radius nobody has in a kitchen; correction splits it into a pair rather
-   * than building something that will droop. Standard cabinet practice. */
-  const DOOR_MAX_SINGLE_W = 600;
+   * than building something that will droop. Standard cabinet practice —
+   * and the same 600 the Blum-class hinge count charts are valid to, which
+   * is why the cap is owned by the casework class contract (CASE_GEOM) and
+   * only read here. doorNotes() discloses the split. */
+  const DOOR_MAX_SINGLE_W = BB.Classes && BB.Classes.get('casework')
+    ? BB.Classes.get('casework').geom.DOOR_MAX_SINGLE_W : 600;
   /* Clear air the stretcher needs under the apron, and the least it can sit
    * above the floor. Both are shop numbers, not taste: the gap is what lets
    * you get a clamp and a hand between the two rails during glue-up, and the
@@ -1146,6 +1150,27 @@ var BB = globalThis.BB = globalThis.BB || {};
     notes.push(`The ${t} template has no opening for drawers — the drawer bank was dropped.`);
   }
 
+  /* Doors refused or reshaped by correction, said out loud (casework class):
+   * a single leaf past the class cap becomes a pair, and doors asked of a
+   * template with no case front are dropped — both silently deterministic in
+   * correctSpec, both disclosed here (G10 doctrine). */
+  function doorNotes(raw, cor, notes) {
+    const want = raw && raw.doors;
+    if (!want || typeof want !== 'object' || !cor) return;
+    const fmt = mm => U().fmtLength(mm);
+    if (cor.doors) {
+      const asked = Math.round(num(want.count, 0));
+      if (asked === 1 && cor.doors.count === 2) {
+        notes.push(`A single door across this opening would be wider than ${fmt(DOOR_MAX_SINGLE_W)} — past what cabinet hinges are charted for, and a swing radius nobody has — so the opening carries a pair of doors instead.`);
+      }
+    } else {
+      const t = at(cor, 'meta', 'template');
+      if (TEMPLATES.includes(t) && !DOOR_TEMPLATES.includes(t)) {
+        notes.push(`The ${t} template has no case front to hang doors on — the doors were dropped.`);
+      }
+    }
+  }
+
   function correctionNotes(rawSpec, correctedSpec) {
     const notes = [];
     const raw = migrateSpec(rawSpec);
@@ -1177,6 +1202,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       speciesNotes(raw, correctedSpec, notes);
       joineryNotes(raw, correctedSpec, notes);
       drawerNote(raw, correctedSpec, notes);
+      doorNotes(raw, correctedSpec, notes);
       seatNotes(raw, correctedSpec, notes);
       bedNotes(raw, correctedSpec, notes);
     }

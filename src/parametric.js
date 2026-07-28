@@ -747,9 +747,14 @@ var BB = globalThis.BB = globalThis.BB || {};
    * DOOR_REVEAL is a shop number, not a style choice: a 2 mm gap is what a
    * seasonal swing leaves you when the door is fitted in an average season.
    */
-  const DOOR_REVEAL = 2;
-  const DOOR_OVERLAY_LAP = 12;   // how far an overlay door laps the case edge
-  const DOOR_T = 19;             // panel stock; a door thinner than this racks in its own frame
+  /* Owned by the casework class contract (classes.js CASE_GEOM) since
+   * roadmap item 4, read here — the checks, the cup-boring solver, and the
+   * leaf geometry must share one reveal or the reveal-survival arithmetic
+   * is fiction. Fallbacks keep the builder standalone. */
+  const CASE_G = BB.Classes && BB.Classes.get('casework') ? BB.Classes.get('casework').geom : null;
+  const DOOR_REVEAL = CASE_G ? CASE_G.DOOR_REVEAL : 2;
+  const DOOR_OVERLAY_LAP = CASE_G ? CASE_G.DOOR_OVERLAY_LAP : 12;   // how far an overlay door laps the case edge
+  const DOOR_T = CASE_G ? CASE_G.DOOR_T : 19;    // panel stock; a door thinner than this racks in its own frame
 
   /* An INSET door needs its recess kept clear. Everything inside the case —
    * the shelves, and the drawer bank's front plane — is set back by the door

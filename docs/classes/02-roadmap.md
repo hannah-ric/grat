@@ -55,7 +55,7 @@ carried by the wall, and a refusal wherever substrate is unknown. The
 `french_cleat` joint and floating-shelf ergonomics rows are already staged.
 Built as specified: substrate required (unknown refused, drywall refused), NDS-sourced withdrawal math, IRC stud coupling, masonry by required-rating. Wall-hung CASEWORK (cabinets) remains future work on this foundation.
 
-## 4. Doored casework completion — driver: smallest distance to sound
+## 4. Doored casework completion — BUILT (2026-07, see 05-casework.md)
 
 X-07 already shipped doors: hinge catalog with per-pair capacities, cup
 boring, the weight-vs-hinge check, inset/overlay reveals in mm (unit-safe by
@@ -63,6 +63,20 @@ the display-boundary rule). Missing for the full class: door sag over span
 (diagonal stiffness of a frame-and-panel vs slab door), reveal survival on
 tall pairs, and catches/stays as load-rated hardware. Low risk, low effort;
 ranked here only because it is an increment, not an absence.
+Built as specified: the `casework` contract registered over the three
+carcass templates (the frame_table retrofit pattern — every artifact points
+at code that already owned the number); door:sag models the SLAB the app
+actually builds (a slab cannot rack — the droop is the hinge couple,
+W·g·w/(2s), amplified w/s at the free edge, with the Blum width≤height
+chart rule as the verified gate); door:reveal prices seasonal movement
+against the fitted air (half the swing arrives at the pinned-hinge leaf's
+free edge — a red-oak inset pair closes 6.3 mm against its 2 mm meeting
+reveal, said out loud, never hidden); and catches graduated to LIVE
+load-rated hardware (BB.HW.catchSpec — type/count a pure function of the
+corrected leaf, top+bottom on tall doors, touch latch declined past its own
+4 kg spring cap, BOM = check = step). No new wire keys, no specVersion
+bump. STAYS remain in the READY stratum — nothing in the model lifts yet;
+they graduate with the lids workstream, not before.
 
 ## 5. Outdoor furniture — driver: knowledge exists, exposure model doesn't
 
