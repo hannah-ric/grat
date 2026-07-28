@@ -485,9 +485,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     const balance = BB.Billing.credits();          // number, or null when unknown
     const designIssued = designCredited();
     const hasPlan = state.cut.length > 0;
+    // The env-configured admin account issues without spending credits, so a
+    // zero balance must never route it to 'buy' (the server would not 402).
     const nextAction = !configured || designIssued ? 'none'
       : !signedIn ? 'signin'
-        : (balance === null || balance > 0) ? 'issue' : 'buy';
+        : (adminAccount() || balance === null || balance > 0) ? 'issue' : 'buy';
     return {
       configured, signedIn, balance, designIssued, hasPlan, nextAction,
       // Cut / Buy / Assemble read as previews until the design is credited.
@@ -495,6 +497,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     };
   }
   function planLocked() { return entitlementState().planLocked; }
+  /* The server's admin flag from the auth probe (api/_admin.js) — the account
+   * whose blueprints issue without charging. */
+  function adminAccount() {
+    const a = Store.auth();
+    return !!(a.user && a.user.admin);
+  }
 
   /* Chat-surface sign-in prompt (AI is behind sign-in; the first credit is
    * free). Buttons, not links, so it works with keyboard focus in the log. */
@@ -548,7 +556,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       botSay('This design fails validation, so it can’t be issued (and is never charged). Clear the errors first.', []);
       return;
     }
-    const willCharge = !designCredited();
+    const willCharge = !designCredited() && !adminAccount();
     if (willCharge) {
       const balance = BB.Billing.credits();
       if (balance !== null && balance < 1) {
@@ -588,7 +596,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       renderAccount();
       renderAll();
       scheduleAutosave();
-      const spent = data.charged ? ' One credit was used.' : data.cached ? ' This exact design was already issued — no credit was used.' : ' Refinement included — no credit was used.';
+      const spent = data.charged ? ' One credit was used.'
+        : data.cached ? ' This exact design was already issued — no credit was used.'
+          : adminAccount() ? ' Admin account — no credit was used.'
+            : ' Refinement included — no credit was used.';
       botSay(`Blueprint ${data.id} issued (rev ${data.revision}).${spent} The sheet set, all exports, and Build mode are unlocked for this design; re-download free anytime from Export.`, []);
       if (opts.then === 'build') enterBuildMode({ acknowledged: true });
       else if (opts.then && opts.then.export) doExport(opts.then.export);

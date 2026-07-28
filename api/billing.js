@@ -3,6 +3,7 @@
 const Stripe = require('./_stripe.js');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
+const Admin = require('./_admin.js');
 const Env = require('./_env-check.js');
 const Log = require('./_log.js');
 
@@ -58,7 +59,7 @@ module.exports = async function handler(req, res) {
 
   try {
     if (req.method === 'GET' && action === 'status') {
-      return sendJSON(res, 200, await E.statusFor(session.uid, req));
+      return sendJSON(res, 200, await E.statusFor(session.uid, req, Admin.isAdmin(session) ? { admin: true } : undefined));
     }
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'GET, POST');

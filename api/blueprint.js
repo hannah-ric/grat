@@ -45,6 +45,7 @@ const crypto = require('crypto');
 const S = require('./_session.js');
 const KV = require('./_kv.js');
 const Credits = require('./_credits.js');
+const Admin = require('./_admin.js');
 const Pipeline = require('./_pipeline.js');
 const Sheets = require('./_sheets.js');
 const Log = require('./_log.js');
@@ -291,14 +292,18 @@ module.exports = async function handler(req, res) {
       if (openDesign && openDesign.windowEndsAt > now) {
         design = openDesign;
       } else {
-        // 3) CHARGE — a fresh design commit.
-        const chargeRes = await Credits.charge(uid, { specHash: cHash, blueprintId: null, reason: 'issue', ip });
-        if (!chargeRes.ok) {
-          return sendJSON(res, 402, { error: chargeRes.error || 'insufficient_credits', balance: chargeRes.balance });
+        // 3) CHARGE — a fresh design commit. The env-configured admin
+        // (api/_admin.js) commits without touching the ledger: charged stays
+        // false, so the refund path knows nothing was ever spent.
+        if (!Admin.isAdmin(session)) {
+          const chargeRes = await Credits.charge(uid, { specHash: cHash, blueprintId: null, reason: 'issue', ip });
+          if (!chargeRes.ok) {
+            return sendJSON(res, 402, { error: chargeRes.error || 'insufficient_credits', balance: chargeRes.balance });
+          }
+          charged = true;
+          grantId = chargeRes.grantId;
+          balance = chargeRes.balance;
         }
-        charged = true;
-        grantId = chargeRes.grantId;
-        balance = chargeRes.balance;
         design = {
           id: 'bp_' + crypto.randomBytes(6).toString('hex'),
           name: evaluated.spec.meta.name,
@@ -372,7 +377,7 @@ module.exports = async function handler(req, res) {
       return sendJSON(res, 500, { error: 'render_failed', refunded: charged });
     }
 
-    if (balance === null) balance = (await Credits.state(uid, { ip })).balance;
+    if (balance === null) balance = (await Credits.state(uid, Admin.isAdmin(session) ? undefined : { ip })).balance;
     return sendJSON(res, 200, {
       ok: true,
       id: design.id,

@@ -71,7 +71,10 @@ knowledge tables and self-tested — never hand-edit a digest string.
   no-dependency rule holds): `chat.js` (same-origin Anthropic proxy;
   `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`; meters AI by uid or
   hashed IP + a burst limit), `auth.js` (optional OAuth logins → stateless
-  HMAC session cookies; `_session.js` is the shared signer, not an endpoint),
+  HMAC session cookies; `_session.js` is the shared signer, not an endpoint;
+  `_admin.js` is the env-configured admin login — `BB_ADMIN_USER` +
+  `BB_ADMIN_PASSWORD`(`_SCRYPT`) mint one unrestricted operator account via
+  the normal sign-in form, rotated/revoked by editing env vars alone),
   `store.js` (optional per-user document store on Upstash/Vercel KV REST, or a
   local JSON file in dev), `blueprint.js` (the unit of sale — credits pivot:
   runs the whole `src/` pipeline in Node via `_pipeline.js`, validates FIRST,

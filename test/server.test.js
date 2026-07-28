@@ -49,7 +49,8 @@ const chat = require('../api/chat.js');
 const cleanEnv = () => {
   for (const k of ['AUTH_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
     'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'BB_KV_FILE', 'BB_DEV_LOGIN', 'APP_ORIGIN',
-    'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRO_MONTHLY_PRICE_ID', 'STRIPE_PRO_YEARLY_PRICE_ID', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL']) {
+    'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRO_MONTHLY_PRICE_ID', 'STRIPE_PRO_YEARLY_PRICE_ID', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL',
+    'BB_ADMIN_USER', 'BB_ADMIN_PASSWORD', 'BB_ADMIN_PASSWORD_SCRYPT']) {
     delete process.env[k];
   }
 };
@@ -241,6 +242,99 @@ function objectBodyReq(url, bodyObj, headers) {
     eq(json(res).error, 'weak_password', 'weak password → weak_password code');
 
     cleanup();
+  }
+
+  /* ---------------- auth: the env-configured admin login ---------------- */
+  section('admin: env vars mint an unrestricted account; rotation revokes with no code change');
+  {
+    cleanEnv();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    process.env.BB_ADMIN_USER = 'Shopkeeper';
+    process.env.BB_ADMIN_PASSWORD = 'open-sesame-9';
+    const cleanup = useTempKV();
+    const Admin = require('../api/_admin.js');
+    const P = require('../api/_passwords.js');
+    const post = body => fakeReq('/api/auth', { method: 'POST', body });
+    const sessOf = r => [].concat(r.headers['set-cookie'] || []).find(c => c.startsWith('bb_sess=') && !/bb_sess=;/.test(c));
+    const me = async cookie => { const r = fakeRes(); await auth(fakeReq('/api/auth?me=1', { headers: { cookie } }), r); return json(r); };
+
+    // Login rides the SAME form POST a password account uses — the username
+    // goes where the email would (case-insensitive), no dedicated endpoint.
+    let res = fakeRes();
+    await auth(post({ action: 'login', email: 'shopkeeper', password: 'open-sesame-9' }), res);
+    eq(res.statusCode, 200, 'admin login via the shared form → 200');
+    let data = json(res);
+    ok(data.ok && data.user && data.user.provider === 'admin' && data.user.admin === true, 'the response names the admin account');
+    const adminSess = sessOf(res);
+    ok(!!adminSess, 'admin login mints a session cookie');
+    const cookie = adminSess.split(';')[0];
+    const payload = S.verify(decodeURIComponent(cookie.split('=').slice(1).join('=')), process.env.AUTH_SECRET);
+    ok(payload && /^admin:/.test(payload.uid), 'session carries an admin-scoped uid no other login path can mint');
+    eq(payload && payload.ak, Admin.fingerprint(), 'session carries the credential fingerprint');
+
+    // Wrong password: the same generic 401 as any bad login — no admin hint.
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'shopkeeper', password: 'wrong-password-1' }), res);
+    eq(res.statusCode, 401, 'wrong admin password → 401');
+    eq(json(res).error, 'invalid_credentials', 'wrong admin password → generic invalid_credentials');
+
+    // Status probe: the admin plan has no caps at all.
+    data = await me(cookie);
+    ok(data.user && data.user.admin === true, 'me probe reports the admin flag');
+    eq(data.billing && data.billing.plan, 'admin', 'the entitlement authority reports the admin plan');
+    eq(data.billing.entitlements.projectLimit, null, 'no project cap');
+    eq(data.billing.entitlements.aiMonthlyLimit, null, 'no AI message ceiling');
+
+    // Chat: over the Free message ceiling AND over the token budget, the
+    // admin still reaches the model (metering is skipped as a gate).
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    process.env.AI_MONTHLY_TOKEN_BUDGET = '1000';
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '{}' }], stop_reason: 'end_turn', usage: { output_tokens: 5 } }) });
+    for (let i = 0; i < E.FREE.aiMonthlyLimit + 5; i++) await E.incrementAI(payload.uid);
+    await E.addTokens(payload.uid, 5000);
+    res = fakeRes();
+    await chat(fakeReq('/api/chat', { method: 'POST', headers: { cookie }, body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
+    eq(res.statusCode, 200, 'admin chat sails past the message ceiling and token budget');
+
+    // Store: the admin is never project-capped.
+    const putDoc = async (c, doc, value) => { const r = fakeRes(); await store(fakeReq('/api/store?doc=' + doc, { method: 'PUT', headers: { cookie: c }, body: { value } }), r); return r; };
+    await putDoc(cookie, 'projects:index', JSON.stringify([{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }, { id: 'a4' }]));
+    eq((await putDoc(cookie, 'project:a5', '{"id":"a5"}')).statusCode, 200, 'admin creates projects beyond the Free cap');
+
+    // The scrypt variant verifies the same password with no plaintext in env.
+    process.env.BB_ADMIN_PASSWORD_SCRYPT = P.hashPassword('open-sesame-9');
+    delete process.env.BB_ADMIN_PASSWORD;
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'SHOPKEEPER', password: 'open-sesame-9' }), res);
+    eq(res.statusCode, 200, 'login verifies against BB_ADMIN_PASSWORD_SCRYPT');
+    const cookie2 = sessOf(res).split(';')[0];
+
+    // Rotation is revocation: the credential material changed, so the FIRST
+    // session's fingerprint is stale — it reads signed out on the probe, is
+    // metered like any account on chat, and hits the project cap on store.
+    data = await me(cookie);
+    eq(data.user, null, 'a pre-rotation admin session reads as signed out');
+    res = fakeRes();
+    await chat(fakeReq('/api/chat', { method: 'POST', headers: { cookie }, body: { messages: [{ role: 'user', content: 'hi' }] } }), res);
+    eq(res.statusCode, 402, 'a stale admin session is metered like any account (over the ceiling → 402)');
+    eq((await putDoc(cookie, 'project:a6', '{"id":"a6"}')).statusCode, 403, 'a stale admin session hits the Free project cap');
+    data = await me(cookie2);
+    ok(data.user && data.user.admin === true && data.billing.plan === 'admin', 'the post-rotation session holds full admin access');
+
+    // Half-configured (username without any password) means DISABLED — the
+    // right credentials 401 like anything else, and the env audit says why.
+    delete process.env.BB_ADMIN_PASSWORD_SCRYPT;
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'shopkeeper', password: 'open-sesame-9' }), res);
+    eq(res.statusCode, 401, 'admin login is refused when the password env var is unset');
+    const Env = require('../api/_env-check.js');
+    ok(Env.evaluate().advisory.some(c => /BB_ADMIN/.test(c.key)), 'half-configured admin creds surface an env-audit advisory');
+
+    globalThis.fetch = realFetch;
+    cleanup();
+    // Leave AUTH_SECRET as the surrounding sections expect; drop only ours.
+    for (const k of ['BB_ADMIN_USER', 'BB_ADMIN_PASSWORD', 'BB_ADMIN_PASSWORD_SCRYPT', 'ANTHROPIC_API_KEY', 'AI_MONTHLY_TOKEN_BUDGET']) delete process.env[k];
   }
 
   /* ---------------- store: auth gate, doc rules, file backend ---------------- */

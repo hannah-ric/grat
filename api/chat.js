@@ -18,6 +18,7 @@
 const crypto = require('crypto');
 const S = require('./_session.js');
 const E = require('./_entitlements.js');
+const Admin = require('./_admin.js');
 const Log = require('./_log.js');
 
 const DEFAULT_MODEL = 'claude-sonnet-5';
@@ -129,6 +130,11 @@ module.exports = async function handler(req, res) {
     return sendJSON(res, 401, { type: 'error', error: { type: 'auth_required', message: 'Sign in to design with AI — your first blueprint credit is free.' } });
   }
   const meterId = session.uid;
+  /* The env-configured admin (api/_admin.js) has NO monthly ceilings: the
+   * message meter and token budget are skipped, though usage is still
+   * recorded below for observability. The burst guard stays — 60/min is
+   * beyond any human pace, and it protects the key from a runaway loop. */
+  const isAdmin = Admin.isAdmin(session);
   const tokenBudget = parseInt(process.env.AI_MONTHLY_TOKEN_BUDGET, 10) || 0; // 0 / unset = disabled
   if (!burstOK(meterId)) {
     return sendJSON(res, 429, { type: 'error', error: { type: 'rate_limited', message: 'Too many requests — please slow down.' } });
@@ -136,22 +142,25 @@ module.exports = async function handler(req, res) {
   /* The monthly message meter is an ABUSE CEILING only (credits pivot): it
    * protects the proxy key, it is not the offer, and the client no longer
    * opens an upgrade dialog on this 402 — refinement must feel free. */
-  try {
-    const account = await E.statusFor(meterId, req);
-    if (account.usage.aiMessages >= account.entitlements.aiMonthlyLimit) {
-      return sendJSON(res, 402, {
-        type: 'error',
-        error: { type: 'usage_limit', message: 'This month’s AI usage ceiling is reached — it resets with the calendar month. Your designs, plans, and credits are unaffected.' },
-        billing: account
-      });
-    }
-  } catch (error) { Log.report('chat', 'status_lookup_failed', error); /* storage outage must not break AI — the burst guard still applies */ }
+  if (!isAdmin) {
+    try {
+      const account = await E.statusFor(meterId, req);
+      const limit = account.entitlements.aiMonthlyLimit;
+      if (limit != null && account.usage.aiMessages >= limit) {
+        return sendJSON(res, 402, {
+          type: 'error',
+          error: { type: 'usage_limit', message: 'This month’s AI usage ceiling is reached — it resets with the calendar month. Your designs, plans, and credits are unaffected.' },
+          billing: account
+        });
+      }
+    } catch (error) { Log.report('chat', 'status_lookup_failed', error); /* storage outage must not break AI — the burst guard still applies */ }
+  }
 
   // Optional monthly output-token spend ceiling (E-07a). Enforced PRE-upstream on
   // the same durable KV meter pattern, so a runaway spend can't reach Anthropic.
   // A distinct 429 that src/ai.js already surfaces gracefully (rate-limited) —
   // never a silent drop to the offline parser. Fails open on a storage hiccup.
-  if (tokenBudget > 0) {
+  if (tokenBudget > 0 && !isAdmin) {
     try {
       const spent = await E.getTokenUsage(meterId);
       if (spent.tokens >= tokenBudget) {

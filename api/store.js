@@ -28,6 +28,7 @@ const S = require('./_session.js');
 const KV = require('./_kv.js');
 const Log = require('./_log.js');
 const E = require('./_entitlements.js');
+const Admin = require('./_admin.js');
 
 const DOC_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$/;
 // The store namespaces every document as bb:{uid}:{doc}. api/_entitlements.js
@@ -136,7 +137,8 @@ module.exports = async function handler(req, res) {
       // to an existing project always succeed (a downgraded ex-Pro user never
       // loses edits); Pro/unlimited plans and non-project docs are unaffected.
       if (PROJECT_DOC_RE.test(doc)) {
-        const limit = await projectLimitFor(sess.uid, req);
+        // The env-configured admin (api/_admin.js) is never project-capped.
+        const limit = Admin.isAdmin(sess) ? null : await projectLimitFor(sess.uid, req);
         if (limit !== null) {
           const existing = await kv.get(key);
           if ((existing === undefined || existing === null) && (await projectCount(kv, sess.uid)) >= limit) {

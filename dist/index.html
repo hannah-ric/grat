@@ -13399,7 +13399,8 @@ BlueprintBuddyImport.build
   'use strict';
   const TIERS = {
     free: { plan: 'free', label: 'Free', projectLimit: 3, aiMonthlyLimit: 200 },
-    pro: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500 } // legacy, honored not sold
+    pro: { plan: 'pro', label: 'Pro', projectLimit: null, aiMonthlyLimit: 500 }, // legacy, honored not sold
+    admin: { plan: 'admin', label: 'Admin', projectLimit: null, aiMonthlyLimit: null } // env-configured operator (api/_admin.js)
   };
   const FREE = TIERS.free;
   const CREDIT_PACKS = [
@@ -13416,7 +13417,7 @@ BlueprintBuddyImport.build
   function isPro() { return status().plan === 'pro'; } // legacy badge only
   function tier() {
     const s = status();
-    if (s.plan === 'pro') return 'paid';
+    if (s.plan === 'pro' || s.plan === 'admin') return 'paid';
     const purchased = s.credits && typeof s.credits.purchased === 'number' ? s.credits.purchased : 0;
     return purchased > 0 ? 'paid' : 'free';
   }
@@ -17655,13 +17656,17 @@ BlueprintBuddyImport.build
     const hasPlan = state.cut.length > 0;
     const nextAction = !configured || designIssued ? 'none'
       : !signedIn ? 'signin'
-        : (balance === null || balance > 0) ? 'issue' : 'buy';
+        : (adminAccount() || balance === null || balance > 0) ? 'issue' : 'buy';
     return {
       configured, signedIn, balance, designIssued, hasPlan, nextAction,
       planLocked: configured && hasPlan && !designIssued
     };
   }
   function planLocked() { return entitlementState().planLocked; }
+  function adminAccount() {
+    const a = Store.auth();
+    return !!(a.user && a.user.admin);
+  }
   function promptSignIn(message) {
     const m = chatMsg('bot', `<div class="bubble">${esc(message || 'Sign in free to design with AI — your first blueprint credit is included.')}</div>`);
     const row = el('div', 'answer-row');
@@ -17704,7 +17709,7 @@ BlueprintBuddyImport.build
       botSay('This design fails validation, so it can’t be issued (and is never charged). Clear the errors first.', []);
       return;
     }
-    const willCharge = !designCredited();
+    const willCharge = !designCredited() && !adminAccount();
     if (willCharge) {
       const balance = BB.Billing.credits();
       if (balance !== null && balance < 1) {
@@ -17744,7 +17749,10 @@ BlueprintBuddyImport.build
       renderAccount();
       renderAll();
       scheduleAutosave();
-      const spent = data.charged ? ' One credit was used.' : data.cached ? ' This exact design was already issued — no credit was used.' : ' Refinement included — no credit was used.';
+      const spent = data.charged ? ' One credit was used.'
+        : data.cached ? ' This exact design was already issued — no credit was used.'
+          : adminAccount() ? ' Admin account — no credit was used.'
+            : ' Refinement included — no credit was used.';
       botSay(`Blueprint ${data.id} issued (rev ${data.revision}).${spent} The sheet set, all exports, and Build mode are unlocked for this design; re-download free anytime from Export.`, []);
       if (opts.then === 'build') enterBuildMode({ acknowledged: true });
       else if (opts.then && opts.then.export) doExport(opts.then.export);
