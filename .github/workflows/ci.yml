@@ -30,6 +30,15 @@ jobs:
       - name: Hand-arithmetic verification worksheet (every number computed twice)
         run: npm run test:handcalc
 
+      # pnpm-lock.yaml is committed (package-lock.json deliberately is not), so
+      # Vercel picks pnpm and deploys with `pnpm install --frozen-lockfile`,
+      # which REFUSES a lock that disagrees with package.json. Adding one
+      # devDependency without relocking therefore breaks production deploys
+      # while every check here stays green — no suite reads package.json, and
+      # this job never installs anything. Zero-dependency, no package manager.
+      - name: pnpm-lock.yaml is in sync with package.json
+        run: node scripts/check-lockfile.js
+
       # Everything the build emits into dist/ is committed and must stay
       # byte-identical to a fresh build — nothing else enforces this, and a
       # stale bundle ships stale code. Scoped to the whole directory rather
