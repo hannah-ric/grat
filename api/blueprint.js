@@ -278,8 +278,34 @@ module.exports = async function handler(req, res) {
     const hero = cleanImage(body.hero);
     const exploded = cleanImage(body.exploded);
 
-    // 2) IDEMPOTENCY — the same corrected spec never charges twice.
-    const boundId = await kv.get(hashKey(uid, cHash));
+    // 2) IDEMPOTENCY — the same corrected spec never charges twice. The
+    // binding is CLAIMED atomically (SET NX) before any charge lands: two
+    // concurrent identical first-issues would otherwise both read the key
+    // as absent and each spend a credit. The claim loser bounces with 409
+    // in_flight; by its retry the winner's design id is bound and the
+    // cached path serves it free. A crashed instance's claim goes stale
+    // after PENDING_MS and is taken over.
+    const PENDING_PREFIX = 'pending:';
+    const PENDING_MS = 2 * 60e3;
+    let boundId = await kv.get(hashKey(uid, cHash));
+    let claimedHash = false;
+    if (boundId && String(boundId).startsWith(PENDING_PREFIX)) {
+      const ts = Number(String(boundId).slice(PENDING_PREFIX.length));
+      if (isFinite(ts) && now - ts <= PENDING_MS) return sendJSON(res, 409, { error: 'in_flight' });
+      await kv.set(hashKey(uid, cHash), PENDING_PREFIX + now); // stale takeover
+      boundId = null; claimedHash = true;
+    } else if (!boundId) {
+      claimedHash = !!(await kv.setnx(hashKey(uid, cHash), PENDING_PREFIX + now));
+      if (!claimedHash) {
+        boundId = await kv.get(hashKey(uid, cHash));
+        if (!boundId || String(boundId).startsWith(PENDING_PREFIX)) return sendJSON(res, 409, { error: 'in_flight' });
+      }
+    }
+    // Release an unconsumed claim so a failed issue never wedges the spec.
+    const releaseClaim = async () => {
+      if (!claimedHash) return;
+      try { await kv.del(hashKey(uid, cHash)); } catch (e) { /* stale takeover covers a missed release */ }
+    };
     let design = boundId ? await readJSON(kv, designKey(uid, String(boundId)), null) : null;
     let charged = false, cached = false, grantId = null, balance = null;
 
@@ -298,6 +324,7 @@ module.exports = async function handler(req, res) {
         if (!Admin.isAdmin(session)) {
           const chargeRes = await Credits.charge(uid, { specHash: cHash, blueprintId: null, reason: 'issue', ip });
           if (!chargeRes.ok) {
+            await releaseClaim();
             return sendJSON(res, 402, { error: chargeRes.error || 'insufficient_credits', balance: chargeRes.balance });
           }
           charged = true;
@@ -374,6 +401,7 @@ module.exports = async function handler(req, res) {
         try { await Credits.refund(uid, { specHash: cHash, blueprintId: design.id, grantId, reason: 'render_failed' }); }
         catch (refundError) { Log.report('blueprint', 'refund_failed', refundError); }
       }
+      await releaseClaim();
       return sendJSON(res, 500, { error: 'render_failed', refunded: charged });
     }
 

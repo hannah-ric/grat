@@ -204,8 +204,8 @@
   "verdict": "pass",
   "rackScore": 100,
   "tip": {
-   "angEmpty": 22.13,
-   "angLoaded": 22.13,
+   "angEmpty": 22.172,
+   "angLoaded": 22.172,
    "ratio": 2.391
   },
   "checks": [
@@ -584,8 +584,8 @@
    {
     "kind": "fastener",
     "label": "#8 × 64 mm wood screw (pilot 3.2 mm)",
-    "qty": 24,
-    "price": 1.44
+    "qty": 22,
+    "price": 1.32
    },
    {
     "kind": "fastener",
@@ -606,7 +606,7 @@
     "price": 18
    }
   ],
-  "total": 366.38
+  "total": 366.26
  },
  "steps": [
   "glueup1",

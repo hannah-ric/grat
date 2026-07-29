@@ -163,8 +163,8 @@
   {
     "name": "splayed leg axial length (mm)",
     "hand": 609.9,
-    "engine": 609.9,
-    "errPct": 0,
+    "engine": 607.9,
+    "errPct": 0.3279226102639777,
     "pass": true
   },
   {

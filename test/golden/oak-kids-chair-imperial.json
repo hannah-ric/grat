@@ -204,8 +204,8 @@
   "verdict": "advisory",
   "rackScore": 100,
   "tip": {
-   "angEmpty": 23.611,
-   "angLoaded": 23.611,
+   "angEmpty": 23.732,
+   "angLoaded": 23.732,
    "ratio": 2.182
   },
   "checks": [
@@ -597,8 +597,8 @@
    {
     "kind": "fastener",
     "label": "#8 × 1 15/16 in wood screw (pilot 1/8 in)",
-    "qty": 4,
-    "price": 0.24
+    "qty": 2,
+    "price": 0.12
    },
    {
     "kind": "glue",
@@ -613,7 +613,7 @@
     "price": 18
    }
   ],
-  "total": 178.23
+  "total": 178.11
  },
  "steps": [
   "glueup1",

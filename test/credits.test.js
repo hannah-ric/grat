@@ -190,6 +190,42 @@ const issue = (uid, body) => {
     drop();
   }
 
+  section('blueprint: concurrent identical first-issues charge exactly once (atomic hash claim)');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const uid = 'dev:bp-race';
+    await Credits.grant(uid, 3, { reason: 'purchase', sourceId: 'cs_race_pack' }); // balance 4 — a double charge would show
+    const before = (await Credits.state(uid)).balance;
+    const [a, b] = await Promise.all([issue(uid, { spec: VALID_SPEC }), issue(uid, { spec: VALID_SPEC })]);
+    const codes = [a.statusCode, b.statusCode].sort();
+    ok(codes.includes(200), 'one racer issues the blueprint');
+    const winner = a.statusCode === 200 ? json(a) : json(b);
+    ok(winner.charged === true, 'the winner is charged');
+    const loser = a.statusCode === 200 ? b : a;
+    ok(loser.statusCode === 409 || (loser.statusCode === 200 && json(loser).charged === false),
+      'the loser is bounced in_flight or served cached — never charged');
+    eq((await Credits.state(uid)).balance, before - 1, 'exactly one credit left the ledger');
+    const retry = json(await issue(uid, { spec: VALID_SPEC }));
+    ok(retry.charged === false && retry.cached === true && retry.id === winner.id, 'the retry serves the winner’s blueprint free');
+    drop();
+  }
+
+  section('credits: concurrent same-sourceId grants credit the pack exactly once (webhook redelivery race)');
+  {
+    cleanEnv();
+    const drop = useTempKV();
+    const uid = 'dev:grant-race';
+    await Credits.state(uid); // mint the signup grant first so the race is only about the pack
+    const [g1, g2] = await Promise.all([
+      Credits.grant(uid, 3, { reason: 'purchase', sourceId: 'cs_redelivered' }),
+      Credits.grant(uid, 3, { reason: 'purchase', sourceId: 'cs_redelivered' })
+    ]);
+    eq([g1.deduped, g2.deduped].filter(d => d === false).length, 1, 'exactly one delivery grants');
+    eq((await Credits.state(uid)).balance, 4, 'signup + one pack — never two');
+    drop();
+  }
+
   section('blueprint: the same corrected spec never charges twice');
   {
     cleanEnv();

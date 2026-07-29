@@ -855,17 +855,31 @@ var BB = globalThis.BB = globalThis.BB || {};
       const frameTop = Hs - seatT;
       const thetaR = Math.atan(Math.SQRT2 * t) * 180 / Math.PI; // compound resultant
       const lx = W / 2 - legT / 2, lz = D / 2 - legT / 2;
-      // Axial length, trimmed a hair so the tilted top corners stay under the seat.
-      const La = frameTop / Math.cos(rad(thetaR)) - legT * Math.tan(rad(thetaR));
+      // Axial length, trimmed so the tilted top corners stay under the seat.
+      // The closed-form trim is a small-angle estimate that under-trims past
+      // ~5° splay (the legs poked through the seat — geom_overlap), so the
+      // length is corrected against the REAL grounded OBB: exact in one
+      // pass, because the vertical extent is linear in the axial length.
+      let La = frameTop / Math.cos(rad(thetaR)) - legT * Math.tan(rad(thetaR));
       [[-1, -1, 1], [1, -1, 2], [-1, 1, 3], [1, 1, 4]].forEach(([sx, sz, i]) => {
         const runMid = t * (frameTop / 2); // outward travel of the leg centre at mid-height
-        const p = part(`leg_${i}`, 'leg_splayed', 'leg', 'Leg', legT, La, legT,
-          sx * (lx + runMid), frameTop / 2, sz * (lz + runMid),
-          { material: sp, explode: { x: sx * 0.4, y: -0.4, z: sz * 0.4 } });
-        p.rot = { x: -sz * s, y: 0, z: sx * s };
+        const mkLeg = len => {
+          const p = part(`leg_${i}`, 'leg_splayed', 'leg', 'Leg', legT, len, legT,
+            sx * (lx + runMid), frameTop / 2, sz * (lz + runMid),
+            { material: sp, explode: { x: sx * 0.4, y: -0.4, z: sz * 0.4 } });
+          p.rot = { x: -sz * s, y: 0, z: sx * s };
+          ground(p);
+          return p;
+        };
+        let p = mkLeg(La);
+        const maxY = Math.max(...BB.Geo.obbCorners(BB.Geo.partOBB(p)).map(c => c[1]));
+        const over = maxY - (frameTop - 0.05);
+        if (over > 0.01) {
+          La = Math.round((La - over / Math.cos(rad(thetaR))) * 10) / 10; // all four legs share the cut
+          p = mkLeg(La);
+        }
         p.cutDim = { L: Math.round(La * 10) / 10, W: legT, T: legT };
         p.angleNote = `compound end cut: splay ${s}° both ways — see the angle schedule in the steps`;
-        ground(p);
         parts.push(p);
       });
       // Level rails and the footrest box: spans grow toward the floor as the
@@ -903,7 +917,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       [[-1, 'stretcher_back_1', 'leg_1', 'leg_2'], [1, 'stretcher_front_1', 'leg_3', 'leg_4']].forEach(([sz, id, a, b]) => {
         mk(id, sz < 0 ? 'Rear stretcher' : 'Footrest stretcher', 2 * (lx + oS) - legT, secH, secT, 0, strY, sz * (lz + oS), a, b, shoulder);
       });
-      addSeatCore(spec, parts, joints, { W, D, Hs, seatT, railH, railT, cb, sp, slope: 0, postIds: [] });
+      addSeatCore(spec, parts, joints, {
+        W, D, Hs, seatT, railH, railT, cb, sp, slope: 0, postIds: [],
+        // Splayed rails sit outward by oR at rail height — the blocks follow.
+        railInnerX: W / 2 + oR - railT, railInnerZFront: D / 2 + oR - railT, railInnerZBack: D / 2 + oR - railT
+      });
       return { parts, joints, openings: [], drawers: [] };
     }
 
@@ -1015,7 +1033,10 @@ var BB = globalThis.BB = globalThis.BB || {};
 
     addSeatCore(spec, parts, joints, {
       W, D, Hs, seatT, railH, railT, cb, sp, slope,
-      postIds: ['post_1', 'post_2']
+      postIds: ['post_1', 'post_2'],
+      // The back seat rail lives INSIDE the post depth (zBack above), so the
+      // rear blocks bear on its inner face at −D/2 + postD, not the case face.
+      railInnerZBack: D / 2 - postD
     });
     return { parts, joints, openings: [], drawers: [] };
   }
@@ -1032,8 +1053,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     const seatTopAt = z => Hs - tanS * (D / 2 - z);
     const stool = !ctx.postIds || !ctx.postIds.length;
 
-    // Corner blocks: touching both rails' inner faces at each corner.
-    const bx = W / 2 - railT - cb / 2, bz = D / 2 - railT - cb / 2;
+    // Corner blocks: touching both rails' inner faces at each corner. The
+    // defaults assume rails flush at the case faces; callers whose rails sit
+    // elsewhere (the chair's back rail recessed into the post depth, the
+    // splayed stool's rails pushed outward) pass the REAL inner-face
+    // distances so the blocks land against the rails as fitted, never
+    // inside them.
+    const innerX = ctx.railInnerX !== undefined ? ctx.railInnerX : W / 2 - railT;
+    const innerZF = ctx.railInnerZFront !== undefined ? ctx.railInnerZFront : D / 2 - railT;
+    const innerZB = ctx.railInnerZBack !== undefined ? ctx.railInnerZBack : D / 2 - railT;
+    const bx = innerX - cb / 2;
     const bh = Math.max(30, railH - 12);
     const corners = [
       { sx: -1, sz: 1, mates: stool ? ['leg_3'] : ['leg_3'], rails: ['rail_side_1', 'rail_front_1'] },
@@ -1042,7 +1071,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       { sx: 1, sz: -1, mates: stool ? ['leg_2'] : ['post_2'], rails: ['rail_side_2', 'rail_back_1'] }
     ];
     corners.forEach((c, i) => {
-      const z = c.sz * bz;
+      const z = c.sz * ((c.sz > 0 ? innerZF : innerZB) - cb / 2);
       const y = seatTopAt(z) - seatT - 4 - bh / 2;
       const id = `block_${i + 1}`;
       const p = part(id, 'corner_block', 'corner_block', 'Corner block', cb, bh, cb,

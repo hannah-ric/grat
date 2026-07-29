@@ -148,13 +148,22 @@ async function handlePassword(req, res) {
      * through) _passwords.js's durable per-IP throttle when KV exists. */
     if (action === 'login' && Admin.available()) {
       const ip = Credits.clientIp(req);
-      if (Admin.throttled(ip)) throw fail('too_many_attempts');
-      if (Admin.matches(body.email !== undefined ? body.email : body.username, body.password)) {
-        Admin.clearFailures(ip);
-        user = Admin.sessionUser();
-      } else {
-        Admin.noteFailure(ip);
-        if (!P.available()) throw fail('invalid_credentials');
+      const identifier = body.email !== undefined ? body.email : body.username;
+      /* Only admin-SHAPED attempts (the admin username, or any login when no
+       * ordinary accounts exist) feed or hit the in-memory admin throttle.
+       * An ordinary login — successful or not — must never count as an admin
+       * failure: ten coworkers signing in behind one office NAT would lock
+       * the eleventh out with correct credentials. Ordinary-account brute
+       * force is _passwords.js's durable per-IP throttle's job. */
+      if (Admin.matchesUser(identifier) || !P.available()) {
+        if (Admin.throttled(ip)) throw fail('too_many_attempts');
+        if (Admin.matches(identifier, body.password)) {
+          Admin.clearFailures(ip);
+          user = Admin.sessionUser();
+        } else {
+          Admin.noteFailure(ip);
+          if (!P.available()) throw fail('invalid_credentials');
+        }
       }
     }
     if (!user) {

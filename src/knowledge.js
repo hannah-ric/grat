@@ -937,8 +937,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // "cheapest wood that won't sag" are only answerable against numbers.
     // These are the DEFAULT prices; the current design's estimated total
     // (user-edited prices included) rides the prompt tail via AI.budgetLine.
-    const w = Object.values(WOOD_SPECIES).map(s =>
-      `${s.key}(janka ${s.janka},move ${s.movement},$${s.pricePerBdFt}/bdft)`).join(' ');
+    // Sheet species carry no $/bdft (per-sheet pricing only, audit L-03) —
+    // print their real per-sheet default instead of "$undefined/bdft".
+    const w = Object.values(WOOD_SPECIES).map(s => s.sheet
+      ? `${s.key}(janka ${s.janka},move ${s.movement},$${sheetPriceFor(null, s.key, 18)}/18mm-sheet)`
+      : `${s.key}(janka ${s.janka},move ${s.movement},$${s.pricePerBdFt}/bdft)`).join(' ');
     // min===max rows (single standard sizes, e.g. queen_bed_width) print one
     // number — "1524–1524mm" spent tokens saying nothing.
     const e = ERGONOMICS.filter(r => isFinite(r.max)).map(r => `${r.key} ${r.min === r.max ? r.min : `${r.min}–${r.max}`}mm`).join('; ');

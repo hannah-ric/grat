@@ -99,7 +99,7 @@
   {
    "name": "Leg",
    "qty": 4,
-   "L": 609.9,
+   "L": 607.9,
    "W": 38,
    "T": 38,
    "material": "hard_maple",
@@ -303,27 +303,27 @@
    {
     "nominal": "2x2",
     "stockLen": 3048,
-    "offcut": 569.4,
+    "offcut": 577.4,
     "cuts": [
      {
       "name": "Leg",
-      "len": 609.9,
+      "len": 607.9,
       "offset": 15
      },
      {
       "name": "Leg",
-      "len": 609.9,
-      "offset": 627.9
+      "len": 607.9,
+      "offset": 625.9
      },
      {
       "name": "Leg",
-      "len": 609.9,
-      "offset": 1240.8
+      "len": 607.9,
+      "offset": 1236.8
      },
      {
       "name": "Leg",
-      "len": 609.9,
-      "offset": 1853.7
+      "len": 607.9,
+      "offset": 1847.7
      }
     ]
    },
