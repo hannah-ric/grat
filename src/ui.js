@@ -2376,7 +2376,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       return;
     }
     const billing = BB.Billing.status();
-    if (Store.auth().user && billing.usage.aiMessages >= billing.entitlements.aiMonthlyLimit) {
+    // A null aiMonthlyLimit means NO ceiling (the admin account) — comparing
+    // against it would coerce to >= 0 and lock the account out of AI entirely.
+    const aiLimit = billing.entitlements.aiMonthlyLimit;
+    if (Store.auth().user && aiLimit != null && billing.usage.aiMessages >= aiLimit) {
       botSay(AI_CEILING_MSG, []);
       return;
     }
@@ -3429,6 +3432,33 @@ var BB = globalThis.BB = globalThis.BB || {};
     const res = importCodeText($('importCode').value);
     if (res.error) { $('importMsg').textContent = res.error; return; }
     closeScrim('shareScrim');
+  }
+  /* The issued sheet set prints a live return link — /?bp=bp_… — promising
+   * "open to refine the design or re-download any sheet". Honor it: fetch the
+   * issued design from the account's own blueprint store (owner-only, free
+   * forever), import it through the same gate as a share link, and let
+   * probeOwnership (inside importCodeText) re-attach the credited-design
+   * record so the plan opens unlocked. Returns true when a design landed. */
+  async function openBlueprintLink(id) {
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), 6000) : null;
+      const r = await fetch('/api/blueprint?id=' + encodeURIComponent(id) + '&format=json',
+        { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined });
+      if (timer) clearTimeout(timer);
+      if (r.status === 401) {
+        promptSignIn('This blueprint link belongs to a signed-in account. Sign in with the account that issued it to reopen the design.');
+        return false;
+      }
+      if (!r.ok) {
+        botSay('That blueprint link didn’t resolve — it may have been issued by a different account. Sign in with that account, or open the design from More › Projects.', []);
+        return false;
+      }
+      const data = await r.json();
+      if (!data || !data.spec) return false;
+      const res = importCodeText(Codec.toShareCode(data.spec), 'blueprint link');
+      return !res.error;
+    } catch (e) { return false; } // offline or hung route: boot continues normally
   }
   /* The app's own URL for export footers and share links (audit A-11).
    * Runtime state stays HERE — the exporters receive it as an argument and
@@ -4545,9 +4575,30 @@ var BB = globalThis.BB = globalThis.BB || {};
         new Promise(r => setTimeout(r, 1200))
       ]);
     } catch (e) { /* device storage is the product */ }
-    Store.onModeChange(() => renderAccount());
-    await BB.Billing.handleReturn();
+    Store.onModeChange(() => {
+      // Sign-in state changed mid-session (e.g. the #signin email form, which
+      // never reloads the page): the account menu, the AI badge, and the
+      // save state are stale together. Re-earn all three — the badge used to
+      // keep saying "Sign in to design with AI" after a successful sign-in.
+      renderAccount();
+      probeAI();
+      if (state.history) scheduleAutosave(); // re-home the open design on the new storage rung
+    });
+    // A failed OAuth round-trip lands back here with ?login=failed (api/auth.js).
+    // Say so — the old behavior presented a silently signed-out studio.
+    let loginFailed = false;
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.get('login') === 'failed') {
+        loginFailed = true;
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
+      }
+    } catch (e) { /* sandboxed frame */ }
+    const billingReturn = await BB.Billing.handleReturn(() => renderAccount());
     renderAccount();
+    if (loginFailed) promptSignIn('That sign-in didn’t complete — the provider round-trip failed or timed out, and nothing was changed. Please try again.');
+    if (billingReturn === 'credits') botSay('Payment received — thank you. Your new credits are landing in your balance now; the count updates within a few seconds.', []);
+    else if (billingReturn === 'canceled') botSay('Checkout was canceled — nothing was charged.', []);
 
     // Persisted prices + prefs load BEFORE the first paint, so units,
     // precision, dual display, and the shell layout never flash from defaults.
@@ -4590,6 +4641,17 @@ var BB = globalThis.BB = globalThis.BB || {};
     // runs get a welcome card with the three ways in — floating over a live,
     // fully working bench: nothing blocks, everything behind it responds.
     let opened = !!state.importedFromLink, projectCount = 0;
+    // ?bp=bp_… — the live link printed on every issued sheet. Resolved here,
+    // after the auth probe (it needs the session) and before the latest-
+    // project restore (the linked design must win the screen).
+    try {
+      const bpParams = new URLSearchParams(window.location.search);
+      const bpId = bpParams.get('bp');
+      if (bpId && /^bp_[a-z0-9]+$/.test(bpId)) {
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
+        if (!opened) opened = await openBlueprintLink(bpId);
+      }
+    } catch (e) { /* sandboxed frame or no route: fall through to projects */ }
     try {
       const idx = await Store.loadIndex();
       projectCount = idx.length;

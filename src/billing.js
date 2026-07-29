@@ -250,16 +250,42 @@ var BB = globalThis.BB = globalThis.BB || {};
     return false;
   }
 
-  async function handleReturn() {
+  /* Stripe return marker (?billing=credits|success|canceled|returned). The
+   * webhook that actually credits the ledger runs async to this redirect, so
+   * one refresh can race it and show a stale balance. For a completed credits
+   * checkout, keep refreshing briefly (never blocking boot) until the balance
+   * moves; `onUpdate` lets the caller re-render as fresh numbers land.
+   * Returns the marker so the caller can acknowledge the purchase honestly. */
+  async function handleReturn(onUpdate) {
     const params = new URLSearchParams(window.location.search);
-    if (!params.get('billing')) return;
-    await refresh();
+    const kind = params.get('billing');
+    if (!kind) return null;
     history.replaceState(null, '', window.location.pathname + window.location.hash);
+    await refresh();
+    if (onUpdate) { try { onUpdate(kind); } catch (e) { /* caller's problem */ } }
+    if (kind === 'credits' && account().user) {
+      const seen = credits();
+      let tries = 0;
+      const tick = async () => {
+        if (++tries > 5) return;
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await refresh();
+        if (onUpdate) { try { onUpdate(kind); } catch (e) { /* caller's problem */ } }
+        const now = credits();
+        if (now !== null && seen !== null && now > seen) return; // the webhook landed
+        return tick();
+      };
+      tick(); // deliberately not awaited — boot never waits on billing
+    }
+    return kind;
   }
 
   BB.Billing = {
     status, isPro, tier, credits, refresh, open, confirmIssue, issue, buyPack, configured,
-    gateNewProject, manage: () => api('portal', {}).then(d => { if (d.url) window.location.href = d.url; }).catch(() => setNote('Billing is temporarily unavailable.')),
+    // Failure path uses open(), not setNote(): Manage lives in the More menu,
+    // so the pricing dialog may never have been created — setNote into a
+    // nonexistent dialog was a silent no-op and the click looked dead.
+    gateNewProject, manage: () => api('portal', {}).then(d => { if (d.url) window.location.href = d.url; }).catch(() => open('The billing portal is temporarily unavailable — please try again in a moment.')),
     handleReturn, signedOutUpgradeNote, freeSyncLabel,
     CREDIT_PACKS, WINDOW_DAYS
   };
