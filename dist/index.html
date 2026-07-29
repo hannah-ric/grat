@@ -14270,15 +14270,32 @@ BlueprintBuddyImport.build
     open(`Free includes ${limit} saved projects. Export a share code to keep this one, or any credit purchase lifts the limit.`);
     return false;
   }
-  async function handleReturn() {
+  async function handleReturn(onUpdate) {
     const params = new URLSearchParams(window.location.search);
-    if (!params.get('billing')) return;
-    await refresh();
+    const kind = params.get('billing');
+    if (!kind) return null;
     history.replaceState(null, '', window.location.pathname + window.location.hash);
+    await refresh();
+    if (onUpdate) { try { onUpdate(kind); } catch (e) { /* caller's problem */ } }
+    if (kind === 'credits' && account().user) {
+      const seen = credits();
+      let tries = 0;
+      const tick = async () => {
+        if (++tries > 5) return;
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await refresh();
+        if (onUpdate) { try { onUpdate(kind); } catch (e) { /* caller's problem */ } }
+        const now = credits();
+        if (now !== null && seen !== null && now > seen) return; // the webhook landed
+        return tick();
+      };
+      tick(); // deliberately not awaited — boot never waits on billing
+    }
+    return kind;
   }
   BB.Billing = {
     status, isPro, tier, credits, refresh, open, confirmIssue, issue, buyPack, configured,
-    gateNewProject, manage: () => api('portal', {}).then(d => { if (d.url) window.location.href = d.url; }).catch(() => setNote('Billing is temporarily unavailable.')),
+    gateNewProject, manage: () => api('portal', {}).then(d => { if (d.url) window.location.href = d.url; }).catch(() => open('The billing portal is temporarily unavailable — please try again in a moment.')),
     handleReturn, signedOutUpgradeNote, freeSyncLabel,
     CREDIT_PACKS, WINDOW_DAYS
   };
@@ -19889,7 +19906,8 @@ BlueprintBuddyImport.build
       return;
     }
     const billing = BB.Billing.status();
-    if (Store.auth().user && billing.usage.aiMessages >= billing.entitlements.aiMonthlyLimit) {
+    const aiLimit = billing.entitlements.aiMonthlyLimit;
+    if (Store.auth().user && aiLimit != null && billing.usage.aiMessages >= aiLimit) {
       botSay(AI_CEILING_MSG, []);
       return;
     }
@@ -20782,6 +20800,27 @@ BlueprintBuddyImport.build
     const res = importCodeText($('importCode').value);
     if (res.error) { $('importMsg').textContent = res.error; return; }
     closeScrim('shareScrim');
+  }
+  async function openBlueprintLink(id) {
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), 6000) : null;
+      const r = await fetch('/api/blueprint?id=' + encodeURIComponent(id) + '&format=json',
+        { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined });
+      if (timer) clearTimeout(timer);
+      if (r.status === 401) {
+        promptSignIn('This blueprint link belongs to a signed-in account. Sign in with the account that issued it to reopen the design.');
+        return false;
+      }
+      if (!r.ok) {
+        botSay('That blueprint link didn’t resolve — it may have been issued by a different account. Sign in with that account, or open the design from More › Projects.', []);
+        return false;
+      }
+      const data = await r.json();
+      if (!data || !data.spec) return false;
+      const res = importCodeText(Codec.toShareCode(data.spec), 'blueprint link');
+      return !res.error;
+    } catch (e) { return false; } // offline or hung route: boot continues normally
   }
   function appOrigin() {
     return location.origin && location.origin !== 'null'
@@ -21691,9 +21730,24 @@ BlueprintBuddyImport.build
         new Promise(r => setTimeout(r, 1200))
       ]);
     } catch (e) { /* device storage is the product */ }
-    Store.onModeChange(() => renderAccount());
-    await BB.Billing.handleReturn();
+    Store.onModeChange(() => {
+      renderAccount();
+      probeAI();
+      if (state.history) scheduleAutosave(); // re-home the open design on the new storage rung
+    });
+    let loginFailed = false;
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.get('login') === 'failed') {
+        loginFailed = true;
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
+      }
+    } catch (e) { /* sandboxed frame */ }
+    const billingReturn = await BB.Billing.handleReturn(() => renderAccount());
     renderAccount();
+    if (loginFailed) promptSignIn('That sign-in didn’t complete — the provider round-trip failed or timed out, and nothing was changed. Please try again.');
+    if (billingReturn === 'credits') botSay('Payment received — thank you. Your new credits are landing in your balance now; the count updates within a few seconds.', []);
+    else if (billingReturn === 'canceled') botSay('Checkout was canceled — nothing was charged.', []);
     try {
       state.prices = await Store.loadPrices();
       state.prefs4 = await Store.loadPrefs();
@@ -21724,6 +21778,14 @@ BlueprintBuddyImport.build
     renderGallery();
     setChatPeek();
     let opened = !!state.importedFromLink, projectCount = 0;
+    try {
+      const bpParams = new URLSearchParams(window.location.search);
+      const bpId = bpParams.get('bp');
+      if (bpId && /^bp_[a-z0-9]+$/.test(bpId)) {
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
+        if (!opened) opened = await openBlueprintLink(bpId);
+      }
+    } catch (e) { /* sandboxed frame or no route: fall through to projects */ }
     try {
       const idx = await Store.loadIndex();
       projectCount = idx.length;

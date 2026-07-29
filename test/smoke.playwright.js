@@ -27,7 +27,7 @@ const clickMoreCtl = async sel => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const html = fs.readFileSync(DIST, 'utf8');
   const server = http.createServer((req, res) => {
-    if (req.url === '/' || req.url.startsWith('/index')) {
+    if (req.url === '/' || req.url.startsWith('/?') || req.url.startsWith('/index')) {
       res.setHeader('content-type', 'text/html');
       res.end(html); // dist carries its own doctype/html/head/body shell
     } else { res.statusCode = 204; res.end(); }
@@ -1665,6 +1665,32 @@ const clickMoreCtl = async sel => {
   ok(meter.heavy.areaShown && meter.heavy.menuHasPlans, 'billing-configured origin keeps a persistent pricing entry in More');
   ok(!meter.restored.visible, 'meter hides again when usage is zero/unknown');
 
+  /* ============ admin account: a null AI ceiling means NO ceiling ============ */
+  // api/_entitlements.js: the admin tier carries aiMonthlyLimit null, and
+  // gates must treat null as unlimited — never compare against it. The client
+  // chat gate used to coerce `used >= null` into `used >= 0`, which is always
+  // true, so a signed-in admin was told the ceiling was reached on their very
+  // first message and could never use AI at all.
+  const adminChat = await page.evaluate(async () => {
+    const realAuth = BB.Store.auth;
+    const realBilling = BB.Store.auth().billing;
+    const ADMIN = { plan: 'admin', entitlements: { plan: 'admin', label: 'Admin', projectLimit: null, aiMonthlyLimit: null }, usage: { aiMessages: 812 }, credits: { balance: 0, purchased: 0 } };
+    BB.Store.auth = () => Object.assign(realAuth(), { user: { name: 'Operator', provider: 'admin', admin: true }, billing: ADMIN });
+    BB.Store.setBilling(ADMIN);
+    const bubbles = () => [...document.querySelectorAll('#chatLog .msg.bot .bubble')].map(b => b.textContent.trim()).filter(Boolean);
+    const n0 = bubbles().length;
+    BB.AI.setTransport(async () => ({ text: JSON.stringify({ i: 'Nothing to change.' }), stopReason: 'end_turn' }));
+    await __bb.sendMessage('admin ping past the meter');
+    BB.AI.setTransport(null);
+    const after = bubbles().slice(n0).join(' ');
+    BB.Store.auth = realAuth;
+    BB.Store.setBilling(realBilling);
+    if (__bb.renderAccount) __bb.renderAccount();
+    return { after };
+  });
+  ok(!/usage ceiling is reached/.test(adminChat.after), 'a null AI ceiling (admin account) never blocks chat client-side');
+  ok(/Nothing to change/.test(adminChat.after), `the admin message reached the model transport (got "${adminChat.after.slice(0, 120)}")`);
+
   /* ================= X-04 → credits pivot: the Build gate announces itself ===== */
   // On a configured origin an UNCREDITED design shows a lock on Build (the
   // blueprint includes the shop companion). Activation for a signed-in user
@@ -1974,6 +2000,21 @@ const clickMoreCtl = async sel => {
   ok(g10.committed, 'the airborne proposal commits as the custom piece');
   ok(Math.abs(g10.floorY) < 1, `delivered piece stands on the floor (minY ${g10.floorY.toFixed(1)})`);
   ok(g10.ackDiscloses, `the ack discloses the silent grounding ("${g10.ack}")`);
+
+  /* ============ ?login=failed lands a visible explanation ============ */
+  // api/auth.js redirects a failed OAuth callback to /?login=failed. The old
+  // client never read the marker, so the user landed on a silently signed-out
+  // studio with no idea their sign-in went nowhere.
+  const failPage = await ctx.newPage();
+  await failPage.goto(`http://127.0.0.1:${port}/?login=failed`);
+  await failPage.waitForFunction(() => globalThis.__bb && __bb.state.model, null, { timeout: 15000 });
+  const loginFailed = await failPage.evaluate(() => ({
+    msg: [...document.querySelectorAll('#chatLog .msg.bot .bubble')].map(b => b.textContent).join(' '),
+    cleaned: location.search === ''
+  }));
+  ok(/sign-in didn’t complete/.test(loginFailed.msg), `a failed OAuth return is explained in chat (got "${loginFailed.msg.slice(0, 90)}")`);
+  ok(loginFailed.cleaned, 'the ?login=failed marker is stripped from the URL');
+  await failPage.close();
 
   // Retro theme sweep: dark mode across the new surfaces.
   await page.emulateMedia({ colorScheme: 'dark' });

@@ -98,6 +98,31 @@ const ok = (cond, msg) => { if (cond) pass++; else { fail++; console.error('  âœ
     ok(true, 'reload restores the cloud project');
     ok(await page.evaluate(() => __bb.state.spec.wood.species) === 'walnut', 'restored spec is intact (species survives)');
 
+    // 4b. The printed live link: every issued sheet footer prints
+    // /?bp=<id> promising "open to refine or re-download". Issue this
+    // design's blueprint, follow the link, and prove the issued design
+    // loads AND arrives already recognized as paid (the ownership probe
+    // re-attaches the credited-design record â€” no re-charge, no paywall).
+    const issued = await page.evaluate(async () => {
+      const r = await fetch('/api/blueprint', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wire: BB.Codec.encode(__bb.state.spec) })
+      });
+      return { status: r.status, data: await r.json() };
+    });
+    ok(issued.status === 200 && issued.data.ok && issued.data.charged,
+      `blueprint issues over the API, spending the signup credit (status ${issued.status})`);
+    // Point the screen at something else so the link demonstrably does the work.
+    await page.evaluate(() => __bb.merge({ meta: { name: 'Decoy Rename' } }, 'manual'));
+    await page.goto(base + '/?bp=' + issued.data.id);
+    await page.waitForFunction(() => globalThis.__bb && __bb.state.spec, null, { timeout: 30000 });
+    await page.waitForFunction(() => __bb.state.spec.meta.name === 'Cloud Walnut Bench', null, { timeout: 10000 });
+    ok(true, 'the /?bp= link from the issued sheets reopens the issued design');
+    ok(await page.evaluate(() => location.search === ''), 'the ?bp= marker is stripped once the design loads');
+    await page.waitForFunction(() => !!__bb.state.blueprint, null, { timeout: 10000 });
+    ok(true, 'the reopened design is recognized as already issued (unlocked, never re-charged)');
+
     // 5. Sign out: back to device, app fully working.
     await page.goto(base + '/api/auth?logout=1');
     await page.waitForFunction(() => globalThis.__bb && __bb.state.spec, null, { timeout: 30000 });
