@@ -139,24 +139,29 @@ var BB = globalThis.BB = globalThis.BB || {};
     const fits = (rect, w, h) => rect.w >= w && rect.h >= h;
 
     function placeInSheet(sheet, p) {
-      const pw = p.w + kerf, ph = p.h + kerf;
+      /* The kerf is consumed BEYOND the part only when there is material
+       * left to saw through: a part flush to the sheet edge needs no
+       * trailing kerf, so a 1218-wide back panel still fits the 1220 sheet
+       * the oversize gate said it would (fit is judged on RAW dims; the
+       * kerf is clamped into the leftover split below). */
       for (let i = 0; i < sheet.free.length; i++) {
         const rect = sheet.free[i];
-        let w = pw, h = ph, rot = false;
+        let w = p.w, h = p.h, rot = false;
         if (!fits(rect, w, h)) {
-          if (p.grainLocked || !fits(rect, ph, pw)) continue;
-          w = ph; h = pw; rot = true;
+          if (p.grainLocked || !fits(rect, p.h, p.w)) continue;
+          w = p.h; h = p.w; rot = true;
         }
-        sheet.placements.push({ name: p.name, x: rect.x, y: rect.y, w: w - kerf, h: h - kerf, rot });
+        const cw = Math.min(w + kerf, rect.w), ch = Math.min(h + kerf, rect.h);
+        sheet.placements.push({ name: p.name, x: rect.x, y: rect.y, w, h, rot });
         sheet.free.splice(i, 1);
         // guillotine split: give the larger leftover the full run
-        const rightW = rect.w - w, topH = rect.h - h;
+        const rightW = rect.w - cw, topH = rect.h - ch;
         if (rightW > topH) {
-          if (rightW > 0) sheet.free.push({ x: rect.x + w, y: rect.y, w: rightW, h: rect.h });
-          if (topH > 0) sheet.free.push({ x: rect.x, y: rect.y + h, w: w, h: topH });
+          if (rightW > 0) sheet.free.push({ x: rect.x + cw, y: rect.y, w: rightW, h: rect.h });
+          if (topH > 0) sheet.free.push({ x: rect.x, y: rect.y + ch, w: cw, h: topH });
         } else {
-          if (topH > 0) sheet.free.push({ x: rect.x, y: rect.y + h, w: rect.w, h: topH });
-          if (rightW > 0) sheet.free.push({ x: rect.x + w, y: rect.y, w: rightW, h: h });
+          if (topH > 0) sheet.free.push({ x: rect.x, y: rect.y + ch, w: rect.w, h: topH });
+          if (rightW > 0) sheet.free.push({ x: rect.x + cw, y: rect.y, w: rightW, h: ch });
         }
         return true;
       }
@@ -173,8 +178,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       for (const s of sheets) if (placeInSheet(s, p)) { placed = true; break; }
       if (!placed) {
         const s = { thickness: sheetT, w: SW, h: SH, placements: [], free: [{ x: 0, y: 0, w: SW, h: SH }] };
-        sheets.push(s);
-        if (!placeInSheet(s, p)) errors.push(`“${p.name}” could not be placed.`);
+        // A fresh sheet that STILL can't take the part is never kept — an
+        // empty phantom sheet must not ride into the shopping list.
+        if (placeInSheet(s, p)) sheets.push(s);
+        else errors.push(`“${p.name}” could not be placed.`);
       }
     }
     // Purchasable fraction: smallest quarter/half/full region the layout fits.

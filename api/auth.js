@@ -80,45 +80,17 @@ function storageConfigured() {
     process.env.BB_KV_FILE);
 }
 
-function origin(req) {
-  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN.replace(/\/$/, '');
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim();
-  return (S.isSecure(req) ? 'https' : 'http') + '://' + host;
-}
+const H = require('./_http.js');
+const origin = H.origin, sendJSON = H.sendJSON;
+const readBody = req => H.readBody(req, { emptyOk: true });
 const redirectUri = req => origin(req) + '/api/auth';
 
-function sendJSON(res, status, obj, cookies) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store');
-  if (cookies && cookies.length) res.setHeader('Set-Cookie', cookies);
-  res.end(JSON.stringify(obj));
-}
 function redirect(res, to, cookies) {
   res.statusCode = 302;
   res.setHeader('Cache-Control', 'no-store');
   if (cookies && cookies.length) res.setHeader('Set-Cookie', cookies);
   res.setHeader('Location', to);
   res.end();
-}
-
-/* Mirrors the readBody in api/store.js / api/billing.js: prefer a body the
- * platform already parsed, else read the stream with a small size cap. */
-function readBody(req) {
-  if (req.body !== undefined) {
-    return Promise.resolve(typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
-  }
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on('data', c => {
-      size += c.length;
-      if (size > 16384) { reject(new Error('body too large')); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch (e) { reject(new Error('invalid JSON')); } });
-    req.on('error', reject);
-  });
 }
 
 /* Email + password over POST. Both actions mint the same stateless session
@@ -148,13 +120,22 @@ async function handlePassword(req, res) {
      * through) _passwords.js's durable per-IP throttle when KV exists. */
     if (action === 'login' && Admin.available()) {
       const ip = Credits.clientIp(req);
-      if (Admin.throttled(ip)) throw fail('too_many_attempts');
-      if (Admin.matches(body.email !== undefined ? body.email : body.username, body.password)) {
-        Admin.clearFailures(ip);
-        user = Admin.sessionUser();
-      } else {
-        Admin.noteFailure(ip);
-        if (!P.available()) throw fail('invalid_credentials');
+      const identifier = body.email !== undefined ? body.email : body.username;
+      /* Only admin-SHAPED attempts (the admin username, or any login when no
+       * ordinary accounts exist) feed or hit the in-memory admin throttle.
+       * An ordinary login — successful or not — must never count as an admin
+       * failure: ten coworkers signing in behind one office NAT would lock
+       * the eleventh out with correct credentials. Ordinary-account brute
+       * force is _passwords.js's durable per-IP throttle's job. */
+      if (Admin.matchesUser(identifier) || !P.available()) {
+        if (Admin.throttled(ip)) throw fail('too_many_attempts');
+        if (Admin.matches(identifier, body.password)) {
+          Admin.clearFailures(ip);
+          user = Admin.sessionUser();
+        } else {
+          Admin.noteFailure(ip);
+          if (!P.available()) throw fail('invalid_credentials');
+        }
       }
     }
     if (!user) {

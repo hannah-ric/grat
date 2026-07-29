@@ -440,16 +440,21 @@ var BB = globalThis.BB = globalThis.BB || {};
     'seat.width': 'seat width', 'seat.depth': 'seat depth', 'seat.height': 'seat height',
     'seat.slopeDeg': 'seat slope', 'seat.backHeight': 'back height', 'seat.backRake': 'back rake',
     'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height',
+    'structure.stretcher': 'stretcher style', 'structure.stretcherHeight': 'stretcher height',
+    'bed.size': 'mattress size', 'bed.platformHeight': 'platform height', 'bed.headboardHeight': 'headboard height',
+    'wall.substrate': 'wall substrate', 'wall.studSpacingMM': 'stud spacing',
     'child.ageBand': 'child age band'
   };
-  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|seat\.(width|depth|height|backHeight|counterHeight)$|custom\.part\.(len|wid|thk)$)/;
+  const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|structure\.stretcherHeight$|seat\.(width|depth|height|backHeight|counterHeight)$|bed\.(platformHeight|headboardHeight)$|wall\.studSpacingMM$|custom\.part\.(len|wid|thk)$)/;
 
   /* Diff-chip / inspector value rendering. Lengths route through BB.Units —
    * the current display preference, NOT a per-call unit, decides the text. */
   function fmtValue(path, v) {
     if (typeof v === 'number' && MM_PATHS.test(path)) return U().fmtLength(v);
     if (typeof v === 'boolean') return v ? 'on' : 'off';
-    if (v === undefined) return '—';
+    // null and undefined both mean "not there" on a chip: adding drawers
+    // diffs null → 2, removing them 2 → null — never a literal "null".
+    if (v === undefined || v === null) return '—';
     if (Array.isArray(v)) return v.length + ' item' + (v.length === 1 ? '' : 's');
     if (typeof v === 'string') {
       if (K.WOOD_SPECIES[v]) return K.WOOD_SPECIES[v].label;
@@ -1424,7 +1429,12 @@ var BB = globalThis.BB = globalThis.BB || {};
      * source). A height already inside that window is the user's own tweak
      * and survives; anything else snaps to the 270 midpoint. */
     out.counterHeight = num(se.counterHeight, null);
-    if (out.counterHeight !== null) out.counterHeight = r1(clamp(out.counterHeight, 700, 1300));
+    /* Capped at 1100 so the WHOLE coupling window stays inside the exported
+     * seat.height rule (380–850): the Adjust rail and inspector read
+     * DIM_RULES as the authoritative bounds, and the coupling must never
+     * deliver a height past them (counter − 250 ≤ 850 → counter ≤ 1100).
+     * Real bar tops run 1016–1067 mm, so 1100 loses nothing buildable. */
+    if (out.counterHeight !== null) out.counterHeight = r1(clamp(out.counterHeight, 700, 1100));
     let h = applyDim('seat.height', se.height);
     if (out.counterHeight !== null) {
       const drop = G ? G.COUNTER_DROP : 270;
@@ -1459,6 +1469,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     raw = migrateSpec(raw);
     const template = TEMPLATES.includes(raw && raw.meta && raw.meta.template) ? raw.meta.template : 'table';
     const s = deepMerge(defaultSpec(template), raw || {});
+    /* Junk tolerance: a scalar where an object section belongs ("meta":"junk",
+     * "overall":42, "wood":"oak") must CORRECT, never throw — a tampered save
+     * or a raw API spec can carry anything, and this function's contract is
+     * "never throws". null keeps its meaning where the schema says so
+     * (drawers/doors: removed). */
+    for (const key of ['meta', 'overall', 'structure', 'wood', 'joinery', 'seat', 'bed', 'wall', 'custom', 'hardware']) {
+      if (s[key] !== undefined && !isObj(s[key])) {
+        const d = defaultSpec(template)[key];
+        s[key] = isObj(d) ? d : null;
+      }
+    }
+    for (const key of ['drawers', 'doors']) {
+      if (s[key] !== undefined && s[key] !== null && !isObj(s[key])) s[key] = null;
+    }
     s.specVersion = SPEC_VERSION;
     s.meta.template = template;
     if (!K.LEVELS.includes(s.meta.level)) s.meta.level = 'beginner';

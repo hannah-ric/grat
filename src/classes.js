@@ -181,7 +181,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       .concat(((res && res.validation && res.validation.errors) || []).map(e => ({ id: e.id, status: 'fail' })))
       .concat(((res && res.validation && res.validation.advisories) || []).map(a => ({ id: a.id, status: 'advisory' })));
     const walk = c => c.failureModes.map(m => {
-      if (m.guard) return { id: m.id, mode: m.mode, covered: true, guard: m.guard, fired: false, status: 'guarded' };
+      if (m.guard) {
+        /* A guarded mode that ALSO names defense checks still listens to
+         * them: if the correction guard regressed and its live check fired,
+         * the checklist must say so — reporting 'guarded' over a firing
+         * check would hide exactly the regression the defense exists to
+         * catch. A quiet defense keeps the plain 'guarded' verdict. */
+        const gHits = (m.checkIds || []).length ? ids.filter(x => m.checkIds.some(px => x.id === px || x.id.startsWith(px))) : [];
+        const gFired = gHits.some(h => h.status !== 'pass');
+        const gWorst = gHits.reduce((w, h) => (h.status === 'fail' ? 'fail' : h.status === 'advisory' && w !== 'fail' ? 'advisory' : w), 'pass');
+        return { id: m.id, mode: m.mode, covered: true, guard: m.guard, fired: gFired, status: gFired ? gWorst : 'guarded' };
+      }
       const hits = ids.filter(x => m.checkIds.some(px => x.id === px || x.id.startsWith(px)));
       const worst = hits.reduce((w, h) => (h.status === 'fail' ? 'fail' : h.status === 'advisory' && w !== 'fail' ? 'advisory' : w), 'pass');
       /* `conditional` modes exist only when their geometry does (an overhang,

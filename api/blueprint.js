@@ -61,39 +61,14 @@ const artifactKey = (uid, h) => `bb:${uid}:artifact:${h}`;
 
 const _test = { failRender: false }; // injectable failure for the refund-path test
 
-function sendJSON(res, status, obj) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store');
-  res.end(JSON.stringify(obj));
-}
+const H = require('./_http.js');
+const origin = H.origin, sendJSON = H.sendJSON;
+const readBody = req => H.readBody(req, { maxBytes: MAX_BODY_BYTES, emptyOk: true });
 function sendText(res, status, type, body, cache) {
   res.statusCode = status;
   res.setHeader('Content-Type', type);
   res.setHeader('Cache-Control', cache || 'private, max-age=0');
   res.end(body);
-}
-function readBody(req) {
-  if (req.body !== undefined) return Promise.resolve(typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on('data', c => {
-      size += c.length;
-      if (size > MAX_BODY_BYTES) { reject(new Error('body too large')); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on('end', () => {
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); }
-      catch (e) { reject(new Error('invalid JSON')); }
-    });
-    req.on('error', reject);
-  });
-}
-function origin(req) {
-  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN.replace(/\/$/, '');
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim();
-  return (S.isSecure(req) ? 'https' : 'http') + '://' + host;
 }
 async function readJSON(kv, key, fallback) {
   const raw = await kv.get(key);
@@ -278,8 +253,34 @@ module.exports = async function handler(req, res) {
     const hero = cleanImage(body.hero);
     const exploded = cleanImage(body.exploded);
 
-    // 2) IDEMPOTENCY — the same corrected spec never charges twice.
-    const boundId = await kv.get(hashKey(uid, cHash));
+    // 2) IDEMPOTENCY — the same corrected spec never charges twice. The
+    // binding is CLAIMED atomically (SET NX) before any charge lands: two
+    // concurrent identical first-issues would otherwise both read the key
+    // as absent and each spend a credit. The claim loser bounces with 409
+    // in_flight; by its retry the winner's design id is bound and the
+    // cached path serves it free. A crashed instance's claim goes stale
+    // after PENDING_MS and is taken over.
+    const PENDING_PREFIX = 'pending:';
+    const PENDING_MS = 2 * 60e3;
+    let boundId = await kv.get(hashKey(uid, cHash));
+    let claimedHash = false;
+    if (boundId && String(boundId).startsWith(PENDING_PREFIX)) {
+      const ts = Number(String(boundId).slice(PENDING_PREFIX.length));
+      if (isFinite(ts) && now - ts <= PENDING_MS) return sendJSON(res, 409, { error: 'in_flight' });
+      await kv.set(hashKey(uid, cHash), PENDING_PREFIX + now); // stale takeover
+      boundId = null; claimedHash = true;
+    } else if (!boundId) {
+      claimedHash = !!(await kv.setnx(hashKey(uid, cHash), PENDING_PREFIX + now));
+      if (!claimedHash) {
+        boundId = await kv.get(hashKey(uid, cHash));
+        if (!boundId || String(boundId).startsWith(PENDING_PREFIX)) return sendJSON(res, 409, { error: 'in_flight' });
+      }
+    }
+    // Release an unconsumed claim so a failed issue never wedges the spec.
+    const releaseClaim = async () => {
+      if (!claimedHash) return;
+      try { await kv.del(hashKey(uid, cHash)); } catch (e) { /* stale takeover covers a missed release */ }
+    };
     let design = boundId ? await readJSON(kv, designKey(uid, String(boundId)), null) : null;
     let charged = false, cached = false, grantId = null, balance = null;
 
@@ -298,6 +299,7 @@ module.exports = async function handler(req, res) {
         if (!Admin.isAdmin(session)) {
           const chargeRes = await Credits.charge(uid, { specHash: cHash, blueprintId: null, reason: 'issue', ip });
           if (!chargeRes.ok) {
+            await releaseClaim();
             return sendJSON(res, 402, { error: chargeRes.error || 'insufficient_credits', balance: chargeRes.balance });
           }
           charged = true;
@@ -374,6 +376,7 @@ module.exports = async function handler(req, res) {
         try { await Credits.refund(uid, { specHash: cHash, blueprintId: design.id, grantId, reason: 'render_failed' }); }
         catch (refundError) { Log.report('blueprint', 'refund_failed', refundError); }
       }
+      await releaseClaim();
       return sendJSON(res, 500, { error: 'render_failed', refunded: charged });
     }
 

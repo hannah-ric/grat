@@ -96,8 +96,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     view = v;
     BB.Porch.view = v;
     if (changed) {
-      // a chapter anchor rides the hash back onto the landing; else the top
-      const target = v === 'landing' && /^#ph-/.test(location.hash) ? doc.querySelector(location.hash) : null;
+      // a chapter anchor rides the hash back onto the landing; else the top.
+      // The hash is user-controlled text — a selector-invalid hash (e.g.
+      // "#ph-ch1;x") must scroll to the top, never throw out of the
+      // hashchange handler.
+      let target = null;
+      if (v === 'landing' && /^#ph-/.test(location.hash)) {
+        try { target = doc.querySelector(location.hash); } catch (e) { target = null; }
+      }
       if (target) target.scrollIntoView();
       else scrollTo(0, 0);
     }
@@ -352,18 +358,23 @@ var BB = globalThis.BB = globalThis.BB || {};
         canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:320px;height:240px;';
         doc.body.append(canvas);
         const mini = BB.Engine.create(canvas, { reducedMotion: true });
-        for (const e2 of entries) {
-          mini.setModel(e2.model, e2.spec, { snap: true });
-          mini.frame();
-          mini.snapNow();
-          const img = doc.createElement('img');
-          img.alt = '';
-          img.src = mini.renderNow().toDataURL('image/png');
-          const empty = e2.fig.querySelector('.ph-thumb-empty');
-          if (empty) empty.replaceWith(img);
+        try {
+          // finally: the throwaway engine renders every rAF from creation —
+          // a mid-pass throw must never leave it running for the session.
+          for (const e2 of entries) {
+            mini.setModel(e2.model, e2.spec, { snap: true });
+            mini.frame();
+            mini.snapNow();
+            const img = doc.createElement('img');
+            img.alt = '';
+            img.src = mini.renderNow().toDataURL('image/png');
+            const empty = e2.fig.querySelector('.ph-thumb-empty');
+            if (empty) empty.replaceWith(img);
+          }
+        } finally {
+          mini.dispose();
+          canvas.remove();
         }
-        mini.dispose();
-        canvas.remove();
       } catch (e) { /* skeleton stays — decoration only */ }
     };
     if (globalThis.requestIdleCallback) {
@@ -815,6 +826,14 @@ var BB = globalThis.BB = globalThis.BB || {};
     const ro = new ResizeObserver(() => engine.resize());
     ro.observe(canvas.parentElement);
     S.cleanups.push(() => ro.disconnect());
+    // Reduced motion is first-class LIVE, not only at gate time: enabling
+    // the OS setting mid-scrub must snap the stage's damped easing too.
+    if (reduceMq) {
+      const onReduce = () => engine.setReducedMotion(reduceMq.matches);
+      onReduce();
+      reduceMq.addEventListener('change', onReduce);
+      S.cleanups.push(() => reduceMq.removeEventListener('change', onReduce));
+    }
     engine.materializeStart(); // the piece assembles into the masthead frame
 
     // measured anchors → the one code-owned track table
@@ -954,32 +973,38 @@ var BB = globalThis.BB = globalThis.BB || {};
       canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:640px;height:480px;';
       doc.body.append(canvas);
       const eng = BB.Engine.create(canvas, { reducedMotion: true });
-      eng.setModel(d.model, d.spec, { snap: true });
-      eng.frame();
-      const D0 = eng.cameraPose().dist;
-      const explicit = doc.documentElement.dataset.theme;
-      eng.setTheme(explicit === 'dark' || (!explicit && darkMq && darkMq.matches) ? 'dark' : 'light');
-      for (const [key, q] of Object.entries(POSTER_POSES)) {
-        const slot = doc.querySelector(`.ph-slot[data-poster="${key}"]`);
-        if (!slot) continue;
-        eng.setDrafting(!!q.draft);
-        eng.setDraftFill(q.fill);
-        eng.setDims(!!q.dims);
-        eng.setProjection(q.ortho ? 'ortho' : 'persp');
-        eng.setExplode(q.explode);
-        eng.setCameraPose({ theta: q.theta, phi: q.phi, dist: q.distK * D0 });
-        // one engine tick applies bucket/drafting materials (they swap in the
-        // tick, not in the setters); reducedMotion k=1 settles it in a frame
-        await new Promise(r => requestAnimationFrame(r));
-        eng.snapNow();
-        const img = doc.createElement('img');
-        img.alt = '';
-        img.src = eng.renderNow().toDataURL('image/png');
-        slot.textContent = '';
-        slot.append(img);
+      try {
+        // finally: the throwaway engine renders every rAF from creation — a
+        // mid-pass throw (e.g. toDataURL after a lost GL context) must never
+        // leave it running, PMREM env and all, for the rest of the session.
+        eng.setModel(d.model, d.spec, { snap: true });
+        eng.frame();
+        const D0 = eng.cameraPose().dist;
+        const explicit = doc.documentElement.dataset.theme;
+        eng.setTheme(explicit === 'dark' || (!explicit && darkMq && darkMq.matches) ? 'dark' : 'light');
+        for (const [key, q] of Object.entries(POSTER_POSES)) {
+          const slot = doc.querySelector(`.ph-slot[data-poster="${key}"]`);
+          if (!slot) continue;
+          eng.setDrafting(!!q.draft);
+          eng.setDraftFill(q.fill);
+          eng.setDims(!!q.dims);
+          eng.setProjection(q.ortho ? 'ortho' : 'persp');
+          eng.setExplode(q.explode);
+          eng.setCameraPose({ theta: q.theta, phi: q.phi, dist: q.distK * D0 });
+          // one engine tick applies bucket/drafting materials (they swap in the
+          // tick, not in the setters); reducedMotion k=1 settles it in a frame
+          await new Promise(r => requestAnimationFrame(r));
+          eng.snapNow();
+          const img = doc.createElement('img');
+          img.alt = '';
+          img.src = eng.renderNow().toDataURL('image/png');
+          slot.textContent = '';
+          slot.append(img);
+        }
+      } finally {
+        eng.dispose();
+        canvas.remove();
       }
-      eng.dispose();
-      canvas.remove();
     } catch (e) { /* the document stands without stills */ }
   }
 

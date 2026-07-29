@@ -60,7 +60,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     let n = Math.max(want || 2, Math.ceil(usable / maxSp) + 1);
     // spacing floor: drop fasteners until they are at least minSpacing apart
     while (n > 2 && usable / (n - 1) < RULES.minSpacingMM) n--;
-    if (usable < RULES.minSpacingMM && n > 2) n = 2;
+    // A run too short for two distinct pilots takes ONE centered fastener:
+    // positions(41, 2) used to emit [20, 21] — two screws a millimetre
+    // apart is one oversized hole and a split member. 12 mm keeps the pair
+    // clear of the 10 mm splitting minimum; short corner-block faces
+    // (usable ≥ 20) still take their two screws.
+    if (n === 2 && usable < 12) n = 1;
     const out = [];
     for (let i = 0; i < n; i++) out.push(Math.round((RULES.edgeMM + (n === 1 ? usable / 2 : usable * i / (n - 1))) * 10) / 10);
     return out;

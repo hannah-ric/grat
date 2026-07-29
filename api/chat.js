@@ -81,35 +81,10 @@ function systemBlocks(system) {
   ];
 }
 
-function sendJSON(res, status, obj) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store');
-  res.end(JSON.stringify(obj));
-}
+const H = require('./_http.js');
+const sendJSON = H.sendJSON;
+const readBody = req => H.readBody(req, { maxBytes: MAX_BODY_BYTES });
 const errBody = message => ({ type: 'error', error: { type: 'proxy_error', message } });
-
-/* Vercel parses JSON bodies into req.body; plain Node (serve.js) does not.
- * Accept both, with a hard size cap on the raw stream. */
-function readBody(req) {
-  if (req.body !== undefined) {
-    return Promise.resolve(typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
-  }
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on('data', c => {
-      size += c.length;
-      if (size > MAX_BODY_BYTES) { reject(new Error('body too large')); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on('end', () => {
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
-      catch (e) { reject(new Error('invalid JSON')); }
-    });
-    req.on('error', reject);
-  });
-}
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {

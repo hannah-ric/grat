@@ -48,7 +48,11 @@ function parseCookies(req) {
   for (const part of raw.split(';')) {
     const i = part.indexOf('=');
     if (i < 0) continue;
-    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    const v = part.slice(i + 1).trim();
+    // A malformed percent-escape (e.g. a lone "%") must degrade to the raw
+    // value, never throw — a bad cookie is an anonymous request, not a 500.
+    try { out[part.slice(0, i).trim()] = decodeURIComponent(v); }
+    catch (e) { out[part.slice(0, i).trim()] = v; }
   }
   return out;
 }

@@ -197,30 +197,44 @@ async function grant(uid, amount, opts) {
   if (!(n > 0)) throw new Error('bad grant amount');
   const now = Date.now();
   const doc = await loadFor(kv, uid, now, opts);
+  let srcKey = null;
   if (opts.sourceId) {
+    /* ATOMIC dedupe (SET NX) closes the concurrent-redelivery race: two
+     * webhook deliveries landing together would both read the ledger before
+     * either appends, and both grant the pack. The ledger scan stays as the
+     * fallback for pre-existing grants written before the marker existed. */
+    srcKey = ledgerKey(uid) + ':src:' + crypto.createHash('sha256').update('bb-grant-src:' + String(opts.sourceId)).digest('hex').slice(0, 24);
+    const claimed = kv.setnx ? await kv.setnx(srcKey, String(now)) : 'OK';
     const led = await readJSON(kv, ledgerKey(uid), []);
-    if (led.some(e => e.type === 'grant' && e.sourceId === opts.sourceId)) {
+    if (!claimed || led.some(e => e.type === 'grant' && e.sourceId === opts.sourceId)) {
       return { ok: true, deduped: true, balance: await currentBalance(kv, uid, doc) };
     }
   }
-  const ts = typeof opts.ts === 'number' ? opts.ts : now;
-  const g = {
-    id: newGrantId(), amount: n, remaining: n,
-    reason: opts.reason || 'grant', sourceId: opts.sourceId || null,
-    ts, expiresAt: opts.reason === 'signup' ? null : ts + EXPIRY_MONTHS * MONTH_MS
-  };
-  doc.grants.push(g);
-  const expiries = applyExpiry(doc, now); // a back-dated grant may expire immediately
-  const expired = expiries.reduce((s, e) => s - e.amount, 0);
-  await writeDoc(kv, uid, doc);
-  const bal = kv.incrby
-    ? Math.max(0, Number(await kv.incrby(balKey(uid), n - expired)))
-    : balanceOf(doc);
-  await appendLedger(kv, uid, [
-    { ts: now, type: 'grant', amount: n, balanceAfter: bal, reason: g.reason, sourceId: g.sourceId, grantId: g.id },
-    ...expiries.map(e => Object.assign(e, { balanceAfter: bal }))
-  ]);
-  return { ok: true, deduped: false, balance: bal, grantId: g.id };
+  try {
+    const ts = typeof opts.ts === 'number' ? opts.ts : now;
+    const g = {
+      id: newGrantId(), amount: n, remaining: n,
+      reason: opts.reason || 'grant', sourceId: opts.sourceId || null,
+      ts, expiresAt: opts.reason === 'signup' ? null : ts + EXPIRY_MONTHS * MONTH_MS
+    };
+    doc.grants.push(g);
+    const expiries = applyExpiry(doc, now); // a back-dated grant may expire immediately
+    const expired = expiries.reduce((s, e) => s - e.amount, 0);
+    await writeDoc(kv, uid, doc);
+    const bal = kv.incrby
+      ? Math.max(0, Number(await kv.incrby(balKey(uid), n - expired)))
+      : balanceOf(doc);
+    await appendLedger(kv, uid, [
+      { ts: now, type: 'grant', amount: n, balanceAfter: bal, reason: g.reason, sourceId: g.sourceId, grantId: g.id },
+      ...expiries.map(e => Object.assign(e, { balanceAfter: bal }))
+    ]);
+    return { ok: true, deduped: false, balance: bal, grantId: g.id };
+  } catch (e) {
+    // A grant that failed after the claim must release it, or the webhook
+    // retry that SHOULD credit the pack would dedupe against nothing.
+    if (srcKey && kv.del) { try { await kv.del(srcKey); } catch (e2) { /* best effort */ } }
+    throw e;
+  }
 }
 
 async function charge(uid, opts) {

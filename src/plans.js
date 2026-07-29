@@ -64,8 +64,12 @@ var BB = globalThis.BB = globalThis.BB || {};
         const mateT = mate ? Math.min(mate.size.w, mate.size.h, mate.size.d) : undefined;
         const mm = jointAllowance(j.type, mateT);
         if (!mm) continue;
-        ends[j.a] = ends[j.a] || { n: 0, type: j.type, mm: 0 };
-        ends[j.a].n++; ends[j.a].type = j.type; ends[j.a].mm += mm;
+        // Accumulate every allowance-bearing joint TYPE, not just the last:
+        // a custom part tenoned at one end and dadoed at the other must name
+        // both in its note (the millimetres already summed both).
+        ends[j.a] = ends[j.a] || { n: 0, types: [], mm: 0 };
+        ends[j.a].n++; ends[j.a].mm += mm;
+        if (!ends[j.a].types.includes(j.type)) ends[j.a].types.push(j.type);
       }
     }
     const rows = new Map();
@@ -82,7 +86,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       if (e) {
         allowance = e.mm;
         L = Math.round((L + allowance) * 10) / 10;
-        note = `includes ${U().fmtLength(allowance)} for ${K.JOINERY[e.type] ? K.JOINERY[e.type].label.toLowerCase() : e.type}`;
+        const names = e.types.map(t => K.JOINERY[t] ? K.JOINERY[t].label.toLowerCase() : t).join(' + ');
+        note = `includes ${U().fmtLength(allowance)} for ${names}`;
       }
       const angles = BB.Geo.cutAngles(p.rot);
       if (angles) note = (note ? note + ' · ' : '') + BB.Geo.angleText(angles);
@@ -102,7 +107,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         rows.set(key, {
           name: groupName, qty: 0, L, W, T, material: mat, note, role: p.role,
           grain: p.grain || 'length', stock: isSheet ? 'sheet' : 'solid',
-          angles, allowance, allowanceJoint: e ? e.type : null, allowanceEnds: e ? e.n : 0,
+          angles, allowance, allowanceJoint: e ? e.types[0] : null, allowanceEnds: e ? e.n : 0,
           partId: p.id, defKey: p.defKey
         });
       }
@@ -386,7 +391,10 @@ var BB = globalThis.BB = globalThis.BB || {};
           `Cut a ${len(6)} groove, ${len(6)} deep, ${len(10)} up from the bottom edge of ALL FOUR box parts. Assemble with ${boxJ.plural || boxJ.label.toLowerCase()} (${len(d.box.w)} × ${len(d.box.h)} × ${len(d.box.d)} outside) WITH the ${len(6)} bottom sitting dry in its groove — it is captured on all four sides and cannot go in later. No glue on the bottom; check the diagonals before the glue sets.${n === 1 ? preFinish : ''}`,
           boxIds.concat(ids('bottom')), { drawer: d.index }));
       }
-      const railIds = model.parts.filter(p => p.role === 'rail').slice(d.index, d.index + 2).map(p => p.id);
+      // Only true rails flank a drawer opening — the desk's centre stile
+      // carries role 'rail' too, and slicing it in shifted every later
+      // drawer's highlighted parts by one.
+      const railIds = model.parts.filter(p => p.role === 'rail' && !/^stile/.test(p.id)).slice(d.index, d.index + 2).map(p => p.id);
       const gearIds = railIds.concat(d.gearIds || []);
       if (d.runner === 'side_mount_slides') {
         out.push(step(`dr${n}_runners`, `Drawer ${n}: mount the slides`,
@@ -528,7 +536,6 @@ var BB = globalThis.BB = globalThis.BB || {};
    * (audit F-S3-4). */
   function safetyStep(spec, model, integrity, stockPlan, out) {
     const notes = ['Eyes and ears on for every cut; a dust mask (or extraction) for machine work and sanding.'];
-    const cutRows = BB.Plans && model ? null : null;
     const isSheetMat = m => !!(K.WOOD_SPECIES[m] && K.WOOD_SPECIES[m].sheet);
     const hasSheet = model.parts.some(p => isSheetMat(p.material));
     if (hasSheet) notes.push('Full sheets are floppy and heavy — break them down on foam on the floor with a track/circular saw before any table-saw work.');
@@ -772,7 +779,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Exposure outranks the indoor climate preference (2026-08 outdoor model).
     const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.effectiveDMC(spec.exposure, climate)) : 0;
     out.push(step('s5', 'Fit and fasten the seat — held down, never pinned',
-      `${stool ? 'Set the seat on the frame' : 'Notch the seat around the rear posts (the cut list size already includes the capture), then set it on the frame'} with even overhang and fasten it from BELOW through the corner blocks with screws in SLOTTED holes run across the grain${se.slopeDeg ? `, letting the ${U().fmtDeg(se.slopeDeg)} slope follow the rails` : ''}. This seat travels about ${fine(mv)} across its ${len(crossW)} width between seasons — a screw pinned solid is a split seat two winters out. Snug, not crushed.`,
+      `${stool ? 'Set the seat on the frame' : 'Notch the seat around the rear posts (the cut list size already includes the capture), then set it on the frame'} with even overhang${se.slopeDeg ? `, letting the ${U().fmtDeg(se.slopeDeg)} slope follow the rails` : ''}, and fasten it exactly as the setout lines below specify — hold-downs that let the panel move, never glue, never a screw pinned solid across the grain. This seat travels about ${fine(mv)} across its ${len(crossW)} width between seasons — a seat pinned solid is a split seat two winters out. Snug, not crushed.`,
       ['seat_1']));
     out.push(step('s6', kd ? 'Snug, stand, and the re-snug schedule' : 'Cure before anyone sits',
       kd

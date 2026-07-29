@@ -328,7 +328,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     const tmplWords = { table: 'table', 'dining table': 'table', desk: 'desk', bench: 'bench', workbench: 'table', bookshelf: 'bookshelf', bookcase: 'bookshelf', 'shelf unit': 'bookshelf', nightstand: 'nightstand', 'bedside table': 'nightstand', 'night stand': 'nightstand', cabinet: 'cabinet', sideboard: 'cabinet', console: 'table', chair: 'chair', 'dining chair': 'chair', 'side chair': 'chair', 'kitchen chair': 'chair', stool: 'chair', 'bar stool': 'chair', 'barstool': 'chair', 'counter stool': 'chair', 'kitchen stool': 'chair', 'floating shelf': 'wall_shelf', 'wall shelf': 'wall_shelf', 'wall-mounted shelf': 'wall_shelf', 'wall mounted shelf': 'wall_shelf', 'shelf ledge': 'wall_shelf', bed: 'bed', 'bed frame': 'bed', 'platform bed': 'bed', bedframe: 'bed' };
     let wantTemplate = null, tmplWord = null;
     for (const w of Object.keys(tmplWords).sort((a, b) => b.length - a.length)) {
-      if (t.includes(' ' + w)) { wantTemplate = tmplWords[w]; tmplWord = w; break; }
+      // Trailing boundary (plural allowed): "bedroom" must not match "bed",
+      // "desktop" must not match "desk" — but "benches"/"tables" still do.
+      if (new RegExp(' ' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:e?s)?\\b').test(t)) {
+        wantTemplate = tmplWords[w]; tmplWord = w; break;
+      }
     }
     // A creation verb creates — and so does a bare noun-phrase description
     // (audit X-01): the hero placeholder "A walnut nightstand with two
@@ -676,10 +680,30 @@ var BB = globalThis.BB = globalThis.BB || {};
     else if (/\bring pulls?\b/.test(t)) { set('hardware.pull', 'ring_pull'); notes.push('ring pulls'); }
     else if (/\bbar pulls?\b/.test(t)) { set('hardware.pull', 'bar_pull'); notes.push('bar pulls'); }
 
-    // Finish.
-    for (const f of K.FINISHES) {
-      const kw = f.key === 'wipe_poly' ? 'poly' : f.label.toLowerCase().split(' ')[0];
-      if (t.includes(kw)) { set('finish', f.key); notes.push(f.label); break; }
+    // Finish. Anchored keywords per finish key — unanchored first-word
+    // substring matching set board butter from "headboard", spar urethane
+    // from "spare bedroom", and pure tung from "pure walnut". Order matters:
+    // the more specific phrase wins ("water-based poly" is water_poly, not
+    // wipe_poly; "spar urethane" is checked before the bare poly words).
+    {
+      const FINISH_RX = [
+        ['water_poly', /\bwater[- ]?(?:based|borne)\b/],
+        ['spar_urethane', /\bspar\b|\bexterior\s+(?:varnish|urethane|finish)\b/],
+        ['wipe_poly', /\bpoly(?:urethane)?\b|\bwipe[- ]on\b/],
+        ['danish_oil', /\bdanish\b/],
+        ['hardwax_oil', /\bhard[- ]?wax\b/],
+        ['board_butter', /\bboard butter\b|\bbeeswax\b|\bbutcher[- ]?block\s+(?:finish|butter|conditioner)\b/],
+        ['mineral_oil', /\bmineral oil\b/],
+        ['tung_pure', /\btung\b/],
+        ['shellac', /\bshellac\b/],
+        ['paint_system', /\bpaint(?:ed)?\b|\bprimer\b|\benamel\b/]
+      ];
+      for (const [fk, rx] of FINISH_RX) {
+        if (rx.test(t)) {
+          const f = K.FINISHES.find(x => x.key === fk);
+          set('finish', f.key); notes.push(f.label); break;
+        }
+      }
     }
 
     /* Outdoor exposure (2026-08): the WORD sets the exposure intent only —

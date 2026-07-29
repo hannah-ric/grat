@@ -66,6 +66,14 @@ function available() {
   return String(process.env.BB_ADMIN_PASSWORD || '').length >= MIN_PASSWORD;
 }
 
+/* Does the presented identifier name the admin account? Timing-safe, no
+ * response ever differs on it — used by auth.js to scope the failure
+ * throttle to admin-shaped attempts only. */
+function matchesUser(identifier) {
+  if (!available()) return false;
+  return tsEq('u:' + normUser(identifier), 'u:' + normUser(process.env.BB_ADMIN_USER));
+}
+
 function matches(identifier, password) {
   if (!available()) return false;
   const userOK = tsEq('u:' + normUser(identifier), 'u:' + normUser(process.env.BB_ADMIN_USER));
@@ -126,4 +134,4 @@ function clearFailures(ip) {
   if (ip) failures.delete(ip);
 }
 
-module.exports = { available, matches, fingerprint, sessionUser, isAdmin, throttled, noteFailure, clearFailures };
+module.exports = { available, matchesUser, matches, fingerprint, sessionUser, isAdmin, throttled, noteFailure, clearFailures };

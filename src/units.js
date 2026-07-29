@@ -281,11 +281,15 @@ var BB = globalThis.BB = globalThis.BB || {};
     out = out.replace(/(\d+(?:\.\d+)?)\s*(["″])/g, (m0, num) => mm(parseFloat(num) * IN));
     // bare number next to a dimension word: current system supplies the unit
     if (prefs.system === 'imperial') {
-      out = out.replace(new RegExp(String.raw`(\d+(?:\.\d+)?)(\s+(?:${DIM_WORDS})\b)`, 'gi'),
-        (m0, num, tail) => mm(parseFloat(num) * IN) + tail);
-      // (?![\d.]…) also stops a partial-number match: "749.3mm" must not
-      // backtrack to "749" + ".3mm" and get converted twice.
-      out = out.replace(new RegExp(String.raw`\b((?:${DIM_WORDS})\s*(?:to|of|=|at)?\s+)(\d+(?:\.\d+)?)(?![\d.]|\s*(?:mm|cm|m\b|%))`, 'gi'),
+      // (^|[^\d./]) keeps a fraction's components intact: "3/4 thick" must
+      // not become "3/101.6mm thick" — the 4 belongs to the fraction, not
+      // the dimension word.
+      out = out.replace(new RegExp(String.raw`(^|[^\d./])(\d+(?:\.\d+)?)(\s+(?:${DIM_WORDS})\b)`, 'gi'),
+        (m0, pre, num, tail) => pre + mm(parseFloat(num) * IN) + tail);
+      // (?![\d./]…) also stops a partial-number match: "749.3mm" must not
+      // backtrack to "749" + ".3mm" and get converted twice — and the / keeps
+      // "thickness 3/4" whole (the 3 is a fraction numerator, not inches).
+      out = out.replace(new RegExp(String.raw`\b((?:${DIM_WORDS})\s*(?:to|of|=|at)?\s+)(\d+(?:\.\d+)?)(?![\d./]|\s*(?:mm|cm|m\b|%))`, 'gi'),
         (m0, head, num) => head + mm(parseFloat(num) * IN));
     }
     return out;

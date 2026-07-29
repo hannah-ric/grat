@@ -29,14 +29,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   const n = v => (Math.round(v * 1000) / 1000).toString();
 
   /* Scene (Y-up) → export (Z-up) rotation: R' = C·R·Cᵀ with C the axis swap
-   * x'=x, y'=−z, z'=y. Rotated parts must arrive rotated (audit F-S1-3). */
+   * x'=x, y'=−z, z'=y. Rotated parts must arrive rotated (audit F-S1-3).
+   * C/Cᵀ/mul are constants — hoisted so per-part calls allocate nothing. */
+  const ZUP_C = [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
+  const ZUP_CT = [[1, 0, 0], [0, 0, 1], [0, -1, 0]];
+  const mul3 = (A, B) => A.map((row, i) => row.map((_, j) => A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j]));
   function zUpRotation(rot) {
     const r = rot || { x: 0, y: 0, z: 0 };
     const R = BB.Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
-    const C = [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
-    const mul = (A, B) => A.map((row, i) => row.map((_, j) => A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j]));
-    const Ct = [[1, 0, 0], [0, 0, 1], [0, -1, 0]];
-    return mul(mul(C, R), Ct);
+    return mul3(mul3(ZUP_C, R), ZUP_CT);
   }
 
   /* ---------------- COLLADA ----------------
@@ -198,17 +199,22 @@ ${nodes}
     // inside definitions pass through .mm; transformation origins are written
     // in inches (the SketchUp API's native unit) via MM_IN below.
     const MM_IN = 25.4;
-    const defs = new Map(); // defKey -> {var, label, w,d,h, role, color, cyl, instances}
+    const defs = new Map(); // defKey+size -> {var, label, w,d,h, role, color, cyl, instances}
     let di = 0;
     for (const p of model.parts) {
-      if (!defs.has(p.defKey)) {
-        defs.set(p.defKey, {
+      /* defKey alone is NOT a size identity: a square table's side and long
+       * stretchers share `stretcher_<len>` with w/d swapped (they lie along
+       * different axes), and a shared definition would place one pair 90°
+       * wrong. Key by defKey + exact world size, like DAE/GLB key geometry. */
+      const sizeKey = p.defKey + '|' + p.size.w + 'x' + p.size.h + 'x' + p.size.d;
+      if (!defs.has(sizeKey)) {
+        defs.set(sizeKey, {
           var: 'def_' + (di++), label: `${p.name} ${p.size.w}x${p.size.h}x${p.size.d}`,
           w: p.size.w, d: p.size.d, h: p.size.h, role: p.role, color: roleColor(p.role),
           cyl: p.prim === 'cylinder', instances: []
         });
       }
-      const d = defs.get(p.defKey);
+      const d = defs.get(sizeKey);
       // World = T(center′) · R′ · T(−half): definition origin is the min
       // corner, R′ is the Y-up→Z-up conjugated part rotation.
       const R = zUpRotation(p.rot);

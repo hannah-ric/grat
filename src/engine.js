@@ -1137,6 +1137,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       dispose() {
         E.disposed = true;
         cancelAnimationFrame(raf);
+        // The live annotation pass (dim-line geometries + sprite materials)
+        // is otherwise only disposed by the NEXT rebuild — an engine torn
+        // down with dims visible must not leak it.
+        annoGroup.traverse(o => {
+          if (o.geometry && o.geometry !== tickGeo) o.geometry.dispose();
+          if (o.isSprite && o.material) o.material.dispose();
+        });
         for (const m of matPool.values()) m.dispose();
         matPool.clear();
         for (const g of Object.values(unitBoxes)) g.dispose();

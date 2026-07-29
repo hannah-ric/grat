@@ -337,6 +337,52 @@ function objectBodyReq(url, bodyObj, headers) {
     for (const k of ['BB_ADMIN_USER', 'BB_ADMIN_PASSWORD', 'BB_ADMIN_PASSWORD_SCRYPT', 'ANTHROPIC_API_KEY', 'AI_MONTHLY_TOKEN_BUDGET']) delete process.env[k];
   }
 
+  section('admin: ordinary logins never feed the admin throttle (office-NAT lockout regression)');
+  {
+    process.env.BB_ADMIN_USER = 'gatekeeper';
+    process.env.BB_ADMIN_PASSWORD = 'open-sesame-9';
+    const cleanup = useTempKV();
+    const Admin = require('../api/_admin.js');
+    const IP = '203.0.113.77';
+    const post = body => fakeReq('/api/auth', { method: 'POST', body, headers: { 'x-real-ip': IP } });
+    let res = fakeRes();
+    await auth(post({ action: 'register', email: 'crew@example.com', password: 'goodpassword1' }), res);
+    eq(res.statusCode, 200, 'ordinary account registers');
+    const crewLogin = async () => { const r = fakeRes(); await auth(post({ action: 'login', email: 'crew@example.com', password: 'goodpassword1' }), r); return r.statusCode; };
+
+    // A whole office of correct-credential logins behind one NAT: none of
+    // them may count as an admin failure.
+    for (let i = 0; i < 12; i++) eq(await crewLogin(), 200, 'correct ordinary login #' + (i + 1) + ' from one IP succeeds');
+
+    // Admin-SHAPED failures (the admin username, wrong password) DO throttle.
+    // Interleave successful crew logins so the durable per-IP throttle in
+    // _passwords.js (cleared on success) stays out of the way and the
+    // in-memory admin throttle is what's measured.
+    for (let i = 0; i < 10; i++) {
+      res = fakeRes();
+      await auth(post({ action: 'login', email: 'gatekeeper', password: 'wrong-' + i }), res);
+      eq(res.statusCode, 401, 'admin-shaped failure #' + (i + 1) + ' → 401');
+      if (i % 3 === 2) eq(await crewLogin(), 200, 'crew login between admin failures still succeeds');
+    }
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'gatekeeper', password: 'open-sesame-9' }), res);
+    eq(res.statusCode, 429, 'the throttled admin attempt is refused even with the right password');
+    eq(await crewLogin(), 200, 'the ordinary account from the SAME IP is untouched by the admin throttle');
+
+    Admin.clearFailures(IP);
+    cleanup();
+    for (const k of ['BB_ADMIN_USER', 'BB_ADMIN_PASSWORD']) delete process.env[k];
+  }
+
+  section('session: a malformed cookie is an anonymous request, never a throw');
+  {
+    const bad = S.sessionFrom(fakeReq('/', { headers: { cookie: 'foo=%E0%A4%A; bb_sess=%' } }));
+    eq(bad, null, 'lone-percent cookie values degrade to anonymous');
+    const good = S.sessionCookieFor({ uid: 'dev:cookie', name: 'T', provider: 'dev' }, fakeReq('/')).split(';')[0];
+    const sess = S.sessionFrom(fakeReq('/', { headers: { cookie: 'junk=%; ' + good } }));
+    ok(sess && sess.uid === 'dev:cookie', 'a valid session beside a malformed cookie still signs in');
+  }
+
   /* ---------------- store: auth gate, doc rules, file backend ---------------- */
   section('store: /api/store auth gate + document round trip');
   {

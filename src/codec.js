@@ -303,7 +303,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     if (w.f !== undefined) patch.finish = at(FIN, w.f, undefined);
     if (w.ex !== undefined) patch.exposure = at(EXP, w.ex, undefined);
-    if (w.hp !== undefined) patch.hardware = { pull: at(PUL, w.hp, undefined) };
+    if (w.hp !== undefined) { patch.hardware = patch.hardware || {}; patch.hardware.pull = at(PUL, w.hp, undefined); }
     if (w.d !== undefined) {
       if (!w.d) patch.drawers = null;
       else if (Array.isArray(w.d)) patch.drawers = { count: w.d[0], frontStyle: at(FRONT, w.d[1], 'inset'), runner: at(RUN, w.d[2], 'side_mount_slides') };

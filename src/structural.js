@@ -219,12 +219,19 @@ var BB = globalThis.BB = globalThis.BB || {};
   /* Each case carries `creep`: sustained loads report long-term deflection
    * (elastic × CREEP_FACTOR); transient loads stay elastic. Moments are never
    * creep-scaled — strength duration effects live inside SAFETY_FACTOR. */
-  function loadCasesFor(presetKey, span, model) {
+  function loadCasesFor(presetKey, span, model, loadRunMM) {
     const p = LOAD_PRESETS[presetKey] || LOAD_PRESETS.display;
     const cases = [];
     const kSus = CREEP_FACTOR;
     if (p.kind === 'udl') {
-      const w = (p.kgPerM * GRAV) / 1000;
+      /* kgPerM is defined per metre of shelf RUN. Normally the run IS the
+       * beam span; a wall shelf cantilevers its DEPTH while the books run
+       * along its WIDTH, so the whole run's load must ride the short span —
+       * total load spread over the cantilever, not 60 kg/m of depth (which
+       * would shrink the computed load as the shelf gets WIDER). */
+      const w = loadRunMM
+        ? (p.kgPerM * (loadRunMM / 1000) * GRAV) / span
+        : (p.kgPerM * GRAV) / 1000;
       const creep = p.sustained ? kSus : 1;
       cases.push(model === 'cant' ? { fn: 'udlCant', mag: w, creep } : { fn: 'udlSS', mag: w, creep });
     } else if (p.kind === 'seat') {
@@ -356,7 +363,11 @@ var BB = globalThis.BB = globalThis.BB || {};
         const G2 = BB.Classes ? BB.Classes.get('wall_mounted').geom : { CLEAT_T: 19 };
         push({
           id: shelf.id, part: shelf, label: 'Shelf', kind: 'shelf', model: 'cant',
-          span: Math.max(60, shelf.size.d - 2 * G2.CLEAT_T), b: shelf.size.w, h: shelf.size.h, over: 0
+          span: Math.max(60, shelf.size.d - 2 * G2.CLEAT_T), b: shelf.size.w, h: shelf.size.h, over: 0,
+          // The per-metre book load runs along the WIDTH while the beam
+          // spans the depth — loadCasesFor spreads the whole run's load
+          // over the cantilever (see the udl comment there).
+          loadRun: shelf.size.w
         });
       }
     } else if (t === 'chair') {
@@ -650,12 +661,26 @@ var BB = globalThis.BB = globalThis.BB || {};
         if (sIsSheet) return null; // sheet stock tops out — the remedy is structure, not a phantom thickness
         const solved = solveThicknessFix(s.h, sagRatio, stress, allow);
         if (!solved) return null;
-        const suffix = solved.partial ? PARTIAL_LIMIT : '';
+        /* The delivered patch is clamped by correction's own DIM_RULES, so a
+         * label promising 45 that correction clamps to 32 would leave the
+         * check failing while claiming otherwise. Cap the OFFER at the
+         * knob's rule max and say "partial" honestly when capped. */
+        const offer = (id, labelPrefix, path, key) => {
+          const rule = BB.Spec.DIM_RULES[path];
+          let tt = solved.t, partial = solved.partial;
+          if (rule && tt > rule.max) { tt = rule.max; partial = true; }
+          if (tt <= s.h + 0.05) return null; // capped down to no gain — a fix that does not fix is never offered
+          return { id, label: `${labelPrefix} ${fmtLen(tt)}${partial ? PARTIAL_LIMIT : ''}`, patch: { structure: { [key]: tt } } };
+        };
         if (!custom) {
-          if (s.part.role === 'top' && TABLE_LIKE.includes(t)) return { id: 'thick-top', label: `Thicken top to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { topThickness: solved.t } } };
-          if (!s.apron) return { id: 'thick-shelf', label: `Thicken to ${fmtLen(solved.t)}${suffix}`, patch: { structure: { shelfThickness: solved.t } } };
+          // The patch must move the knob the part is actually CUT from:
+          // table-like tops and the cabinet top are built at topThickness
+          // (parametric cabinet()); bookshelf tops are shelfThickness stock.
+          if (s.part.role === 'top' && (TABLE_LIKE.includes(t) || t === 'cabinet')) return offer('thick-top', 'Thicken top to', 'structure.topThickness', 'topThickness');
+          if (!s.apron) return offer('thick-shelf', 'Thicken to', 'structure.shelfThickness', 'shelfThickness');
           return null;
         }
+        const suffix = solved.partial ? PARTIAL_LIMIT : '';
         const newParts = spec.custom.parts.map(p => p.id === s.id ? { ...p, dim: { ...p.dim, t: solved.t } } : p);
         return { id: 'thick-' + s.id, label: `Thicken ${s.id} to ${fmtLen(solved.t)}${suffix}`, patch: { custom: { parts: newParts, connections: spec.custom.connections } } };
       };
@@ -711,7 +736,7 @@ var BB = globalThis.BB = globalThis.BB || {};
             ? `Drawer band: the full ${fmtLen(s.apron.hStrong)} rear apron and the ${fmtLen(s.apron.h)} front rail share the load by stiffness through the fastened top; the governing member (${fmtLen(apEvalH)} deep over ${fmtLen(apEvalSpan)}) is reported. Sustained loads include ×${CREEP_FACTOR} creep.`
             : `The aprons are the beams: each ${fmtLen(s.apron.b)} × ${fmtLen(s.apron.h)} apron carries half the spread load and, worst case, ¾ of the point load (the attached top shares the rest across). Sustained loads include ×${CREEP_FACTOR} creep.`,
           fixes: ratio > 1 ? withSpecies(apFixes, spec.wood.species, ratio, apStress, apAllow, 'sag') : [],
-          data: { sagMM: sag, limitMM: limit, spanMM: s.apron.span },
+          data: { sagMM: sag, limitMM: limit, spanMM: apEvalSpan },
           prov: { rule: `apron beam: I = t·h³/12 = ${Math.round(Ia).toLocaleString()} mm⁴, span ${Math.round(apEvalSpan)} mm, ${s.apron.hStrong ? 'stiffness-shared (h³) across the unequal band' : 'half the spread load per apron'}` }
         });
         strengthCheck('str:apron:' + s.id, `aprons under ${s.label.toLowerCase()}`, M, apEvalH, Ia, preset,
@@ -752,7 +777,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         strengthCheck('str:' + s.id, s.label, MS, s.h, Is, preset, withSpecies(fixes, surfKey, rS, stressS, allowS, 'str'), ssp);
       } else {
         const I = I_rect(s.b, s.h);
-        const cases = loadCasesFor(s.presetKey, s.span, s.model);
+        const cases = loadCasesFor(s.presetKey, s.span, s.model, s.loadRun);
         const { sag, M, crept } = evalBeam(cases, s.span, Es, I);
         s._M = M; // root moment — the joint block prices cantilever couples off it (G2)
         const limit = s.model === 'cant' ? s.span / CANT_LIMIT_RATIO : s.span / SAG_LIMIT_RATIO;
@@ -1364,7 +1389,7 @@ var BB = globalThis.BB = globalThis.BB || {};
           explain: `Two occupants at ${G.USER_KG} kg (EN 1725 user mass) plus a ${Math.round(mattN / GRAV)} kg design mattress ride ${nSlat} slats${hasCentre ? ', each spanning half the width to the centre rail' : ''}. The strength case is a knee: ${Math.round(G.USER_KG * GRAV)} N through the mattress onto two slats at midspan. Slat width ${fmtLen(G.SLAT_W)} meets the ≥ 3 in manufacturer floor.`,
           fixes: [],
           data: { nSlat, gapMM, spanMM: span, kneeMarginRatio: marginK, sagMM: sagD, kneeStressMPa: stressK },
-          prov: { rule: `knee: M = ${Math.round(P)}×${Math.round(span)}/4 + mattress share; I = ${G.SLAT_W}×${G.SLAT_T}³/12 = ${Math.round(I).toLocaleString()} mm⁴` }
+          prov: { rule: `knee: M = ${Math.round(P)}×${Math.round(span)}/4 + mattress share; I = ${G.SLAT_W}×${slatT}³/12 = ${Math.round(I).toLocaleString()} mm⁴` }
         });
       }
 

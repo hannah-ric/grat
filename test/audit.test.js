@@ -1616,13 +1616,20 @@ section('G15 tappable thickness fixes are solved against the check, not one blin
   ok(deep, 'a failing member offers a solved deepen fix');
   eq(deep && deep.patch.custom.parts.find(p => p.id === 'p7').dim.w, 115, 'rail deepens to the solved 115 mm, not one step');
 
-  // When no stock can pass, the label says so instead of pretending.
+  // When no stock can pass, the label says so instead of pretending — and
+  // the offer never exceeds what correction will actually deliver: the
+  // shelfThickness rule caps at 32, so a "45" label would patch a number the
+  // pipeline silently clamps and the check would fail byte-identically.
   const wide = pipeline(Object.assign(JSON.parse(JSON.stringify(raw)),
     { overall: { width: 2000, depth: 300, height: 1524 } }));
   const sagW = Structural.computeIntegrity(wide.spec, wide.model, {}).checks.find(c => c.id === 'sag:shelf_1');
   const fxW = sagW && sagW.fixes.find(f => f.id === 'thick-shelf');
-  ok(fxW && fxW.patch.structure.shelfThickness === 45 && /partial/i.test(fxW.label),
-    'an unsolvable span offers the biggest stock as an honest partial step');
+  ok(fxW && fxW.patch.structure.shelfThickness === Spec.DIM_RULES['structure.shelfThickness'].max && /partial/i.test(fxW.label),
+    'an unsolvable span offers the biggest DELIVERABLE stock (the rule cap) as an honest partial step');
+  // The delivered spec really carries the offered number — label and board agree.
+  const applied = pipeline(Spec.deepMerge(JSON.parse(JSON.stringify(wide.spec)), fxW.patch));
+  eq(applied.spec.structure.shelfThickness, fxW.patch.structure.shelfThickness,
+    'applying the fix delivers exactly the thickness the label promises');
 }
 
 /* ================= G9: reconcileAck — phantom attachment / stock-source / "-free" / structure dims ================= */

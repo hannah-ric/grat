@@ -198,7 +198,7 @@ for (const [key, file] of Object.entries(FONT_FILES)) {
 const js = name => stripJS(name, read('src/' + name)).replace(/<\/script>/gi, '<\\/script>');
 
 let html = read('src/index.template.html')
-  .replace('{{CSS}}', css)
+  .replace('{{CSS}}', () => css) // function form: `$&`-style sequences in CSS must never be interpreted
   .replace('{{CSS_PORCH}}', () => stripSource(read('src/porch.css'), { css: true }))
   .replace('{{THREE}}', () => read('vendor/three.min.js').replace(/<\/script>/gi, '<\\/script>'))
   .replace('{{ANIME}}', () => read('vendor/anime.umd.min.js').replace(/<\/script>/gi, '<\\/script>'))
