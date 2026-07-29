@@ -29,14 +29,15 @@ var BB = globalThis.BB = globalThis.BB || {};
   const n = v => (Math.round(v * 1000) / 1000).toString();
 
   /* Scene (Y-up) → export (Z-up) rotation: R' = C·R·Cᵀ with C the axis swap
-   * x'=x, y'=−z, z'=y. Rotated parts must arrive rotated (audit F-S1-3). */
+   * x'=x, y'=−z, z'=y. Rotated parts must arrive rotated (audit F-S1-3).
+   * C/Cᵀ/mul are constants — hoisted so per-part calls allocate nothing. */
+  const ZUP_C = [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
+  const ZUP_CT = [[1, 0, 0], [0, 0, 1], [0, -1, 0]];
+  const mul3 = (A, B) => A.map((row, i) => row.map((_, j) => A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j]));
   function zUpRotation(rot) {
     const r = rot || { x: 0, y: 0, z: 0 };
     const R = BB.Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
-    const C = [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
-    const mul = (A, B) => A.map((row, i) => row.map((_, j) => A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j]));
-    const Ct = [[1, 0, 0], [0, 0, 1], [0, -1, 0]];
-    return mul(mul(C, R), Ct);
+    return mul3(mul3(ZUP_C, R), ZUP_CT);
   }
 
   /* ---------------- COLLADA ----------------

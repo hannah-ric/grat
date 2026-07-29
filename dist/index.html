@@ -3721,10 +3721,11 @@ body.ph-open .porch::after { display: none; }
     }
     return out;
   }
+  let hwDefaultsCache = null;
   function hardwarePrice(prices, key, fallback) {
     const t = prices && prices.hardware;
     if (t && isFinite(t[key])) return t[key];
-    const d = hardwarePriceDefaults()[key];
+    const d = (hwDefaultsCache || (hwDefaultsCache = hardwarePriceDefaults()))[key];
     return d !== undefined ? d : (fallback !== undefined ? fallback : 0);
   }
   function hardwarePriceLabel(key) {
@@ -11262,7 +11263,6 @@ body.ph-open .porch::after { display: none; }
   }
   function safetyStep(spec, model, integrity, stockPlan, out) {
     const notes = ['Eyes and ears on for every cut; a dust mask (or extraction) for machine work and sanding.'];
-    const cutRows = BB.Plans && model ? null : null;
     const isSheetMat = m => !!(K.WOOD_SPECIES[m] && K.WOOD_SPECIES[m].sheet);
     const hasSheet = model.parts.some(p => isSheetMat(p.material));
     if (hasSheet) notes.push('Full sheets are floppy and heavy — break them down on foam on the floor with a track/circular saw before any table-saw work.');
@@ -12092,13 +12092,13 @@ body.ph-open .porch::after { display: none; }
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'design';
   const n = v => (Math.round(v * 1000) / 1000).toString();
+  const ZUP_C = [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
+  const ZUP_CT = [[1, 0, 0], [0, 0, 1], [0, -1, 0]];
+  const mul3 = (A, B) => A.map((row, i) => row.map((_, j) => A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j]));
   function zUpRotation(rot) {
     const r = rot || { x: 0, y: 0, z: 0 };
     const R = BB.Geo.rotMat(r.x || 0, r.y || 0, r.z || 0);
-    const C = [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
-    const mul = (A, B) => A.map((row, i) => row.map((_, j) => A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j]));
-    const Ct = [[1, 0, 0], [0, 0, 1], [0, -1, 0]];
-    return mul(mul(C, R), Ct);
+    return mul3(mul3(ZUP_C, R), ZUP_CT);
   }
   function toDAE(spec, model) {
     const created = new Date().toISOString();
@@ -17065,6 +17065,10 @@ BlueprintBuddyImport.build
       dispose() {
         E.disposed = true;
         cancelAnimationFrame(raf);
+        annoGroup.traverse(o => {
+          if (o.geometry && o.geometry !== tickGeo) o.geometry.dispose();
+          if (o.isSprite && o.material) o.material.dispose();
+        });
         for (const m of matPool.values()) m.dispose();
         matPool.clear();
         for (const g of Object.values(unitBoxes)) g.dispose();
@@ -17146,7 +17150,10 @@ BlueprintBuddyImport.build
     view = v;
     BB.Porch.view = v;
     if (changed) {
-      const target = v === 'landing' && /^#ph-/.test(location.hash) ? doc.querySelector(location.hash) : null;
+      let target = null;
+      if (v === 'landing' && /^#ph-/.test(location.hash)) {
+        try { target = doc.querySelector(location.hash); } catch (e) { target = null; }
+      }
       if (target) target.scrollIntoView();
       else scrollTo(0, 0);
     }
@@ -17366,18 +17373,21 @@ BlueprintBuddyImport.build
         canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:320px;height:240px;';
         doc.body.append(canvas);
         const mini = BB.Engine.create(canvas, { reducedMotion: true });
-        for (const e2 of entries) {
-          mini.setModel(e2.model, e2.spec, { snap: true });
-          mini.frame();
-          mini.snapNow();
-          const img = doc.createElement('img');
-          img.alt = '';
-          img.src = mini.renderNow().toDataURL('image/png');
-          const empty = e2.fig.querySelector('.ph-thumb-empty');
-          if (empty) empty.replaceWith(img);
+        try {
+          for (const e2 of entries) {
+            mini.setModel(e2.model, e2.spec, { snap: true });
+            mini.frame();
+            mini.snapNow();
+            const img = doc.createElement('img');
+            img.alt = '';
+            img.src = mini.renderNow().toDataURL('image/png');
+            const empty = e2.fig.querySelector('.ph-thumb-empty');
+            if (empty) empty.replaceWith(img);
+          }
+        } finally {
+          mini.dispose();
+          canvas.remove();
         }
-        mini.dispose();
-        canvas.remove();
       } catch (e) { /* skeleton stays — decoration only */ }
     };
     if (globalThis.requestIdleCallback) {
@@ -17772,6 +17782,12 @@ BlueprintBuddyImport.build
     const ro = new ResizeObserver(() => engine.resize());
     ro.observe(canvas.parentElement);
     S.cleanups.push(() => ro.disconnect());
+    if (reduceMq) {
+      const onReduce = () => engine.setReducedMotion(reduceMq.matches);
+      onReduce();
+      reduceMq.addEventListener('change', onReduce);
+      S.cleanups.push(() => reduceMq.removeEventListener('change', onReduce));
+    }
     engine.materializeStart(); // the piece assembles into the masthead frame
     const a = anchorsFromLayout();
     tracks = _buildTracks(a);
@@ -17887,30 +17903,33 @@ BlueprintBuddyImport.build
       canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:640px;height:480px;';
       doc.body.append(canvas);
       const eng = BB.Engine.create(canvas, { reducedMotion: true });
-      eng.setModel(d.model, d.spec, { snap: true });
-      eng.frame();
-      const D0 = eng.cameraPose().dist;
-      const explicit = doc.documentElement.dataset.theme;
-      eng.setTheme(explicit === 'dark' || (!explicit && darkMq && darkMq.matches) ? 'dark' : 'light');
-      for (const [key, q] of Object.entries(POSTER_POSES)) {
-        const slot = doc.querySelector(`.ph-slot[data-poster="${key}"]`);
-        if (!slot) continue;
-        eng.setDrafting(!!q.draft);
-        eng.setDraftFill(q.fill);
-        eng.setDims(!!q.dims);
-        eng.setProjection(q.ortho ? 'ortho' : 'persp');
-        eng.setExplode(q.explode);
-        eng.setCameraPose({ theta: q.theta, phi: q.phi, dist: q.distK * D0 });
-        await new Promise(r => requestAnimationFrame(r));
-        eng.snapNow();
-        const img = doc.createElement('img');
-        img.alt = '';
-        img.src = eng.renderNow().toDataURL('image/png');
-        slot.textContent = '';
-        slot.append(img);
+      try {
+        eng.setModel(d.model, d.spec, { snap: true });
+        eng.frame();
+        const D0 = eng.cameraPose().dist;
+        const explicit = doc.documentElement.dataset.theme;
+        eng.setTheme(explicit === 'dark' || (!explicit && darkMq && darkMq.matches) ? 'dark' : 'light');
+        for (const [key, q] of Object.entries(POSTER_POSES)) {
+          const slot = doc.querySelector(`.ph-slot[data-poster="${key}"]`);
+          if (!slot) continue;
+          eng.setDrafting(!!q.draft);
+          eng.setDraftFill(q.fill);
+          eng.setDims(!!q.dims);
+          eng.setProjection(q.ortho ? 'ortho' : 'persp');
+          eng.setExplode(q.explode);
+          eng.setCameraPose({ theta: q.theta, phi: q.phi, dist: q.distK * D0 });
+          await new Promise(r => requestAnimationFrame(r));
+          eng.snapNow();
+          const img = doc.createElement('img');
+          img.alt = '';
+          img.src = eng.renderNow().toDataURL('image/png');
+          slot.textContent = '';
+          slot.append(img);
+        }
+      } finally {
+        eng.dispose();
+        canvas.remove();
       }
-      eng.dispose();
-      canvas.remove();
     } catch (e) { /* the document stands without stills */ }
   }
   function init() {
@@ -18208,7 +18227,7 @@ BlueprintBuddyImport.build
     return { spec, model, report };
   }
   const integrityOpts = () => ({ loadChoices: state.loadChoices, defaultLoad: 'auto', climate: state.prefs4.climate });
-  function adopt(r) {
+  function adopt(r, opts) {
     Units.setSystem(r.spec.meta.units);
     state.spec = r.spec; state.model = r.model; state.report = r.report;
     state.integrity = Structural.computeIntegrity(r.spec, r.model, integrityOpts());
@@ -18216,7 +18235,7 @@ BlueprintBuddyImport.build
     state.stockPlan = Packing.planStock(r.spec, r.model, state.cut, { prices: state.prices, stockMode: state.prefs4.stockMode });
     state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan, prices: state.prices });
     state.steps = Plans.assembly(r.spec, r.model, state.integrity, { stockPlan: state.stockPlan, climate: state.prefs4.climate });
-    if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
+    if (state.project && !(opts && opts.transient)) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
     state.engine.setModel(r.model, r.spec);
   }
   function recompute() {
@@ -18246,7 +18265,7 @@ BlueprintBuddyImport.build
   function preview(raw) {
     const r = runPipeline(raw);
     if (r.report.errors.length) return false;
-    adopt(r);
+    adopt(r, { transient: true }); // never prune saved progress on a drag frame
     state.previewing = true;
     renderAdvisories(r.report);
     renderPanel();
@@ -18256,6 +18275,7 @@ BlueprintBuddyImport.build
   function commitPreview(source) {
     if (!state.previewing) return;
     state.previewing = false;
+    if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
     state.history.push(state.spec, source);
     renderHistory();
     renderTopbar();
@@ -20504,7 +20524,7 @@ BlueprintBuddyImport.build
   }
   function restoreToWithoutClearingCompare(spec) {
     const r = runPipeline(spec);
-    adopt(r);
+    adopt(r, { transient: true }); // the overlay is a viewing state, not a commitment
     renderAdvisories(r.report);
     renderPanel();
     renderTopbar();
@@ -20691,14 +20711,17 @@ BlueprintBuddyImport.build
       document.body.append(canvas);
       const mini = BB.Engine.create(canvas, { reducedMotion: true });
       const thumbs = [];
-      for (const { model, spec } of galleryCards) {
-        mini.setModel(model, spec, { snap: true });
-        mini.frame();
-        mini.snapNow();
-        thumbs.push(Store.makeThumb(mini.renderNow()));
+      try {
+        for (const { model, spec } of galleryCards) {
+          mini.setModel(model, spec, { snap: true });
+          mini.frame();
+          mini.snapNow();
+          thumbs.push(Store.makeThumb(mini.renderNow()));
+        }
+      } finally {
+        mini.dispose();
+        canvas.remove();
       }
-      mini.dispose();
-      canvas.remove();
       patchGalleryThumbs(thumbs);
       await Store.set(THUMBS_KEY, { hash, thumbs });
     } catch (e) { /* skeleton cards remain */ }
@@ -21775,7 +21798,10 @@ BlueprintBuddyImport.build
       markViewportUnavailable();
       reportClientError('engine', e);
     }
-    reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
+    reduceMq.addEventListener('change', () => {
+      state.engine.setReducedMotion(reduceMq.matches);
+      if (BB.JointView) BB.JointView.setReducedMotion(reduceMq.matches);
+    });
     mobileAdvisoryMq.addEventListener('change', () => {
       renderAdvisories(state.report);
       if (state.mode === 'plan') renderPanel(); // cut cards <-> table swap
@@ -21895,7 +21921,12 @@ BlueprintBuddyImport.build
     $('historyBackdrop').onclick = closeHistoryDrawer;
     $('compareBtn').onclick = openCompare;
     $('compareClose').onclick = showCompareOverlay;
-    $('compareExit').onclick = clearCompare;
+    $('compareExit').onclick = () => {
+      const wasComparing = !!state.compare;
+      clearCompare();
+      const cur = state.history.currentSpec();
+      if (wasComparing && cur) restoreTo(cur);
+    };
     const setUnits = u => {
       state.prefs4.units.system = u === 'mm' ? 'metric' : 'imperial';
       Store.savePrefs(state.prefs4);

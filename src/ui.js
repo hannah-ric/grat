@@ -170,7 +170,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   const integrityOpts = () => ({ loadChoices: state.loadChoices, defaultLoad: 'auto', climate: state.prefs4.climate });
 
-  function adopt(r) {
+  function adopt(r, opts) {
     // The active design's unit choice IS the display system — sync the
     // formatter boundary before anything derived renders.
     Units.setSystem(r.spec.meta.units);
@@ -181,8 +181,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     state.bomData = Plans.bom(r.spec, r.model, { integrity: state.integrity, stock: state.stockPlan, prices: state.prices });
     state.steps = Plans.assembly(r.spec, r.model, state.integrity, { stockPlan: state.stockPlan, climate: state.prefs4.climate });
     // The checklist just changed shape: progress keys from an older stock
-    // layout would otherwise inflate the build percentage forever.
-    if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
+    // layout would otherwise inflate the build percentage forever. Only a
+    // COMMITTED adoption may prune — pruneProgress mutates the persisted
+    // record in place, so running it on a transient state (a slider preview
+    // frame, the compare overlay) permanently destroys checked-off cuts the
+    // moment a transient dimension changes the checklist keys.
+    if (state.project && !(opts && opts.transient)) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
     state.engine.setModel(r.model, r.spec);
   }
   /* Recompute derived layers for the SAME spec (load presets, prices,
@@ -218,7 +222,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   function preview(raw) {
     const r = runPipeline(raw);
     if (r.report.errors.length) return false;
-    adopt(r);
+    adopt(r, { transient: true }); // never prune saved progress on a drag frame
     state.previewing = true;
     renderAdvisories(r.report);
     renderPanel();
@@ -228,6 +232,9 @@ var BB = globalThis.BB = globalThis.BB || {};
   function commitPreview(source) {
     if (!state.previewing) return;
     state.previewing = false;
+    // The preview's adoptions were transient; the commit is where the
+    // checklist shape becomes real, so the progress prune runs here.
+    if (state.project) Plans.pruneProgress(state.project.progress, Plans.checklistKeys(state.stockPlan, state.cut, state.steps));
     state.history.push(state.spec, source);
     renderHistory();
     renderTopbar();
@@ -3018,7 +3025,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   }
   function restoreToWithoutClearingCompare(spec) {
     const r = runPipeline(spec);
-    adopt(r);
+    adopt(r, { transient: true }); // the overlay is a viewing state, not a commitment
     renderAdvisories(r.report);
     renderPanel();
     renderTopbar();
@@ -3242,14 +3249,20 @@ var BB = globalThis.BB = globalThis.BB || {};
       document.body.append(canvas);
       const mini = BB.Engine.create(canvas, { reducedMotion: true });
       const thumbs = [];
-      for (const { model, spec } of galleryCards) {
-        mini.setModel(model, spec, { snap: true });
-        mini.frame();
-        mini.snapNow();
-        thumbs.push(Store.makeThumb(mini.renderNow()));
+      try {
+        // finally: the throwaway engine starts a rAF render loop the moment
+        // it is created — a throw mid-pass (one bad starter, a lost GL
+        // context) must never leave it rendering for the rest of the session.
+        for (const { model, spec } of galleryCards) {
+          mini.setModel(model, spec, { snap: true });
+          mini.frame();
+          mini.snapNow();
+          thumbs.push(Store.makeThumb(mini.renderNow()));
+        }
+      } finally {
+        mini.dispose();
+        canvas.remove();
       }
-      mini.dispose();
-      canvas.remove();
       patchGalleryThumbs(thumbs);
       await Store.set(THUMBS_KEY, { hash, thumbs });
     } catch (e) { /* skeleton cards remain */ }
@@ -4546,7 +4559,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       markViewportUnavailable();
       reportClientError('engine', e);
     }
-    reduceMq.addEventListener('change', () => state.engine.setReducedMotion(reduceMq.matches));
+    reduceMq.addEventListener('change', () => {
+      state.engine.setReducedMotion(reduceMq.matches);
+      // The joint inspector may be open mid-toggle — it listens live too.
+      if (BB.JointView) BB.JointView.setReducedMotion(reduceMq.matches);
+    });
     mobileAdvisoryMq.addEventListener('change', () => {
       renderAdvisories(state.report);
       if (state.mode === 'plan') renderPanel(); // cut cards <-> table swap
@@ -4720,7 +4737,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     $('historyBackdrop').onclick = closeHistoryDrawer;
     $('compareBtn').onclick = openCompare;
     $('compareClose').onclick = showCompareOverlay;
-    $('compareExit').onclick = clearCompare;
+    // "Done comparing" must leave the screen and the history stack agreeing:
+    // the overlay adopted snapshot B without touching history, so exiting
+    // restores the history's CURRENT spec (undo/redo, autosave, and the
+    // drawer highlight are all computed against it).
+    $('compareExit').onclick = () => {
+      const wasComparing = !!state.compare;
+      clearCompare();
+      const cur = state.history.currentSpec();
+      if (wasComparing && cur) restoreTo(cur);
+    };
     /* Units: a two-state in|mm control. Switching re-renders every surface in
      * one pass (all text flows from BB.Units) and persists the choice so the
      * next fresh session starts the same way. */

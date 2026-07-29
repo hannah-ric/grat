@@ -14,27 +14,9 @@ function stripeClient() {
   if (!process.env.STRIPE_SECRET_KEY) return null;
   return Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-05-27.dahlia' });
 }
-function origin(req) {
-  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN.replace(/\/$/, '');
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim();
-  return (S.isSecure(req) ? 'https' : 'http') + '://' + host;
-}
-function sendJSON(res, status, body) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store');
-  res.end(JSON.stringify(body));
-}
-function readBody(req) {
-  if (req.body !== undefined) return Promise.resolve(typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on('data', chunk => { size += chunk.length; if (size > 16384) { reject(new Error('body too large')); req.destroy(); } else chunks.push(chunk); });
-    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch (error) { reject(new Error('invalid JSON')); } });
-    req.on('error', reject);
-  });
-}
+const H = require('./_http.js');
+const origin = H.origin, sendJSON = H.sendJSON;
+const readBody = req => H.readBody(req, { emptyOk: true });
 function priceFor(interval) {
   return interval === 'year' ? process.env.STRIPE_PRO_YEARLY_PRICE_ID : process.env.STRIPE_PRO_MONTHLY_PRICE_ID;
 }

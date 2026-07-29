@@ -54,32 +54,9 @@ const MAX_VALUE_BYTES = 400 * 1024; // biggest honest doc: project w/ 20 revisio
 const MAX_BODY_BYTES = MAX_VALUE_BYTES + 4096;
 
 /* ---------------- plumbing ---------------- */
-function sendJSON(res, status, obj) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store');
-  res.end(JSON.stringify(obj));
-}
-
-function readBody(req) {
-  if (req.body !== undefined) {
-    return Promise.resolve(typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
-  }
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on('data', c => {
-      size += c.length;
-      if (size > MAX_BODY_BYTES) { reject(new Error('value too large')); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on('end', () => {
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
-      catch (e) { reject(new Error('invalid JSON')); }
-    });
-    req.on('error', reject);
-  });
-}
+const H = require('./_http.js');
+const sendJSON = H.sendJSON;
+const readBody = req => H.readBody(req, { maxBytes: MAX_BODY_BYTES, tooLargeMsg: 'value too large' });
 
 /* The Free plan's project ceiling, or null for unlimited (Pro) / when it can't
  * be determined. Fails open: a storage hiccup must never block a user's save. */

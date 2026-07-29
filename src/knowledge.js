@@ -775,10 +775,16 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
     return out;
   }
+  /* Lazy default-price cache for the per-BOM-line miss path: the source
+   * tables (GLUES, BB.HW.SLIDES/PULLS) are const, so assembling the defaults
+   * object once is enough — but only lazily, since BB.HW registers after
+   * this module loads. hardwarePriceDefaults() itself stays fresh-per-call
+   * (external callers may mutate their copy). */
+  let hwDefaultsCache = null;
   function hardwarePrice(prices, key, fallback) {
     const t = prices && prices.hardware;
     if (t && isFinite(t[key])) return t[key];
-    const d = hardwarePriceDefaults()[key];
+    const d = (hwDefaultsCache || (hwDefaultsCache = hardwarePriceDefaults()))[key];
     return d !== undefined ? d : (fallback !== undefined ? fallback : 0);
   }
   /* Display labels for the price editor — derived from the owning tables. */
