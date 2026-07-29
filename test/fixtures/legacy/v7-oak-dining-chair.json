@@ -10,10 +10,11 @@
     "minParts": 15
   },
   "expectAfterMigration": {
-    "specVersion": 9,
+    "specVersion": 11,
     "seat.height": 445,
     "seat.backHeight": 470,
-    "joinery.frame": "mortise_tenon"
+    "joinery.frame": "mortise_tenon",
+    "child": null
   },
   "spec": {
     "specVersion": 7,

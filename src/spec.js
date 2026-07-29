@@ -31,7 +31,7 @@ var BB = globalThis.BB = globalThis.BB || {};
    * through the migration registry on load — a saved design must never fail
    * to open. From Phase 4 forward, EVERY schema change adds a migration here.
    */
-  const SPEC_VERSION = 9;
+  const SPEC_VERSION = 11;
   const migrations = {
     /* v3 → v4: Phase 1–3 specs had no specVersion and no `custom` section.
      * Stamp the version, initialise custom to null, and normalise the legacy
@@ -99,6 +99,26 @@ var BB = globalThis.BB = globalThis.BB || {};
       const out = clone(s) || {};
       out.specVersion = 9;
       if (out.bed === undefined) out.bed = null;
+      return out;
+    },
+    /* v9 -> v10: the outdoor exposure model added one field. Every design
+     * saved before it was designed for the indoors — interior EMC swings,
+     * interior glue, interior finishes — so absence becomes the explicit
+     * interior default: the truth about what that design was, exactly the
+     * v4→v5 unbraced doctrine. */
+    9: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 10;
+      if (out.exposure === undefined) out.exposure = 'interior';
+      return out;
+    },
+    /* v10 -> v11: the children's SCOPE class added a `child` section
+     * (null = adult design — which is what every design saved before it
+     * was). */
+    10: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 11;
+      if (out.child === undefined) out.child = null;
       return out;
     }
   };
@@ -168,13 +188,15 @@ var BB = globalThis.BB = globalThis.BB || {};
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
+      exposure: 'interior',
       hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
       doors: null,
       custom: null,
       seat: null,
       wall: null,
-      bed: null
+      bed: null,
+      child: null
     };
     const t = base.meta.template;
     if (t === 'bed') {
@@ -413,11 +435,12 @@ var BB = globalThis.BB = globalThis.BB || {};
     'structure.shelfThickness': 'shelf thickness', 'structure.sideThickness': 'side thickness',
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
-    'finish': 'finish', 'hardware.pull': 'pull style',
+    'finish': 'finish', 'exposure': 'exposure', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners',
     'seat.width': 'seat width', 'seat.depth': 'seat depth', 'seat.height': 'seat height',
     'seat.slopeDeg': 'seat slope', 'seat.backHeight': 'back height', 'seat.backRake': 'back rake',
-    'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height'
+    'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height',
+    'child.ageBand': 'child age band'
   };
   const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|seat\.(width|depth|height|backHeight|counterHeight)$|custom\.part\.(len|wid|thk)$)/;
 
@@ -808,8 +831,12 @@ var BB = globalThis.BB = globalThis.BB || {};
   const DOOR_STYLES = ['inset', 'overlay'];
   /* A single door past this width sags on its own hinges and needs a swing
    * radius nobody has in a kitchen; correction splits it into a pair rather
-   * than building something that will droop. Standard cabinet practice. */
-  const DOOR_MAX_SINGLE_W = 600;
+   * than building something that will droop. Standard cabinet practice —
+   * and the same 600 the Blum-class hinge count charts are valid to, which
+   * is why the cap is owned by the casework class contract (CASE_GEOM) and
+   * only read here. doorNotes() discloses the split. */
+  const DOOR_MAX_SINGLE_W = BB.Classes && BB.Classes.get('casework')
+    ? BB.Classes.get('casework').geom.DOOR_MAX_SINGLE_W : 600;
   /* Clear air the stretcher needs under the apron, and the least it can sit
    * above the floor. Both are shop numbers, not taste: the gap is what lets
    * you get a clamp and a hand between the two rails during glue-up, and the
@@ -998,6 +1025,10 @@ var BB = globalThis.BB = globalThis.BB || {};
       // its mattress size — their own sections carry the user-facing
       // refusals, so overall.* notes there would be noise.
       if (derivedOverall && path.startsWith('overall.')) continue;
+      // Child-scoped heights are PINNED to the EN 1729 band — childNotes
+      // owns those refusals with the band named; a second generic note here
+      // would be noise.
+      if (cor.child && (path === 'overall.height' || path.startsWith('seat.'))) continue;
       const dot = path.indexOf('.');
       const sec = path.slice(0, dot), key = path.slice(dot + 1);
       const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
@@ -1137,6 +1168,64 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   }
 
+  /* Outdoor-exposure disclosures (2026-08): the species substitution and the
+   * finish routing are silent, deterministic corrections — so they are said
+   * here, the founding style. speciesNotes stays quiet for this case on
+   * purpose (the asked-for species IS a valid solid species). */
+  function exposureNotes(raw, cor, notes) {
+    if (!cor || !['covered', 'exposed'].includes(cor.exposure)) return;
+    const wantSp = raw && isObj(raw.wood) ? raw.wood.species : undefined;
+    if (cor.exposure === 'exposed' && typeof wantSp === 'string' && cor.wood && wantSp !== cor.wood.species) {
+      const sp = K.WOOD_SPECIES[wantSp];
+      if (sp && !sp.sheet && !sp.outdoor) {
+        notes.push(`${sp.label} isn’t decay-resistant — left in the weather it rots at the joints and checks in the sun, so this exposed build is corrected to ${fmtValue('wood.species', cor.wood.species)}. Even durable species are durable in heartwood only (sapwood of every species is perishable — cull it for outdoor parts). Ask for a covered spot to keep ${sp.label.toLowerCase()}.`);
+      }
+    }
+    const wantFin = raw ? raw.finish : undefined;
+    if (typeof wantFin === 'string' && wantFin !== cor.finish) {
+      const f = K.FINISHES.find(x => x.key === wantFin);
+      if (f && !f.exterior) {
+        notes.push(`${f.label} is an interior finish — sun and water fail it outdoors, so the ${cor.exposure} build carries ${fmtValue('finish', cor.finish)} (exterior-rated: UV blockers and a flexible film; recoat before it ever peels).`);
+      }
+    }
+  }
+
+  /* Children's-scope disclosures (the 'childrens' class): the band pinning
+   * heights, the backed-floor-seating refusal, and the scope cap — each a
+   * contract coupling or refusal, said here so it is never silent. */
+  function childNotes(raw, cor, notes) {
+    const rawChild = raw && isObj(raw.child) ? raw.child : null;
+    const t = at(cor, 'meta', 'template');
+    const fmt = mm => U().fmtLength(mm);
+    if (rawChild && (!cor || !cor.child)) {
+      notes.push('The child scope only rides tables, desks, chairs, and bookshelves — this template keeps adult sizing (child-scoped casework is future work).');
+      return;
+    }
+    if (!cor || !cor.child || !K.CHILD) return;
+    const band = K.CHILD.BANDS[cor.child.ageBand];
+    if (rawChild && typeof rawChild.ageBand === 'string' && rawChild.ageBand !== cor.child.ageBand) {
+      notes.push(`“${String(rawChild.ageBand).replace(/_/g, ' ')}” isn’t a child age band this tool knows (toddler, preschool, school, preteen) — the design is sized for a ${band.label}.`);
+    }
+    if (t === 'table' || t === 'desk') {
+      const want = num(at(raw, 'overall', 'height'), null);
+      if (want !== null && Math.abs(want - cor.overall.height) > 5) {
+        notes.push(`A ${t} for a ${band.label} is ${fmt(band.tableH)} tall — EN 1729 size mark ${band.mark} pairs it with the ${fmt(band.seatH)} seat — so the ${fmt(want)} asked for wasn’t used. Drop the child scope to size freely.`);
+      }
+    }
+    if (t === 'chair' && cor.seat) {
+      const rawSeat = raw && isObj(raw.seat) ? raw.seat : {};
+      const askedStool = num(rawSeat.backHeight, 1) === 0;
+      const askedCounter = num(rawSeat.counterHeight, null) !== null;
+      if (askedStool || askedCounter) {
+        notes.push('Child seating keeps a back and floor-serving height: a backless perch or a counter/bar stool puts a small child at fall height, so the child scope builds backed chairs only.');
+      }
+      const wantH = num(rawSeat.height, null);
+      if (wantH !== null && Math.abs(wantH - cor.seat.height) > 5) {
+        notes.push(`A chair for a ${band.label} seats at ${fmt(band.seatH)} (EN 1729 size mark ${band.mark}) — the ${fmt(wantH)} asked for wasn’t used.`);
+      }
+    }
+  }
+
   /* A drawer bank asked of a template that has no opening to put one in. */
   function drawerNote(raw, cor, notes) {
     const want = raw && raw.drawers;
@@ -1144,6 +1233,27 @@ var BB = globalThis.BB = globalThis.BB || {};
     const t = at(cor, 'meta', 'template');
     if (!TEMPLATES.includes(t) || DRAWER_TEMPLATES.includes(t)) return; // dropped for some other reason
     notes.push(`The ${t} template has no opening for drawers — the drawer bank was dropped.`);
+  }
+
+  /* Doors refused or reshaped by correction, said out loud (casework class):
+   * a single leaf past the class cap becomes a pair, and doors asked of a
+   * template with no case front are dropped — both silently deterministic in
+   * correctSpec, both disclosed here (G10 doctrine). */
+  function doorNotes(raw, cor, notes) {
+    const want = raw && raw.doors;
+    if (!want || typeof want !== 'object' || !cor) return;
+    const fmt = mm => U().fmtLength(mm);
+    if (cor.doors) {
+      const asked = Math.round(num(want.count, 0));
+      if (asked === 1 && cor.doors.count === 2) {
+        notes.push(`A single door across this opening would be wider than ${fmt(DOOR_MAX_SINGLE_W)} — past what cabinet hinges are charted for, and a swing radius nobody has — so the opening carries a pair of doors instead.`);
+      }
+    } else {
+      const t = at(cor, 'meta', 'template');
+      if (TEMPLATES.includes(t) && !DOOR_TEMPLATES.includes(t)) {
+        notes.push(`The ${t} template has no case front to hang doors on — the doors were dropped.`);
+      }
+    }
   }
 
   function correctionNotes(rawSpec, correctedSpec) {
@@ -1177,8 +1287,11 @@ var BB = globalThis.BB = globalThis.BB || {};
       speciesNotes(raw, correctedSpec, notes);
       joineryNotes(raw, correctedSpec, notes);
       drawerNote(raw, correctedSpec, notes);
+      doorNotes(raw, correctedSpec, notes);
       seatNotes(raw, correctedSpec, notes);
       bedNotes(raw, correctedSpec, notes);
+      exposureNotes(raw, correctedSpec, notes);
+      childNotes(raw, correctedSpec, notes);
     }
     return [...new Set(notes)];
   }
@@ -1276,6 +1389,28 @@ var BB = globalThis.BB = globalThis.BB || {};
     const G = C ? C.geom : null;
     const se = isObj(s.seat) ? s.seat : {};
     const out = {};
+    /* ---- children's scope (the 'childrens' class) ----
+     * The age band IS the seat: EN 1729 size-mark seat height with the
+     * class-derived plan (CHILD_GEOM.seatPlan — arithmetic documented in the
+     * contract). A child chair is always BACKED and floor-serving: backless
+     * perches and counter/bar stools put a small child at fall height, so
+     * backHeight > 0 and counterHeight = null are forced (childNotes says
+     * why). Slope and rake keep the seating class's own rules. */
+    const childCls = s.child && BB.Classes ? BB.Classes.get('childrens') : null;
+    if (childCls && K.CHILD && K.CHILD.BANDS[s.child.ageBand]) {
+      const plan = childCls.geom.seatPlan(s.child.ageBand);
+      out.width = plan.width;
+      out.depth = plan.depth;
+      out.height = plan.height;
+      out.backHeight = plan.backHeight;
+      out.counterHeight = null;
+      out.slopeDeg = r1(clamp(num(se.slopeDeg, 3), 0, 8));
+      out.splayDeg = 0;
+      let kidRake = clamp(num(se.backRake, 4), 0, 8);
+      if (G) kidRake = Math.min(kidRake, G.backRakeMax(s.structure, out));
+      out.backRake = r1(Math.max(0, kidRake));
+      return out;
+    }
     out.width = applyDim('seat.width', se.width);
     out.depth = applyDim('seat.depth', se.depth);
     /* Back: 0 = stool; otherwise the crest rides a fixed band ABOVE the seat
@@ -1331,6 +1466,20 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (s.meta.units !== 'mm') s.meta.units = 'in';
     s.meta.name = String(s.meta.name || 'Untitled').slice(0, 60);
 
+    /* ---- children's scope sanitize (the 'childrens' class) ----
+     * `child` is a SCOPE over an existing template, never a template: it
+     * rides only the templates the class contract names (table, desk,
+     * chair, bookshelf — the ones already generated soundly), an unknown
+     * band falls to `school`, and on any other template the scope is
+     * dropped (childNotes discloses both). Sanitized FIRST so the seat
+     * family and the height couplings below can read it. */
+    const CHILD_TEMPLATES = ['table', 'desk', 'chair', 'bookshelf'];
+    if (isObj(s.child) && CHILD_TEMPLATES.includes(template) && K.CHILD) {
+      s.child = { ageBand: K.CHILD.BANDS[s.child.ageBand] ? s.child.ageBand : 'school' };
+    } else {
+      s.child = null;
+    }
+
     const o = s.overall, st = s.structure;
     if (template !== 'custom') {
       o.width = applyDim('overall.width', o.width);
@@ -1344,6 +1493,19 @@ var BB = globalThis.BB = globalThis.BB || {};
     // back to the Baltic default.
     const sheetSp = K.WOOD_SPECIES[s.wood.sheetSpecies];
     if (!sheetSp || !sheetSp.sheet) s.wood.sheetSpecies = 'baltic_birch';
+
+    /* ---- outdoor exposure (2026-08, the exposure overlay) ----
+     * One field routes the material consequences; junk falls to interior.
+     * EXPOSED corrects a non-durable species to the deterministic durable
+     * substitute (the species table's `outdoor` flags are the authority;
+     * exposureNotes tells the substitution) — the bed class's glued-rail
+     * override pattern. COVERED keeps the species and validation carries the
+     * durability advisory instead. Idempotent: a durable species and an
+     * exterior finish both pass through untouched. */
+    s.exposure = K.EXPOSURES.includes(s.exposure) ? s.exposure : 'interior';
+    if (s.exposure === 'exposed') {
+      s.wood.species = K.outdoorSubstitute(s.wood.species);
+    }
 
     st.topThickness = applyDim('structure.topThickness', st.topThickness);
     st.legThickness = applyDim('structure.legThickness', st.legThickness);
@@ -1362,6 +1524,20 @@ var BB = globalThis.BB = globalThis.BB || {};
      * stretcher rules in the seating block below. */
     st.stretcher = ((FRAME_TEMPLATES.includes(template) || template === 'chair') && STRETCHERS.includes(st.stretcher)) ? st.stretcher : 'none';
     st.stretcherHeight = applyDim('structure.stretcherHeight', st.stretcherHeight);
+
+    /* ---- children's heights (the 'childrens' class) ----
+     * The age band IS the height on a child table or desk: EN 1729 pairs a
+     * seat with a table per size mark, and the band's table height is pinned
+     * by code (K.CHILD — one source; childNotes discloses a refused ask).
+     * The apron band caps at the class's APRON_MAX so the band's own thigh
+     * room survives under the lower top (derivation in the contract).
+     * Bookshelf child scope changes no geometry — its regime is the anchor
+     * mandate and the finish advisory. */
+    if (s.child && (template === 'table' || template === 'desk') && K.CHILD) {
+      const cG = BB.Classes ? BB.Classes.get('childrens').geom : { APRON_MAX: 80 };
+      o.height = K.CHILD.BANDS[s.child.ageBand].tableH;
+      st.apronHeight = Math.min(st.apronHeight, cG.APRON_MAX);
+    }
 
     /* ---- seating (the 'seating' class family) ----
      * The seat section is corrected first, then the OVERALL is derived from
@@ -1508,6 +1684,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       s.joinery.frame = BB.Classes.get('seating').enforceFrameJoint(s.joinery.frame, lvl);
     }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
+    /* Outdoor finish routing: only an exterior-rated film survives outdoors
+     * (UV blockers + flex — spar_urethane is the catalog's exterior row), so
+     * covered and exposed builds are corrected onto it and exposureNotes
+     * tells. Interior designs are untouched byte-for-byte. */
+    if (s.exposure !== 'interior') {
+      const finRow = K.FINISHES.find(f => f.key === s.finish);
+      if (!finRow || !finRow.exterior) s.finish = 'spar_urethane';
+    }
 
     // Hardware style intent (2026 expansion): the AI proposes a pull STYLE;
     // code owns every count, size, spacing, and bore (BB.HW).
@@ -1790,6 +1974,10 @@ var BB = globalThis.BB = globalThis.BB || {};
     // Ergonomics advisories (never block).
     for (const row of K.ERGONOMICS) {
       if (!row.appliesTo.includes(t)) continue;
+      // Child-scoped pieces are sized by the EN 1729 band (K.CHILD), not the
+      // adult height rows — a 530 mm preschool table judged against the
+      // 730–760 dining band would advise against its own correctness.
+      if (spec.child && row.axis === 'height') continue;
       if (row.axis === 'height' || row.axis === 'depth') {
         const v = o[row.axis];
         if (v < row.min || v > row.max) {
@@ -1806,7 +1994,9 @@ var BB = globalThis.BB = globalThis.BB || {};
      * WITH sources; advisories never block — a boundary chair is legal, just
      * named). The counter-coupling ask lives in the integrity checks
      * (chair:counter); these are the body-fit bands. */
-    if (t === 'chair' && spec.seat && BB.Classes) {
+    if (t === 'chair' && spec.seat && !spec.child && BB.Classes) {
+      // (child-scoped chairs are pinned to the EN 1729 band by correction —
+      // judging them against the ADULT body-fit bands would be noise)
       const hf = Object.fromEntries(BB.Classes.get('seating').humanFactors.map(h => [h.key, h]));
       const se = spec.seat;
       const stool = se.backHeight === 0;
@@ -1844,6 +2034,41 @@ var BB = globalThis.BB = globalThis.BB || {};
       }
     }
 
+    /* ---- outdoor exposure (2026-08): refusals and named advisories ----
+     * Sheet goods have no exterior-rated row in the catalog, so an EXPOSED
+     * design that actually consumes sheet stock is refused with the reason
+     * (covered gets the advisory — sheltered from direct wetting, but with
+     * no rating to lean on). Water traps are NAMED, never silent: end grain
+     * at the leg bottoms wicks, horizontal surfaces pond. A wall shelf
+     * cannot be exposed: its anchor math uses NDS dry-service withdrawal
+     * values (MC ≤ 19%), and direct wetting crosses into wet service (NDS
+     * wet-service factor CM = 0.7 on withdrawal) — a derating the
+     * wall_mounted class does not carry. */
+    if (spec.exposure === 'covered' || spec.exposure === 'exposed') {
+      const exposed = spec.exposure === 'exposed';
+      const sheetParts = model && model.parts
+        ? model.parts.filter(p => K.WOOD_SPECIES[p.material] && K.WOOD_SPECIES[p.material].sheet) : [];
+      if (sheetParts.length) {
+        const names = [...new Set(sheetParts.map(p => p.name.toLowerCase()))].slice(0, 3).join(', ');
+        if (exposed) {
+          errors.push({ id: 'out_sheet', text: `This exposed build uses interior sheet stock (${names}) and no exterior-rated sheet good exists in this catalog — interior plywood delaminates and MDF swells the first time rain finds it. Remove the sheet parts (drawers, back panel), put the piece under cover, or keep it indoors. A guessed exterior rating would be worse than this refusal.` });
+        } else {
+          advisories.push({ id: 'out_sheet', text: `Covered outdoors, the sheet parts (${names}) stay out of the rain but carry no exterior rating — seal every edge, keep them off wet floors, and know that direct weather would be a refusal, not an upgrade.` });
+        }
+      }
+      if (exposed && t === 'wall_shelf') {
+        errors.push({ id: 'out_mount', text: 'A wall shelf can’t hang in direct weather: the anchor math uses NDS dry-service withdrawal values (moisture content ≤ 19%), and rain-wetted framing crosses into wet service — NDS derates withdrawal to 0.7×, a factor this model doesn’t carry. A covered porch wall stays dry-service and is fine.' });
+      }
+      const spx = K.WOOD_SPECIES[spec.wood.species];
+      if (!exposed && spx && !spx.outdoor) {
+        advisories.push({ id: 'out_species', text: `${spx.label} isn’t decay-resistant — a roof keeps the rain off, but expect faster greying and bigger seasonal movement than indoors, and never let it stand wet. In direct weather it would be corrected to a durable species.` });
+      }
+      if (exposed && t !== 'wall_shelf') {
+        advisories.push({ id: 'out_legs', text: 'Leg bottoms are end grain — they wick standing water like a straw. Seal them (thinned epoxy or extra finish coats), chamfer the bottom edges, and keep the feet on pavers or glides, never soil or grass: ground contact needs preservative-treated stock this catalog doesn’t carry.' });
+        advisories.push({ id: 'out_drain', text: 'Water must drain, not sit: upward-facing end grain and open joint mouths trap rain, so orient mortises and slots where they can’t hold water, seal every exposed end-grain surface, and let horizontal surfaces shed (a slight slope or slat gaps). Recoat the finish before it peels — a failed film traps water against the wood.' });
+      }
+    }
+
     /* Bed human factors: the platform band, said with its consequence. */
     if (t === 'bed' && spec.bed && BB.Classes) {
       const row = K.ergoRow('platform_bed_height');
@@ -1857,22 +2082,51 @@ var BB = globalThis.BB = globalThis.BB || {};
      * under the band. Residential desks commonly run ~600–640 clear; ADA
      * 306.3 asks 685 for an accessible workstation — both are named, and
      * the advisory never blocks. */
-    if (t === 'desk') {
+    if (t === 'desk' && !spec.child) {
+      // (the 600 mm band is ADULT seated knee room — a child desk is judged
+      // by its EN 1729 pair, and the child apron cap keeps the thigh room)
       const clear = o.height - spec.structure.topThickness - spec.structure.apronHeight;
       if (clear < 600) {
         advisories.push({ id: 'ergo_knee', text: `${fmt(clear)} of knee clearance under the ${spec.drawers ? 'drawer band' : 'apron'} is below the ~${fmt(600)} seated-knee band (Panero & Zelnik; ADA 306.3 asks ${fmt(685)} for accessible desks). Shallower ${spec.drawers ? 'band' : 'aprons'} or a taller desk buys it back.` });
       }
     }
 
-    // Outdoor hardware truth (2026 hardware expansion): an exterior finish
-    // on a tannin-rich species means plain-steel hardware streaks black.
+    /* Children's finish safety (the 'childrens' class): every child-scoped
+     * design names the finish-safety ground truth — children mouth what they
+     * touch. Verified basis: EN 71-3 ("Safety of toys — Migration of certain
+     * elements") is the certification route for child-safe coatings; the
+     * catalog's foodContact finishes (pure tung oil, mineral oil, board
+     * butter) are food-contact class [FDA framing: shellac resin is listed
+     * under 21 CFR 175.300, but hardware-store premixed shellac carries no
+     * food/toy certification — so no product is blessed]. An uncertified
+     * film finish is COMMONLY considered inert once fully cured; that is
+     * practice, not a certification, and the advisory says which. */
+    if (spec.child) {
+      const cf = K.FINISHES.find(f => f.key === spec.finish);
+      const cured = cf && cf.foodContact
+        ? `${cf.label} is a food-contact-class finish — the safest family for a child's piece; still allow the full cure${cf.cureDays ? ` (${cf.cureDays} days)` : ''} before handover.`
+        : `${cf ? cf.label : 'The chosen finish'} carries no toy-safety certification: a fully cured film finish is commonly considered inert, but that is practice, not a certificate.`;
+      advisories.push({
+        id: 'child_finish',
+        text: `Child-scoped piece: children mouth what they touch. ${cured} For a certified route use a finish tested to EN 71-3 (toy-safety migration limits) — or a food-contact finish like pure tung oil; note hardware-store premixed shellac is not food/toy certified even though shellac resin itself is FDA-listed (21 CFR 175.300).`
+      });
+    }
+
+    // Outdoor hardware truth (2026 hardware expansion; extended by the 2026-08
+    // exposure model): outdoor duty means corrosion-resistant fittings, and a
+    // tannin-rich species (oak, cedar — WRCLA/Real Cedar guidance) earns the
+    // iron-stain warning by name.
     const finRow = K.FINISHES.find(f => f.key === spec.finish);
     const spRow = K.WOOD_SPECIES[spec.wood.species];
+    const outdoorDuty = K.isOutdoor(spec);
     if (finRow && finRow.exterior && BB.HW && spRow &&
-      (spRow.outdoor || BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key))) {
+      (outdoorDuty || spRow.outdoor || BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key))) {
+      const tannic = BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key);
       advisories.push({
         id: 'hw_outdoor',
-        text: `Outdoor duty: every screw, hinge, and fitting should be stainless, brass, or galvanized — plain steel streaks tannin-rich ${spRow.label.toLowerCase()} black in the rain.`
+        text: tannic
+          ? `Outdoor duty: every screw, hinge, and fitting must be ${K.OUTDOOR_FASTENER_SPEC} — plain steel reacts with tannin-rich ${spRow.label.toLowerCase()} and streaks it blue-black in the rain (electroplated zinc is too thin to last).`
+          : `Outdoor duty: every screw, hinge, and fitting must be ${K.OUTDOOR_FASTENER_SPEC} — plain and electroplated steel rust outdoors, and the BOM's fastener lines say so.`
       });
     }
     // Push-to-open needs a gap to push through: overlay fronts sit proud

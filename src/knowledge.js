@@ -602,6 +602,17 @@ var BB = globalThis.BB = globalThis.BB || {};
       };
     }
     if (sp.oily) return { glue: byKey('epoxy_slow'), why: `${sp.label} is oily — epoxy after a solvent wipe` };
+    /* Outdoor exposure routes to Type I BEFORE the finish is consulted: the
+     * glue line lives in the weather whatever the film over it does. Type I
+     * is the ANSI/HPVA HP-1 waterproof class — the Titebond III class
+     * (verified: Titebond publishes "passes the ANSI/HPVA Type I
+     * water-resistance specification", titebond.com product page). */
+    if (isOutdoor(spec)) {
+      return {
+        glue: byKey('pva_waterproof'),
+        why: `${exposureOf(spec)} outdoor build — every glue line must be Type I waterproof (ANSI/HPVA HP-1)`
+      };
+    }
     if (fin.exterior) return { glue: byKey('pva_waterproof'), why: 'exterior finish — the glue line must outlast the weather too' };
     return { glue: byKey('pva_interior'), why: 'interior build — long-grain PVA is stronger than the wood' };
   }
@@ -797,6 +808,59 @@ var BB = globalThis.BB = globalThis.BB || {};
     return widthMM * coef * (dMC === undefined ? CLIMATE_DMC.temperate : dMC);
   }
 
+  /* ---------------- Outdoor exposure (2026-08, class roadmap item 5) ----------------
+   * ONE spec signal (`spec.exposure`: interior | covered | exposed) routes
+   * every material consequence in code — species durability, glue class,
+   * finish class, fastener corrosion spec, and the ΔMC the movement math runs
+   * on. The AI proposes the exposure WORD only; nothing downstream is a
+   * prompt's number.
+   *
+   * ΔMC sources (Wood Handbook FPL-GTR-282 ch. 13; FPL-RN-0268):
+   *   covered = 6  — sheltered outdoor (roofed porch, no direct rain). WH
+   *     Table 13-2 puts exterior installation MC at 12% average, 9–14% range
+   *     for most of the US (≈5 points); humid-coastal outdoor monthly EMC
+   *     spans run slightly wider (e.g. Seattle 12.2–16.5% per the FPL-RN-0268
+   *     monthly data), so the envelope is 6. verified-approximate.
+   *   exposed = 12 — direct sun and rain. Sun-dried monthly lows reach the
+   *     4–8.5% EMC band (arid-region FPL-RN-0268 data) ≈ 7% typical, and rain
+   *     wetting drives the surface to the 19% MC dry/wet-service boundary
+   *     (NDS: CM = 1.0 at MC ≤ 19%): 19 − 7 = 12 points. A disclosed
+   *     derivation (verified-approximate) — direct wetting can locally exceed
+   *     fiber saturation, so this is a floor, not an overclaim ceiling.
+   */
+  const EXPOSURES = ['interior', 'covered', 'exposed'];
+  const EXPOSURE_DMC = { covered: 6, exposed: 12 };
+  /* The one ΔMC boundary: exposure (spec-driven) outranks the indoor climate
+   * preference; interior keeps the CLIMATE_DMC behavior byte-identically. */
+  function effectiveDMC(exposure, climate) {
+    if (EXPOSURE_DMC[exposure] !== undefined) return EXPOSURE_DMC[exposure];
+    return CLIMATE_DMC[climate] !== undefined ? CLIMATE_DMC[climate] : CLIMATE_DMC.temperate;
+  }
+  function exposureOf(spec) {
+    const e = spec && spec.exposure;
+    return EXPOSURES.includes(e) ? e : 'interior';
+  }
+  function isOutdoor(spec) { return exposureOf(spec) !== 'interior'; }
+  /* Deterministic durable substitute for an EXPOSED build (the bed class's
+   * glued-rail override pattern: correction makes the sound substitution and
+   * TELLS). The species table's `outdoor` flags are the single authority;
+   * costTier keeps the substitution in the buyer's own aisle: tier-1
+   * box-store stock routes to western red cedar (the lumberyard outdoor
+   * default), everything else to white oak (the outdoor-worthy hardwood).
+   * Heartwood honesty: even durable species are durable in HEARTWOOD only —
+   * sapwood of all species is perishable (Wood Handbook ch. 14 doctrine) —
+   * so the correction note carries that, never a blanket rot-proof claim. */
+  function outdoorSubstitute(speciesKey) {
+    const sp = WOOD_SPECIES[speciesKey];
+    if (!sp || sp.sheet || sp.outdoor) return speciesKey;
+    return sp.costTier === 1 ? 'western_red_cedar' : 'white_oak';
+  }
+  /* Fastener corrosion spec for outdoor duty: stainless or hot-dip
+   * galvanized only — WRCLA/Real Cedar installation guidance (electroplated
+   * zinc is too thin; plain steel reacts with tannin extractives). The
+   * tannic-species list itself lives in BB.HW.GATES.outdoorHardware. */
+  const OUTDOOR_FASTENER_SPEC = 'stainless or hot-dip galvanized';
+
   /* Stock thickness snapping tables (mm). POST_THICKNESS extends the solid
    * table for custom-grammar posts/legs: the packer laminates anything over
    * 45, exactly as templates already allow 100 mm legs (audit F-S2-6). */
@@ -811,6 +875,45 @@ var BB = globalThis.BB = globalThis.BB || {};
   function ergoRow(key) {
     return ERGONOMICS.find(r => r.key === key) || null;
   }
+
+  /* ---------------- Children's ergonomics (the 'childrens' scope class) ----
+   * EN 1729-1 pairs a chair SEAT height with a table height per size mark —
+   * the one citable children's-furniture sizing anchor (school furniture is
+   * exactly its subject: chairs and tables for educational institutions).
+   * Values below are the published size-mark pairs, cross-checked against
+   * multiple published EN 1729 sizing guides (ESPO chair & table guide, GLS
+   * Educational Supplies product listings, edu-quip/OWL buying guides,
+   * research 2026-07 — the standard text itself is paywalled):
+   *   mark 1 seat 260 / table 460 (age ≈3–4), mark 2 310/530 (4–6),
+   *   mark 3 350/590 (6–8), mark 4 380/640 (8–11).      [verified-exact]
+   * From EN 1729 mark 5 up (seat 430 / table 710, age 11–14) the pair meets
+   * the adult dining band this tool already builds (seat 430–460, table
+   * 730–760) — so age ≥ 12 is served by ADULT furniture, not a band here.
+   * Seat PLAN dimensions per mark (EN 1729 t4/b3) are not publicly
+   * published; the childrens class derives them (classes.js CHILD_GEOM,
+   * documented derivation). One source: correction, validation, the class
+   * contract, and the AI schema doc all read THIS table. */
+  const CHILD = {
+    BANDS: {
+      toddler: { mark: 1, seatH: 260, tableH: 460, ageLo: 2, ageHi: 3, label: 'toddler (≈3–4 yr, EN 1729 mark 1)' },
+      preschool: { mark: 2, seatH: 310, tableH: 530, ageLo: 4, ageHi: 5, label: 'preschooler (4–6 yr, EN 1729 mark 2)' },
+      school: { mark: 3, seatH: 350, tableH: 590, ageLo: 6, ageHi: 7, label: 'school-age child (6–8 yr, EN 1729 mark 3)' },
+      preteen: { mark: 4, seatH: 380, tableH: 640, ageLo: 8, ageHi: 11, label: 'preteen (8–11 yr, EN 1729 mark 4)' }
+    },
+    ADULT_AGE: 12, // ≥ this: EN 1729 mark 5+ coincides with the adult bands
+    /* Age (years) → band key; null = adult sizing fits (or the age is
+     * unusable). Under-2s sit in regulated infant products (high chairs,
+     * 16 CFR 1231), not loose furniture — they ride the smallest band with
+     * the band's own label saying who it actually fits. */
+    bandForAge(years) {
+      if (typeof years !== 'number' || !isFinite(years) || years < 1) return null;
+      if (years >= this.ADULT_AGE) return null;
+      for (const [k, b] of Object.entries(this.BANDS)) {
+        if (years >= b.ageLo && years <= b.ageHi) return k;
+      }
+      return 'toddler'; // years in [1, 2) — smallest band, label discloses fit
+    }
+  };
 
   /* ---------------- Digests for the AI system prompt ----------------
    * Compact, lossy on purpose: enough for good proposals; validation re-checks.
@@ -856,10 +959,12 @@ var BB = globalThis.BB = globalThis.BB || {};
 
   BB.K = {
     WOOD_SPECIES, ERGONOMICS, JOINERY, FASTENERS, FINISHES, GLUES,
-    LEVELS, SLIDE_LENGTHS, SLIDE_SPACE_MM, SOLID_THICKNESS, POST_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM,
+    LEVELS, SLIDE_LENGTHS, SLIDE_SPACE_MM, SOLID_THICKNESS, POST_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM, CHILD,
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,
+    EXPOSURES, EXPOSURE_DMC, effectiveDMC, exposureOf, isOutdoor,
+    outdoorSubstitute, OUTDOOR_FASTENER_SPEC,
     recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES,
     hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel
   };

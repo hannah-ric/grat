@@ -201,6 +201,117 @@ const CORPUS = [
       wood: { species: 'pine' },
       bed: { size: 'twin', headboardHeight: 0, platformHeight: 300 }
     }
+  },
+
+  /* ---- doored casework completion (roadmap item 4, 2026-07): a tall
+   * two-door inset armoire (imperial) — full-height leaves, four hinges by
+   * the chart, catches top AND bottom (leaf ≥ 1500), door:sag passing on
+   * the tall spread, and the honest red-oak reveal-movement advisory the
+   * class teaches instead of hiding. And a boundary sideboard (metric):
+   * a single door asked across 1400 mm is split by the class guard, the
+   * resulting leaves are wider than tall (the Blum chart rule fires as a
+   * frozen door:sag advisory), and flat-sawn beech movement outruns the
+   * overlay meeting adjustment — honest advisories, not tuned passes.
+   * The sideboard is additionally a frozen HONEST-FAIL (ash-bookshelf
+   * doctrine): its 19 mm shelf and 25 mm top genuinely sag over the
+   * 1.36 m clear span under the books preset + creep — sag:top_1 and
+   * sag:shelf_1 fail, the verdict is fail, and that is the point. Don't
+   * "fix" it. */
+  {
+    name: 'oak-armoire-pair-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Oak Armoire', template: 'cabinet', level: 'intermediate', units: 'in' },
+      overall: { width: 914.4, depth: 508, height: 1905 },
+      wood: { species: 'red_oak' },
+      structure: { shelfCount: 3, toeKick: true, backPanel: true, topThickness: 25, sideThickness: 18 },
+      drawers: null,
+      doors: { count: 2, style: 'inset' },
+      finish: 'danish_oil'
+    }
+  },
+  {
+    name: 'beech-sideboard-doors-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Beech Sideboard', template: 'cabinet', level: 'beginner', units: 'mm' },
+      overall: { width: 1400, depth: 450, height: 750 },
+      wood: { species: 'beech' },
+      structure: { shelfCount: 1, toeKick: true, backPanel: true },
+      drawers: null,
+      doors: { count: 1, style: 'overlay' }
+    }
+  },
+
+  /* ---- outdoor exposure overlay (2026-08, roadmap item 5): a nominal
+   * exposed cedar garden bench — an interior finish is asked for and the
+   * exterior routing (spar_urethane, Type-I glue line, corrosion-spec
+   * fastener labels, outdoor ΔMC in the movement checks, the out_legs /
+   * out_drain water-trap advisories) is frozen — and the correction boundary:
+   * a pine patio table whose species is corrected to the deterministic
+   * durable substitute (costTier 1 → western_red_cedar) and told. */
+  {
+    /* Cedar is soft (MOE 7.7, MOR 52): the sound exposed bench carries a
+     * thick seat, a deep M&T apron band, and the joints that survive cedar's
+     * low SG — sections a cedar bench genuinely needs, frozen passing. */
+    name: 'cedar-garden-bench-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Cedar Garden Bench', template: 'bench', level: 'advanced', units: 'in' },
+      wood: { species: 'western_red_cedar' },
+      structure: { topThickness: 38, apronHeight: 100, apronThickness: 25 },
+      joinery: { frame: 'mortise_tenon' },
+      exposure: 'exposed',
+      finish: 'danish_oil' // interior finish asked for — the exterior routing is the frozen behavior
+    }
+  },
+  {
+    /* The frozen verdict is ADVISORY on duty:top_1 — cedar is soft (Janka
+     * 350) and a cedar dining surface dents, which is exactly the kind of
+     * truth the corpus exists to hold still. Joints are M&T because cedar's
+     * SG 0.32 halves screw/dowel capacities below the load path — real
+     * cedar tables are M&T for the same reason. */
+    name: 'pine-patio-table-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Patio Table', template: 'table', level: 'advanced', units: 'mm' },
+      overall: { width: 1200, depth: 700, height: 740 },
+      wood: { species: 'pine' }, // not decay-resistant: corrected to western_red_cedar, and told
+      structure: { topThickness: 32, apronHeight: 100, apronThickness: 25 },
+      joinery: { frame: 'mortise_tenon' },
+      exposure: 'exposed'
+    }
+  },
+
+  /* ---- childrens scope class (2026-07): the school-age pair the class
+   * contract's golden manifest names — a table (metric) and a chair
+   * (imperial), both pinned to EN 1729 mark 3 by the child block. The table
+   * freezes the band height pin (750 asked, 590 delivered) + the child
+   * finish advisory; the chair freezes the derived child seat plan, the
+   * adult-magnitude tilt margins on child geometry, and the child:entrap /
+   * child:basis checks. Refusal cases (toy chest, high chair, changing
+   * table, play yard/gate) are exact-match assertions in audit KID-1 —
+   * a refusal produces a named regulation, not a plan to snapshot. */
+  {
+    name: 'maple-kids-table-metric',
+    units: { system: 'metric', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Kids Craft Table', template: 'table', level: 'beginner', units: 'mm' },
+      wood: { species: 'hard_maple' },
+      overall: { width: 900, depth: 600, height: 750 }, // 750 asked — the band pins 590
+      child: { ageBand: 'school' },
+      finish: 'tung_pure'
+    }
+  },
+  {
+    name: 'oak-kids-chair-imperial',
+    units: { system: 'imperial', precision: 16, dual: false },
+    raw: {
+      meta: { name: 'Kids Chair', template: 'chair', level: 'beginner', units: 'in' },
+      wood: { species: 'red_oak' },
+      child: { ageBand: 'school' },
+      finish: 'hardwax_oil'
+    }
   }
 ];
 

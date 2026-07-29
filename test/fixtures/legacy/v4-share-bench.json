@@ -12,7 +12,11 @@
     "units": "in",
     "drawers": null,
     "finish": "wipe_poly",
-    "overall": { "width": 1219.2, "depth": 381, "height": 457.2 },
+    "overall": {
+      "width": 1219.2,
+      "depth": 381,
+      "height": 457.2
+    },
     "minParts": 6
   }
 }

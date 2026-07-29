@@ -308,6 +308,39 @@ const summarize = (name, r, ig, extra) => {
     const wsDry = say('a floating shelf on drywall');
     ok(wsDry.kind === 'info' && /creep|ultimate/i.test(wsDry.text || ''),
       'drywall-only is refused with the reason', wsDry.kind);
+
+    /* Children's scope class (2026-07): a kid-worded ask CREATES with the
+     * EN 1729 band carried and told; regulated children's products are
+     * refused with the regulation NAMED, before creation can trigger. */
+    const nsBench = Spec.correctSpec({ meta: { name: 'NS', template: 'nightstand', level: 'beginner', units: 'in' } });
+    const kidTable = say('a table for my toddler', nsBench);
+    ok(kidTable.kind === 'new' && kidTable.spec.meta.template === 'table' &&
+      kidTable.spec.child && kidTable.spec.child.ageBand === 'toddler',
+      '"a table for my toddler" creates a child-scoped table on the toddler band',
+      kidTable.kind === 'new' ? JSON.stringify(kidTable.spec.child) : kidTable.kind);
+    const kidCor = kidTable.kind === 'new' ? Spec.correctSpec(kidTable.spec) : null;
+    ok(kidCor && kidCor.overall.height === 460,
+      'and correction pins the EN 1729 mark 1 table height (460)', kidCor && kidCor.overall.height);
+    ok(/EN 1729/.test(kidTable.explain || '') && /adult design loads/.test(kidTable.explain || ''),
+      'the ack names the band source and the kept adult loads — TOLD, not silent', kidTable.explain);
+    // Same-template phrasing stays a refinement (X-08 doctrine) — and still
+    // carries the band onto the piece on the bench.
+    const kidRefine = say('a table for my toddler');
+    ok(kidRefine.kind === 'diff' && kidRefine.patch.child && kidRefine.patch.child.ageBand === 'toddler',
+      'on a table bench the toddler ask refines the bench piece into child scope', JSON.stringify(kidRefine.patch || kidRefine));
+    const toyBox = say('a toy box with a lid');
+    ok(toyBox.kind === 'info' && /F834/.test(toyBox.text) && /16 CFR 1250/.test(toyBox.text),
+      'a toy box with a lid is REFUSED with ASTM F834 (now F963 / 16 CFR 1250) named', toyBox.kind + ': ' + (toyBox.text || '').slice(0, 90));
+    const highChair = say('a high chair');
+    ok(highChair.kind === 'info' && /16 CFR 1231/.test(highChair.text),
+      'a high chair is refused with 16 CFR 1231 named', highChair.kind);
+    const kidsDesk = say('kids desk');
+    ok(kidsDesk.kind === 'question' && /age|old/i.test(kidsDesk.question),
+      'a bare "kids desk" ASKS the age — the band is the geometry', kidsDesk.kind + ': ' + (kidsDesk.question || ''));
+    for (const chip of kidsDesk.options || []) {
+      const r = AI.localModel(chip, nsBench, {});
+      ok(r.kind === 'new' && r.spec.child, `kids-desk chip "${chip}" really builds child-scoped`, r.kind);
+    }
     ok(/\bchair\b/i.test((outOfScope['a sofa'].options || [])[0]),
       'a sofa offers the chair — the seating it does build now', outOfScope['a sofa'].options);
 
@@ -392,6 +425,30 @@ const summarize = (name, r, ig, extra) => {
     const hero = say('A walnut nightstand with two drawers');
     ok(hero.kind === 'new' && hero.spec.meta.template === 'nightstand' && hero.spec.drawers.count === 2,
       'the hero placeholder still builds its 2-drawer walnut nightstand', hero.kind);
+
+    /* Outdoor exposure (2026-08): the outdoor WORD is the whole intent — code
+     * routes species, glue, finish, fasteners, and ΔMC, and the corrections
+     * are TOLD, never silent. */
+    const teak = say('a teak garden bench');
+    ok(teak.kind === 'new' && teak.spec.meta.template === 'bench' && teak.spec.wood.species === 'teak' && teak.spec.exposure === 'exposed',
+      '"a teak garden bench" creates an exposed teak bench', teak.kind + ' ' + (teak.spec && teak.spec.exposure));
+    const teakCor = Spec.correctSpec(teak.spec);
+    ok(teakCor.wood.species === 'teak' && teakCor.finish === 'spar_urethane',
+      'teak survives exposed (outdoor-rated) and the finish routes exterior', JSON.stringify([teakCor.wood.species, teakCor.finish]));
+    ok(K.recommendGlue(teakCor).glue.key === 'epoxy_slow', 'outdoor teak still takes the oily-species epoxy', K.recommendGlue(teakCor).glue.key);
+    const patioDesk = say('an oak desk for the patio');
+    ok(patioDesk.kind === 'new' && patioDesk.spec.meta.template === 'desk' && patioDesk.spec.exposure === 'exposed',
+      '"an oak desk for the patio" creates an exposed desk', patioDesk.kind);
+    const patioCor = Spec.correctSpec(patioDesk.spec);
+    ok(patioCor.wood.species === 'white_oak', 'red oak is corrected to white oak for the weather', patioCor.wood.species);
+    ok(Spec.correctionNotes(patioDesk.spec, patioCor).some(n => /decay-resistant/.test(n)),
+      'and the substitution is told, never silent', Spec.correctionNotes(patioDesk.spec, patioCor).join(' | '));
+    const porchShelf = say('a walnut bookshelf for the covered porch');
+    ok(porchShelf.kind === 'new' && porchShelf.spec.exposure === 'covered',
+      'porch words read as covered outdoor duty', porchShelf.kind + ' ' + (porchShelf.spec && porchShelf.spec.exposure));
+    const deckShelf = say('build a floating shelf for the deck on studs');
+    ok(deckShelf.kind === 'info' && /dry-service/.test(deckShelf.text || ''),
+      'an exposed wall shelf is refused at the parser with the NDS dry-service reason', deckShelf.kind);
 
     out.cases.push({ name: 'offline parser edges (X-01/04/06/08)', rows });
     console.log('\n■ offline parser edges (X-01/04/06/08):');

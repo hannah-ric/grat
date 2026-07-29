@@ -195,8 +195,14 @@ var BB = globalThis.BB = globalThis.BB || {};
       screw: 0.06, pocket: 0.08, dowel: 0.1, figure8: 0.8,
       biscuit: 0.15, loose_tenon: 0.5, kd_bolt: 1.5, spline: 0.4
     };
+    /* Outdoor duty (2026-08 exposure model): corrosion is a hard spec on the
+     * shopping list, not an afterthought — every metal fastener line carries
+     * it (stainless or hot-dip galvanized; WRCLA guidance — electroplated
+     * zinc is too thin, and plain steel iron-stains tannic species). */
+    const corrode = K.isOutdoor(spec) ? ` — ${K.OUTDOOR_FASTENER_SPEC} (outdoor duty)` : '';
     for (const c of engineCounts) {
-      const label = c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${drill(c.pilotMM)})` : '');
+      const label = (c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${drill(c.pilotMM)})` : ''))
+        + (c.kind === 'dowel' || c.kind === 'loose_tenon' || c.kind === 'biscuit' || c.kind === 'spline' ? '' : corrode);
       const detail = c.kind === 'figure8' ? 'top attachment — allows seasonal movement'
         : c.kind === 'pocket' ? 'per the pocket-hole layout in the steps'
         : c.kind === 'dowel' ? `drill ${drill(c.pilotMM)}, positions in the steps`
@@ -236,7 +242,7 @@ var BB = globalThis.BB = globalThis.BB || {};
         } else {
           items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         }
-        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})${corrode}`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
       }
       // Pull lines print the EFFECTIVE style — what pullSpec actually fitted
       // — so the label and the boring instructions can never disagree. A
@@ -261,7 +267,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       } else {
         items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
       }
-      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})${corrode}`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
     /* Door hardware (X-07). Counts come from the same BB.HW rule the hinge
      * check uses, so the BOM and the integrity panel can never disagree
@@ -280,12 +286,17 @@ var BB = globalThis.BB = globalThis.BB || {};
           detail: `${dp.name.toLowerCase()} — ${U().fmtWeight(kg)} of door, ${hinge.fronts.includes('inset') && spec.doors.style === 'inset' ? 'inset' : 'overlay'} hung`,
           price: hp('hinge_' + hinge.key, hinge.price) * n
         });
-        // The door needs a way to be pulled and something to stop it closing
-        // past flush. Both are real parts a build cannot do without.
+        // The door needs a way to be pulled and something to stop it swinging
+        // open. The keeper is load-rated hardware now (roadmap item 4): type
+        // and count come from BB.HW.catchSpec — the same pure function the
+        // door:catch check rates and the fitting step installs, so the label,
+        // the count, and the rating can never disagree.
+        const cs = BB.HW.catchSpec(kg, dp.size.h, spec.hardware && spec.hardware.pull);
         items.push({
-          kind: 'hardware', label: 'Door catch (magnetic, with strike)', qty: 1,
-          detail: `${dp.name.toLowerCase()} — a door with no catch swings open on its own`,
-          price: hp('catch_magnetic', 2)
+          kind: 'hardware', label: cs.label + (cs.count > 1 ? ' (top + bottom)' : ''), qty: cs.count,
+          detail: `${dp.name.toLowerCase()} — ${U().fmtWeight(cs.holdKg)} hold class, ${cs.marginRatio}× over the computed swing demand` +
+            (cs.substituted ? '; touch latch declined — past ~4 kg the pop-out spring loses, so this front needs a pull after all' : ''),
+          price: hp('catch_' + cs.key, cs.price) * cs.count
         });
       }
       const pStyle = BB.HW.PULLS[spec.hardware && spec.hardware.pull];
@@ -330,8 +341,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     // The user's climate preference reaches the bench: ΔMC drives the
     // wooden-runner fitting clearance, exactly as it drives the movement
     // checks. Default temperate — a plan without a stated climate keeps
-    // the 4% swing.
+    // the 4% swing. The corrected spec's EXPOSURE outranks the climate
+    // preference (2026-08 outdoor model), same boundary as the movement math.
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    const dMC = K.effectiveDMC(spec.exposure, climate);
+    const swingLabel = K.isOutdoor(spec) ? `${spec.exposure} outdoor swing` : `${climate} indoor swing`;
     const boxJ = K.JOINERY[spec.joinery.box];
     /* THE formatting rule for every emitter in this file (audit M-01, and
      * D-05 which caught the call sites the first pass missed):
@@ -384,9 +398,9 @@ var BB = globalThis.BB = globalThis.BB || {};
           gearIds, { drawer: d.index }));
       } else {
         const sp = K.WOOD_SPECIES[spec.wood.species];
-        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, K.CLIMATE_DMC[climate]) : 2;
+        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, dMC) : 2;
         out.push(step(`dr${n}_runners`, `Drawer ${n}: fit wood runners`,
-          `Glue and screw the hardwood runners level in the opening (they're in the cut list), with the rail above as the kicker so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, ${climate} indoor swing), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
+          `Glue and screw the hardwood runners level in the opening (they're in the cut list), with the rail above as the kicker so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, ${swingLabel}), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
           gearIds, { drawer: d.index }));
       }
       out.push(step(`dr${n}_hang`, `Drawer ${n}: hang the box`,
@@ -468,18 +482,28 @@ var BB = globalThis.BB = globalThis.BB || {};
         (hinge.boring && hinge.boring.gainDepth ? ` Cut the gains ${hinge.boring.gainDepth} deep: deeper binds the door and springs the screws.` : '');
     }
 
+    /* The keeper comes from the same pure function the BOM buys and the
+     * door:catch check rates (BB.HW.catchSpec) — one rule, three surfaces. */
+    const cs = BB.HW.catchSpec(kg, d0.size.h, spec.hardware && spec.hardware.pull);
+    const catchText = cs.count === 2
+      ? ` Fit ${cs.count} × ${cs.label.toLowerCase()} per door — one at the TOP and one at the BOTTOM of the free stile, so both free corners are held flat against seasonal twist on a leaf this tall.`
+      : ` Fit a ${cs.label.toLowerCase()} per door at the free stile${cs.substituted ? ' — the touch latch was declined (past ~4 kg the pop-out spring loses), so this front keeps a pull' : ''}.`;
+
     out.push(step('doors_fit', doors.length > 1 ? 'Fit the doors, then take them off again' : 'Fit the door, then take it off again',
       `${n} × ${hinge.label.toLowerCase()} per door — ${U().fmtWeight(kg)} of door and ${len(d0.size.h)} of height is what sets that count, not the look of it. ` +
       boringText + ' ' +
       (inset
         ? `Inset doors are fitted by planing to the opening, not by cutting to a number: aim for a ${len(2)} reveal all round and check it with the door IN the opening, shimmed on playing cards. The reveal is the whole job — an even gap reads as fine work and an uneven one is the first thing anybody sees. Fit in the season you are in and remember which way it will move: a door fitted tight in a damp August binds every August after.`
         : `Overlay doors forgive the opening but not each other: hang both, then adjust until the gap down the middle is even and the bottom edges line up across the pair. That centre gap is the only reference anyone looks at.`) +
+      catchText +
       ` Then unscrew the doors and set them aside — they get finished off the case, and go back on last.`,
       ids));
   }
   // The overlay a cup hinge is solved against; the panel laps the case edge
-  // by this much, so it is the same number addDoors() builds the leaf from.
-  const DOOR_OVERLAY_LAP_MM = 12;
+  // by this much, so it is the same number addDoors() builds the leaf from —
+  // both read the casework class contract (classes.js CASE_GEOM).
+  const DOOR_OVERLAY_LAP_MM = BB.Classes && BB.Classes.get('casework')
+    ? BB.Classes.get('casework').geom.DOOR_OVERLAY_LAP : 12;
 
   /* Sanding + finishing schedule from the finish catalog (audit F-S3-3). */
   function sandingStep(spec, out) {
@@ -516,6 +540,13 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (narrowRip) notes.push(`Several rips finish under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
     if (stockPlan && stockPlan.mode === 'rough') notes.push('Rough stock can hide staples and grit — inspect and scrub edges before it touches jointer knives.');
     if (integrity && integrity.antiTip) notes.push('This piece requires the wall anchor before it goes into service — it is in the steps and the BOM.');
+    /* Outdoor duty (2026-08 exposure model): the maintenance truths that keep
+     * an outdoor build alive — corrosion spec, end-grain sealing, and the
+     * recoat schedule — belong in the plan, not in folklore. */
+    if (K.isOutdoor(spec)) {
+      notes.push(`This is an outdoor build: every metal fastener and fitting must be ${K.OUTDOOR_FASTENER_SPEC} (the BOM says so on each line), leg bottoms and other end grain get sealed before assembly, and the exterior finish is a maintenance item — recoat before it peels, because a failed film traps water against the wood.`);
+      if (spec.exposure === 'exposed') notes.push('Keep the feet off soil and grass (pavers or glides) — ground contact is preservative-treated territory this plan does not cover.');
+    }
     out.push(step('safety', 'Shop safety for this build', notes.join(' '), []));
   }
   /* Milling sequence when the stock plan says rough lumber (audit F-S3-2). */
@@ -663,17 +694,21 @@ var BB = globalThis.BB = globalThis.BB || {};
     const top = model.parts.find(p => p.id === 'top_1');
     const topName = top ? top.name.toLowerCase() : 'top';
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    // Exposure outranks the indoor climate preference (2026-08): the same
+    // ΔMC boundary the movement checks run on.
+    const topDMC = K.effectiveDMC(spec.exposure, climate);
+    const topSwing = K.isOutdoor(spec) ? `${spec.exposure} outdoor swing` : `${climate} indoor swing`;
     const topKey = top && K.WOOD_SPECIES[top.material] ? top.material : spec.wood.species;
     const topSp = K.WOOD_SPECIES[topKey];
     // Cross-grain width, measured exactly as the integrity engine measures it
     // for the movement check: the panel dimension across the grain.
     const crossW = top ? Math.min(top.size.w, top.size.d) : 0;
     const moves = !!(topSp && !topSp.sheet && crossW > 0);
-    const mv = moves ? K.movementMM(crossW, topKey, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    const mv = moves ? K.movementMM(crossW, topKey, 'tangential', topDMC) : 0;
     out.push(step('s3', `Attach the ${topName}`,
       `Center the ${topName} and fasten it from below with figure-8s or buttons — never glue a solid ${topName} to its base. ` +
       (moves
-        ? `This one travels about ${fine(mv)} across its ${len(crossW)} width between a dry winter and a damp summer (${topSp.label.toLowerCase()}, ${climate} indoor swing) and effectively nothing along its length, so every fastener has to hold it DOWN while letting it slide ACROSS the grain: set each figure-8 with its long axis running across the ${topName}'s grain so it can swivel, or cut the buttons' tongues to ride in a kerf running the same way. `
+        ? `This one travels about ${fine(mv)} across its ${len(crossW)} width between a dry winter and a damp summer (${topSp.label.toLowerCase()}, ${topSwing}) and effectively nothing along its length, so every fastener has to hold it DOWN while letting it slide ACROSS the grain: set each figure-8 with its long axis running across the ${topName}'s grain so it can swivel, or cut the buttons' tongues to ride in a kerf running the same way. `
         : `Hold it down without pinning it: a ${topName} that cannot move is one that splits. `) +
       `Snug, not crushed — a fastener torqued solid is a glued top with extra steps, and the crack turns up two winters later. Check the overhang is even on all four sides before you drill anything.`,
       ['top_1']));
@@ -734,7 +769,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     const seatPart = model.parts.find(p => p.id === 'seat_1');
     const crossW = seatPart ? Math.min(seatPart.size.w, seatPart.size.d) : 0;
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
-    const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    // Exposure outranks the indoor climate preference (2026-08 outdoor model).
+    const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.effectiveDMC(spec.exposure, climate)) : 0;
     out.push(step('s5', 'Fit and fasten the seat — held down, never pinned',
       `${stool ? 'Set the seat on the frame' : 'Notch the seat around the rear posts (the cut list size already includes the capture), then set it on the frame'} with even overhang and fasten it from BELOW through the corner blocks with screws in SLOTTED holes run across the grain${se.slopeDeg ? `, letting the ${U().fmtDeg(se.slopeDeg)} slope follow the rails` : ''}. This seat travels about ${fine(mv)} across its ${len(crossW)} width between seasons — a screw pinned solid is a split seat two winters out. Snug, not crushed.`,
       ['seat_1']));

@@ -2,24 +2,24 @@
  "spec": {
   "specVersion": 11,
   "meta": {
-   "name": "Seed Table",
+   "name": "Kids Craft Table",
    "template": "table",
    "level": "beginner",
-   "units": "in"
+   "units": "mm"
   },
   "overall": {
-   "width": 1524,
-   "depth": 863.6,
-   "height": 736.6
+   "width": 900,
+   "depth": 600,
+   "height": 590
   },
   "wood": {
-   "species": "red_oak",
+   "species": "hard_maple",
    "sheetSpecies": "baltic_birch"
   },
   "structure": {
    "topThickness": 25,
    "legThickness": 70,
-   "apronHeight": 90,
+   "apronHeight": 80,
    "apronThickness": 20,
    "apronInset": 12,
    "shelfCount": 0,
@@ -35,7 +35,7 @@
    "case": "butt_screws",
    "box": "pocket_screws"
   },
-  "finish": "wipe_poly",
+  "finish": "tung_pure",
   "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
@@ -47,22 +47,24 @@
   "seat": null,
   "wall": null,
   "bed": null,
-  "child": null
+  "child": {
+   "ageBand": "school"
+  }
  },
  "validation": {
   "errors": [],
   "advisories": [
-   "movement_red_oak"
+   "child_finish"
   ]
  },
  "cutList": [
   {
    "name": "Top",
    "qty": 1,
-   "L": 1524,
-   "W": 863.6,
+   "L": 900,
+   "W": 600,
    "T": 25,
-   "material": "red_oak",
+   "material": "hard_maple",
    "grain": "length",
    "note": "select straight-grained stock, free of knots",
    "angles": null
@@ -70,21 +72,10 @@
   {
    "name": "Long apron",
    "qty": 2,
-   "L": 1314,
-   "W": 90,
+   "L": 690,
+   "W": 80,
    "T": 20,
-   "material": "red_oak",
-   "grain": "length",
-   "note": "select straight-grained stock, free of knots",
-   "angles": null
-  },
-  {
-   "name": "Short apron",
-   "qty": 2,
-   "L": 653.6,
-   "W": 90,
-   "T": 20,
-   "material": "red_oak",
+   "material": "hard_maple",
    "grain": "length",
    "note": "select straight-grained stock, free of knots",
    "angles": null
@@ -92,10 +83,21 @@
   {
    "name": "Leg",
    "qty": 4,
-   "L": 711.6,
+   "L": 565,
    "W": 70,
    "T": 70,
-   "material": "red_oak",
+   "material": "hard_maple",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Short apron",
+   "qty": 2,
+   "L": 390,
+   "W": 80,
+   "T": 20,
+   "material": "hard_maple",
    "grain": "length",
    "note": "select straight-grained stock, free of knots",
    "angles": null
@@ -103,21 +105,21 @@
  ],
  "integrity": {
   "antiTip": false,
-  "verdict": "advisory",
+  "verdict": "pass",
   "rackScore": 42,
   "tip": {
-   "angEmpty": 32.565,
-   "angLoaded": 29.319,
-   "ratio": 0.928
+   "angEmpty": 30.246,
+   "angLoaded": 25.104,
+   "ratio": 1.113
   },
   "checks": [
    {
     "id": "sag:apron:top_1",
     "status": "pass",
     "data": {
-     "sagMM": 2.776,
-     "limitMM": 4.38,
-     "spanMM": 1314
+     "sagMM": 0.568,
+     "limitMM": 2.3,
+     "spanMM": 690
     }
    },
    {
@@ -129,13 +131,18 @@
     "id": "sag:top_1",
     "status": "pass",
     "data": {
-     "sagMM": 1.118,
-     "limitMM": 2.432,
-     "spanMM": 729.6
+     "sagMM": 0.426,
+     "limitMM": 1.553,
+     "spanMM": 466
     }
    },
    {
     "id": "str:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "child:basis",
     "status": "pass",
     "data": null
    },
@@ -164,10 +171,10 @@
    },
    {
     "id": "move:top_1",
-    "status": "advisory",
+    "status": "pass",
     "data": {
-     "movementMM": 12.747,
-     "crossWidthMM": 863.6,
+     "movementMM": 8.472,
+     "crossWidthMM": 600,
      "context": "floated"
     }
    }
@@ -177,215 +184,190 @@
   "mode": "dimensional",
   "shopping": [
    {
-    "label": "Red Oak 4x4 x 10 ft (3 1/2 x 3 1/2 in)",
+    "label": "Hard Maple 89 x 89 x 2438 mm (4x4)",
     "qty": 1,
-    "cost": 57.607
+    "cost": 46.078
    },
    {
-    "label": "Red Oak 5/4x6 x 6 ft (1 x 5 1/2 in)",
+    "label": "Hard Maple 25 x 89 x 2438 mm (5/4x4)",
+    "qty": 1,
+    "cost": 20.187
+   },
+   {
+    "label": "Hard Maple 25 x 140 x 1829 mm (5/4x6)",
     "qty": 1,
     "cost": 23.704
    },
    {
-    "label": "Red Oak 5/4x6 x 12 ft (1 x 5 1/2 in)",
+    "label": "Hard Maple 25 x 140 x 3658 mm (5/4x6)",
     "qty": 1,
     "cost": 47.408
-   },
-   {
-    "label": "Red Oak 5/4x8 x 6 ft (1 x 7 1/4 in)",
-    "qty": 1,
-    "cost": 32.264
-   },
-   {
-    "label": "Red Oak 5/4x8 x 12 ft (1 x 7 1/4 in)",
-    "qty": 2,
-    "cost": 129.054
    }
   ],
   "boards": [
    {
     "nominal": "4x4",
-    "stockLen": 3048,
-    "offcut": 162.6,
+    "stockLen": 2438,
+    "offcut": 139,
     "cuts": [
      {
       "name": "Leg",
-      "len": 711.6,
+      "len": 565,
       "offset": 15
      },
      {
       "name": "Leg",
-      "len": 711.6,
-      "offset": 729.6
+      "len": 565,
+      "offset": 583
      },
      {
       "name": "Leg",
-      "len": 711.6,
-      "offset": 1444.2
+      "len": 565,
+      "offset": 1151
      },
      {
       "name": "Leg",
-      "len": 711.6,
-      "offset": 2158.8
+      "len": 565,
+      "offset": 1719
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 2438,
+    "offcut": 239,
+    "cuts": [
+     {
+      "name": "Long apron",
+      "len": 690,
+      "offset": 15
+     },
+     {
+      "name": "Long apron",
+      "len": 690,
+      "offset": 708
+     },
+     {
+      "name": "Short apron",
+      "len": 390,
+      "offset": 1401
+     },
+     {
+      "name": "Short apron",
+      "len": 390,
+      "offset": 1794
      }
     ]
    },
    {
     "nominal": "5/4x6",
     "stockLen": 3658,
-    "offcut": 340.4,
-    "cuts": [
-     {
-      "name": "Long apron",
-      "len": 1314,
-      "offset": 15
-     },
-     {
-      "name": "Long apron",
-      "len": 1314,
-      "offset": 1332
-     },
-     {
-      "name": "Short apron",
-      "len": 653.6,
-      "offset": 2649
-     }
-    ]
-   },
-   {
-    "nominal": "5/4x6",
-    "stockLen": 1829,
-    "offcut": 1145.4,
-    "cuts": [
-     {
-      "name": "Short apron",
-      "len": 653.6,
-      "offset": 15
-     }
-    ]
-   },
-   {
-    "nominal": "5/4x8",
-    "stockLen": 3658,
-    "offcut": 577,
+    "offcut": 19,
     "cuts": [
      {
       "name": "Top (strip 1/5)",
-      "len": 1524,
+      "len": 900,
       "offset": 15
      },
      {
       "name": "Top (strip 2/5)",
-      "len": 1524,
-      "offset": 1542
-     }
-    ]
-   },
-   {
-    "nominal": "5/4x8",
-    "stockLen": 3658,
-    "offcut": 577,
-    "cuts": [
+      "len": 900,
+      "offset": 918
+     },
      {
       "name": "Top (strip 3/5)",
-      "len": 1524,
-      "offset": 15
+      "len": 900,
+      "offset": 1821
      },
      {
       "name": "Top (strip 4/5)",
-      "len": 1524,
-      "offset": 1542
+      "len": 900,
+      "offset": 2724
      }
     ]
    },
    {
-    "nominal": "5/4x8",
+    "nominal": "5/4x6",
     "stockLen": 1829,
-    "offcut": 275,
+    "offcut": 899,
     "cuts": [
      {
       "name": "Top (strip 5/5)",
-      "len": 1524,
+      "len": 900,
       "offset": 15
      }
     ]
    }
   ],
   "sheets": [],
-  "totalCost": 290.04,
-  "wasteSolidPct": 37,
+  "totalCost": 137.38,
+  "wasteSolidPct": 36,
   "wasteSheetPct": null
  },
  "bom": {
   "items": [
    {
     "kind": "lumber",
-    "label": "Red Oak 4x4 x 10 ft (3 1/2 x 3 1/2 in)",
+    "label": "Hard Maple 89 x 89 x 2438 mm (4x4)",
     "qty": 1,
-    "price": 57.61
+    "price": 46.08
    },
    {
     "kind": "lumber",
-    "label": "Red Oak 5/4x6 x 6 ft (1 x 5 1/2 in)",
+    "label": "Hard Maple 25 x 89 x 2438 mm (5/4x4)",
+    "qty": 1,
+    "price": 20.19
+   },
+   {
+    "kind": "lumber",
+    "label": "Hard Maple 25 x 140 x 1829 mm (5/4x6)",
     "qty": 1,
     "price": 23.7
    },
    {
     "kind": "lumber",
-    "label": "Red Oak 5/4x6 x 12 ft (1 x 5 1/2 in)",
+    "label": "Hard Maple 25 x 140 x 3658 mm (5/4x6)",
     "qty": 1,
     "price": 47.41
    },
    {
     "kind": "lumber",
-    "label": "Red Oak 5/4x8 x 6 ft (1 x 7 1/4 in)",
-    "qty": 1,
-    "price": 32.26
-   },
-   {
-    "kind": "lumber",
-    "label": "Red Oak 5/4x8 x 12 ft (1 x 7 1/4 in)",
-    "qty": 2,
-    "price": 129.05
-   },
-   {
-    "kind": "lumber",
-    "label": "(reference) rough-sawn equivalent: 29.8 bd ft",
+    "label": "(reference) rough-sawn equivalent: 15.5 bd ft (0.04 m³)",
     "qty": 1,
     "price": 0
    },
    {
     "kind": "lumber",
-    "label": "Waste from purchasable sizes: solid 37%",
+    "label": "Waste from purchasable sizes: solid 36%",
     "qty": 1,
     "price": 0
    },
    {
     "kind": "fastener",
-    "label": "1 1/4 in coarse pocket screw",
+    "label": "32 mm coarse pocket screw",
     "qty": 16,
     "price": 1.28
    },
    {
     "kind": "fastener",
-    "label": "Figure-8 fasteners + #8 × 5/8 in",
-    "qty": 12,
-    "price": 9.61
+    "label": "Figure-8 fasteners + #8 × 16 mm",
+    "qty": 8,
+    "price": 6.4
    },
    {
     "kind": "glue",
-    "label": "Interior PVA (yellow glue)",
+    "label": "Waterproof PVA (Type I)",
     "qty": 1,
-    "price": 8
+    "price": 10
    },
    {
     "kind": "finish",
-    "label": "Wipe-on polyurethane",
+    "label": "Pure tung oil",
     "qty": 1,
     "price": 18
    }
   ],
-  "total": 326.92
+  "total": 173.06
  },
  "steps": [
   "glueup1",

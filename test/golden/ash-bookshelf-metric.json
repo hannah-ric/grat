@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 11,
   "meta": {
    "name": "Floor Bookshelf",
    "template": "bookshelf",
@@ -36,6 +36,7 @@
    "box": "pocket_screws"
   },
   "finish": "wipe_poly",
+  "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
    "hinge": "euro_cup"
@@ -45,7 +46,8 @@
   "custom": null,
   "seat": null,
   "wall": null,
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],

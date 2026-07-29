@@ -46,3 +46,12 @@ contract restates existing engineering; it does not only fit chairs.
 
 - `frame_table` — tables, desks, benches (retrofit).
 - `seating` — dining chairs, counter/bar stools (`docs/classes/01-seating.md`).
+- `wall_mounted` — French-cleat floating shelves (`docs/classes/03-wall-mounted.md`).
+- `bed` — knock-down platform beds (`docs/classes/04-beds.md`).
+- `casework` — bookshelves, nightstands, cabinets, doored or open (retrofit;
+  `docs/classes/05-casework.md`).
+- `childrens` — the first SCOPE class (`scope: 'child'`): it overlays a
+  template class (table/desk/chair/bookshelf via `spec.child`) instead of
+  owning templates. `forTemplate` skips scope classes; `runChecklist`
+  overlays their failure modes when `res.spec` is in scope
+  (`docs/classes/07-childrens.md`).

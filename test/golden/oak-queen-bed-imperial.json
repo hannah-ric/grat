@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 11,
   "meta": {
    "name": "Oak Queen Bed",
    "template": "bed",
@@ -36,6 +36,7 @@
    "box": "pocket_screws"
   },
   "finish": "danish_oil",
+  "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
    "hinge": "euro_cup"
@@ -49,7 +50,8 @@
    "size": "queen",
    "platformHeight": 350,
    "headboardHeight": 1000
-  }
+  },
+  "child": null
  },
  "validation": {
   "errors": [],

@@ -1,0 +1,69 @@
+{
+  "why": "The current-version anchor (v11), and the corpus's only CHILD-SCOPED design. The `child` section arrived with the 2026-07 children's scope class: a kids desk saved today must reopen as a kids desk — its EN 1729 band height, the F2057 child-scope anchor gate, and the finish advisory all derive from `child.ageBand`, so losing it would silently hand a 6-year-old an adult-height desk. (Integrator note: the outdoor workstream owns v11 upstream — at integration this fixture renumbers to v11 alongside SPEC_VERSION.)",
+  "version": 11,
+  "kind": "spec",
+  "expect": {
+    "template": "desk",
+    "name": "Kids Desk",
+    "species": "hard_maple",
+    "units": "in",
+    "minParts": 5
+  },
+  "expectAfterMigration": {
+    "specVersion": 11,
+    "child.ageBand": "school",
+    "overall.height": 590
+  },
+  "spec": {
+    "specVersion": 11,
+    "meta": {
+      "name": "Kids Desk",
+      "template": "desk",
+      "level": "beginner",
+      "units": "in"
+    },
+    "overall": {
+      "width": 1000,
+      "depth": 600,
+      "height": 590
+    },
+    "wood": {
+      "species": "hard_maple",
+      "sheetSpecies": "baltic_birch"
+    },
+    "structure": {
+      "topThickness": 25,
+      "legThickness": 60,
+      "apronHeight": 80,
+      "apronThickness": 20,
+      "apronInset": 12,
+      "shelfCount": 0,
+      "shelfThickness": 19,
+      "sideThickness": 18,
+      "backPanel": false,
+      "toeKick": false,
+      "stretcher": "none",
+      "stretcherHeight": 280
+    },
+    "joinery": {
+      "frame": "pocket_screws",
+      "case": "butt_screws",
+      "box": "pocket_screws"
+    },
+    "finish": "tung_pure",
+    "hardware": {
+      "pull": "bar_pull",
+      "hinge": "euro_cup"
+    },
+    "drawers": null,
+    "doors": null,
+    "custom": null,
+    "seat": null,
+    "wall": null,
+    "bed": null,
+    "child": {
+      "ageBand": "school"
+    },
+    "exposure": "interior"
+  }
+}

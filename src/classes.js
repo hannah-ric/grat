@@ -51,8 +51,21 @@ var BB = globalThis.BB = globalThis.BB || {};
   function get(key) { return registry.get(key) || null; }
   function all() { return [...registry.values()]; }
   function forTemplate(t) {
-    for (const c of registry.values()) if (c.templates.includes(t)) return c;
+    /* Scope classes (childrens) OVERLAY a template class rather than owning
+     * a template: a child-scoped chair is still the seating class's chair.
+     * They are skipped here so the primary class always answers, and reached
+     * through scopeClasses()/runChecklist(res.spec) instead. */
+    for (const c of registry.values()) if (!c.scope && c.templates.includes(t)) return c;
     return null;
+  }
+  /* Scope classes active for THIS spec (today: `childrens` when spec.child). */
+  function scopeClasses(spec) {
+    const out = [];
+    if (spec && spec.child) {
+      const c = registry.get('childrens');
+      if (c && c.templates.includes(spec.meta && spec.meta.template)) out.push(c);
+    }
+    return out;
   }
 
   /* ---------------- contract validation ----------------
@@ -156,12 +169,18 @@ var BB = globalThis.BB = globalThis.BB || {};
    */
   function runChecklist(template, res) {
     const cls = forTemplate(template);
-    if (!cls) return null;
+    /* Scope-class overlays (childrens): when the live result carries the
+     * spec (res.spec) and the spec is in scope, the scope class's checklist
+     * rides ON TOP of the template class's — a child-scoped chair answers
+     * both the seating modes and the children's modes. Call sites that don't
+     * pass a spec get exactly the old behavior. */
+    const scoped = scopeClasses(res && res.spec).filter(c => c !== cls);
+    if (!cls && !scoped.length) return null;
     const ids = []
       .concat(((res && res.integrity && res.integrity.checks) || []).map(c => ({ id: c.id, status: c.status })))
       .concat(((res && res.validation && res.validation.errors) || []).map(e => ({ id: e.id, status: 'fail' })))
       .concat(((res && res.validation && res.validation.advisories) || []).map(a => ({ id: a.id, status: 'advisory' })));
-    return cls.failureModes.map(m => {
+    const walk = c => c.failureModes.map(m => {
       if (m.guard) return { id: m.id, mode: m.mode, covered: true, guard: m.guard, fired: false, status: 'guarded' };
       const hits = ids.filter(x => m.checkIds.some(px => x.id === px || x.id.startsWith(px)));
       const worst = hits.reduce((w, h) => (h.status === 'fail' ? 'fail' : h.status === 'advisory' && w !== 'fail' ? 'advisory' : w), 'pass');
@@ -171,6 +190,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       const absent = m.conditional ? 'n/a' : 'uncovered';
       return { id: m.id, mode: m.mode, covered: hits.length > 0, fired: hits.some(h => h.status !== 'pass'), status: hits.length ? worst : absent };
     });
+    return [].concat(cls ? walk(cls) : [], ...scoped.map(walk));
   }
 
   /* =========================================================================
@@ -201,7 +221,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         { id: 'stretcher_on_leg', rule: 'stretcher centreline ∈ [floor+100, apron underside − 90] — it must land on the leg with clamp room', enforcedBy: 'Spec.correctSpec stretcher clamp (X-07)' },
         { id: 'drawer_in_band', rule: 'desk drawers live INSIDE the apron band: opening = apronHeight − 40 clamped 45–80 (pencil-drawer class, hence the 45 mm floor in validate), fronts inset, wood runners at every level (no case side for slides), a single opening wider than 620 splits around a centre stile', enforcedBy: 'Spec.correctSpec desk-drawer block + Parametric.addDeskDrawers' },
         { id: 'knee_room', rule: 'desk knee clearance = height − top − band ≥ ~600 (Panero & Zelnik seated knee; ADA 306.3 asks 685 for accessible desks) — advisory, never silent', enforcedBy: 'Spec.validate ergo_knee' },
-        { id: 'long_span', rule: 'clear span between legs > 1800 scales the racking score down (linearly to ×0.7 at the cap) — the couple on the apron–leg joints grows with span while joint capacity is fixed, and the top’s torsional stiffness stops helping', enforcedBy: 'Structural racking span factor (roadmap item 2)' }
+        { id: 'long_span', rule: 'clear span between legs > 1800 scales the racking score down (linearly to ×0.7 at the cap) — the couple on the apron–leg joints grows with span while joint capacity is fixed, and the top’s torsional stiffness stops helping', enforcedBy: 'Structural racking span factor (roadmap item 2)' },
+        { id: 'exposure_routing', rule: 'exposure ∈ {interior, covered, exposed} (one spec field, roadmap item 5): outdoor routes Type-I glue (K.recommendGlue), an exterior finish, stainless/hot-dip-galvanized fastener lines, and the outdoor ΔMC (K.EXPOSURE_DMC, WH ch. 13) into the movement math; EXPOSED additionally corrects a non-durable species to the deterministic durable substitute (costTier 1 → western_red_cedar, else white_oak) and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [
@@ -232,7 +253,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       { id: 'joint_overload', mode: 'weakest frame joint below its load share', checkIds: ['joints'], fixture: 'audit G5', realWorld: 'aprons torn off their legs' },
       { id: 'tipping', mode: 'piece tips when top-loaded at the edge', checkIds: ['tip'], fixture: 'audit M-18', realWorld: 'tall narrow pieces going over' },
       { id: 'band_weakened', mode: 'the drawer opening guts the front apron and the band sags or breaks', checkIds: ['sag:apron:', 'str:apron:'], conditional: true, fixture: 'audit DESK-1 (stiffness-shared band model, handcalc [17])', realWorld: 'pencil-drawer desks that bounce at the front edge' },
-      { id: 'drawer_pullout_tip', mode: 'open drawer + downward pull tips the desk', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit DESK-2 (reported; anchor mandate stays scoped to clothing storage)', realWorld: 'kids hanging on an open pencil drawer' }
+      { id: 'drawer_pullout_tip', mode: 'open drawer + downward pull tips the desk', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit DESK-2 (reported; anchor mandate stays scoped to clothing storage)', realWorld: 'kids hanging on an open pencil drawer' },
+      { id: 'weather_rot', mode: 'a non-durable species or interior materials left in the weather rot, delaminate, and shed their finish', conditional: true, guard: 'Spec.correctSpec exposure routing (durable species substitution + exterior finish) with exposureNotes disclosure; validate out_sheet refuses interior sheet goods exposed', checkIds: ['out_'], fixture: 'audit OUT-2/OUT-3/OUT-5; golden pine-patio-table-metric freezes the substitution', realWorld: 'the picnic-table pine bench that composts itself in three seasons' }
     ],
     hardware: [
       { id: 'top_fasteners', item: 'figure-8 fasteners / tabletop buttons', when: 'every solid top', capacity: 'hold-down only; movement is released by design', matchedTo: 'seasonal travel computed by K.movementMM — the same number the movement check reports' },
@@ -247,7 +269,8 @@ var BB = globalThis.BB = globalThis.BB || {};
     refusals: [
       { id: 'no_wall_hang', shape: 'wall-hung / floating variants of a frame piece', reason: 'anchor pullout and stud engagement are a different class (wall-mounted) not yet generated soundly', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule' },
       { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' },
-      { id: 'no_over_span', shape: 'tops wider than 2400 mm', reason: 'past the cap the apron-beam model still runs but the racking couple and the top’s torsional floppiness have no code-owned answer (breadboard/batten stiffening is future work) — the clamp is the refusal and correction says so', surface: 'Spec.DIM_RULES overall.width max 2400 (dimensionNotes disclose the clamp) + the racking span factor' }
+      { id: 'no_over_span', shape: 'tops wider than 2400 mm', reason: 'past the cap the apron-beam model still runs but the racking couple and the top’s torsional floppiness have no code-owned answer (breadboard/batten stiffening is future work) — the clamp is the refusal and correction says so', surface: 'Spec.DIM_RULES overall.width max 2400 (dimensionNotes disclose the clamp) + the racking span factor' },
+      { id: 'no_exposed_sheet', shape: 'interior sheet goods (plywood drawer boxes, MDF panels, ply backs) on an EXPOSED build', reason: 'no exterior-rated sheet good exists in the catalog — interior plywood delaminates and MDF swells when wetted, and a guessed exterior rating is worse than a refusal (covered builds get the advisory instead: sheltered, but unrated)', surface: 'Spec.validate out_sheet error (exposed) / advisory (covered)' }
     ],
     fixtures: {
       golden: ['seed-table-imperial', 'shaker-table-imperial', 'custom-bench-metric', 'walnut-writing-desk-imperial'],
@@ -369,7 +392,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         { id: 'splay_stool_only', rule: 'leg splay 0–10° on stools; 0 on backed chairs (the offset-rail rake geometry assumes vertical posts)', enforcedBy: 'Spec.correctSeat' },
         { id: 'envelope_derived', rule: 'overall = seat plan + splay run; height = seat + back rise — the audit envelope always contains the splayed feet', enforcedBy: 'Spec.correctSpec chair block' },
         { id: 'footrest_drop', rule: 'stool footrest (box stretcher) top ≈ 230 below the seat; stools ALWAYS carry it — it is structure and ergonomics at once', enforcedBy: 'Spec.correctSpec chair block' },
-        { id: 'rail_band', rule: 'seat-rail band ≤ seat height − topThickness − 160 so the stretcher and knee room survive', enforcedBy: 'Spec.correctSpec chair block' }
+        { id: 'rail_band', rule: 'seat-rail band ≤ seat height − topThickness − 160 so the stretcher and knee room survive', enforcedBy: 'Spec.correctSpec chair block' },
+        { id: 'exposure_routing', rule: 'the cross-class exposure overlay (roadmap item 5) applies: outdoor chairs/stools route Type-I glue, exterior finish, corrosion-spec fasteners and outdoor ΔMC; exposed corrects non-durable species and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [
@@ -409,7 +433,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       { id: 'ergonomic_miss', mode: 'seat height/depth outside the human-factors band', checkIds: ['ergo_seat'], conditional: true, fixture: 'audit SEAT bad-fixture: 550 seat height on a dining chair', realWorld: 'chairs nobody wants to sit in' },
       { id: 'grain_orientation', mode: 'splayed leg sawn from a vertical blank (grain runout) instead of ripped with the grain', checkIds: ['chair:grain'], fixture: 'audit SEAT grain section', realWorld: 'splayed stool legs shearing along the runout' },
       { id: 'footrest_break', mode: 'stool footrest stretcher breaks under a mounting step', checkIds: ['chair:foot'], conditional: true, fixture: 'handcalc footrest section', realWorld: 'bar stool rungs snapping underfoot' },
-      { id: 'seat_movement_split', mode: 'solid seat glued/pinned rigid splits across the grain', checkIds: ['move:seat_1'], fixture: 'movement check on golden chair fixtures', realWorld: 'seasonal seat cracks at the fasteners' }
+      /* conditional since the children's scope (2026-07): the movement check
+       * exists only where a WIDE solid panel exists — every adult seat
+       * qualifies (golden fixtures prove it fires), but a child-band seat
+       * (250–360 mm, EN 1729-derived plan) sits below the movement-width
+       * threshold, and absence there is the geometry's truth, not a
+       * vanished check. */
+      { id: 'seat_movement_split', mode: 'solid seat glued/pinned rigid splits across the grain', conditional: true, checkIds: ['move:seat_1'], fixture: 'movement check on golden chair fixtures (adult seats; child seats are below the movement-width threshold)', realWorld: 'seasonal seat cracks at the fasteners' }
     ],
     hardware: [
       { id: 'corner_block_screws', item: '#8 × 32 wood screws, 2 per block face (glue + screws)', when: 'every seat frame (4 corner blocks)', capacity: 'screw shear ≥ 500 N each (JOINT_RATING butt_screws basis)', matchedTo: 'racking share of the seat frame; blocks close the frame loop — counted by the fastener engine so BOM = drilling instructions' },
@@ -535,7 +565,8 @@ var BB = globalThis.BB = globalThis.BB || {};
       { id: 'no_unknown_wall', shape: 'mounting on an unstated or unknown wall', reason: 'the wall carries the whole load path — without the substrate the anchor math is a guess, and a plausible guess is worse than a refusal', surface: 'validate wall_substrate error + parser asks before creating' },
       { id: 'no_drywall_only', shape: 'drywall-anchor-only mounting', reason: 'drywall anchors creep under sustained load and their ratings are ULTIMATE, not working (industry practice is ≤ ¼ of listed) — shelving is sustained load, so drywall alone is refused, not derated', surface: 'validate error + correction note + parser' },
       { id: 'no_heavy_cantilever', shape: 'depths past 300 mm / desk-duty wall units', reason: 'the couple demand outruns hobby fixings — that is the wall-hung casework class, not yet generated soundly', surface: 'Spec.correctSpec depth clamp + dimensionNotes' },
-      { id: 'no_ceiling', shape: 'ceiling-hung anything', reason: 'overhead failure is injury-first; no ceiling model exists', surface: 'SCHEMA_DOC + parser (unchanged floor/wall doctrine)' }
+      { id: 'no_ceiling', shape: 'ceiling-hung anything', reason: 'overhead failure is injury-first; no ceiling model exists', surface: 'SCHEMA_DOC + parser (unchanged floor/wall doctrine)' },
+      { id: 'no_exposed_mount', shape: 'a wall shelf in direct weather (exposure = exposed)', reason: 'the anchor math uses NDS dry-service withdrawal values (MC ≤ 19%); direct wetting crosses the wet-service boundary, where NDS derates withdrawal to CM = 0.7 — a derating this model does not carry. A covered porch wall stays dry-service and is allowed', surface: 'Spec.validate out_mount error + parser refusal on outdoor wall-shelf asks' }
     ],
     fixtures: {
       golden: ['oak-floating-shelf-imperial', 'deep-shelf-masonry-metric'],
@@ -625,7 +656,8 @@ var BB = globalThis.BB = globalThis.BB || {};
         { id: 'knockdown_mandate', rule: 'rails bolt to posts (kd_bolt) at every level — a glued bed cannot leave the room; asking for glued joinery is overridden and told', enforcedBy: 'Spec.correctSpec + bedNotes' },
         { id: 'slat_gap', rule: 'slat count solved so gaps ≤ 70 mm (foam-warranty floor: Amerisleep 2.75 in) with ≥ 75 mm slat width (Tempur-Pedic ≥ 3 in)', enforcedBy: 'Parametric.bedBuild + bed:slats check' },
         { id: 'centre_support', rule: 'interior ≥ 1350 mm always gets a centre rail + floor leg (Sealy/S&F warranty: ≥ 5 legs with centre support at queen+)', enforcedBy: 'Parametric.bedBuild + bed:centre check' },
-        { id: 'headboard_clear', rule: 'a headboard clears the rail band by ≥ 150 or it is trim, not a headboard', enforcedBy: 'Spec.correctSpec bed block' }
+        { id: 'headboard_clear', rule: 'a headboard clears the rail band by ≥ 150 or it is trim, not a headboard', enforcedBy: 'Spec.correctSpec bed block' },
+        { id: 'exposure_routing', rule: 'the cross-class exposure overlay (roadmap item 5) applies — a porch daybed is a covered/exposed bed: Type-I glue, exterior finish, corrosion-spec fasteners, outdoor ΔMC; exposed corrects non-durable species and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [
@@ -677,8 +709,318 @@ var BB = globalThis.BB = globalThis.BB || {};
     }
   });
 
+  /* =========================================================================
+   * CASEWORK — carcass pieces (bookshelf, nightstand, cabinet), the retrofit
+   * that completes roadmap item 4 (doored casework, "smallest distance to
+   * sound"). Like frame_table, nothing here invents a number: every artifact
+   * points at code that already owned it — the audited sag/strength beam
+   * checks, F2057/STURDY open-drawer tipping, the movement engine, and the
+   * X-07 door system (hinge catalog, count rule, cup boring) — plus the
+   * three closures this contract shipped with: door droop over the hinge
+   * couple (door:sag), reveal survival under seasonal movement
+   * (door:reveal), and catches as load-rated, code-selected hardware
+   * (door:catch, BB.HW.catchSpec).
+   * ========================================================================= */
+  const CASE_GEOM = {
+    /* Door-system constants (X-07), single-sourced here since this contract:
+     * spec.js reads the split cap, parametric.js cuts the leaves from the
+     * reveal/lap/thickness, plans.js solves the cup boring from the same lap
+     * — so the checks and the geometry can never use two different reveals.
+     *   DOOR_REVEAL      2 mm of fitted air per gap in an average season —
+     *                    a shop number, not a style choice (X-07).
+     *   DOOR_OVERLAY_LAP how far an overlay leaf laps the case edge.
+     *   DOOR_T           slab panel stock; thinner racks in its own plane.
+     *   DOOR_MAX_SINGLE_W a single leaf past 600 mm becomes a pair. The
+     *                    same 600 the Blum-class hinge charts are valid to
+     *                    (ea.blum.com "Number of hinges", verified 2026-07:
+     *                    counts "valid for door widths of up to 600 mm") —
+     *                    the correction guard and the chart share one cap. */
+    DOOR_REVEAL: 2,
+    DOOR_OVERLAY_LAP: 12,
+    DOOR_T: 19,
+    DOOR_MAX_SINGLE_W: 600,
+    /* Hinge layout: outermost hinges sit ~100 mm from the door ends (shop
+     * practice; the drop-leaf canon in BB.HW uses the same 75–100 band).
+     * The spread between them is the arm the gravity couple resolves over. */
+    HINGE_END_INSET: 100,
+    /* Design hinge-line settlement, 0.5 mm — a documented DERIVATION (no
+     * hinge maker publishes a settlement figure): the take-up every hung
+     * door shows as its top-hinge screws bed in and arm clearance closes,
+     * taken as a quarter of the fitted reveal so a leaf with droop
+     * amplification ≤ 1 spends at most half its reveal over its life. */
+    HINGE_SETTLE_MM: 0.5,
+    /* Euro cup hinges adjust ±2 mm on side and height at the plate (Blum
+     * CLIP top published spec, verified-approximate 2026-07) — the
+     * restorable budget an overlay pair's meeting gap can be re-centred
+     * within after the doors move. */
+    HINGE_ADJUST_MM: 2,
+    /* Hinge spread s between the outermost hinge centres. A continuous
+     * (piano) hinge carries the whole edge — its "spread" is the full
+     * leaf height and it escapes the two-point couple entirely. */
+    hingeSpread(hinge, leafH) {
+      if (hinge && hinge.countRule === 'fullLength') return Math.max(120, leafH - 20);
+      return Math.max(120, leafH - 2 * this.HINGE_END_INSET);
+    },
+    /* Slab-door droop model (door:sag). A slab door cannot rack out of
+     * square — the panel is its own shear web; frame-and-panel doors rack
+     * at frame joints that do not exist here. What drops a slab door's free
+     * corner is the hinge couple: weight W at w/2 from the hinge line
+     * resolves as a horizontal force couple over the spread s (the gate
+     * formula, F = W·g·w/(2s)), and every millimetre the top fixing yields
+     * reads as w/s millimetres at the free edge — pure geometry. Droop is
+     * priced at the design settlement above. Width > height additionally
+     * flags the Blum-class chart rule ("doors should have a height that is
+     * greater than their width" — ea.blum.com, verified 2026-07), which a
+     * full-length hinge escapes. */
+    doorDroop(hinge, leafW, leafH, leafKg) {
+      const s = this.hingeSpread(hinge, leafH);
+      const amp = leafW / s;
+      const full = !!(hinge && hinge.countRule === 'fullLength');
+      return {
+        spreadMM: s,
+        ampRatio: Math.round(amp * 1000) / 1000,
+        droopMM: Math.round(this.HINGE_SETTLE_MM * amp * 1000) / 1000,
+        coupleN: Math.round((leafKg * 9.81 * leafW) / (2 * s) * 10) / 10,
+        widerThanTall: !full && leafW > leafH
+      };
+    },
+    /* Seasonal swing of a slab leaf across its grain (door:reveal). Grain
+     * runs with the leaf's long dimension, so the cross-grain width is the
+     * short one; coefficients are the Wood Handbook values the movement
+     * engine already uses (K.movementMM, same ΔMC). Sheet stock is exempt
+     * exactly as the move: checks exempt it. */
+    doorSwingMM(leafW, leafH, speciesKey, dMC) {
+      const sp = K.WOOD_SPECIES[speciesKey];
+      if (!sp || sp.sheet) return 0;
+      return K.movementMM(Math.min(leafW, leafH), speciesKey, 'tangential', dMC);
+    }
+  };
+
+  /* =========================================================================
+   * CHILDREN'S — a SCOPE class, not a template: `spec.child` overlays an
+   * existing sound template (table / desk / chair / bookshelf) with the
+   * safety regime children need. The regime, in one sentence: EN 1729
+   * size-mark heights are pinned by code, design loads stay ADULT (adults
+   * sit on kids' chairs — nothing is lightened), the anti-tip anchor becomes
+   * mandatory on storage regardless of margin, and everything federally
+   * regulated is REFUSED with the regulation named — because for children's
+   * furniture a plausible unverified plan is worse than a refusal twice over.
+   * ========================================================================= */
+  const DESIGN_BASIS_CHILD =
+    'Child-scoped designs pin their heights to EN 1729-1 size-mark pairs ' +
+    '(the school-furniture standard — the one citable children\'s sizing ' +
+    'anchor; values cross-checked against published sizing guides, the ' +
+    'standard text is paywalled) and KEEP the adult design loads: adults ' +
+    'sit on children\'s chairs and lean on children\'s tables, so nothing ' +
+    'is lightened (documented derivation). The anti-tip anchor is mandatory ' +
+    'on child-scoped storage regardless of computed margin (CPSC Anchor It! ' +
+    'guidance; stricter than the ASTM F2057/STURDY clothing-storage scope). ' +
+    'Regulated children\'s products — cribs (16 CFR 1219/1220), toy chests ' +
+    '(ASTM F963 toy-chest lid-support requirements, formerly ASTM F834, ' +
+    'mandatory under 16 CFR 1250), high chairs (16 CFR 1231/ASTM F404), ' +
+    'changing tables (16 CFR 1235/ASTM F2388), play yards (16 CFR 1221/' +
+    'ASTM F406), safety gates (16 CFR 1239/ASTM F1004), bunk beds (ASTM ' +
+    'F1427/16 CFR 1213) — are refused, never approximated. Guidance, not a ' +
+    'certification: no children\'s-product testing is claimed.';
+
+  const CHILD_GEOM = {
+    /* Seat-plan derivation (DERIVATION, arithmetic shown): EN 1729-1's seat
+     * width/depth per mark (t4/b3) are not publicly published, so the child
+     * seat plan scales the class's adult nominal (seat 445 h × 430 w × 420 d,
+     * crest rise 470 — Panero & Zelnik-derived, see the seating contract) by
+     * the band's seat-height ratio, rounded to 5 mm. A toddler (260) chair
+     * lands 250 w × 245 d with a 275 crest rise. */
+    RATIO_W: 430 / 445, RATIO_D: 420 / 445, RATIO_B: 470 / 445,
+    /* Head-entrapment hazard band for rigid bounded openings, from the one
+     * citable US source: 16 CFR 1213 (bunk-bed guardrail entrapment) rejects
+     * openings that pass its wedge block unless they also freely pass a
+     * 9 in (230 mm) rigid sphere [verified-exact]; the wedge block's ~3.5 in
+     * (89 mm) height is the commonly cited lower bound [verified-
+     * approximate — the figure itself is in the CFR drawing]. The band is
+     * DEFINED for bunk guardrails; the childrens class applies the same
+     * body-passes-head-doesn't geometry to bounded chair-back openings as an
+     * ADVISORY, honestly scoped — never a compliance claim. */
+    ENTRAP_MIN: 89, ENTRAP_MAX: 230,
+    /* Child table/desk apron band: the EN 1729 pair leaves ~180 mm between
+     * the seat plane and the tabletop underside (mark 1: 460 − 19 − 260 =
+     * 181 — the same air the adult pair leaves: 740 − 25 − 445 = 270 with a
+     * 90 band → 180 clear). Capping the band at 80 keeps ≥ ~100 mm of thigh
+     * room over the band's own seat (derivation; EN 1729's t1 clearance
+     * dimension is paywalled). DIM_RULES' 60 floor still applies. */
+    APRON_MAX: 80,
+    seatPlan(bandKey) {
+      const b = (K.CHILD && K.CHILD.BANDS[bandKey]) || { seatH: 350 };
+      const r5 = v => Math.round(v / 5) * 5;
+      return {
+        height: b.seatH,
+        width: r5(b.seatH * this.RATIO_W),
+        depth: r5(b.seatH * this.RATIO_D),
+        backHeight: r5(b.seatH * this.RATIO_B)
+      };
+    }
+  };
+
+  register({
+    key: 'casework',
+    label: 'Casework (bookshelves, nightstands, cabinets — doored or open)',
+    templates: ['cabinet', 'bookshelf', 'nightstand'],
+    geom: CASE_GEOM,
+    family: {
+      rules: [
+        { path: 'overall.width', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.depth', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.height', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.topThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.sideThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.shelfThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.shelfCount', ownedBy: 'Spec.SHELF_COUNT clamp + shelf-clearance decrement (not a DIM_RULES length — shelves are counted, not measured)' }
+      ],
+      couplings: [
+        { id: 'door_split', rule: 'a single door leaf > 600 mm becomes a pair — the Blum-class hinge charts are valid to 600 and the swing radius past it fits no room; the guard and the chart share one cap', enforcedBy: 'Spec.correctSpec door block (X-07) + doorNotes disclosure' },
+        { id: 'one_front_plane', rule: 'drawers and doors on one case share one front style — an overlay drawer front stands proud of exactly the face an inset door sits behind; the doors win and the change is told', enforcedBy: 'Spec.correctSpec drawer block' },
+        { id: 'inset_recess', rule: 'inset doors push everything inside the case (shelves, drawer-bank front plane) back by door thickness + reveal, or the door closes into the shelf edges', enforcedBy: 'Parametric.doorSpace' },
+        { id: 'hinge_fits_style', rule: 'the hinge STYLE must be able to hang the door style (catalog `fronts`) — a knife hinge on an overlay door is not a preference, it is a hinge that cannot be fitted', enforcedBy: 'Spec.correctSpec hinge gate (X-07b)' },
+        { id: 'drawer_opening_floor', rule: 'drawer count decrements until every opening clears 80 mm (below it an opening barely clears a hand)', enforcedBy: 'Spec.correctSpec + K.ERGONOMICS drawer_min_height' },
+        { id: 'shelf_clearance', rule: 'shelf count decrements until every shelf clears its neighbours by shelfThickness + 20 — overlapping shelves are rogue geometry', enforcedBy: 'Spec.correctSpec shelf decrement' }
+      ]
+    },
+    humanFactors: [
+      { key: 'shelf_depth_books', label: 'Shelf depth for books', min: 250, max: 320, unit: 'mm', source: 'K.ERGONOMICS shelf_depth_books (trade paperbacks need 230; art books want 320+)' },
+      { key: 'nightstand_height', label: 'Nightstand height', min: 550, max: 700, unit: 'mm', source: 'K.ERGONOMICS nightstand_height (within 50 of the mattress top)' },
+      { key: 'counter_height', label: 'Cabinet counter height', min: 860, max: 940, unit: 'mm', source: 'K.ERGONOMICS counter_height (standard kitchen counter 900 to the finished top)' },
+      { key: 'drawer_max_width', label: 'Drawer width per slide pair', min: 0, max: 750, unit: 'mm', source: 'K.ERGONOMICS drawer_max_width (beyond 750 boxes rack on their slides; use two banks)' }
+    ],
+    loadCases: [
+      { id: 'shelf_books', label: 'Shelves under books', magnitude: '60 kg/m', apply: 'uniform along every shelf, sustained', direction: 'gravity', duration: 'sustained (×2 creep, Wood Handbook ch. 4)', acceptance: 'long-term sag ≤ L/300; bending margin ≥ 1 at MOR/4', source: 'BIFMA X5.9 shelf load 40 lb/ft (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' },
+      { id: 'open_drawer_pull', label: 'Child-weight pull on an open drawer', magnitude: '22.7 kg (50 lb) at the top drawer front, every drawer open ⅔', apply: 'front of the highest open drawer, unit empty', direction: 'gravity at the drawer lever', duration: 'transient abuse case', acceptance: 'moment margin ≥ 1 to stand, ≥ 1.5 to skip the anchor; clothing-storage heights below 1.5 make the wall anchor a mandatory BOM line', source: 'ASTM F2057 / STURDY Act test mass (audit F-S0-1)', traceability: 'standard' },
+      { id: 'door_gravity', label: 'Door leaf on its hinges', magnitude: 'leaf weight = geometry × species SG (computed, never guessed)', apply: 'hinge group, vertical', direction: 'gravity', duration: 'sustained', acceptance: 'weight ≤ capacityKgPair × pairs at the chart-derived count', source: 'Blum-class hinge count chart (height bands + weight rule; ea.blum.com "Number of hinges", verified 2026-07) with catalog class ratings', traceability: 'standard' },
+      { id: 'door_droop_couple', label: 'Slab-door droop over the hinge couple', magnitude: 'F = W·g·w/(2s) horizontal per outermost hinge; droop = settlement × w/s at the free edge', apply: 'top hinge fixing', direction: 'horizontal, in the door plane', duration: 'sustained', acceptance: 'droop ≤ half the fitted reveal clean, ≤ the whole reveal hard; width ≤ height unless the hinge is full-length', source: 'documented derivation (gate-hinge statics; arithmetic in test/handcalc.js) + the Blum chart rule for the width gate', traceability: 'derivation' },
+      { id: 'reveal_movement', label: 'Reveal survival under seasonal movement', magnitude: 'swing = cross-grain width × coefficient × ΔMC per leaf; closure at the reveal = count × swing/2 (fitted mid-season, hinge edge pinned)', apply: 'meeting/latch reveal', direction: 'across the grain', duration: 'seasonal cycle', acceptance: 'closure ≤ the fitted air (inset reveal, or the ±2 mm plate adjustment on overlay pairs) — beyond it the plan teaches the fitting-season discipline instead of staying silent', source: 'Wood Handbook ch. 13 coefficients via K.movementMM (same ΔMC as the move: checks); the closure model is a documented derivation', traceability: 'derivation' },
+      { id: 'catch_hold', label: 'Catch holding an out-of-plumb door', magnitude: 'F = m·g·sin(3°) ≈ m·g·0.05 shared across the catches on the leaf', apply: 'catch strike, horizontal', direction: 'door swing', duration: 'sustained', acceptance: 'catalog hold rating ≥ 1.5× demand; touch latches refuse leaves past 4 kg (the spring cap on the catalog row)', source: 'documented derivation (a case leaning 3° swings its own doors open; no standard rates residential catches — arithmetic in test/handcalc.js)', traceability: 'derivation' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'shelf / bottom → side', required: ['dado', 'rabbet', 'sliding_dovetail', 'butt_screws', 'pocket_screws', 'dowels', 'biscuits'], prohibited: ['edge_glue'], reason: 'the shelf end reaction runs into the sides — housed joints (dado/rabbet/sliding dovetail) carry it in bearing and the level matrix gates the rest; edge glue is a panel operation, not a shelf housing. The joint-adequacy check prices whatever is chosen.' },
+        { connection: 'back → case', required: ['rabbet'], prohibited: ['edge_glue'], reason: 'the back sits in rabbets on the case edges: it is the shear panel that squares the case and multiplies the racking score ×1.5 — a nailed-on flush back does neither.' },
+        { connection: 'solid top → case', required: ['butt_screws'], prohibited: ['edge_glue'], reason: 'a solid top must move across its grain — screws in slotted/oversize holes, never a cross-grain glue line (movement check + FE-H1).' },
+        { connection: 'door → case', required: [], prohibited: [], reason: 'not a wood-to-wood joint: a hinge is a mechanism — it carries no racking credit, takes no cut allowance, and lives in the BOM (X-07). The door system checks (hinge, door:sag, door:reveal, door:catch) own its physics.' }
+      ]
+    },
+    failureModes: [
+      { id: 'shelf_sag', mode: 'shelf sags under books + creep', checkIds: ['sag:'], fixture: 'frozen ash-bookshelf-metric honest-fail (19 mm shelves; do not "fix" it) + audit F-S2-1 family', realWorld: 'the smile every long bookshelf grows' },
+      { id: 'member_rupture', mode: 'shelf or top passes deflection but fails in bending', checkIds: ['str:'], fixture: 'audit KB-2 (MDF fails where MDF fails)', realWorld: 'cracked shelves under boxed storage' },
+      { id: 'racking', mode: 'case racks side-to-side without a back or housed shelves', checkIds: ['rack'], fixture: 'unit racking sections (back panel ×1.5, dados ×1.15)', realWorld: 'parallelogram bookcases' },
+      { id: 'tipping', mode: 'tall case tips when top-loaded', checkIds: ['tip'], fixture: 'audit M-18 (anchor rollup) + handcalc [8]', realWorld: 'tall narrow cases going over' },
+      { id: 'open_drawer_tip', mode: 'open drawers + a child’s weight tip the case', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit F-S0-1', realWorld: 'the dresser scenario F2057 exists for' },
+      { id: 'slide_overload', mode: 'drawer contents exceed the slide rating', checkIds: ['slide:'], conditional: true, fixture: 'audit F-S3-6', realWorld: 'flat-spotted rollers, dropped drawers' },
+      { id: 'movement_split', mode: 'solid panel captured cross-grain splits with the seasons', checkIds: ['move:'], fixture: 'audit F-S2-3', realWorld: 'split sides at the back-panel screws' },
+      { id: 'joint_overload', mode: 'weakest case joint below its load share', checkIds: ['joints'], fixture: 'audit KB-1 / G5', realWorld: 'shelves torn out of their dados' },
+      { id: 'leg_buckle', mode: 'slender nightstand legs bow under load', checkIds: ['slender'], conditional: true, fixture: 'unit slenderness sections', realWorld: 'spindly nightstands' },
+      { id: 'hinge_overload', mode: 'door outweighs the hinges carrying it', checkIds: ['hinge'], conditional: true, fixture: 'audit X-07b (heavy hickory door; fix clears it)', realWorld: 'doors that drop, drag, and pull their screws' },
+      { id: 'door_droop', mode: 'slab door droops at the free edge on the hinge couple (wide-short leaves worst)', checkIds: ['door:sag'], conditional: true, fixture: 'audit CASE-2 (wider-than-tall leaf; full-length-hinge fix clears)', realWorld: 'doors rubbing their bottom reveal away' },
+      { id: 'reveal_loss', mode: 'seasonal movement of slab leaves eats the fitted reveal', checkIds: ['door:reveal'], conditional: true, fixture: 'audit CASE-3 (red-oak inset pair vs plywood pass)', realWorld: 'inset doors that bind every August' },
+      { id: 'door_unlatched', mode: 'door with no (or an overwhelmed) catch swings open', checkIds: ['door:catch'], conditional: true, fixture: 'audit CASE-4 (BOM = check = step; touch latch declined past 4 kg)', realWorld: 'cabinet doors standing open; handleless fronts that will not pop' },
+      { id: 'oversize_single_door', mode: 'a single door too wide to hang is asked for', guard: 'Spec.correctSpec splits a > 600 mm single into a pair (X-07) and doorNotes discloses it', checkIds: ['door:sag'], fixture: 'audit CASE-5 + X-07b split assertions', realWorld: 'sagging oversize doors with room-filling swings' },
+      { id: 'ergonomic_miss', mode: 'case dimension outside the human-factors band', checkIds: ['ergo_'], conditional: true, fixture: 'audit CASE-5 (out-of-band nightstand height is named)', realWorld: 'shelves too shallow for the books they were built for' }
+    ],
+    hardware: [
+      { id: 'door_hinges', item: 'hinge style from the catalog (euro cup default); count from the height-band + weight rule', when: 'every door', capacity: 'capacityKgPair class ratings per catalog row', matchedTo: 'the hinge check — leaf weight (geometry × SG) vs count × pair capacity; BOM, drilling step, and check all call BB.HW.doorHingeCount' },
+      { id: 'door_catches', item: 'magnetic / roller catch or touch latch, selected and counted by BB.HW.catchSpec', when: 'every door (two per leaf ≥ 1500 mm tall — both free corners held flat)', capacity: 'holdKg class ratings per catalog row; touch latch refuses leaves past 4 kg (spring cap)', matchedTo: 'door:catch out-of-plumb swing demand at ≥ 1.5×; BOM count = check count = fitting step' },
+      { id: 'drawer_slides', item: 'slide family picked by computed load (BB.HW.slidePick)', when: 'drawer runner = slides', capacity: '22–100 kg class ratings', matchedTo: 'slide: check — interior litres × storage density vs the picked class; BOM buys the same pick' },
+      { id: 'antitip', item: 'anti-tip wall anchor kit', when: 'tip or tip_f2057 below gate', capacity: 'per kit rating', matchedTo: 'tipping checks (mandatory BOM line when they fire, audit M-18)' },
+      { id: 'pulls', item: 'pull style intent; CTC snapped into the industry series', when: 'doors and drawers', capacity: 'n/a (reach hardware)', matchedTo: 'BB.HW.pullSpec — label and bore count can never disagree (audit FE-H5)' }
+    ],
+    assembly: {
+      sequence: ['mill and label every part', 's1 (join the case: top/bottom/shelves between the sides, clamped square)', 'back panel into its rabbets (squares the case)', 'running gear and banks', 'doors_fit (fit, mark, then OFF again to finish)', 'finish'],
+      jigs: ['dado/rabbet setup blocks cut from the actual shelf stock', 'drill press fence + stop for cup bores — every cup the same distance from the edge', 'story stick for hinge and runner heights (mark all case parts together)'],
+      checks: ['equal diagonals across the case before the back goes on', 'back panel seats fully in its rabbets — no rock', 'reveal even all round with the door shimmed on playing cards', 'doors come OFF again before finishing (a door finished in place glues itself shut at the reveal)']
+    },
+    refusals: [
+      { id: 'no_doors_off_case', shape: 'doors on templates with no case front (tables, desks, benches, beds, wall shelves — and the nightstand, whose front is its drawer bank)', reason: 'a door needs a case front to close against; there is nothing to hang one on', surface: 'Spec.correctSpec DOOR_TEMPLATES gate + doorNotes + SCHEMA_DOC ("dr" = cabinet/bookshelf only)' },
+      { id: 'no_sliding_glazed', shape: 'sliding, tambour, or glazed doors', reason: 'sliding/tambour are mechanisms the model cannot express (the mechanism doctrine; template swing doors are the sole hinge exception) and glass is not a stocked material — the grooved-slider and tambour setouts live in the Shop Reference as teaching, not generated geometry', surface: 'SCHEMA_DOC mechanism doctrine + BB.HW.TRADITIONAL (reference stratum)' },
+      { id: 'no_wall_hung_case', shape: 'wall-hung cabinets', reason: 'the cantilever couple of a loaded cabinet outruns the hobby fixing model — wall-hung CASEWORK is named future work on the wall_mounted foundation (03-wall-mounted.md); everything in this class stands on the floor', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule + wall_mounted no_heavy_cantilever refusal' }
+    ],
+    fixtures: {
+      golden: ['advanced-cabinet-imperial', 'walnut-nightstand-2drawer-imperial', 'ash-bookshelf-metric', 'oak-armoire-pair-imperial', 'beech-sideboard-doors-metric'],
+      bad: ['audit CASE-1 contract + coverage', 'audit CASE-2 droop arithmetic + wider-than-tall', 'audit CASE-3 reveal survival vs movement', 'audit CASE-4 catch selection = BOM = step', 'audit CASE-5 refusals, split guard disclosure, ergonomics', 'frozen ash-bookshelf-metric honest-fail']
+    }
+  });
+
+  register({
+    key: 'childrens',
+    label: 'Children\'s furniture (scope over table / desk / chair / bookshelf)',
+    templates: ['chair', 'table', 'desk', 'bookshelf'],
+    scope: 'child', // overlay class: forTemplate skips it; scopeClasses(spec) reaches it
+    geom: CHILD_GEOM,
+    DESIGN_BASIS_CHILD,
+    family: {
+      rules: [
+        /* The host template's DIM_RULES still own every range; the child
+         * scope pins the two body-fit heights on top of them. */
+        { path: 'overall.height', ownedBy: 'K.CHILD.BANDS tableH via Spec.correctSpec child block (table/desk)' },
+        { path: 'seat.height', ownedBy: 'K.CHILD.BANDS seatH via Spec.correctSeat child branch (chair)' },
+        { path: 'child.ageBand', ownedBy: 'K.CHILD.BANDS enum via Spec.correctSpec child sanitize' }
+      ],
+      couplings: [
+        { id: 'band_pins_heights', rule: 'the age band IS the height: table/desk overall.height = band tableH and chair seat = the band seat plan (EN 1729 size-mark pairs) — asked-for heights are not used and the refusal is said', enforcedBy: 'Spec.correctSpec child block + correctSeat child branch; childNotes discloses' },
+        { id: 'adult_loads_kept', rule: 'child scope NEVER lightens a load case: adults sit on kids\' chairs, so every structural check runs at the host class\'s adult magnitudes (documented derivation, stated in child:basis)', enforcedBy: 'Structural — the child scope adds checks and scope, changes no magnitude' },
+        { id: 'anchor_mandate', rule: 'child-scoped storage (bookshelf) carries the anti-tip wall anchor as a MANDATORY BOM line regardless of computed margin, and any child-scoped drawered piece takes the F2057 anchor gate at ≥1.5× whatever its height (CPSC Anchor It!; stricter than the F2057 clothing-storage scope)', enforcedBy: 'Structural tip / tip_f2057 child extension (audit KID-3)' },
+        { id: 'backed_floor_seating', rule: 'child seating keeps a back and floor-serving height: backless perches and counter/bar stools put a small child at fall height, so backHeight > 0 and counterHeight = null are forced and told', enforcedBy: 'Spec.correctSeat child branch + childNotes' },
+        { id: 'scope_templates', rule: 'the scope rides only templates already generated soundly (table, desk, chair, bookshelf); on any other template `child` is dropped and told — nightstand/cabinet child variants are future work on this foundation', enforcedBy: 'Spec.correctSpec child sanitize + childNotes' }
+      ]
+    },
+    humanFactors: [
+      { key: 'child_seat_height', label: 'Child seat height (EN 1729 marks 1–4)', min: 260, max: 380, unit: 'mm', source: 'K.CHILD.BANDS — EN 1729-1 size-mark seat heights (260/310/350/380 for marks 1–4), cross-checked against published sizing guides (ESPO/GLS/edu-quip, research 2026-07)' },
+      { key: 'child_table_height', label: 'Child table/desk height (EN 1729 marks 1–4)', min: 460, max: 640, unit: 'mm', source: 'K.CHILD.BANDS — EN 1729-1 size-mark table heights (460/530/590/640 for marks 1–4), same sources as the seat rows' },
+      { key: 'child_adult_boundary', label: 'Adult-sizing boundary', min: 12, max: 17, unit: 'years', source: 'EN 1729 mark 5 (seat 430 / table 710, age 11–14) meets the adult dining band this tool already builds — age ≥ 12 is served by adult furniture' }
+    ],
+    loadCases: [
+      { id: 'child_seat_adult', label: 'Seat load — ADULT magnitude kept', magnitude: '1334 N (136 kg) — unchanged from the seating class', apply: 'centre of the child seat', direction: 'gravity', duration: 'functional', acceptance: 'same gates as the seating class (sag ≤ L/300, bending ≥ 1× at MOR/4, joints ≥ 1.5×)', source: 'derivation: adults sit on children\'s chairs — the child scope keeps the seating class\'s BIFMA-benchmarked magnitudes and lightens nothing', traceability: 'derivation', ownedBy: 'Structural.LOAD_PRESETS.seating' },
+      { id: 'child_back_adult', label: 'Back/tilt load — ADULT magnitude kept', magnitude: '667 N at the crest, rear-tilt case included', apply: 'crest of the child chair back', direction: 'horizontal, rearward', duration: 'functional + repeated abuse', acceptance: 'seating-class gates unchanged (the shorter child geometry changes the levers, never the force)', source: 'derivation: same rationale — the heaviest user of a child chair is the adult who sits in it', traceability: 'derivation' },
+      { id: 'child_tip_pull', label: 'Open-drawer tip pull', magnitude: '22.7 kg (50 lb) on the open top drawer', apply: 'front of the highest open drawer, all drawers ⅔ open', direction: 'gravity at the worst lever', duration: 'abuse case', acceptance: 'child scope: ≥ 1.5× or the anchor is mandatory, at ANY height and on any drawered template (the adult check gates only clothing-storage height)', source: 'ASTM F2057 / STURDY test magnitude (existing check); the scope extension to all child-scoped pieces is ours (CPSC Anchor It! guidance)', traceability: 'standard' },
+      { id: 'child_shelf_books', label: 'Bookshelf duty unchanged', magnitude: '60 kg/m sustained', apply: 'every shelf', direction: 'gravity', duration: 'sustained (×2 creep)', acceptance: 'long-term sag ≤ L/300 — children\'s books are books', source: 'BIFMA X5.9 shelf load (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'child chair seat frame (inherits the seating mandate)', required: ['mortise_tenon', 'loose_tenon', 'kd_bolt'], prohibited: ['butt_screws', 'pocket_screws', 'biscuits', 'dowels'], reason: 'the child scope keeps adult loads, so the seating class\'s rear-tilt arithmetic — and its tenon-class mandate — apply unchanged. The SHORTER rail-to-stretcher arm on a child chair raises the couple demand per newton of back force, which is the opposite of a reason to relax the joint.' },
+        { connection: 'child table/desk aprons → legs (inherits frame_table)', required: ['mortise_tenon', 'dowels', 'pocket_screws', 'loose_tenon', 'kd_bolt', 'half_lap', 'bridle'], prohibited: ['biscuits', 'edge_glue'], reason: 'the frame_table joint rules apply unchanged at the band\'s shorter heights; the level matrix still gates.' }
+      ]
+    },
+    failureModes: [
+      { id: 'kid_tipover', mode: 'furniture tips onto a child (the CPSC tip-over scenario)', checkIds: ['tip', 'tip_f2057'], fixture: 'audit KID-3 (mandatory anchor on child storage; F2057 scope extension)', realWorld: 'furniture tip-over deaths — the reason STURDY exists' },
+      { id: 'kid_oversize', mode: 'child piece built at adult heights (dangling feet, chin-height desk)', guard: 'Spec.correctSpec child block + correctSeat child branch pin the EN 1729 band heights; childNotes discloses every refused height', fixture: 'audit KID-2', realWorld: 'kids kneeling on chairs to reach adult tables' },
+      { id: 'kid_entrapment', mode: 'a bounded opening in the 89–230 mm band traps a head', conditional: true, checkIds: ['child:entrap'], fixture: 'audit KID-5 (the chair-back openings are measured and named)', realWorld: 'head entrapment between rails — the 16 CFR 1213 scenario' },
+      { id: 'kid_finish_toxicity', mode: 'a child mouths a finish never meant for mouths', checkIds: ['child_finish'], fixture: 'audit KID-6', realWorld: 'lead-paint history; modern coatings are certified to EN 71-3 for a reason' },
+      { id: 'kid_adult_overload', mode: 'an adult sits/leans/steps on the child piece and it fails', checkIds: ['sag:', 'str:', 'chair:'], fixture: 'audit KID-4 (adult magnitudes asserted on child geometry, arithmetic in handcalc [23])', realWorld: 'the parent who perches on the kids\' chair at the school open house' },
+      { id: 'kid_regulated_product', mode: 'a regulated children\'s product is asked of a hobby tool', guard: 'intent-parser refusals with the regulation named (ai.js children\'s block) + SCHEMA_DOC; fires before any creation', fixture: 'audit KID-1 + battery children cases', realWorld: 'toy-chest lids, high-chair restraints, crib slats — categories with body counts and federal rules' },
+      { id: 'kid_fall_height', mode: 'a small child perches on a backless or counter-height seat', guard: 'Spec.correctSeat child branch forces a backed, floor-serving chair (backHeight > 0, counterHeight null) and childNotes says why', fixture: 'audit KID-2 (stool/counter asks corrected and told)', realWorld: 'falls from bar stools — the top of the child furniture injury tables' }
+    ],
+    hardware: [
+      { id: 'kid_antitip', item: 'anti-tip wall anchor kit', when: 'EVERY child-scoped storage piece (bookshelf), and any child-scoped drawered piece below the 1.5× F2057 gate', capacity: 'per kit rating', matchedTo: 'tip / tip_f2057 with the child scope extension — mandatory regardless of computed margin on storage (audit KID-3)' }
+    ],
+    assembly: {
+      sequence: ['build per the host template sequence (frame/case/chair steps unchanged)', 'ease every edge and round every corner — child duty, before finishing', 'finish on the toy-safe schedule and let it FULLY cure before handover', 'storage: fasten the anti-tip strap into a stud before anything goes on a shelf'],
+      jigs: ['roundover bit or sanding block for the eased-edge pass (no sharp arris anywhere a child reaches)'],
+      checks: ['no bounded opening between 89 and 230 mm within reach of the seat (measure the assembled back)', 'anti-tip strap engaged and tugged BEFORE the piece is loaded', 'finish cured hard (no odor, no tack) before a child touches it']
+    },
+    refusals: [
+      { id: 'no_toy_chest', shape: 'toy chests / hinged-lid boxes', reason: 'a falling toy-chest lid is a strangulation/crush hazard with its own lid-support requirements — ASTM F963 toy-chest provisions (formerly ASTM F834), mandatory under 16 CFR 1250 — and no lid or lid-support hardware is modeled here (lids are refused generally)', surface: 'intent parser (children\'s block) + SCHEMA_DOC' },
+      { id: 'no_high_chair', shape: 'high chairs / booster seats', reason: '16 CFR 1231 (ASTM F404) territory: restraint systems, stability tests, occupant retention — federal rules for a product that holds a child at height', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_changing_table', shape: 'changing tables / changing toppers', reason: '16 CFR 1235 (ASTM F2388) territory: barrier and retention requirements for an elevated infant surface', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_play_yard_gate', shape: 'play yards, playpens, safety gates and enclosures', reason: '16 CFR 1221 (ASTM F406) and 16 CFR 1239 (ASTM F1004) territory: containment products with entrapment and strength rules this tool does not model', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_infant_sleep', shape: 'cribs, bassinets, cradles, toddler beds', reason: '16 CFR 1219/1220 is federal safety law — permanently refused (restating the bed class\'s refusal so the children\'s surface tells one story)', surface: 'intent parser (bed block) + SCHEMA_DOC' },
+      { id: 'no_bunks_restated', shape: 'bunk and loft beds', reason: 'ASTM F1427 / 16 CFR 1213 territory (restating the bed class\'s refusal)', surface: 'intent parser (bed block) + SCHEMA_DOC' },
+      { id: 'no_child_stool', shape: 'backless or counter/bar-height child seating', reason: 'a perch at counter height puts a small child at fall height; the scope forces a backed, floor-serving chair and says so', surface: 'Spec.correctSeat child branch + childNotes' },
+      { id: 'no_other_templates', shape: 'child scope on templates outside table/desk/chair/bookshelf', reason: 'the scope only overlays templates already generated soundly; child-scoped casework (nightstand/cabinet) is future work', surface: 'Spec.correctSpec child sanitize + childNotes' }
+    ],
+    fixtures: {
+      golden: ['maple-kids-table-metric', 'oak-kids-chair-imperial'],
+      bad: ['audit KID-1 refusals with regulations named', 'audit KID-2 band pinning + disclosures', 'audit KID-3 anchor mandate', 'audit KID-4 adult loads kept', 'audit KID-5 entrapment band', 'audit KID-6 finish advisory + wire roundtrip', 'battery children cases']
+    }
+  });
+
   BB.Classes = {
-    register, get, all, forTemplate, validateContract, runChecklist,
-    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED
+    register, get, all, forTemplate, scopeClasses, validateContract, runChecklist,
+    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED, DESIGN_BASIS_CHILD
   };
 })();

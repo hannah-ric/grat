@@ -1,0 +1,654 @@
+{
+ "spec": {
+  "specVersion": 11,
+  "meta": {
+   "name": "Beech Sideboard",
+   "template": "cabinet",
+   "level": "beginner",
+   "units": "mm"
+  },
+  "overall": {
+   "width": 1400,
+   "depth": 450,
+   "height": 750
+  },
+  "wood": {
+   "species": "beech",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 25,
+   "legThickness": 70,
+   "apronHeight": 90,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 1,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": true,
+   "stretcher": "none",
+   "stretcherHeight": 280
+  },
+  "joinery": {
+   "frame": "pocket_screws",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "wipe_poly",
+  "exposure": "interior",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": null,
+  "doors": {
+   "count": 2,
+   "style": "overlay"
+  },
+  "custom": null,
+  "seat": null,
+  "wall": null,
+  "bed": null,
+  "child": null
+ },
+ "validation": {
+  "errors": [],
+  "advisories": [
+   "ergo_counter_height"
+  ]
+ },
+ "cutList": [
+  {
+   "name": "Back panel",
+   "qty": 1,
+   "L": 1388,
+   "W": 623,
+   "T": 6,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Top",
+   "qty": 1,
+   "L": 1400,
+   "W": 450,
+   "T": 25,
+   "material": "beech",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Bottom",
+   "qty": 1,
+   "L": 1364,
+   "W": 450,
+   "T": 19,
+   "material": "beech",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Shelf",
+   "qty": 1,
+   "L": 1364,
+   "W": 420,
+   "T": 19,
+   "material": "beech",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Left door",
+   "qty": 1,
+   "L": 694,
+   "W": 640,
+   "T": 19,
+   "material": "beech",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Right door",
+   "qty": 1,
+   "L": 694,
+   "W": 640,
+   "T": 19,
+   "material": "beech",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Side",
+   "qty": 2,
+   "L": 725,
+   "W": 450,
+   "T": 18,
+   "material": "beech",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Toe-kick board",
+   "qty": 1,
+   "L": 1364,
+   "W": 90,
+   "T": 19,
+   "material": "beech",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": false,
+  "verdict": "fail",
+  "rackScore": 55,
+  "tip": {
+   "angEmpty": 23.877,
+   "angLoaded": 18.697,
+   "ratio": 1.667
+  },
+  "checks": [
+   {
+    "id": "sag:top_1",
+    "status": "fail",
+    "data": {
+     "sagMM": 8.445,
+     "limitMM": 4.667,
+     "spanMM": 1400
+    }
+   },
+   {
+    "id": "str:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_1",
+    "status": "fail",
+    "data": {
+     "sagMM": 18.573,
+     "limitMM": 4.547,
+     "spanMM": 1364
+    }
+   },
+   {
+    "id": "str:shelf_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "hinge",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "door:sag",
+    "status": "advisory",
+    "data": {
+     "leafKg": 5.401,
+     "spreadMM": 440,
+     "ampRatio": 1.577,
+     "droopMM": 0.789,
+     "coupleN": 41.8,
+     "widerThanTall": true
+    }
+   },
+   {
+    "id": "door:reveal",
+    "status": "advisory",
+    "data": {
+     "crossWidthMM": 640,
+     "swingMM": 11.034,
+     "closureMM": 11.034,
+     "budgetMM": 4
+    }
+   },
+   {
+    "id": "door:catch",
+    "status": "pass",
+    "data": {
+     "countPerDoor": 1,
+     "holdN": 39.2,
+     "demandN": 2.649,
+     "marginRatio": 14.81,
+     "substituted": false
+    }
+   },
+   {
+    "id": "joints",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:side_1",
+    "status": "advisory",
+    "data": {
+     "movementMM": 7.758,
+     "crossWidthMM": 450,
+     "context": "captured"
+    }
+   },
+   {
+    "id": "move:bottom_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 7.758,
+     "crossWidthMM": 450,
+     "context": "compatible"
+    }
+   },
+   {
+    "id": "move:top_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 7.758,
+     "crossWidthMM": 450,
+     "context": "compatible"
+    }
+   },
+   {
+    "id": "move:shelf_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 7.241,
+     "crossWidthMM": 420,
+     "context": "compatible"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "American Beech 19 x 235 x 1829 mm (1x10)",
+    "qty": 1,
+    "cost": 32.264
+   },
+   {
+    "label": "American Beech 19 x 235 x 3658 mm (1x10)",
+    "qty": 2,
+    "cost": 129.054
+   },
+   {
+    "label": "American Beech 19 x 140 x 1829 mm (1x6)",
+    "qty": 1,
+    "cost": 17.119
+   },
+   {
+    "label": "American Beech 19 x 140 x 3658 mm (1x6)",
+    "qty": 2,
+    "cost": 68.478
+   },
+   {
+    "label": "American Beech 25 x 89 x 3048 mm (5/4x4)",
+    "qty": 3,
+    "cost": 75.712
+   },
+   {
+    "label": "Baltic Birch Ply 6 mm — full sheet (1220 × 2440 mm base)",
+    "qty": 1,
+    "cost": 40
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x10",
+    "stockLen": 3658,
+    "offcut": 169,
+    "cuts": [
+     {
+      "name": "Bottom (strip 1/2)",
+      "len": 1364,
+      "offset": 15
+     },
+     {
+      "name": "Bottom (strip 2/2)",
+      "len": 1364,
+      "offset": 1382
+     },
+     {
+      "name": "Side (strip 1/2)",
+      "len": 725,
+      "offset": 2749
+     }
+    ]
+   },
+   {
+    "nominal": "1x10",
+    "stockLen": 3658,
+    "offcut": 169,
+    "cuts": [
+     {
+      "name": "Shelf (strip 1/2)",
+      "len": 1364,
+      "offset": 15
+     },
+     {
+      "name": "Shelf (strip 2/2)",
+      "len": 1364,
+      "offset": 1382
+     },
+     {
+      "name": "Side (strip 2/2)",
+      "len": 725,
+      "offset": 2749
+     }
+    ]
+   },
+   {
+    "nominal": "1x10",
+    "stockLen": 1829,
+    "offcut": 346,
+    "cuts": [
+     {
+      "name": "Side (strip 1/2)",
+      "len": 725,
+      "offset": 15
+     },
+     {
+      "name": "Side (strip 2/2)",
+      "len": 725,
+      "offset": 743
+     }
+    ]
+   },
+   {
+    "nominal": "1x6",
+    "stockLen": 3658,
+    "offcut": 173,
+    "cuts": [
+     {
+      "name": "Toe-kick board",
+      "len": 1364,
+      "offset": 15
+     },
+     {
+      "name": "Left door (strip 1/5)",
+      "len": 694,
+      "offset": 1382
+     },
+     {
+      "name": "Left door (strip 2/5)",
+      "len": 694,
+      "offset": 2079
+     },
+     {
+      "name": "Left door (strip 3/5)",
+      "len": 694,
+      "offset": 2776
+     }
+    ]
+   },
+   {
+    "nominal": "1x6",
+    "stockLen": 3658,
+    "offcut": 146,
+    "cuts": [
+     {
+      "name": "Left door (strip 4/5)",
+      "len": 694,
+      "offset": 15
+     },
+     {
+      "name": "Left door (strip 5/5)",
+      "len": 694,
+      "offset": 712
+     },
+     {
+      "name": "Right door (strip 1/5)",
+      "len": 694,
+      "offset": 1409
+     },
+     {
+      "name": "Right door (strip 2/5)",
+      "len": 694,
+      "offset": 2106
+     },
+     {
+      "name": "Right door (strip 3/5)",
+      "len": 694,
+      "offset": 2803
+     }
+    ]
+   },
+   {
+    "nominal": "1x6",
+    "stockLen": 1829,
+    "offcut": 408,
+    "cuts": [
+     {
+      "name": "Right door (strip 4/5)",
+      "len": 694,
+      "offset": 15
+     },
+     {
+      "name": "Right door (strip 5/5)",
+      "len": 694,
+      "offset": 712
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3048,
+    "offcut": 215,
+    "cuts": [
+     {
+      "name": "Top (strip 1/6)",
+      "len": 1400,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 2/6)",
+      "len": 1400,
+      "offset": 1418
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3048,
+    "offcut": 215,
+    "cuts": [
+     {
+      "name": "Top (strip 3/6)",
+      "len": 1400,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 4/6)",
+      "len": 1400,
+      "offset": 1418
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x4",
+    "stockLen": 3048,
+    "offcut": 215,
+    "cuts": [
+     {
+      "name": "Top (strip 5/6)",
+      "len": 1400,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 6/6)",
+      "len": 1400,
+      "offset": 1418
+     }
+    ]
+   }
+  ],
+  "sheets": [
+   {
+    "thickness": 6,
+    "fraction": 1,
+    "placements": [
+     {
+      "name": "Back panel",
+      "x": 0,
+      "y": 0,
+      "w": 1388,
+      "h": 623,
+      "rot": false
+     }
+    ]
+   }
+  ],
+  "totalCost": 362.63,
+  "wasteSolidPct": 19,
+  "wasteSheetPct": 71
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "American Beech 19 x 235 x 1829 mm (1x10)",
+    "qty": 1,
+    "price": 32.26
+   },
+   {
+    "kind": "lumber",
+    "label": "American Beech 19 x 235 x 3658 mm (1x10)",
+    "qty": 2,
+    "price": 129.05
+   },
+   {
+    "kind": "lumber",
+    "label": "American Beech 19 x 140 x 1829 mm (1x6)",
+    "qty": 1,
+    "price": 17.12
+   },
+   {
+    "kind": "lumber",
+    "label": "American Beech 19 x 140 x 3658 mm (1x6)",
+    "qty": 2,
+    "price": 68.48
+   },
+   {
+    "kind": "lumber",
+    "label": "American Beech 25 x 89 x 3048 mm (5/4x4)",
+    "qty": 3,
+    "price": 75.71
+   },
+   {
+    "kind": "sheet",
+    "label": "Baltic Birch Ply 6 mm — full sheet (1220 × 2440 mm base)",
+    "qty": 1,
+    "price": 40
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 38.2 bd ft (0.09 m³)",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 19% · sheet 71%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 32 mm wood screw (pilot 2.8 mm)",
+    "qty": 26,
+    "price": 1.56
+   },
+   {
+    "kind": "fastener",
+    "label": "Figure-8 fasteners + #8 × 16 mm",
+    "qty": 6,
+    "price": 4.81
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 50 mm wood screw (pilot 3.2 mm)",
+    "qty": 4,
+    "price": 0.24
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "hardware",
+    "label": "35 mm concealed cup hinge",
+    "qty": 2,
+    "price": 9
+   },
+   {
+    "kind": "hardware",
+    "label": "Roller catch",
+    "qty": 1,
+    "price": 2
+   },
+   {
+    "kind": "hardware",
+    "label": "35 mm concealed cup hinge",
+    "qty": 2,
+    "price": 9
+   },
+   {
+    "kind": "hardware",
+    "label": "Roller catch",
+    "qty": 1,
+    "price": 2
+   },
+   {
+    "kind": "hardware",
+    "label": "Bar pull",
+    "qty": 2,
+    "price": 12
+   },
+   {
+    "kind": "finish",
+    "label": "Wipe-on polyurethane",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 429.23
+ },
+ "steps": [
+  "glueup1",
+  "glueup2",
+  "glueup3",
+  "glueup4",
+  "glueup5",
+  "glueup6",
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "s5",
+  "doors_fit",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

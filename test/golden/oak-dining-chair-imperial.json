@@ -1,6 +1,6 @@
 {
  "spec": {
-  "specVersion": 9,
+  "specVersion": 11,
   "meta": {
    "name": "Oak Dining Chair",
    "template": "chair",
@@ -36,6 +36,7 @@
    "box": "pocket_screws"
   },
   "finish": "danish_oil",
+  "exposure": "interior",
   "hardware": {
    "pull": "bar_pull",
    "hinge": "euro_cup"
@@ -54,7 +55,8 @@
    "backRake": 4
   },
   "wall": null,
-  "bed": null
+  "bed": null,
+  "child": null
  },
  "validation": {
   "errors": [],

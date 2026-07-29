@@ -10,8 +10,16 @@
     "units": "in",
     "drawers": 2,
     "finish": "hardwax_oil",
-    "joinery": { "frame": "dowels", "case": "dado", "box": "locking_rabbet" },
-    "overall": { "width": 508, "depth": 406.4, "height": 609.6 },
+    "joinery": {
+      "frame": "dowels",
+      "case": "dado",
+      "box": "locking_rabbet"
+    },
+    "overall": {
+      "width": 508,
+      "depth": 406.4,
+      "height": 609.6
+    },
     "minParts": 8
   }
 }

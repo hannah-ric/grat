@@ -1838,7 +1838,9 @@ section('G12 kd_bolt steps bolt — they never instruct glue (A4/C10)');
   // kd_bolt is the class's beginner/default seat-frame joint — and the BED
   // goldens bolt by MANDATE (every rail end, all levels); their step text
   // is deliberately frozen WITH the corpus.
-  const KD_GOLDENS = ['maple-counter-stool-metric.json', 'walnut-chair-boundary-metric.json', 'oak-queen-bed-imperial.json', 'pine-twin-bed-metric.json'];
+  // oak-kids-chair-imperial (2026-07 childrens scope) bolts for the same
+  // seating-class reason: kd_bolt IS the beginner seat-frame mandate.
+  const KD_GOLDENS = ['maple-counter-stool-metric.json', 'walnut-chair-boundary-metric.json', 'oak-queen-bed-imperial.json', 'pine-twin-bed-metric.json', 'oak-kids-chair-imperial.json'];
   for (const f of fs.readdirSync(path.join(__dirname, 'golden'))) {
     if (KD_GOLDENS.includes(f)) continue;
     ok(!/kd_bolt/.test(fs.readFileSync(path.join(__dirname, 'golden', f), 'utf8')), `golden ${f} is kd_bolt-free`);
@@ -3480,6 +3482,626 @@ section('BED-3 refusals with their regulations, and the basis disclosure');
   // Sizes ride the wire: a share code carries the bed block.
   const rt = Spec.correctSpec(Codec.decode(Codec.encode(spec)));
   eq(rt.bed.size, spec.bed.size, 'the mattress size survives the codec roundtrip');
+}
+
+/* =========================================================================
+ * CASEWORK class (2026-07) — doored-casework completion (roadmap item 4).
+ * The retrofit contract (bookshelf / nightstand / cabinet) plus the three
+ * closures it shipped with: slab-door droop over the hinge couple
+ * (door:sag), reveal survival under seasonal movement (door:reveal), and
+ * catches as load-rated, code-selected hardware (door:catch /
+ * BB.HW.catchSpec). Written failing-test-first; hand arithmetic mirrored
+ * in test/handcalc.js.
+ * ========================================================================= */
+section('CASE-1 the casework contract holds and every failure mode is examined');
+{
+  const cls = BB.Classes.get('casework');
+  ok(!!cls, 'the casework class is registered');
+  eq(BB.Classes.validateContract(cls), [], 'contract complete: casework');
+  eq(cls.templates, ['cabinet', 'bookshelf', 'nightstand'], 'it covers the three carcass templates');
+  eq(BB.Classes.forTemplate('cabinet').key, 'casework', 'forTemplate resolves a cabinet to it');
+  // Nominal coverage: every non-conditional failure mode is examined live on
+  // every template of the class — a silently vanished check breaks this.
+  for (const tmpl of cls.templates) {
+    const { spec, model, report } = pipeline({ meta: { name: 'cov', template: tmpl, level: 'intermediate', units: 'mm' } });
+    const integ = Structural.computeIntegrity(spec, model, {});
+    const rows = BB.Classes.runChecklist(tmpl, { integrity: integ, validation: report });
+    eq(rows.filter(r => r.status === 'uncovered').map(r => r.id), [], `no uncovered failure modes on a nominal ${tmpl}`);
+  }
+  // A doored design exercises the conditional door modes end to end.
+  const { spec, model, report } = pipeline({
+    meta: { name: 'covd', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true }, drawers: null,
+    doors: { count: 2, style: 'inset' }
+  });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const rows = BB.Classes.runChecklist('cabinet', { integrity: integ, validation: report });
+  for (const id of ['hinge_overload', 'door_droop', 'reveal_loss', 'door_unlatched']) {
+    ok(rows.find(r => r.id === id).covered, `door mode ${id} is examined on a doored cabinet`);
+  }
+  ok(rows.find(r => r.id === 'oversize_single_door').status === 'guarded', 'the oversize-single mode is correction-guarded');
+}
+
+section('CASE-2 slab-door droop is arithmetic: the hinge couple, by hand');
+{
+  /* Tall inset pair (the armoire golden, metric): cabinet 900×500×1900,
+   * sides 18, top 25, toe kick 90, no drawers → opening 109…1875 mm, so
+   * openH = 1766. Inset leaves: totalW = (900−36) − 4 = 860; leafW =
+   * (860 − 2)/2 = 429; leafH = 1766 − 4 = 1762. Red oak SG 0.63:
+   * leaf mass = 0.429 × 1.762 × 0.019 m³ × 630 kg/m³ = 9.048 kg.
+   * Hinge spread s = 1762 − 2×100 = 1562. Droop amplification w/s =
+   * 429/1562 = 0.2747; droop at 0.5 mm settlement = 0.1373 mm.
+   * Couple F = m·g·w/(2s) = 9.048 × 9.81 × 429 / 3124 = 12.19 N. */
+  const raw = {
+    meta: { name: 'Armoire', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true, topThickness: 25, sideThickness: 18 },
+    drawers: null, doors: { count: 2, style: 'inset' }
+  };
+  const { spec, model } = pipeline(raw);
+  const door = model.parts.find(p => p.role === 'door');
+  eq([Math.round(door.size.w), Math.round(door.size.h)], [429, 1762], 'leaf geometry matches the hand layout');
+  const sag = Structural.computeIntegrity(spec, model, {}).checks.find(c => c.id === 'door:sag');
+  ok(sag && sag.status === 'pass', 'a tall narrow leaf passes door:sag');
+  const kgHand = 0.429 * 1.762 * 0.019 * 630;
+  near(sag.data.leafKg, kgHand, 0.01, 'leaf mass = geometry × SG, by hand');
+  eq(sag.data.spreadMM, 1562, 'hinge spread = leafH − 2×100');
+  near(sag.data.ampRatio, 429 / 1562, 0.001, 'amplification = w/s');
+  near(sag.data.droopMM, 0.5 * 429 / 1562, 0.001, 'droop = settlement × w/s');
+  near(sag.data.coupleN, kgHand * 9.81 * 429 / (2 * 1562), 0.15, 'couple F = W·g·w/(2s)');
+  ok(!sag.data.widerThanTall, 'height > width: inside the Blum chart rule');
+
+  /* The boundary sideboard: a 1400 mm single is split by the guard and the
+   * resulting leaves are WIDER than tall — the chart rule fires as an
+   * advisory (a slab cannot rack, but a wide-short leaf droops on any
+   * two-point hinge), and the full-length-hinge fix genuinely clears it. */
+  const wideRaw = {
+    meta: { name: 'Sideboard', template: 'cabinet', level: 'beginner', units: 'mm' },
+    overall: { width: 1400, depth: 450, height: 750 }, wood: { species: 'beech' },
+    structure: { shelfCount: 1, toeKick: true, backPanel: true }, drawers: null,
+    doors: { count: 1, style: 'overlay' }
+  };
+  const wide = pipeline(wideRaw);
+  eq(wide.spec.doors.count, 2, 'the guard split the single into a pair');
+  const wsag = Structural.computeIntegrity(wide.spec, wide.model, {}).checks.find(c => c.id === 'door:sag');
+  eq(wsag.status, 'advisory', 'wider-than-tall leaves are an advisory, never silent');
+  ok(wsag.data.widerThanTall, 'and the flag names the Blum chart rule breach');
+  ok(wsag.fixes.some(f => f.id === 'hinge-piano'), 'a continuous-hinge remedy is offered');
+  const fixed = Spec.correctSpec(Spec.deepMerge(wide.spec, wsag.fixes.find(f => f.id === 'hinge-piano').patch));
+  const after = Structural.computeIntegrity(fixed, Parametric.build(fixed), {}).checks.find(c => c.id === 'door:sag');
+  eq(after.status, 'pass', 'a piano hinge carries the whole edge — applying the fix clears the check');
+  ok(!after.data.widerThanTall, 'the chart rule does not apply to a full-length hinge');
+}
+
+section('CASE-3 reveal survival: seasonal movement vs the fitted air, by hand');
+{
+  const raw = {
+    meta: { name: 'Armoire', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true, topThickness: 25, sideThickness: 18 },
+    drawers: null, doors: { count: 2, style: 'inset' }
+  };
+  const { spec, model } = pipeline(raw);
+  const rev = Structural.computeIntegrity(spec, model, {}).checks.find(c => c.id === 'door:reveal');
+  /* Hand: cross-grain width = min(429, 1762) = 429. Red oak ct = 0.00369,
+   * temperate ΔMC = 4% → swing = 429 × 0.00369 × 4 = 6.332 mm per leaf.
+   * Fitted mid-season, the hinge edge pinned: half the swing arrives at the
+   * free (meeting) edge of BOTH leaves → closure = 2 × 6.332/2 = 6.332 mm
+   * against 2 mm of fitted meeting reveal — the honest inset-slab advisory. */
+  const swingHand = 429 * K.WOOD_SPECIES.red_oak.ct * K.CLIMATE_DMC.temperate;
+  eq(rev.status, 'advisory', 'a solid inset pair is told about its seasonal swing');
+  near(rev.data.swingMM, swingHand, 0.01, 'swing = crossW × ct × ΔMC (same engine as the move: checks)');
+  near(rev.data.closureMM, 2 * swingHand / 2, 0.01, 'closure = count × swing/2');
+  eq(rev.data.budgetMM, 2, 'the budget is the fitted meeting reveal');
+  ok(/humid season/i.test(rev.explain) && /[Qq]uartersawn/.test(rev.explain),
+    'the advisory teaches the fitting discipline instead of just complaining');
+  // The offered remedy moves style to overlay, whose budget is the plate
+  // adjustment on both doors — demand unchanged, budget doubled.
+  const fix = rev.fixes.find(f => f.id === 'door-overlay');
+  ok(!!fix, 'an overlay remedy is offered');
+  const over = Spec.correctSpec(Spec.deepMerge(spec, fix.patch));
+  const orev = Structural.computeIntegrity(over, Parametric.build(over), {}).checks.find(c => c.id === 'door:reveal');
+  eq(orev.data.budgetMM, 4, 'overlay pair budget = ±2 mm plate adjustment per door');
+  ok(orev.data.closureMM / orev.data.budgetMM < rev.data.closureMM / rev.data.budgetMM,
+    'applying it improves the closure-to-budget ratio');
+  // An overlay SINGLE has nothing to bind against: the swing rides over the
+  // case face and the check says so as a pass.
+  const single = pipeline({
+    meta: { name: 'S', template: 'cabinet', level: 'beginner', units: 'mm' },
+    overall: { width: 560, depth: 400, height: 800 }, wood: { species: 'red_oak' },
+    drawers: null, doors: { count: 1, style: 'overlay' }
+  });
+  const srev = Structural.computeIntegrity(single.spec, single.model, {}).checks.find(c => c.id === 'door:reveal');
+  eq(srev.status, 'pass', 'an overlay single rides over the case face');
+  eq(srev.data.budgetMM, null, 'and prices no budget it does not have');
+}
+
+section('CASE-4 catches are load-rated hardware: one pure function, three surfaces');
+{
+  // The selection rule, straight from the corrected leaf — code, not taste.
+  const light = BB.HW.catchSpec(3, 900, 'bar_pull');
+  eq([light.key, light.count], ['magnetic', 1], 'a light short leaf takes one magnetic catch');
+  const heavyTall = BB.HW.catchSpec(9, 1700, 'bar_pull');
+  eq([heavyTall.key, heavyTall.count], ['roller_catch', 2], 'a heavy tall leaf takes roller catches top + bottom');
+  const touch = BB.HW.catchSpec(3.5, 900, 'none_touch');
+  eq([touch.key, !!touch.substituted], ['touch_latch', false], 'a handleless light front gets its touch latch');
+  const touchHeavy = BB.HW.catchSpec(6, 900, 'none_touch');
+  eq([touchHeavy.key, touchHeavy.substituted], ['magnetic', true],
+    'past the 4 kg spring cap the touch latch is DECLINED and the substitution carried');
+  /* Demand arithmetic: m·g·sin3° ≈ m·g·0.05 shared across the catches.
+   * 9 kg over 2 catches: 9 × 9.81 × 0.05 / 2 = 2.207 N; roller holds
+   * 4 kg = 39.24 N → margin 17.78×. */
+  near(heavyTall.demandN, 9 * 9.81 * 0.05 / 2, 0.01, 'demand = m·g·0.05/count, by hand');
+  near(heavyTall.marginRatio, (4 * 9.81) / (9 * 9.81 * 0.05 / 2), 0.05, 'margin = hold/demand');
+
+  // Three surfaces, one source: check = BOM = fitting step.
+  const { spec, model } = pipeline({
+    meta: { name: 'Armoire', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true }, drawers: null,
+    doors: { count: 2, style: 'inset' }
+  });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const chk = integ.checks.find(c => c.id === 'door:catch');
+  eq(chk.status, 'pass', 'rated catches pass on the nominal armoire');
+  eq(chk.data.countPerDoor, 2, 'a 1762 mm leaf takes a catch top AND bottom');
+  const bom = Plans.bom(spec, model, { integrity: integ });
+  const bomCatches = bom.items.filter(i => /catch|latch/i.test(i.label));
+  eq(bomCatches.length, 2, 'one catch line per door');
+  ok(bomCatches.every(i => i.qty === chk.data.countPerDoor), 'the BOM buys exactly the count the check rated');
+  ok(bomCatches.every(i => /top \+ bottom/i.test(i.label)), 'and says where they go');
+  const steps = Plans.assembly(spec, model, integ, {});
+  const hang = steps.find(s => s.id === 'doors_fit');
+  ok(/2 × roller catch/i.test(hang.text) && /top/i.test(hang.text) && /bottom/i.test(hang.text),
+    'the fitting step installs the same catches in the same places');
+
+  // The substitution reaches every surface too: a heavy handleless leaf.
+  const hh = pipeline({
+    meta: { name: 'HH', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 620, depth: 500, height: 1900 }, wood: { species: 'hickory' },
+    structure: { shelfCount: 2, toeKick: true, backPanel: true }, drawers: null,
+    doors: { count: 1, style: 'overlay' }, hardware: { pull: 'none_touch' }
+  });
+  const hInteg = Structural.computeIntegrity(hh.spec, hh.model, {});
+  const hChk = hInteg.checks.find(c => c.id === 'door:catch');
+  eq(hChk.status, 'advisory', 'an overwhelmed touch latch is an advisory, never silent');
+  ok(hChk.data.substituted, 'the substitution flag is carried');
+  const hBom = Plans.bom(hh.spec, hh.model, { integrity: hInteg });
+  const hLine = hBom.items.find(i => /catch|latch/i.test(i.label));
+  ok(/magnetic/i.test(hLine.label) && /declined/i.test(hLine.detail),
+    'the BOM buys the honest magnetic catch and says why');
+}
+
+section('CASE-5 casework refusals and disclosures: split guard, dropped doors, ergonomics');
+{
+  // The split guard is DISCLOSED (G10 doctrine): asking for one door across
+  // a wide case yields a pair and a note that says so.
+  const wideRaw = {
+    meta: { name: 'W', template: 'cabinet', level: 'beginner', units: 'mm' },
+    overall: { width: 1400, depth: 450, height: 750 }, doors: { count: 1, style: 'overlay' }
+  };
+  const wide = Spec.correctSpec(JSON.parse(JSON.stringify(wideRaw)));
+  eq(wide.doors.count, 2, 'the guard fires');
+  const notes = Spec.correctionNotes(wideRaw, wide);
+  ok(notes.some(n => /pair of doors/.test(n) && /swing radius/.test(n)),
+    `the split is disclosed — got ${JSON.stringify(notes)}`);
+  // Doors asked of a template with no case front are dropped AND told.
+  const deskRaw = { meta: { name: 'D', template: 'desk', level: 'beginner', units: 'mm' }, doors: { count: 2, style: 'overlay' } };
+  const desk = Spec.correctSpec(JSON.parse(JSON.stringify(deskRaw)));
+  eq(desk.doors, null, 'a desk has no case front — doors dropped');
+  const dNotes = Spec.correctionNotes(deskRaw, desk);
+  ok(dNotes.some(n => /no case front to hang doors on/.test(n)),
+    `and the drop is disclosed — got ${JSON.stringify(dNotes)}`);
+  // The wire doc says the same thing (the refusal's stated surface).
+  ok(/cabinet\/bookshelf only/.test(Codec.SCHEMA_DOC), 'SCHEMA_DOC scopes "dr" to case templates');
+  ok(/Mechanisms/.test(Codec.SCHEMA_DOC) && /sole exception/.test(Codec.SCHEMA_DOC),
+    'the mechanism doctrine (sliding/tambour refusal surface) is in the wire doc');
+  // Human-factors misses are named, never silent (the class's ergonomic_miss mode).
+  const tall = pipeline({ meta: { name: 'N', template: 'nightstand', level: 'beginner', units: 'mm' }, overall: { width: 500, depth: 400, height: 750 } });
+  ok(tall.report.advisories.some(a => a.id === 'ergo_nightstand_height'),
+    'an out-of-band nightstand height is named against K.ERGONOMICS');
+  // Idempotence: a corrected doored spec re-corrects to itself byte-for-byte.
+  const again = Spec.correctSpec(Spec.clone(wide));
+  eq(JSON.stringify(again.doors), JSON.stringify(wide.doors), 'the door correction is idempotent');
+}
+
+/* =========================================================================
+ * OUT — the outdoor exposure model (2026-08, class roadmap item 5).
+ * One spec field (`exposure`: interior | covered | exposed) routes species
+ * durability, glue class, finish class, fastener corrosion, and the ΔMC the
+ * movement math runs on — all in code, all disclosed, refusals stated.
+ * ========================================================================= */
+section('OUT-1 one field: interior default, junk-proof, idempotent, byte-identical on the wire');
+{
+  // Absence and junk both fall to the interior default — silently, because
+  // interior IS the truth about a design that never named the outdoors.
+  const plain = Spec.correctSpec({ meta: { name: 'O1', template: 'table', units: 'mm' } });
+  eq(plain.exposure, 'interior', 'a spec that never mentions exposure corrects to interior');
+  eq(Spec.correctSpec({ meta: { template: 'table' }, exposure: 'submerged' }).exposure, 'interior', 'junk exposure falls to interior, never survives');
+  eq(Spec.correctSpec({ meta: { template: 'table' }, exposure: null }).exposure, 'interior', 'an explicit null falls to interior');
+  // Migration: a v9 design opens as an interior design (the chain now runs
+  // through v11 — the children's scope landed in the same release).
+  const migrated = Spec.migrateSpec({ specVersion: 9, meta: { template: 'bench' } });
+  eq([migrated.specVersion, migrated.exposure], [Spec.SPEC_VERSION, 'interior'], 'v9 opens with the explicit interior default at the current version');
+  // Wire discipline: interior never rides the wire, so every pre-exposure
+  // design encodes byte-identically; an outdoor choice rides and returns.
+  ok(!('ex' in Codec.encode(plain)), 'interior designs carry no "ex" key — old share codes stay byte-identical');
+  const exposed = Spec.correctSpec({ meta: { name: 'O1x', template: 'bench', units: 'mm' }, wood: { species: 'white_oak' }, exposure: 'exposed' });
+  eq(Codec.encode(exposed).ex, 2, 'exposed rides the wire as EXP index 2');
+  eq(Spec.correctSpec(Codec.fromShareCode(Codec.toShareCode(exposed)).spec).exposure, 'exposed', 'exposure survives a share-code round trip');
+  // Partial-merge refinement: {"ex":1} is a legal wire diff.
+  eq(Codec.decodePartial({ ex: 1 }).exposure, 'covered', 'a refinement diff can move a piece outdoors');
+  ok(Codec.decodePartial({ ex: 99 }) === null || Codec.decodePartial({ ex: 99 }).exposure === undefined, 'an out-of-range EXP index decodes to nothing, never a silent reset');
+  // Idempotency: correcting a corrected exposed spec changes nothing.
+  eq(JSON.stringify(Spec.correctSpec(JSON.parse(JSON.stringify(exposed)))), JSON.stringify(exposed), 'correction is idempotent over an exposed spec');
+}
+
+section('OUT-2 species durability: exposed corrects to the durable substitute and TELLS; covered advises');
+{
+  // costTier 1 (box-store softwood) → western red cedar; else → white oak.
+  // The species table's `outdoor` flags are the single authority.
+  const pine = Spec.correctSpec({ meta: { name: 'O2a', template: 'bench', units: 'mm' }, wood: { species: 'pine' }, exposure: 'exposed' });
+  eq(pine.wood.species, 'western_red_cedar', 'exposed pine is corrected to western red cedar (costTier 1 aisle)');
+  const walnut = Spec.correctSpec({ meta: { name: 'O2b', template: 'table', units: 'mm' }, wood: { species: 'walnut' }, exposure: 'exposed' });
+  eq(walnut.wood.species, 'white_oak', 'exposed walnut is corrected to white oak (hardwood aisle)');
+  for (const durable of ['white_oak', 'teak', 'sapele', 'western_red_cedar']) {
+    eq(Spec.correctSpec({ meta: { template: 'bench' }, wood: { species: durable }, exposure: 'exposed' }).wood.species, durable,
+      `${durable} is outdoor-rated and survives exposed untouched`);
+  }
+  // The substitution is DISCLOSED (the bed glued-rail pattern): the note
+  // names the refusal reason and the heartwood-only honesty.
+  const notes = Spec.correctionNotes({ meta: { name: 'O2a', template: 'bench', units: 'mm' }, wood: { species: 'pine' }, exposure: 'exposed' }, pine);
+  ok(notes.some(n => /decay-resistant/.test(n) && /Western Red Cedar/.test(n)), `the substitution is told with its reason — got: ${notes.join(' | ')}`);
+  ok(notes.some(n => /heartwood/.test(n) && /sapwood/i.test(n)), 'the note carries the heartwood-vs-sapwood honesty, never a blanket rot-proof claim');
+  // COVERED keeps the species (no direct wetting) and validation advises.
+  const covered = pipeline({ meta: { name: 'O2c', template: 'bench', units: 'mm' }, wood: { species: 'hard_maple' }, exposure: 'covered' });
+  eq(covered.spec.wood.species, 'hard_maple', 'covered keeps the asked-for species');
+  ok(covered.report.advisories.some(a => a.id === 'out_species' && /decay-resistant/.test(a.text)), 'and the durability advisory is named, never silent');
+  // Interior emits nothing from the out_* family.
+  const indoor = pipeline({ meta: { name: 'O2d', template: 'bench', units: 'mm' }, wood: { species: 'pine' } });
+  ok(!indoor.report.advisories.some(a => a.id.startsWith('out_')) && !indoor.report.errors.some(e => e.id.startsWith('out_')), 'interior designs carry no outdoor chatter');
+}
+
+section('OUT-3 material routing: Type-I glue, exterior finish, corrosion-spec fasteners — BOM and steps agree');
+{
+  const raw = { meta: { name: 'O3', template: 'bench', level: 'advanced', units: 'mm' }, wood: { species: 'white_oak' }, structure: { topThickness: 38, apronHeight: 100, apronThickness: 25 }, joinery: { frame: 'mortise_tenon' }, exposure: 'exposed', finish: 'danish_oil' };
+  const { spec, model } = pipeline(raw);
+  // Glue: ANSI/HPVA Type I (the Titebond III class — verified on the
+  // manufacturer's spec page) for every outdoor build.
+  const rec = K.recommendGlue(spec);
+  eq(rec.glue.key, 'pva_waterproof', 'outdoor glue routes to Type I waterproof PVA');
+  ok(/Type I/.test(rec.why) && /outdoor/.test(rec.why), 'the reason names the ANSI/HPVA class and the exposure');
+  // Oily-species precedence holds: outdoor teak still takes epoxy (waterproof).
+  eq(K.recommendGlue(Spec.correctSpec({ meta: { template: 'bench' }, wood: { species: 'teak' }, exposure: 'exposed' })).glue.key, 'epoxy_slow', 'outdoor teak keeps the oily-species epoxy route');
+  // Finish: the interior ask is corrected to the exterior-rated row and told.
+  eq(spec.finish, 'spar_urethane', 'an interior finish on an exposed build is corrected to spar urethane');
+  const notes = Spec.correctionNotes(raw, spec);
+  ok(notes.some(n => /Danish oil/i.test(n) && /interior finish/.test(n) && /Spar urethane/i.test(n)), `the finish routing is told — got: ${notes.join(' | ')}`);
+  // BOM: glue line matches recommendGlue; fastener lines carry the corrosion
+  // spec; the tannin advisory fires for white oak (a tannic species).
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const cut = Plans.cutList(spec, model);
+  const stock = Packing.planStock(spec, model, cut, {});
+  const bom = Plans.bom(spec, model, { integrity: integ, stock });
+  const glueLine = bom.items.find(i => i.kind === 'glue');
+  eq(glueLine && glueLine.label, 'Waterproof PVA (Type I)', 'the BOM glue line is the routed bottle');
+  const fastLines = bom.items.filter(i => i.kind === 'fastener' && !/dowel|tenon|biscuit|spline/i.test(i.label));
+  ok(fastLines.length > 0 && fastLines.every(i => /stainless or hot-dip galvanized/.test(i.label)), `every metal fastener line carries the corrosion spec — got: ${fastLines.map(i => i.label).join(' | ')}`);
+  const report = Spec.validate(spec, model);
+  ok(report.advisories.some(a => a.id === 'hw_outdoor' && /tannin/.test(a.text)), 'the tannin iron-stain advisory is named for white oak');
+  // The assembly plan carries the outdoor maintenance truths in its safety step.
+  const steps = Plans.assembly(spec, model, integ, { stockPlan: stock });
+  const safety = steps.find(s => s.id === 'safety');
+  ok(safety && /stainless or hot-dip galvanized/.test(safety.text) && /end grain/.test(safety.text), 'the safety step mandates the fastener spec and end-grain sealing');
+  ok(safety && /soil|grass/.test(safety.text), 'exposed builds get the ground-contact rule (pavers, never soil)');
+  // An interior build's BOM is untouched — no corrosion suffix anywhere.
+  const indoor = pipeline({ meta: { name: 'O3i', template: 'bench', units: 'mm' } });
+  const ibom = Plans.bom(indoor.spec, indoor.model, { integrity: Structural.computeIntegrity(indoor.spec, indoor.model, {}), stock: Packing.planStock(indoor.spec, indoor.model, Plans.cutList(indoor.spec, indoor.model), {}) });
+  ok(ibom.items.every(i => !/stainless or hot-dip galvanized/.test(i.label || '')), 'interior BOM lines are byte-identical to before');
+}
+
+section('OUT-4 physics honesty: the movement math runs on the outdoor EMC range when exposed');
+{
+  // ΔMC single source: K.EXPOSURE_DMC (Wood Handbook ch. 13 / FPL-RN-0268
+  // sourced) — covered 6, exposed 12 — and the boundary is K.effectiveDMC.
+  eq([K.EXPOSURE_DMC.covered, K.EXPOSURE_DMC.exposed], [6, 12], 'the outdoor ΔMC constants are the sourced values');
+  eq(K.effectiveDMC('exposed', 'arid'), 12, 'exposure outranks the indoor climate preference');
+  eq(K.effectiveDMC('interior', 'humid'), 6, 'interior keeps the indoor climate behavior');
+  eq(K.effectiveDMC(undefined, undefined), 4, 'no exposure, no climate — the temperate default, unchanged');
+  // The engine's movement check uses it: same white-oak table, indoors vs out.
+  const mk = exposure => {
+    const r = pipeline({ meta: { name: 'O4', template: 'table', level: 'advanced', units: 'mm' }, overall: { width: 1400, depth: 800, height: 740 }, wood: { species: 'white_oak' }, joinery: { frame: 'mortise_tenon' }, exposure });
+    return Structural.computeIntegrity(r.spec, r.model, {}).checks.find(c => c.id === 'move:top_1');
+  };
+  const indoors = mk('interior'), outdoors = mk('exposed');
+  near(indoors.data.movementMM, 800 * 0.00365 * 4, 0.01, 'interior movement = 800 × ct × 4 (unchanged)');
+  near(outdoors.data.movementMM, 800 * 0.00365 * 12, 0.01, 'exposed movement = 800 × ct × 12 (the outdoor swing)');
+  near(outdoors.data.movementMM / indoors.data.movementMM, 3, 0.001, 'the exposed swing is honestly 3× the temperate indoor swing');
+  ok(/× 12% ΔMC/.test(outdoors.explain), 'the check shows its outdoor arithmetic in the explain string');
+  // The wood-runner fitting clearance follows the same boundary, and the
+  // step names the outdoor swing instead of claiming an indoor one.
+  const cov = pipeline({ meta: { name: 'O4d', template: 'nightstand', level: 'intermediate', units: 'mm' }, drawers: { count: 1, frontStyle: 'inset', runner: 'wood_runners' }, exposure: 'covered' });
+  const covSteps = Plans.assembly(cov.spec, cov.model, Structural.computeIntegrity(cov.spec, cov.model, {}), {});
+  const runnerStep = covSteps.find(s => /runners/.test(s.id));
+  ok(runnerStep && /covered outdoor swing/.test(runnerStep.text), 'the runner-fitting step names the covered outdoor swing');
+}
+
+section('OUT-5 refusals and water traps: sheet goods, wall shelves, and the named advisories');
+{
+  // EXPOSED + interior sheet stock (ply drawer boxes, ply back) = refusal
+  // with the reason: no exterior-rated sheet good exists in the catalog.
+  const cab = pipeline({ meta: { name: 'O5a', template: 'cabinet', units: 'mm' }, drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }, exposure: 'exposed' });
+  const sheetErr = cab.report.errors.find(e => e.id === 'out_sheet');
+  ok(sheetErr && /no exterior-rated sheet good/.test(sheetErr.text) && /delaminates|swells/.test(sheetErr.text), 'exposed sheet stock is refused with the reason');
+  // COVERED downgrades to the named advisory (sheltered, but unrated).
+  const cov = pipeline({ meta: { name: 'O5b', template: 'cabinet', units: 'mm' }, drawers: { count: 2, frontStyle: 'overlay', runner: 'side_mount_slides' }, exposure: 'covered' });
+  ok(!cov.report.errors.some(e => e.id === 'out_sheet') && cov.report.advisories.some(a => a.id === 'out_sheet'), 'covered sheet stock is an advisory, not a refusal');
+  // EXPOSED wall shelf = refusal: the anchor math is NDS dry-service only.
+  const shelf = pipeline({ meta: { name: 'O5c', template: 'wall_shelf', units: 'mm' }, wall: { substrate: 'stud' }, exposure: 'exposed' });
+  const mountErr = shelf.report.errors.find(e => e.id === 'out_mount');
+  ok(mountErr && /dry-service/.test(mountErr.text) && /19%/.test(mountErr.text), 'an exposed wall shelf is refused with the NDS dry/wet-service reason');
+  const porchShelf = pipeline({ meta: { name: 'O5d', template: 'wall_shelf', units: 'mm' }, wall: { substrate: 'stud' }, exposure: 'covered' });
+  ok(!porchShelf.report.errors.some(e => e.id === 'out_mount'), 'a covered porch wall stays dry-service and is allowed');
+  // The water traps are NAMED advisories on every exposed floor-standing piece.
+  const bench = pipeline({ meta: { name: 'O5e', template: 'bench', level: 'advanced', units: 'mm' }, wood: { species: 'white_oak' }, structure: { topThickness: 38, apronHeight: 100, apronThickness: 25 }, joinery: { frame: 'mortise_tenon' }, exposure: 'exposed' });
+  const legAdv = bench.report.advisories.find(a => a.id === 'out_legs');
+  const drainAdv = bench.report.advisories.find(a => a.id === 'out_drain');
+  ok(legAdv && /end grain/.test(legAdv.text) && /wick/.test(legAdv.text), 'unsealed leg bottoms (end-grain wicking) are a named advisory');
+  ok(legAdv && /preservative-treated/.test(legAdv.text), 'the ground-contact rule names why soil contact is out of scope');
+  ok(drainAdv && /drain/.test(drainAdv.text) && /end grain/.test(drainAdv.text), 'water-trapping geometry (end grain up, joint mouths) is a named advisory');
+  ok(bench.report.errors.length === 0, 'a sound all-solid exposed bench is not blocked by the advisories');
+}
+
+section('OUT-6 the surfaces agree: contract, wire doc, and the offline parser');
+{
+  // Contracts still hold with the exposure artifacts registered.
+  for (const cls of BB.Classes.all()) {
+    eq(BB.Classes.validateContract(cls), [], `${cls.key} contract holds`);
+  }
+  const ft = BB.Classes.get('frame_table');
+  ok(ft.family.couplings.some(c => c.id === 'exposure_routing'), 'frame_table registers the exposure coupling');
+  ok(ft.refusals.some(r => r.id === 'no_exposed_sheet'), 'frame_table states the exposed-sheet refusal');
+  ok(ft.failureModes.some(m => m.id === 'weather_rot' && m.guard), 'the weather-rot failure mode is guarded by correction and named');
+  ok(BB.Classes.get('wall_mounted').refusals.some(r => r.id === 'no_exposed_mount'), 'wall_mounted states the exposed-mount refusal');
+  ok(BB.Classes.get('seating').family.couplings.some(c => c.id === 'exposure_routing'), 'seating carries the exposure coupling');
+  ok(BB.Classes.get('bed').family.couplings.some(c => c.id === 'exposure_routing'), 'bed carries the exposure coupling');
+  // The wire doc teaches the key, the enum, and the refusals.
+  ok(/EXP=\[interior,covered,exposed\]/.test(Codec.SCHEMA_DOC) && /"ex"/.test(Codec.SCHEMA_DOC), 'SCHEMA_DOC documents the "ex" key and EXP enum');
+  ok(/REFUSED exposed/.test(Codec.SCHEMA_DOC) && /wall_shelf cannot be exposed/.test(Codec.SCHEMA_DOC), 'SCHEMA_DOC states the exposure refusals');
+  // The offline parser: outdoor words set the exposure intent.
+  const table = Spec.correctSpec({ meta: { template: 'table' } });
+  const teak = AI.localModel('a teak garden bench', table, {});
+  ok(teak.kind === 'new' && teak.spec.meta.template === 'bench' && teak.spec.wood.species === 'teak' && teak.spec.exposure === 'exposed',
+    `"a teak garden bench" creates an exposed teak bench — got ${teak.kind} ${teak.spec && teak.spec.exposure}`);
+  const patio = AI.localModel('an oak desk for the patio', table, {});
+  ok(patio.kind === 'new' && patio.spec.meta.template === 'desk' && patio.spec.exposure === 'exposed', '"an oak desk for the patio" creates an exposed desk');
+  const corrected = Spec.correctSpec(patio.spec);
+  eq(corrected.wood.species, 'white_oak', 'and correction routes the red oak to white oak');
+  ok(Spec.correctionNotes(patio.spec, corrected).some(n => /decay-resistant/.test(n)), 'with the substitution told');
+  const porch = AI.localModel('a walnut bookshelf for the covered porch', table, {});
+  ok(porch.kind === 'new' && porch.spec.exposure === 'covered', 'porch words read as covered, not exposed');
+  const outShelf = AI.localModel('build a floating shelf for the deck on studs', table, {});
+  ok(outShelf.kind === 'info' && /dry-service/.test(outShelf.text), 'an outdoor wall-shelf ask is refused at the parser with the NDS reason');
+}
+
+/* =========================================================================
+/* ================= CHILDREN'S SCOPE CLASS (2026-07) =================
+ * The safety-regime class: EN 1729 band heights pinned by code, ADULT loads
+ * kept, the anchor mandate widened, regulated products refused with their
+ * regulations named. Section numbers KID-0…KID-6 (integrator may renumber). */
+
+section('KID-0 the childrens contract holds, overlays cleanly, and its goldens exist');
+{
+  const cls = BB.Classes.get('childrens');
+  ok(cls && cls.scope === 'child', 'childrens is registered as a SCOPE class');
+  eq(BB.Classes.validateContract(cls), [], 'contract complete: childrens');
+  for (const g of cls.fixtures.golden) {
+    ok(fs.existsSync(path.join(__dirname, 'golden', g + '.json')), `childrens golden fixture on disk: ${g}`);
+  }
+  // A scope class never hijacks a template: the primary classes still answer.
+  eq(BB.Classes.forTemplate('chair').key, 'seating', 'forTemplate(chair) is still the seating class');
+  eq(BB.Classes.forTemplate('table').key, 'frame_table', 'forTemplate(table) is still frame_table');
+  // (bookshelf is owned by the casework class since the same release — the
+  // point stands: the scope class never answers forTemplate.)
+  ok(BB.Classes.forTemplate('bookshelf') === null || BB.Classes.forTemplate('bookshelf').key !== 'childrens',
+    'forTemplate(bookshelf) is never the scope class — it does not claim templates');
+  // Checklist coverage on a live child-scoped chair: BOTH checklists ride.
+  const { spec, model, report } = pipeline({ meta: { name: 'K0', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const rows = BB.Classes.runChecklist('chair', { integrity: integ, validation: report, spec });
+  const uncovered = rows.filter(r => r.status === 'uncovered').map(r => r.id);
+  eq(uncovered, [], 'no uncovered failure modes on a child-scoped chair (seating + childrens checklists)');
+  ok(rows.some(r => r.id === 'kid_tipover') && rows.some(r => r.id === 'rear_tilt_racking'),
+    'the child rows OVERLAY the seating rows — both classes are examined');
+  // Without the child scope, the childrens rows never appear.
+  const ad = pipeline({ meta: { name: 'K0a', template: 'chair', level: 'beginner', units: 'mm' } });
+  const adRows = BB.Classes.runChecklist('chair', { integrity: Structural.computeIntegrity(ad.spec, ad.model, {}), validation: ad.report, spec: ad.spec });
+  ok(!adRows.some(r => String(r.id).startsWith('kid_')), 'an adult chair answers only the seating checklist');
+}
+
+section('KID-1 regulated children\'s products are refused with the regulation NAMED, before creation');
+{
+  const table = Spec.correctSpec({ meta: { name: 'T', template: 'table' } });
+  const cases = [
+    ['a toy box with a lid', /ASTM F834/, /F963/, /16 CFR 1250/],
+    ['build me a toy chest', /ASTM F834/, /F963/, /16 CFR 1250/],
+    ['a high chair for the baby', /16 CFR 1231/, /F404/, /refus/i],
+    ['a changing table for the nursery', /16 CFR 1235/, /F2388/, /refus/i],
+    ['a play yard', /16 CFR 1221/, /F406/, /refus/i],
+    ['a baby gate for the stairs', /16 CFR 1239/, /F1004/, /refus/i]
+  ];
+  for (const [ask, ...rxs] of cases) {
+    const r = AI.localModel(ask, table, {});
+    ok(r.kind === 'info', `"${ask}" is refused, never created — got ${r.kind}`);
+    for (const rx of rxs) ok(r.kind === 'info' && rx.test(r.text), `"${ask}" names ${rx}`);
+  }
+  // The children's surface tells ONE story: cribs and bunks stay refused too.
+  const crib = AI.localModel('a crib for my kid', table, {});
+  ok(crib.kind === 'info' && /16 CFR 1219/.test(crib.text), 'cribs stay refused under 16 CFR 1219/1220');
+  const bunk = AI.localModel('a bunk bed for the kids', table, {});
+  ok(bunk.kind === 'info' && /F1427/.test(bunk.text), 'bunks stay refused under ASTM F1427');
+  // "changing table height" is an EDIT of the table on the bench, not a nursery ask.
+  const edit = AI.localModel('changing table height to 700mm', table, {});
+  ok(edit.kind !== 'info' || !/1235/.test(edit.text || ''), 'an edit phrase never trips the changing-table refusal');
+  // SCHEMA_DOC teaches the same refusals to the hosted model.
+  for (const rx of [/16 CFR 1250/, /16 CFR 1231/, /16 CFR 1235/, /16 CFR 1221/, /16 CFR 1239/]) {
+    ok(rx.test(Codec.SCHEMA_DOC), `SCHEMA_DOC names ${rx}`);
+  }
+}
+
+section('KID-2 heights come from the sourced EN 1729 table — pinned, told, and age-mapped');
+{
+  // The one source: K.CHILD carries the verified size-mark pairs.
+  eq([K.CHILD.BANDS.toddler.seatH, K.CHILD.BANDS.toddler.tableH], [260, 460], 'mark 1: 260/460');
+  eq([K.CHILD.BANDS.preschool.seatH, K.CHILD.BANDS.preschool.tableH], [310, 530], 'mark 2: 310/530');
+  eq([K.CHILD.BANDS.school.seatH, K.CHILD.BANDS.school.tableH], [350, 590], 'mark 3: 350/590');
+  eq([K.CHILD.BANDS.preteen.seatH, K.CHILD.BANDS.preteen.tableH], [380, 640], 'mark 4: 380/640');
+  // Correction pins the band height whatever was asked, and SAYS so.
+  for (const [band, tmpl] of [['toddler', 'table'], ['preschool', 'desk'], ['school', 'table'], ['preteen', 'desk']]) {
+    const raw = { meta: { name: 'K2', template: tmpl, level: 'beginner', units: 'mm' }, overall: { width: 900, depth: 600, height: 750 }, child: { ageBand: band } };
+    const spec = Spec.correctSpec(raw);
+    eq(spec.overall.height, K.CHILD.BANDS[band].tableH, `${band} ${tmpl} pins to ${K.CHILD.BANDS[band].tableH}`);
+    ok(spec.structure.apronHeight <= 80, `${band} ${tmpl} apron band capped for child thigh room`);
+    const notes = Spec.correctionNotes(raw, spec);
+    ok(notes.some(n => /EN 1729/.test(n) && n.includes(String(K.CHILD.BANDS[band].tableH))), `the refused 750 ask is DISCLOSED with the band named — got ${JSON.stringify(notes)}`);
+  }
+  // Child chairs take the band seat + derived plan; stools/counters are refused into backed floor seating.
+  const rawChair = { meta: { name: 'K2c', template: 'chair', level: 'beginner', units: 'mm' }, seat: { backHeight: 0, counterHeight: 900, height: 650 }, child: { ageBand: 'toddler' } };
+  const chair = Spec.correctSpec(rawChair);
+  eq(chair.seat.height, 260, 'toddler seat pins to mark 1 (260)');
+  ok(chair.seat.backHeight > 0 && chair.seat.counterHeight === null, 'a child "stool at the counter" is corrected to a backed floor chair');
+  const cNotes = Spec.correctionNotes(rawChair, chair);
+  ok(cNotes.some(n => /fall height/.test(n)), 'and the fall-height reason is said');
+  // The parser maps ages to bands ("a desk for my 6-year-old" gets mark 3).
+  const nightstand = Spec.correctSpec({ meta: { name: 'N', template: 'nightstand' } });
+  const six = AI.localModel('a desk for my 6-year-old', nightstand, {});
+  ok(six.kind === 'new' && six.spec.child && six.spec.child.ageBand === 'school', '"for my 6-year-old" → school band');
+  eq(Spec.correctSpec(six.spec).overall.height, 590, 'and the built desk is 590 (EN 1729 mark 3)');
+  ok(/EN 1729/.test(six.explain) && /adult design loads/.test(six.explain), 'the ack names the band source and the kept adult loads');
+  const teen = AI.localModel('a desk for my 14-year-old', nightstand, {});
+  ok(teen.kind === 'new' && teen.spec.child === null, 'age ≥ 12 is adult furniture (EN 1729 mark 5+ meets the adult bands)');
+  // The scope rides only sound templates; elsewhere it is dropped AND told.
+  const bedRaw = { meta: { name: 'K2b', template: 'bed', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } };
+  const bedSpec = Spec.correctSpec(bedRaw);
+  ok(bedSpec.child === null, 'child scope never rides a bed');
+  ok(Spec.correctionNotes(bedRaw, bedSpec).some(n => /child scope/i.test(n)), 'and the drop is disclosed');
+  // Adult ergonomics advisories stand down for the pinned child heights.
+  const kt = pipeline({ meta: { name: 'K2t', template: 'table', level: 'beginner', units: 'mm' }, child: { ageBand: 'preschool' } });
+  ok(!kt.report.advisories.some(a => a.id === 'ergo_dining_height'), 'a 530 child table is not scolded against the adult dining band');
+}
+
+section('KID-3 the anti-tip anchor is MANDATORY on child storage — stricter than F2057\'s own scope');
+{
+  // A SHORT bookshelf an adult design would never anchor (ratio ≤ 2.5, wide stance).
+  const raw = { meta: { name: 'K3', template: 'bookshelf', level: 'beginner', units: 'mm' }, overall: { width: 800, depth: 300, height: 720 }, structure: { shelfCount: 2 } };
+  const adult = pipeline(raw);
+  const adultInteg = Structural.computeIntegrity(adult.spec, adult.model, {});
+  ok(!adultInteg.antiTip, 'the adult version of the same case needs no anchor (control)');
+  const kid = pipeline(Object.assign({}, raw, { child: { ageBand: 'school' } }));
+  const kidInteg = Structural.computeIntegrity(kid.spec, kid.model, {});
+  ok(kidInteg.antiTip, 'the child-scoped version mandates the anchor regardless of margin');
+  const tip = kidInteg.checks.find(c => c.id === 'tip');
+  ok(tip.anchor === true && /child/i.test(tip.explain) && /Anchor It/i.test(tip.explain), 'the tip check says WHY: child scope, CPSC Anchor It!');
+  // The mandate reaches the BOM as a REQUIRED line (the deliverable, not a note).
+  const cut = Plans.cutList(kid.spec, kid.model);
+  const stock = Packing.planStock(kid.spec, kid.model, cut, {});
+  const bom = Plans.bom(kid.spec, kid.model, { integrity: kidInteg, stock });
+  ok(bom.items.some(i => /anti-tip/i.test(i.label) && /REQUIRED/i.test(i.label)), 'the anti-tip anchor is a mandatory BOM line');
+  const adultBom = Plans.bom(adult.spec, adult.model, { integrity: adultInteg, stock: Packing.planStock(adult.spec, adult.model, Plans.cutList(adult.spec, adult.model), {}) });
+  ok(!adultBom.items.some(i => /anti-tip/i.test(i.label)), 'and the adult control carries none');
+  // F2057 scope extension: a child desk's pencil drawer takes the 1.5× gate
+  // (adult desks are excluded from the regulation's clothing-storage scope).
+  const kdesk = pipeline({ meta: { name: 'K3d', template: 'desk', level: 'intermediate', units: 'mm' }, drawers: { count: 1 }, child: { ageBand: 'school' } });
+  const kdInteg = Structural.computeIntegrity(kdesk.spec, kdesk.model, {});
+  const f = kdInteg.checks.find(c => c.id === 'tip_f2057');
+  ok(f && f.data.childScope === true, 'the F2057 check runs IN SCOPE on a child desk');
+  ok(/child scope/i.test(f.threshold), 'and the threshold says the scope extension out loud');
+  if (f.data.marginRatio < 1.5) ok(f.anchor === true, 'below 1.5× the anchor is mandated on the child desk');
+  // Loads never lighten: the F2057 pull mass is the same 22.7 kg.
+  eq(f.data.testKg, 22.7, 'the test mass is unchanged (nothing is lightened for children)');
+}
+
+section('KID-4 ADULT design loads are kept on children\'s pieces — stated and priced');
+{
+  const { spec, model } = pipeline({ meta: { name: 'K4', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'toddler' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const seatCls = BB.Classes.get('seating');
+  // The magnitudes in the child chair's checks ARE the adult class magnitudes.
+  const tilt = integ.checks.find(c => c.id === 'chair:tilt');
+  const M = (seatCls.loads.BACK_STATIC_N / 2) * ((260 + 275 - 75 / 2) - (260 - 20 - 65 / 2));
+  near(tilt.data.momentNmm, M, 1, 'rear-tilt moment uses the 667 N adult back force on the child geometry');
+  const cyc = integ.checks.find(c => c.id === 'chair:cyclic');
+  near(cyc.data.perJointN, seatCls.loads.SEAT_STATIC_N / 4, 0.01, 'cyclic demand keeps the 1334 N adult seat mass');
+  // The shorter child couple arm RAISES the per-joint demand vs the adult chair —
+  // the opposite of a lightened case, and the class joinery still clears it.
+  const ad = pipeline({ meta: { name: 'K4a', template: 'chair', level: 'beginner', units: 'mm' } });
+  const adTilt = Structural.computeIntegrity(ad.spec, ad.model, {}).checks.find(c => c.id === 'chair:tilt');
+  ok(tilt.data.demandN > adTilt.data.demandN, `child per-joint demand (${tilt.data.demandN.toFixed(0)} N) exceeds the adult chair's (${adTilt.data.demandN.toFixed(0)} N)`);
+  ok(tilt.status === 'pass' && tilt.data.marginRatio >= 1.5, 'and the class-mandated joint still clears the 1.5× gate');
+  // The basis is DISCLOSED in the output, and it is never a certification claim.
+  const basis = integ.checks.find(c => c.id === 'child:basis');
+  ok(basis && /adult design loads/i.test(basis.value + basis.explain), 'child:basis states the kept adult loads');
+  ok(/EN 1729/.test(basis.explain) && /refused/i.test(basis.explain), 'and names EN 1729 + the refusal doctrine');
+  ok(!/certif(?:ied|ication)(?!.*(?:no|not|never))/i.test(basis.value) && /Guidance, not a certification/i.test(basis.explain),
+    'never a children\'s-product certification claim');
+  // The childrens class contract itself states the derivation.
+  const lc = BB.Classes.get('childrens').loadCases.find(l => l.id === 'child_seat_adult');
+  ok(lc && lc.traceability === 'derivation' && /adults sit/i.test(lc.source), 'the contract traces the adult-loads choice as a documented derivation');
+}
+
+section('KID-5 head-entrapment band: measured on the built back, honestly scoped, child-only');
+{
+  const { spec, model } = pipeline({ meta: { name: 'K5', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const en = integ.checks.find(c => c.id === 'child:entrap');
+  ok(en, 'a child chair carries the entrapment check');
+  // Probe/builder parity: the gaps are measured from the parts actually built.
+  const members = model.parts.filter(p => p.role === 'slat' || p.role === 'crest')
+    .map(p => ({ lo: p.pos.y - p.size.h / 2, hi: p.pos.y + p.size.h / 2 })).sort((a, b) => a.lo - b.lo);
+  let prev = spec.seat.height; const gaps = [];
+  for (const m of members) { gaps.push(Math.round((m.lo - prev) * 10) / 10); prev = Math.max(prev, m.hi); }
+  eq(en.data.gapsMM, gaps, 'check gaps == builder gaps (probe/builder parity)');
+  // The school-band back genuinely opens inside the band → advisory, with the source named honestly.
+  ok(gaps.some(g => g >= 89 && g < 230), 'the nominal school chair back has an in-band opening (140 mm seat→slat)');
+  eq(en.status, 'advisory', 'in-band openings are an ADVISORY, never a silent pass or an overclaimed fail');
+  ok(/16 CFR 1213/.test(en.threshold), 'the band names its source (16 CFR 1213 wedge block / 9 in sphere)');
+  ok(/does not regulate chairs/i.test(en.explain), 'and the scope is honest: the standard is bunk-guardrail law, applied here as geometry guidance');
+  // Adult chairs never carry it — the band is a child hazard scope.
+  const ad = pipeline({ meta: { name: 'K5a', template: 'chair', level: 'beginner', units: 'mm' } });
+  ok(!Structural.computeIntegrity(ad.spec, ad.model, {}).checks.some(c => c.id === 'child:entrap'), 'no entrapment check on an adult chair');
+}
+
+section('KID-6 finish advisory + the child field rides the wire and survives roundtrip');
+{
+  // Finish advisory: always on for child scope, names EN 71-3, blesses nothing unverified.
+  const cured = pipeline({ meta: { name: 'K6', template: 'table', level: 'beginner', units: 'mm' }, finish: 'tung_pure', child: { ageBand: 'preschool' } });
+  const a1 = cured.report.advisories.find(a => a.id === 'child_finish');
+  ok(a1 && /EN 71-3/.test(a1.text), 'the advisory names EN 71-3 as the certified route');
+  ok(/food-contact-class/.test(a1.text) && /cure/.test(a1.text), 'a food-contact finish is named as such, with the cure caveat');
+  const film = pipeline({ meta: { name: 'K6b', template: 'table', level: 'beginner', units: 'mm' }, finish: 'wipe_poly', child: { ageBand: 'preschool' } });
+  const a2 = film.report.advisories.find(a => a.id === 'child_finish');
+  ok(a2 && /no toy-safety certification/.test(a2.text) && /practice, not a cert/i.test(a2.text),
+    'an uncertified film finish is NOT blessed — cured-film practice is labeled practice');
+  ok(/not food\/toy certified/.test(a2.text), 'premixed shellac honesty rides every child finish advisory');
+  const adult = pipeline({ meta: { name: 'K6c', template: 'table', level: 'beginner', units: 'mm' }, finish: 'wipe_poly' });
+  ok(!adult.report.advisories.some(a => a.id === 'child_finish'), 'adult designs carry no child finish advisory');
+
+  // Wire: the child section rides only when set; old codes decode byte-identically.
+  const kidSpec = cured.spec;
+  const w = Codec.encode(kidSpec);
+  eq(w.ch, [1], 'child rides the wire as the appended "ch" key (preschool = AGE index 1)');
+  const rt = Spec.correctSpec(Codec.decode(w));
+  eq(rt.child, { ageBand: 'preschool' }, 'the band survives the codec roundtrip');
+  eq(rt.overall.height, 530, 'and re-correction re-derives the same band height');
+  const adultWire = Codec.encode(adult.spec);
+  ok(!('ch' in adultWire), 'adult designs encode without the key — pre-scope share codes are byte-identical');
+  // A junk band on the wire falls to a real one, never a crash.
+  const junk = Spec.correctSpec(Codec.decode(Object.assign({}, w, { ch: [99] })));
+  ok(junk.child && K.CHILD.BANDS[junk.child.ageBand], 'a junk AGE index decodes to a real band');
+  // Share-code path end to end.
+  const share = Codec.fromShareCode(Codec.toShareCode(kidSpec));
+  ok(!share.error && Spec.correctSpec(share.spec).child.ageBand === 'preschool', 'the child scope survives a share code');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -460,7 +460,11 @@ var BB = globalThis.BB = globalThis.BB || {};
     const allowed = K.jointsForLevel(level);
     const surfaces = surfacesOf(spec, model, opts.loadChoices, opts.defaultLoad);
     const byId = new Map(parts.map(p => [p.id, p]));
-    const dMC = K.CLIMATE_DMC[opts.climate] !== undefined ? K.CLIMATE_DMC[opts.climate] : K.CLIMATE_DMC.temperate;
+    /* ΔMC: the corrected spec's exposure outranks the indoor climate
+     * preference (2026-08 outdoor model) — an exposed build swings on the
+     * outdoor EMC range (K.EXPOSURE_DMC, Wood Handbook ch. 13 sourced), an
+     * interior build keeps the CLIMATE_DMC behavior byte-identically. */
+    const dMC = K.effectiveDMC(spec.exposure, opts.climate);
 
     /* ---- custom hard guarantees: connectivity, stand, load paths, collisions ---- */
     let grounded = new Set();
@@ -1181,6 +1185,43 @@ var BB = globalThis.BB = globalThis.BB || {};
         });
       }
 
+      /* (h2) HEAD ENTRAPMENT — children's scope only (BB.Classes
+       * 'childrens', audit KID-5). Bounded openings between the seat, the
+       * back slats, and the crest are measured on the BUILT parts (probe/
+       * builder parity, same doctrine as bed:slats) against the 16 CFR 1213
+       * head-entrapment band: an opening that passes the wedge block
+       * (~89 mm — verified-approximate; the block is drawn in the CFR
+       * figure) but not the 9 in / 230 mm rigid sphere (verified-exact,
+       * §1213.3) can pass a child's body and trap the head. That band is
+       * DEFINED for bunk-bed guardrails — this check applies the same
+       * body-passes-head-doesn't geometry to a child chair's back as an
+       * ADVISORY, honestly scoped, never a compliance claim. */
+      if (spec.child && !stool && BB.Classes.get('childrens')) {
+        const cG = BB.Classes.get('childrens').geom;
+        const members = parts
+          .filter(p => p.role === 'slat' || p.role === 'crest') // chair back members (defKey back_slat / crest)
+          .map(p => ({ lo: p.pos.y - p.size.h / 2, hi: p.pos.y + p.size.h / 2 }))
+          .sort((a, b) => a.lo - b.lo);
+        const gaps = [];
+        let prevTop = se.height; // the seat surface bounds the lowest opening
+        for (const m of members) {
+          gaps.push(Math.round((m.lo - prevTop) * 10) / 10);
+          prevTop = Math.max(prevTop, m.hi);
+        }
+        const inBand = gaps.filter(g => g >= cG.ENTRAP_MIN && g < cG.ENTRAP_MAX);
+        checks.push({
+          id: 'child:entrap', title: 'Back openings vs the head-entrapment band',
+          status: inBand.length ? 'advisory' : 'pass',
+          value: `bounded back openings: ${gaps.map(g => fmtLen(Math.max(0, g))).join(', ')} (seat → slats → crest)`,
+          threshold: `openings between ${fmtLen(cG.ENTRAP_MIN)} and ${fmtLen(cG.ENTRAP_MAX)} are the head-entrapment band (16 CFR 1213: passes the wedge block, not the ${fmtLen(cG.ENTRAP_MAX)} sphere)`,
+          explain: inBand.length
+            ? `${inBand.length} bounded opening${inBand.length > 1 ? 's' : ''} in this back fall${inBand.length > 1 ? '' : 's'} inside the band where a small body slips through but the head does not — the geometry 16 CFR 1213 rejects on bunk guardrails. That standard does not regulate chairs, so this is an advisory, not a failure: closing the gap below ${fmtLen(cG.ENTRAP_MIN)} (an added slat or a filler panel — not yet generated here) or opening it past ${fmtLen(cG.ENTRAP_MAX)} removes the geometry. The assembly checks carry the tape-measure rule.`
+            : `No bounded opening in this back falls inside the ${fmtLen(cG.ENTRAP_MIN)}–${fmtLen(cG.ENTRAP_MAX)} band.`,
+          fixes: [],
+          data: { gapsMM: gaps, inBandCount: inBand.length }
+        });
+      }
+
       /* (i) The benchmark disclosure — in the OUTPUT, not just the docs:
        * never a compliance claim. */
       checks.push({
@@ -1435,6 +1476,22 @@ var BB = globalThis.BB = globalThis.BB || {};
       });
     }
 
+    /* ---- children's scope basis (BB.Classes 'childrens') ----
+     * Every child-scoped output states its ground truth: EN 1729 band
+     * heights, ADULT loads kept (nothing lightened — adults use kids'
+     * furniture), anchor mandate on storage, regulated products refused.
+     * Guidance, never a children's-product certification. */
+    if (spec.child && BB.Classes && BB.Classes.get('childrens') && K.CHILD) {
+      const band = K.CHILD.BANDS[spec.child.ageBand];
+      checks.push({
+        id: 'child:basis', title: 'Child scope — what changes and what never does', status: 'pass',
+        value: `sized for a ${band.label} · adult design loads KEPT`,
+        threshold: 'EN 1729 size-mark heights pinned by code; no load case is ever lightened; regulated children\'s products are refused',
+        explain: BB.Classes.DESIGN_BASIS_CHILD,
+        fixes: []
+      });
+    }
+
     /* ---- tipping stability: COG from part volumes & density, empty and loaded ---- */
     let antiTip = false, tip = null;
     if (!isWallMounted) {
@@ -1467,17 +1524,28 @@ var BB = globalThis.BB = globalThis.BB || {};
           angLoaded = (Math.atan2(edge(cogL), cogL[1]) * 180) / Math.PI;
         }
         const ratio = height / baseDepth;
-        antiTip = ratio > 2.5 || angLoaded < 10;
+        /* Children's scope (BB.Classes 'childrens', audit KID-3): a
+         * child-scoped STORAGE piece takes the anchor as a mandate
+         * regardless of computed margin — children climb shelves, and CPSC
+         * Anchor It! guidance is to anchor storage furniture in a child's
+         * space, full stop. Stricter than the F2057 clothing-storage scope
+         * by design; the physics is still computed and reported honestly. */
+        const childStorage = !!spec.child && ['bookshelf', 'cabinet', 'nightstand'].includes(t);
+        antiTip = ratio > 2.5 || angLoaded < 10 || childStorage;
         tip = { angEmpty, angLoaded, ratio, loadKg, massKg: mass };
         checks.push({
           id: 'tip', title: 'Tipping stability',
           ...(antiTip ? { anchor: true } : {}), // this check mandates the wall anchor (audit M-18)
           status: angLoaded < 5 ? 'fail' : antiTip ? 'advisory' : 'pass',
           value: `tipping angle ${fmtDeg(angLoaded)} loaded · ${fmtDeg(angEmpty)} empty · height/depth ${ratio.toFixed(1)}`,
-          threshold: '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
-          explain: antiTip
-            ? `Tall or top-heavy${loadKg ? ` with ${U().fmtPointLoad(loadKg)} on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
-            : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
+          threshold: childStorage
+            ? 'child-scoped storage: the wall anchor is mandatory at ANY margin (CPSC Anchor It!)'
+            : '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
+          explain: childStorage
+            ? `Child-scoped storage: the anti-tip wall anchor is mandatory regardless of the computed margin${ratio > 2.5 || angLoaded < 10 ? '' : ` (the geometry itself measures stable — ${fmtDeg(angLoaded)} loaded)`} — children climb shelves, and anchoring storage in a child's space is the CPSC Anchor It! rule this class adopts as a mandate. It is in the BOM and the assembly steps.`
+            : antiTip
+              ? `Tall or top-heavy${loadKg ? ` with ${U().fmtPointLoad(loadKg)} on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
+              : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
           fixes: []
         });
       }
@@ -1516,10 +1584,16 @@ var BB = globalThis.BB = globalThis.BB || {};
         // F2057/STURDY covers CLOTHING STORAGE ≥ 27 in — a desk's pencil
         // drawer is not a dresser drawer, so the anchor mandate follows the
         // regulation's scope while the physics is still reported.
-        const inScope = spec.overall.height >= 686 && t !== 'desk';
+        // CHILD SCOPE EXTENSION (BB.Classes 'childrens', audit KID-3): a
+        // child-scoped piece is IN SCOPE whatever its height or template —
+        // the child at the drawer is not hypothetical there, so the 1.5×
+        // anchor gate applies to a kids desk's pencil drawer too. Stricter
+        // than the regulation's own scope, by design; magnitudes unchanged.
+        const childScope = !!spec.child;
+        const inScope = childScope || (spec.overall.height >= 686 && t !== 'desk');
         const status = margin >= 1.5 ? 'pass' : margin >= 1 ? 'advisory' : (inScope ? 'fail' : 'advisory');
-        // Anchor mandatory when it actually tips, or when a clothing-storage-
-        // height piece runs a thin margin (the regulated scenario).
+        // Anchor mandatory when it actually tips, or when an in-scope piece
+        // (clothing-storage height, or ANY child-scoped piece) runs thin.
         const anchorHere = margin < 1 || (inScope && margin < 1.5);
         if (anchorHere) antiTip = true;
         checks.push({
@@ -1527,14 +1601,14 @@ var BB = globalThis.BB = globalThis.BB || {};
           ...(anchorHere ? { anchor: true } : {}), // this check mandates the wall anchor (audit M-18)
           status,
           value: `margin ${margin === Infinity ? '∞' : margin.toFixed(2) + '×'} with all drawers open ⅔ and ${U().fmtPointLoad(TEST_KG)} on the top drawer front`,
-          threshold: `≥ 1× to stand, ≥ 1.5× to skip the anchor — aligned with ASTM F2057 / STURDY (${U().fmtPointLoad(TEST_KG)} on an open drawer)`,
+          threshold: `≥ 1× to stand, ≥ 1.5× to skip the anchor — aligned with ASTM F2057 / STURDY (${U().fmtPointLoad(TEST_KG)} on an open drawer)${childScope ? '; child scope: the gate applies at ANY height and template' : ''}`,
           explain: margin >= 1.5
             ? 'Even with every drawer open and a child-weight pull on the top one, the piece stays planted.'
             : margin >= 1
-              ? `It stands, but the margin is thin${inScope ? ' at clothing-storage height (F2057 territory) — the anti-tip wall anchor is added and required' : ' — anchor it if children are around'}.`
+              ? `It stands, but the margin is thin${childScope ? ' — and this is a CHILD-SCOPED piece, so the F2057 anchor gate applies whatever the height: the anti-tip wall anchor is added and required' : inScope ? ' at clothing-storage height (F2057 territory) — the anti-tip wall anchor is added and required' : ' — anchor it if children are around'}.`
               : 'With drawers open and weight on the top front, this piece TIPS. The wall anchor is mandatory — and this check follows the same scenario regulators test dressers against.',
           fixes: [],
-          data: { marginRatio: margin, stabilizingNmm: stab, overturningNmm: over, testKg: TEST_KG, openFraction: OPEN_FRACTION }
+          data: { marginRatio: margin, stabilizingNmm: stab, overturningNmm: over, testKg: TEST_KG, openFraction: OPEN_FRACTION, childScope }
         });
       }
 
@@ -1684,6 +1758,122 @@ var BB = globalThis.BB = globalThis.BB || {};
             : `${worst.n} hinges is what this door's height and weight ask for, and ${hinge.label.toLowerCase()} carries it with room to spare.`,
           fixes
         });
+      }
+
+      /* ---- doored-casework completion (roadmap item 4): droop, reveal,
+       * catches. All three read the casework class contract (CASE_GEOM) and
+       * the hardware catalog — hand arithmetic in test/handcalc.js. */
+      const caseCls = BB.Classes ? BB.Classes.get('casework') : null;
+      if (worst && caseCls) {
+        const G = caseCls.geom;
+        const dp = worst.part;
+        const inset = spec.doors.style === 'inset';
+        const nLeaves = spec.doors.count;
+
+        /* ---- door:sag — slab droop over the hinge couple ----
+         * What the app builds is a SLAB door: a one-piece panel. A slab
+         * cannot rack out of square — the panel is its own shear web
+         * (frame-and-panel doors rack at frame joints that do not exist
+         * here). What drops a slab door's free corner is the hinge couple:
+         * the leaf's weight at w/2 from the hinge line resolves as a
+         * horizontal force couple over the hinge spread s (gate statics,
+         * F = W·g·w/(2s)), and every millimetre the top hinge fixing
+         * yields reads as w/s millimetres of droop at the free edge —
+         * pure geometry. Droop is priced at the class's 0.5 mm design
+         * settlement (a documented derivation — no maker publishes one)
+         * against the fitted reveal. The width gate is the Blum-class
+         * chart rule, verified 2026-07 (ea.blum.com "Number of hinges"):
+         * "doors should have a height that is greater than their width",
+         * charts valid to 600 mm wide. A continuous (piano) hinge carries
+         * the whole edge and escapes both. */
+        {
+          const dd = G.doorDroop(hinge, dp.size.w, dp.size.h, worst.kg);
+          const vBudget = G.DOOR_REVEAL;
+          const sagStatus2 = dd.droopMM > vBudget ? 'fail'
+            : (dd.widerThanTall || dd.droopMM > vBudget / 2) ? 'advisory' : 'pass';
+          const sagFixes = [];
+          if (sagStatus2 !== 'pass') {
+            if (hinge.countRule !== 'fullLength') sagFixes.push({ id: 'hinge-piano', label: 'Hang it on a continuous (piano) hinge', patch: { hardware: { hinge: 'piano' } } });
+            if (nLeaves === 1) sagFixes.push({ id: 'door-pair', label: 'Split it into a pair of doors', patch: { doors: { count: 2 } } });
+          }
+          checks.push({
+            id: 'door:sag', title: 'Door droop',
+            status: sagStatus2,
+            value: `${fmtFine(dd.droopMM)} free-edge droop at ${fmtFine(G.HINGE_SETTLE_MM)} hinge settlement × ${dd.ampRatio} amplification (spread ${fmtLen(dd.spreadMM)})`,
+            threshold: `droop ≤ ${fmtFine(vBudget / 2)} clean, ≤ ${fmtFine(vBudget)} hard (the fitted reveal); leaf width ≤ height for two-point hinges (Blum chart rule)`,
+            explain: `A slab door cannot rack out of square — the panel is its own diagonal — so what drops the free corner is the hinge couple: ${U().fmtWeight(worst.kg)} at half the ${fmtLen(dp.size.w)} width puts ${Math.round(dd.coupleN)} N of horizontal pull on the top hinge fixing across the ${fmtLen(dd.spreadMM)} spread, and every millimetre it yields reads as ${dd.ampRatio} mm at the free edge.` +
+              (dd.widerThanTall ? ` This leaf is WIDER than it is tall — past the geometry the hinge count charts are written for (they stop at height > width); a wide-short door droops on any two-point hinge.` : '') +
+              (sagStatus2 === 'pass' ? ' Tall spread, modest width: the droop stays inside the fitted reveal.' : ''),
+            fixes: sagFixes,
+            data: { leafKg: worst.kg, spreadMM: dd.spreadMM, ampRatio: dd.ampRatio, droopMM: dd.droopMM, coupleN: dd.coupleN, widerThanTall: dd.widerThanTall },
+            prov: { rule: `couple F = ${worst.kg.toFixed(2)} kg × g × ${Math.round(dp.size.w)}/(2 × ${Math.round(dd.spreadMM)}) = ${Math.round(dd.coupleN)} N; droop = ${G.HINGE_SETTLE_MM} × ${Math.round(dp.size.w)}/${Math.round(dd.spreadMM)}` }
+          });
+        }
+
+        /* ---- door:reveal — seasonal movement vs the fitted air ----
+         * Slab leaves are solid wood: the leaf swings across its grain with
+         * the seasons (Wood Handbook coefficients — the same K.movementMM
+         * and ΔMC the move: checks use; sheet stock is exempt the same
+         * way). The hinge edge is pinned by its screws, so the whole
+         * half-swing from a mid-season fit arrives at the FREE edge: an
+         * inset leaf closes its reveal, a pair closes the meeting gap from
+         * both sides at once. Overlay singles simply ride over the case
+         * face; overlay pairs can be re-centred within the plate
+         * adjustment (±2 mm, Blum CLIP top spec — verified-approximate).
+         * Advisory, not fail: fitting in the humid season and easing the
+         * meeting stiles is the discipline every inset door has always
+         * needed — the check's job is to say the number out loud. */
+        {
+          const crossW = Math.min(dp.size.w, dp.size.h);
+          const swing = G.doorSwingMM(dp.size.w, dp.size.h, dp.material, dMC);
+          const closure = nLeaves * swing / 2;
+          const freeRide = !inset && nLeaves === 1;
+          const budget = inset ? G.DOOR_REVEAL : nLeaves * G.HINGE_ADJUST_MM;
+          const over = !freeRide && closure > budget;
+          const revFixes = [];
+          if (over && inset) revFixes.push({ id: 'door-overlay', label: 'Overlay the doors (forgiving style)', patch: { doors: { style: 'overlay' } } });
+          checks.push({
+            id: 'door:reveal', title: 'Reveal survival',
+            status: over ? 'advisory' : 'pass',
+            value: freeRide
+              ? `overlay single: ${fmtFine(swing)} seasonal swing rides over the case face`
+              : `${fmtFine(closure)} of ${inset ? (nLeaves === 2 ? 'meeting-gap' : 'reveal') : 'meeting-gap'} closure vs ${fmtFine(budget)} of fitted air`,
+            threshold: inset
+              ? `closure ≤ ${fmtFine(budget)} (the fitted reveal) — half of each leaf's full-swing movement arrives at the free edge`
+              : `closure ≤ ${fmtFine(budget)} (± ${fmtFine(G.HINGE_ADJUST_MM)} plate adjustment per door)`,
+            explain: swing === 0
+              ? 'Sheet stock is movement-exempt: cross-laminated plies restrain each other, so the reveal holds all year.'
+              : `Each ${fmtLen(crossW)} slab leaf swings ${fmtFine(swing)} across the grain between a dry winter and a damp summer; the hinge screws pin one edge, so half of that arrives at the free edge${nLeaves === 2 ? ' of BOTH leaves, meeting in the middle' : ''}.` +
+                (freeRide ? ' An overlay single just rides over the case face — nothing to bind against.' : over
+                  ? ` That outruns the fitted air: fit in the season you are in and expect the ${inset ? 'reveal' : 'centre gap'} to breathe — fit tight in the HUMID season so winter opens a gap instead of summer binding it. Quartersawn stock roughly halves the swing; ${inset ? 'an overlay style forgives the case edges entirely' : 'the plates re-centre what they can'}.`
+                  : ' Inside the fitted air — the reveal breathes but survives the year.'),
+            fixes: revFixes,
+            data: { crossWidthMM: crossW, swingMM: swing, closureMM: closure, budgetMM: freeRide ? null : budget },
+            prov: { rule: `swing = ${Math.round(crossW)} × ct × ${dMC}%; closure = ${nLeaves} × swing/2 = ${closure.toFixed(2)} mm vs ${freeRide ? 'n/a (overlay single)' : `${budget} mm`}` }
+          });
+        }
+
+        /* ---- door:catch — catches as load-rated hardware ----
+         * Selection is BB.HW.catchSpec — one pure function the BOM, this
+         * check, and the fitting step all call, so the label, the count,
+         * and the rating can never disagree (the hinge-count contract,
+         * extended to the keeper). */
+        {
+          const cs = BB.HW.catchSpec(worst.kg, dp.size.h, spec.hardware && spec.hardware.pull);
+          checks.push({
+            id: 'door:catch', title: 'Door catches',
+            status: cs.substituted ? 'advisory' : 'pass',
+            value: `${cs.count} × ${cs.label.toLowerCase()} per door — ${U().fmtWeight(cs.holdKg)} hold class, ${cs.marginRatio}× over the swing demand`,
+            threshold: `hold ≥ 1.5× the out-of-plumb swing force (m·g·sin 3° shared across ${cs.count} catch${cs.count > 1 ? 'es' : ''}); touch latches refuse leaves past ${U().fmtWeight(4)} (spring cap)`,
+            explain: (cs.count === 2 ? `At ${fmtLen(dp.size.h)} this leaf takes a catch top AND bottom, so both free corners are held flat against seasonal twist. ` : '') +
+              (cs.substituted
+                ? `A handleless front wants a touch latch, but at ${U().fmtWeight(worst.kg)} this leaf is past the ~${U().fmtWeight(4)} the pop-out spring can throw — an honest magnetic catch is fitted instead, and the front needs a pull after all.`
+                : `A case leaning 3° swings its own doors open; ${cs.count} × ${cs.label.toLowerCase()} holds ${U().fmtWeight(cs.holdKg * cs.count)} of class rating against a ${cs.demandN.toFixed(2)} N computed demand per catch.`),
+            fixes: [],
+            data: { countPerDoor: cs.count, holdN: cs.holdN, demandN: cs.demandN, marginRatio: cs.marginRatio, substituted: cs.substituted },
+            prov: { rule: `demand = ${worst.kg.toFixed(2)} kg × g × 0.05 / ${cs.count} = ${cs.demandN.toFixed(2)} N vs ${cs.holdN} N hold (${cs.label})` }
+          });
+        }
       }
     }
 

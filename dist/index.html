@@ -3606,6 +3606,12 @@ body.ph-open .porch::after { display: none; }
       };
     }
     if (sp.oily) return { glue: byKey('epoxy_slow'), why: `${sp.label} is oily — epoxy after a solvent wipe` };
+    if (isOutdoor(spec)) {
+      return {
+        glue: byKey('pva_waterproof'),
+        why: `${exposureOf(spec)} outdoor build — every glue line must be Type I waterproof (ANSI/HPVA HP-1)`
+      };
+    }
     if (fin.exterior) return { glue: byKey('pva_waterproof'), why: 'exterior finish — the glue line must outlast the weather too' };
     return { glue: byKey('pva_interior'), why: 'interior build — long-grain PVA is stronger than the wood' };
   }
@@ -3741,12 +3747,46 @@ body.ph-open .porch::after { display: none; }
     const coef = grain === 'radial' ? sp.cr : sp.ct; // flat-sawn default: tangential
     return widthMM * coef * (dMC === undefined ? CLIMATE_DMC.temperate : dMC);
   }
+  const EXPOSURES = ['interior', 'covered', 'exposed'];
+  const EXPOSURE_DMC = { covered: 6, exposed: 12 };
+  function effectiveDMC(exposure, climate) {
+    if (EXPOSURE_DMC[exposure] !== undefined) return EXPOSURE_DMC[exposure];
+    return CLIMATE_DMC[climate] !== undefined ? CLIMATE_DMC[climate] : CLIMATE_DMC.temperate;
+  }
+  function exposureOf(spec) {
+    const e = spec && spec.exposure;
+    return EXPOSURES.includes(e) ? e : 'interior';
+  }
+  function isOutdoor(spec) { return exposureOf(spec) !== 'interior'; }
+  function outdoorSubstitute(speciesKey) {
+    const sp = WOOD_SPECIES[speciesKey];
+    if (!sp || sp.sheet || sp.outdoor) return speciesKey;
+    return sp.costTier === 1 ? 'western_red_cedar' : 'white_oak';
+  }
+  const OUTDOOR_FASTENER_SPEC = 'stainless or hot-dip galvanized';
   const SOLID_THICKNESS = [12, 15, 19, 20, 25, 32, 38, 45];
   const POST_THICKNESS = [...SOLID_THICKNESS, 60, 70, 80, 89, 90, 100];
   const SHEET_THICKNESS = [6, 12, 18];
   function ergoRow(key) {
     return ERGONOMICS.find(r => r.key === key) || null;
   }
+  const CHILD = {
+    BANDS: {
+      toddler: { mark: 1, seatH: 260, tableH: 460, ageLo: 2, ageHi: 3, label: 'toddler (≈3–4 yr, EN 1729 mark 1)' },
+      preschool: { mark: 2, seatH: 310, tableH: 530, ageLo: 4, ageHi: 5, label: 'preschooler (4–6 yr, EN 1729 mark 2)' },
+      school: { mark: 3, seatH: 350, tableH: 590, ageLo: 6, ageHi: 7, label: 'school-age child (6–8 yr, EN 1729 mark 3)' },
+      preteen: { mark: 4, seatH: 380, tableH: 640, ageLo: 8, ageHi: 11, label: 'preteen (8–11 yr, EN 1729 mark 4)' }
+    },
+    ADULT_AGE: 12, // ≥ this: EN 1729 mark 5+ coincides with the adult bands
+    bandForAge(years) {
+      if (typeof years !== 'number' || !isFinite(years) || years < 1) return null;
+      if (years >= this.ADULT_AGE) return null;
+      for (const [k, b] of Object.entries(this.BANDS)) {
+        if (years >= b.ageLo && years <= b.ageHi) return k;
+      }
+      return 'toddler'; // years in [1, 2) — smallest band, label discloses fit
+    }
+  };
   function levelMatrixLine() {
     const parts = LEVELS.map((lvl, i) => {
       const own = Object.values(JOINERY).filter(j => j.level === lvl).map(j => j.key);
@@ -3774,10 +3814,12 @@ body.ph-open .porch::after { display: none; }
   }
   BB.K = {
     WOOD_SPECIES, ERGONOMICS, JOINERY, FASTENERS, FINISHES, GLUES,
-    LEVELS, SLIDE_LENGTHS, SLIDE_SPACE_MM, SOLID_THICKNESS, POST_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM,
+    LEVELS, SLIDE_LENGTHS, SLIDE_SPACE_MM, SOLID_THICKNESS, POST_THICKNESS, SHEET_THICKNESS, WIDE_TOP_MM, CHILD,
     JOINT_DEFAULTS, jointsForLevel, jointAllowed, knowledgeDigest,
     levelMatrixLine, visionRangesLine, ergoRow, BF_MM3, DESIGN_BASIS,
     LUMBER, defaultPrices, CLIMATE_DMC, movementMM,
+    EXPOSURES, EXPOSURE_DMC, effectiveDMC, exposureOf, isOutdoor,
+    outdoorSubstitute, OUTDOOR_FASTENER_SPEC,
     recommendGlue, sheetSpeciesKeys, sheetPriceFor, SHEET_BASE_PRICES,
     hardwarePriceDefaults, hardwarePrice, hardwarePriceLabel
   };
@@ -4259,6 +4301,28 @@ body.ph-open .porch::after { display: none; }
     const need = Math.round(stackT + 6);
     return M4_LENGTHS.find(l => l >= need) || M4_LENGTHS[M4_LENGTHS.length - 1];
   };
+  const CATCH_TALL_MM = 1500;
+  const CATCH_STEP_KG = 4;
+  const CATCH_PLUMB_SIN = 0.05; // sin 3° ≈ 0.0523, taken at 0.05
+  function catchSpec(leafKg, leafHMM, pullStyleKey) {
+    const count = leafHMM >= CATCH_TALL_MM ? 2 : 1;
+    let cat, substituted = false;
+    if (pullStyleKey === 'none_touch') {
+      if (leafKg <= CATCH_STEP_KG) cat = CATCHES.touch_latch;
+      else { cat = CATCHES.magnetic; substituted = true; }
+    } else {
+      cat = leafKg > CATCH_STEP_KG ? CATCHES.roller_catch : CATCHES.magnetic;
+    }
+    const demandN = leafKg * GRAV * CATCH_PLUMB_SIN / count;
+    const holdN = cat.holdKg * GRAV;
+    return {
+      key: cat.key, label: cat.label, price: cat.price, count,
+      holdKg: cat.holdKg, holdN: Math.round(holdN * 10) / 10,
+      demandN: Math.round(demandN * 1000) / 1000,
+      marginRatio: Math.round((holdN / demandN) * 100) / 100,
+      substituted
+    };
+  }
   function slidePick(loadKg, opts) {
     opts = opts || {};
     if (opts.heavyDuty || loadKg > 45) return SLIDES.heavy_duty_100;
@@ -4304,7 +4368,7 @@ body.ph-open .porch::after { display: none; }
     HINGES, PULLS, PULL_CTC_SERIES, SLIDES, LIFTS, CATCHES, LOCKS,
     SHELF_SUPPORT, TABLE_BED, WALL_HANG, FEET_MISC, TRADITIONAL, GATES,
     panelWeightKg, doorHingeCount, cupBoring, cupBoringFor, gasStrut, lidStay, powerFactor,
-    pullSpec, pullScrewLenMM, slidePick, ruleJoint, drawerVerticalClearance,
+    pullSpec, pullScrewLenMM, catchSpec, slidePick, ruleJoint, drawerVerticalClearance,
     digestLine
   };
 })();</script>
@@ -5025,8 +5089,16 @@ body.ph-open .porch::after { display: none; }
   function get(key) { return registry.get(key) || null; }
   function all() { return [...registry.values()]; }
   function forTemplate(t) {
-    for (const c of registry.values()) if (c.templates.includes(t)) return c;
+    for (const c of registry.values()) if (!c.scope && c.templates.includes(t)) return c;
     return null;
+  }
+  function scopeClasses(spec) {
+    const out = [];
+    if (spec && spec.child) {
+      const c = registry.get('childrens');
+      if (c && c.templates.includes(spec.meta && spec.meta.template)) out.push(c);
+    }
+    return out;
   }
   function validateContract(cls) {
     const p = [];
@@ -5096,18 +5168,20 @@ body.ph-open .porch::after { display: none; }
   }
   function runChecklist(template, res) {
     const cls = forTemplate(template);
-    if (!cls) return null;
+    const scoped = scopeClasses(res && res.spec).filter(c => c !== cls);
+    if (!cls && !scoped.length) return null;
     const ids = []
       .concat(((res && res.integrity && res.integrity.checks) || []).map(c => ({ id: c.id, status: c.status })))
       .concat(((res && res.validation && res.validation.errors) || []).map(e => ({ id: e.id, status: 'fail' })))
       .concat(((res && res.validation && res.validation.advisories) || []).map(a => ({ id: a.id, status: 'advisory' })));
-    return cls.failureModes.map(m => {
+    const walk = c => c.failureModes.map(m => {
       if (m.guard) return { id: m.id, mode: m.mode, covered: true, guard: m.guard, fired: false, status: 'guarded' };
       const hits = ids.filter(x => m.checkIds.some(px => x.id === px || x.id.startsWith(px)));
       const worst = hits.reduce((w, h) => (h.status === 'fail' ? 'fail' : h.status === 'advisory' && w !== 'fail' ? 'advisory' : w), 'pass');
       const absent = m.conditional ? 'n/a' : 'uncovered';
       return { id: m.id, mode: m.mode, covered: hits.length > 0, fired: hits.some(h => h.status !== 'pass'), status: hits.length ? worst : absent };
     });
+    return [].concat(cls ? walk(cls) : [], ...scoped.map(walk));
   }
   register({
     key: 'frame_table',
@@ -5130,7 +5204,8 @@ body.ph-open .porch::after { display: none; }
         { id: 'stretcher_on_leg', rule: 'stretcher centreline ∈ [floor+100, apron underside − 90] — it must land on the leg with clamp room', enforcedBy: 'Spec.correctSpec stretcher clamp (X-07)' },
         { id: 'drawer_in_band', rule: 'desk drawers live INSIDE the apron band: opening = apronHeight − 40 clamped 45–80 (pencil-drawer class, hence the 45 mm floor in validate), fronts inset, wood runners at every level (no case side for slides), a single opening wider than 620 splits around a centre stile', enforcedBy: 'Spec.correctSpec desk-drawer block + Parametric.addDeskDrawers' },
         { id: 'knee_room', rule: 'desk knee clearance = height − top − band ≥ ~600 (Panero & Zelnik seated knee; ADA 306.3 asks 685 for accessible desks) — advisory, never silent', enforcedBy: 'Spec.validate ergo_knee' },
-        { id: 'long_span', rule: 'clear span between legs > 1800 scales the racking score down (linearly to ×0.7 at the cap) — the couple on the apron–leg joints grows with span while joint capacity is fixed, and the top’s torsional stiffness stops helping', enforcedBy: 'Structural racking span factor (roadmap item 2)' }
+        { id: 'long_span', rule: 'clear span between legs > 1800 scales the racking score down (linearly to ×0.7 at the cap) — the couple on the apron–leg joints grows with span while joint capacity is fixed, and the top’s torsional stiffness stops helping', enforcedBy: 'Structural racking span factor (roadmap item 2)' },
+        { id: 'exposure_routing', rule: 'exposure ∈ {interior, covered, exposed} (one spec field, roadmap item 5): outdoor routes Type-I glue (K.recommendGlue), an exterior finish, stainless/hot-dip-galvanized fastener lines, and the outdoor ΔMC (K.EXPOSURE_DMC, WH ch. 13) into the movement math; EXPOSED additionally corrects a non-durable species to the deterministic durable substitute (costTier 1 → western_red_cedar, else white_oak) and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [
@@ -5161,7 +5236,8 @@ body.ph-open .porch::after { display: none; }
       { id: 'joint_overload', mode: 'weakest frame joint below its load share', checkIds: ['joints'], fixture: 'audit G5', realWorld: 'aprons torn off their legs' },
       { id: 'tipping', mode: 'piece tips when top-loaded at the edge', checkIds: ['tip'], fixture: 'audit M-18', realWorld: 'tall narrow pieces going over' },
       { id: 'band_weakened', mode: 'the drawer opening guts the front apron and the band sags or breaks', checkIds: ['sag:apron:', 'str:apron:'], conditional: true, fixture: 'audit DESK-1 (stiffness-shared band model, handcalc [17])', realWorld: 'pencil-drawer desks that bounce at the front edge' },
-      { id: 'drawer_pullout_tip', mode: 'open drawer + downward pull tips the desk', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit DESK-2 (reported; anchor mandate stays scoped to clothing storage)', realWorld: 'kids hanging on an open pencil drawer' }
+      { id: 'drawer_pullout_tip', mode: 'open drawer + downward pull tips the desk', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit DESK-2 (reported; anchor mandate stays scoped to clothing storage)', realWorld: 'kids hanging on an open pencil drawer' },
+      { id: 'weather_rot', mode: 'a non-durable species or interior materials left in the weather rot, delaminate, and shed their finish', conditional: true, guard: 'Spec.correctSpec exposure routing (durable species substitution + exterior finish) with exposureNotes disclosure; validate out_sheet refuses interior sheet goods exposed', checkIds: ['out_'], fixture: 'audit OUT-2/OUT-3/OUT-5; golden pine-patio-table-metric freezes the substitution', realWorld: 'the picnic-table pine bench that composts itself in three seasons' }
     ],
     hardware: [
       { id: 'top_fasteners', item: 'figure-8 fasteners / tabletop buttons', when: 'every solid top', capacity: 'hold-down only; movement is released by design', matchedTo: 'seasonal travel computed by K.movementMM — the same number the movement check reports' },
@@ -5176,7 +5252,8 @@ body.ph-open .porch::after { display: none; }
     refusals: [
       { id: 'no_wall_hang', shape: 'wall-hung / floating variants of a frame piece', reason: 'anchor pullout and stud engagement are a different class (wall-mounted) not yet generated soundly', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule' },
       { id: 'no_stretcher_offframe', shape: 'stretchers on carcass templates', reason: 'nothing for them to span on a carcass', surface: 'Spec.correctSpec refuses (stretcher gate)' },
-      { id: 'no_over_span', shape: 'tops wider than 2400 mm', reason: 'past the cap the apron-beam model still runs but the racking couple and the top’s torsional floppiness have no code-owned answer (breadboard/batten stiffening is future work) — the clamp is the refusal and correction says so', surface: 'Spec.DIM_RULES overall.width max 2400 (dimensionNotes disclose the clamp) + the racking span factor' }
+      { id: 'no_over_span', shape: 'tops wider than 2400 mm', reason: 'past the cap the apron-beam model still runs but the racking couple and the top’s torsional floppiness have no code-owned answer (breadboard/batten stiffening is future work) — the clamp is the refusal and correction says so', surface: 'Spec.DIM_RULES overall.width max 2400 (dimensionNotes disclose the clamp) + the racking span factor' },
+      { id: 'no_exposed_sheet', shape: 'interior sheet goods (plywood drawer boxes, MDF panels, ply backs) on an EXPOSED build', reason: 'no exterior-rated sheet good exists in the catalog — interior plywood delaminates and MDF swells when wetted, and a guessed exterior rating is worse than a refusal (covered builds get the advisory instead: sheltered, but unrated)', surface: 'Spec.validate out_sheet error (exposed) / advisory (covered)' }
     ],
     fixtures: {
       golden: ['seed-table-imperial', 'shaker-table-imperial', 'custom-bench-metric', 'walnut-writing-desk-imperial'],
@@ -5243,7 +5320,8 @@ body.ph-open .porch::after { display: none; }
         { id: 'splay_stool_only', rule: 'leg splay 0–10° on stools; 0 on backed chairs (the offset-rail rake geometry assumes vertical posts)', enforcedBy: 'Spec.correctSeat' },
         { id: 'envelope_derived', rule: 'overall = seat plan + splay run; height = seat + back rise — the audit envelope always contains the splayed feet', enforcedBy: 'Spec.correctSpec chair block' },
         { id: 'footrest_drop', rule: 'stool footrest (box stretcher) top ≈ 230 below the seat; stools ALWAYS carry it — it is structure and ergonomics at once', enforcedBy: 'Spec.correctSpec chair block' },
-        { id: 'rail_band', rule: 'seat-rail band ≤ seat height − topThickness − 160 so the stretcher and knee room survive', enforcedBy: 'Spec.correctSpec chair block' }
+        { id: 'rail_band', rule: 'seat-rail band ≤ seat height − topThickness − 160 so the stretcher and knee room survive', enforcedBy: 'Spec.correctSpec chair block' },
+        { id: 'exposure_routing', rule: 'the cross-class exposure overlay (roadmap item 5) applies: outdoor chairs/stools route Type-I glue, exterior finish, corrosion-spec fasteners and outdoor ΔMC; exposed corrects non-durable species and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [
@@ -5283,7 +5361,7 @@ body.ph-open .porch::after { display: none; }
       { id: 'ergonomic_miss', mode: 'seat height/depth outside the human-factors band', checkIds: ['ergo_seat'], conditional: true, fixture: 'audit SEAT bad-fixture: 550 seat height on a dining chair', realWorld: 'chairs nobody wants to sit in' },
       { id: 'grain_orientation', mode: 'splayed leg sawn from a vertical blank (grain runout) instead of ripped with the grain', checkIds: ['chair:grain'], fixture: 'audit SEAT grain section', realWorld: 'splayed stool legs shearing along the runout' },
       { id: 'footrest_break', mode: 'stool footrest stretcher breaks under a mounting step', checkIds: ['chair:foot'], conditional: true, fixture: 'handcalc footrest section', realWorld: 'bar stool rungs snapping underfoot' },
-      { id: 'seat_movement_split', mode: 'solid seat glued/pinned rigid splits across the grain', checkIds: ['move:seat_1'], fixture: 'movement check on golden chair fixtures', realWorld: 'seasonal seat cracks at the fasteners' }
+      { id: 'seat_movement_split', mode: 'solid seat glued/pinned rigid splits across the grain', conditional: true, checkIds: ['move:seat_1'], fixture: 'movement check on golden chair fixtures (adult seats; child seats are below the movement-width threshold)', realWorld: 'seasonal seat cracks at the fasteners' }
     ],
     hardware: [
       { id: 'corner_block_screws', item: '#8 × 32 wood screws, 2 per block face (glue + screws)', when: 'every seat frame (4 corner blocks)', capacity: 'screw shear ≥ 500 N each (JOINT_RATING butt_screws basis)', matchedTo: 'racking share of the seat frame; blocks close the frame loop — counted by the fastener engine so BOM = drilling instructions' },
@@ -5391,7 +5469,8 @@ body.ph-open .porch::after { display: none; }
       { id: 'no_unknown_wall', shape: 'mounting on an unstated or unknown wall', reason: 'the wall carries the whole load path — without the substrate the anchor math is a guess, and a plausible guess is worse than a refusal', surface: 'validate wall_substrate error + parser asks before creating' },
       { id: 'no_drywall_only', shape: 'drywall-anchor-only mounting', reason: 'drywall anchors creep under sustained load and their ratings are ULTIMATE, not working (industry practice is ≤ ¼ of listed) — shelving is sustained load, so drywall alone is refused, not derated', surface: 'validate error + correction note + parser' },
       { id: 'no_heavy_cantilever', shape: 'depths past 300 mm / desk-duty wall units', reason: 'the couple demand outruns hobby fixings — that is the wall-hung casework class, not yet generated soundly', surface: 'Spec.correctSpec depth clamp + dimensionNotes' },
-      { id: 'no_ceiling', shape: 'ceiling-hung anything', reason: 'overhead failure is injury-first; no ceiling model exists', surface: 'SCHEMA_DOC + parser (unchanged floor/wall doctrine)' }
+      { id: 'no_ceiling', shape: 'ceiling-hung anything', reason: 'overhead failure is injury-first; no ceiling model exists', surface: 'SCHEMA_DOC + parser (unchanged floor/wall doctrine)' },
+      { id: 'no_exposed_mount', shape: 'a wall shelf in direct weather (exposure = exposed)', reason: 'the anchor math uses NDS dry-service withdrawal values (MC ≤ 19%); direct wetting crosses the wet-service boundary, where NDS derates withdrawal to CM = 0.7 — a derating this model does not carry. A covered porch wall stays dry-service and is allowed', surface: 'Spec.validate out_mount error + parser refusal on outdoor wall-shelf asks' }
     ],
     fixtures: {
       golden: ['oak-floating-shelf-imperial', 'deep-shelf-masonry-metric'],
@@ -5451,7 +5530,8 @@ body.ph-open .porch::after { display: none; }
         { id: 'knockdown_mandate', rule: 'rails bolt to posts (kd_bolt) at every level — a glued bed cannot leave the room; asking for glued joinery is overridden and told', enforcedBy: 'Spec.correctSpec + bedNotes' },
         { id: 'slat_gap', rule: 'slat count solved so gaps ≤ 70 mm (foam-warranty floor: Amerisleep 2.75 in) with ≥ 75 mm slat width (Tempur-Pedic ≥ 3 in)', enforcedBy: 'Parametric.bedBuild + bed:slats check' },
         { id: 'centre_support', rule: 'interior ≥ 1350 mm always gets a centre rail + floor leg (Sealy/S&F warranty: ≥ 5 legs with centre support at queen+)', enforcedBy: 'Parametric.bedBuild + bed:centre check' },
-        { id: 'headboard_clear', rule: 'a headboard clears the rail band by ≥ 150 or it is trim, not a headboard', enforcedBy: 'Spec.correctSpec bed block' }
+        { id: 'headboard_clear', rule: 'a headboard clears the rail band by ≥ 150 or it is trim, not a headboard', enforcedBy: 'Spec.correctSpec bed block' },
+        { id: 'exposure_routing', rule: 'the cross-class exposure overlay (roadmap item 5) applies — a porch daybed is a covered/exposed bed: Type-I glue, exterior finish, corrosion-spec fasteners, outdoor ΔMC; exposed corrects non-durable species and is told', enforcedBy: 'Spec.correctSpec exposure block + exposureNotes + K.effectiveDMC + validate out_* checks' }
       ]
     },
     humanFactors: [
@@ -5502,9 +5582,225 @@ body.ph-open .porch::after { display: none; }
       bad: ['audit BED-1 gap/centre rules', 'audit BED-2 slat/rail/joint margins vs hand arithmetic', 'audit BED-3 headboard + platform band + refusals']
     }
   });
+  const CASE_GEOM = {
+    DOOR_REVEAL: 2,
+    DOOR_OVERLAY_LAP: 12,
+    DOOR_T: 19,
+    DOOR_MAX_SINGLE_W: 600,
+    HINGE_END_INSET: 100,
+    HINGE_SETTLE_MM: 0.5,
+    HINGE_ADJUST_MM: 2,
+    hingeSpread(hinge, leafH) {
+      if (hinge && hinge.countRule === 'fullLength') return Math.max(120, leafH - 20);
+      return Math.max(120, leafH - 2 * this.HINGE_END_INSET);
+    },
+    doorDroop(hinge, leafW, leafH, leafKg) {
+      const s = this.hingeSpread(hinge, leafH);
+      const amp = leafW / s;
+      const full = !!(hinge && hinge.countRule === 'fullLength');
+      return {
+        spreadMM: s,
+        ampRatio: Math.round(amp * 1000) / 1000,
+        droopMM: Math.round(this.HINGE_SETTLE_MM * amp * 1000) / 1000,
+        coupleN: Math.round((leafKg * 9.81 * leafW) / (2 * s) * 10) / 10,
+        widerThanTall: !full && leafW > leafH
+      };
+    },
+    doorSwingMM(leafW, leafH, speciesKey, dMC) {
+      const sp = K.WOOD_SPECIES[speciesKey];
+      if (!sp || sp.sheet) return 0;
+      return K.movementMM(Math.min(leafW, leafH), speciesKey, 'tangential', dMC);
+    }
+  };
+  const DESIGN_BASIS_CHILD =
+    'Child-scoped designs pin their heights to EN 1729-1 size-mark pairs ' +
+    '(the school-furniture standard — the one citable children\'s sizing ' +
+    'anchor; values cross-checked against published sizing guides, the ' +
+    'standard text is paywalled) and KEEP the adult design loads: adults ' +
+    'sit on children\'s chairs and lean on children\'s tables, so nothing ' +
+    'is lightened (documented derivation). The anti-tip anchor is mandatory ' +
+    'on child-scoped storage regardless of computed margin (CPSC Anchor It! ' +
+    'guidance; stricter than the ASTM F2057/STURDY clothing-storage scope). ' +
+    'Regulated children\'s products — cribs (16 CFR 1219/1220), toy chests ' +
+    '(ASTM F963 toy-chest lid-support requirements, formerly ASTM F834, ' +
+    'mandatory under 16 CFR 1250), high chairs (16 CFR 1231/ASTM F404), ' +
+    'changing tables (16 CFR 1235/ASTM F2388), play yards (16 CFR 1221/' +
+    'ASTM F406), safety gates (16 CFR 1239/ASTM F1004), bunk beds (ASTM ' +
+    'F1427/16 CFR 1213) — are refused, never approximated. Guidance, not a ' +
+    'certification: no children\'s-product testing is claimed.';
+  const CHILD_GEOM = {
+    RATIO_W: 430 / 445, RATIO_D: 420 / 445, RATIO_B: 470 / 445,
+    ENTRAP_MIN: 89, ENTRAP_MAX: 230,
+    APRON_MAX: 80,
+    seatPlan(bandKey) {
+      const b = (K.CHILD && K.CHILD.BANDS[bandKey]) || { seatH: 350 };
+      const r5 = v => Math.round(v / 5) * 5;
+      return {
+        height: b.seatH,
+        width: r5(b.seatH * this.RATIO_W),
+        depth: r5(b.seatH * this.RATIO_D),
+        backHeight: r5(b.seatH * this.RATIO_B)
+      };
+    }
+  };
+  register({
+    key: 'casework',
+    label: 'Casework (bookshelves, nightstands, cabinets — doored or open)',
+    templates: ['cabinet', 'bookshelf', 'nightstand'],
+    geom: CASE_GEOM,
+    family: {
+      rules: [
+        { path: 'overall.width', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.depth', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'overall.height', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.topThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.sideThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.shelfThickness', ownedBy: 'Spec.DIM_RULES' },
+        { path: 'structure.shelfCount', ownedBy: 'Spec.SHELF_COUNT clamp + shelf-clearance decrement (not a DIM_RULES length — shelves are counted, not measured)' }
+      ],
+      couplings: [
+        { id: 'door_split', rule: 'a single door leaf > 600 mm becomes a pair — the Blum-class hinge charts are valid to 600 and the swing radius past it fits no room; the guard and the chart share one cap', enforcedBy: 'Spec.correctSpec door block (X-07) + doorNotes disclosure' },
+        { id: 'one_front_plane', rule: 'drawers and doors on one case share one front style — an overlay drawer front stands proud of exactly the face an inset door sits behind; the doors win and the change is told', enforcedBy: 'Spec.correctSpec drawer block' },
+        { id: 'inset_recess', rule: 'inset doors push everything inside the case (shelves, drawer-bank front plane) back by door thickness + reveal, or the door closes into the shelf edges', enforcedBy: 'Parametric.doorSpace' },
+        { id: 'hinge_fits_style', rule: 'the hinge STYLE must be able to hang the door style (catalog `fronts`) — a knife hinge on an overlay door is not a preference, it is a hinge that cannot be fitted', enforcedBy: 'Spec.correctSpec hinge gate (X-07b)' },
+        { id: 'drawer_opening_floor', rule: 'drawer count decrements until every opening clears 80 mm (below it an opening barely clears a hand)', enforcedBy: 'Spec.correctSpec + K.ERGONOMICS drawer_min_height' },
+        { id: 'shelf_clearance', rule: 'shelf count decrements until every shelf clears its neighbours by shelfThickness + 20 — overlapping shelves are rogue geometry', enforcedBy: 'Spec.correctSpec shelf decrement' }
+      ]
+    },
+    humanFactors: [
+      { key: 'shelf_depth_books', label: 'Shelf depth for books', min: 250, max: 320, unit: 'mm', source: 'K.ERGONOMICS shelf_depth_books (trade paperbacks need 230; art books want 320+)' },
+      { key: 'nightstand_height', label: 'Nightstand height', min: 550, max: 700, unit: 'mm', source: 'K.ERGONOMICS nightstand_height (within 50 of the mattress top)' },
+      { key: 'counter_height', label: 'Cabinet counter height', min: 860, max: 940, unit: 'mm', source: 'K.ERGONOMICS counter_height (standard kitchen counter 900 to the finished top)' },
+      { key: 'drawer_max_width', label: 'Drawer width per slide pair', min: 0, max: 750, unit: 'mm', source: 'K.ERGONOMICS drawer_max_width (beyond 750 boxes rack on their slides; use two banks)' }
+    ],
+    loadCases: [
+      { id: 'shelf_books', label: 'Shelves under books', magnitude: '60 kg/m', apply: 'uniform along every shelf, sustained', direction: 'gravity', duration: 'sustained (×2 creep, Wood Handbook ch. 4)', acceptance: 'long-term sag ≤ L/300; bending margin ≥ 1 at MOR/4', source: 'BIFMA X5.9 shelf load 40 lb/ft (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' },
+      { id: 'open_drawer_pull', label: 'Child-weight pull on an open drawer', magnitude: '22.7 kg (50 lb) at the top drawer front, every drawer open ⅔', apply: 'front of the highest open drawer, unit empty', direction: 'gravity at the drawer lever', duration: 'transient abuse case', acceptance: 'moment margin ≥ 1 to stand, ≥ 1.5 to skip the anchor; clothing-storage heights below 1.5 make the wall anchor a mandatory BOM line', source: 'ASTM F2057 / STURDY Act test mass (audit F-S0-1)', traceability: 'standard' },
+      { id: 'door_gravity', label: 'Door leaf on its hinges', magnitude: 'leaf weight = geometry × species SG (computed, never guessed)', apply: 'hinge group, vertical', direction: 'gravity', duration: 'sustained', acceptance: 'weight ≤ capacityKgPair × pairs at the chart-derived count', source: 'Blum-class hinge count chart (height bands + weight rule; ea.blum.com "Number of hinges", verified 2026-07) with catalog class ratings', traceability: 'standard' },
+      { id: 'door_droop_couple', label: 'Slab-door droop over the hinge couple', magnitude: 'F = W·g·w/(2s) horizontal per outermost hinge; droop = settlement × w/s at the free edge', apply: 'top hinge fixing', direction: 'horizontal, in the door plane', duration: 'sustained', acceptance: 'droop ≤ half the fitted reveal clean, ≤ the whole reveal hard; width ≤ height unless the hinge is full-length', source: 'documented derivation (gate-hinge statics; arithmetic in test/handcalc.js) + the Blum chart rule for the width gate', traceability: 'derivation' },
+      { id: 'reveal_movement', label: 'Reveal survival under seasonal movement', magnitude: 'swing = cross-grain width × coefficient × ΔMC per leaf; closure at the reveal = count × swing/2 (fitted mid-season, hinge edge pinned)', apply: 'meeting/latch reveal', direction: 'across the grain', duration: 'seasonal cycle', acceptance: 'closure ≤ the fitted air (inset reveal, or the ±2 mm plate adjustment on overlay pairs) — beyond it the plan teaches the fitting-season discipline instead of staying silent', source: 'Wood Handbook ch. 13 coefficients via K.movementMM (same ΔMC as the move: checks); the closure model is a documented derivation', traceability: 'derivation' },
+      { id: 'catch_hold', label: 'Catch holding an out-of-plumb door', magnitude: 'F = m·g·sin(3°) ≈ m·g·0.05 shared across the catches on the leaf', apply: 'catch strike, horizontal', direction: 'door swing', duration: 'sustained', acceptance: 'catalog hold rating ≥ 1.5× demand; touch latches refuse leaves past 4 kg (the spring cap on the catalog row)', source: 'documented derivation (a case leaning 3° swings its own doors open; no standard rates residential catches — arithmetic in test/handcalc.js)', traceability: 'derivation' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'shelf / bottom → side', required: ['dado', 'rabbet', 'sliding_dovetail', 'butt_screws', 'pocket_screws', 'dowels', 'biscuits'], prohibited: ['edge_glue'], reason: 'the shelf end reaction runs into the sides — housed joints (dado/rabbet/sliding dovetail) carry it in bearing and the level matrix gates the rest; edge glue is a panel operation, not a shelf housing. The joint-adequacy check prices whatever is chosen.' },
+        { connection: 'back → case', required: ['rabbet'], prohibited: ['edge_glue'], reason: 'the back sits in rabbets on the case edges: it is the shear panel that squares the case and multiplies the racking score ×1.5 — a nailed-on flush back does neither.' },
+        { connection: 'solid top → case', required: ['butt_screws'], prohibited: ['edge_glue'], reason: 'a solid top must move across its grain — screws in slotted/oversize holes, never a cross-grain glue line (movement check + FE-H1).' },
+        { connection: 'door → case', required: [], prohibited: [], reason: 'not a wood-to-wood joint: a hinge is a mechanism — it carries no racking credit, takes no cut allowance, and lives in the BOM (X-07). The door system checks (hinge, door:sag, door:reveal, door:catch) own its physics.' }
+      ]
+    },
+    failureModes: [
+      { id: 'shelf_sag', mode: 'shelf sags under books + creep', checkIds: ['sag:'], fixture: 'frozen ash-bookshelf-metric honest-fail (19 mm shelves; do not "fix" it) + audit F-S2-1 family', realWorld: 'the smile every long bookshelf grows' },
+      { id: 'member_rupture', mode: 'shelf or top passes deflection but fails in bending', checkIds: ['str:'], fixture: 'audit KB-2 (MDF fails where MDF fails)', realWorld: 'cracked shelves under boxed storage' },
+      { id: 'racking', mode: 'case racks side-to-side without a back or housed shelves', checkIds: ['rack'], fixture: 'unit racking sections (back panel ×1.5, dados ×1.15)', realWorld: 'parallelogram bookcases' },
+      { id: 'tipping', mode: 'tall case tips when top-loaded', checkIds: ['tip'], fixture: 'audit M-18 (anchor rollup) + handcalc [8]', realWorld: 'tall narrow cases going over' },
+      { id: 'open_drawer_tip', mode: 'open drawers + a child’s weight tip the case', checkIds: ['tip_f2057'], conditional: true, fixture: 'audit F-S0-1', realWorld: 'the dresser scenario F2057 exists for' },
+      { id: 'slide_overload', mode: 'drawer contents exceed the slide rating', checkIds: ['slide:'], conditional: true, fixture: 'audit F-S3-6', realWorld: 'flat-spotted rollers, dropped drawers' },
+      { id: 'movement_split', mode: 'solid panel captured cross-grain splits with the seasons', checkIds: ['move:'], fixture: 'audit F-S2-3', realWorld: 'split sides at the back-panel screws' },
+      { id: 'joint_overload', mode: 'weakest case joint below its load share', checkIds: ['joints'], fixture: 'audit KB-1 / G5', realWorld: 'shelves torn out of their dados' },
+      { id: 'leg_buckle', mode: 'slender nightstand legs bow under load', checkIds: ['slender'], conditional: true, fixture: 'unit slenderness sections', realWorld: 'spindly nightstands' },
+      { id: 'hinge_overload', mode: 'door outweighs the hinges carrying it', checkIds: ['hinge'], conditional: true, fixture: 'audit X-07b (heavy hickory door; fix clears it)', realWorld: 'doors that drop, drag, and pull their screws' },
+      { id: 'door_droop', mode: 'slab door droops at the free edge on the hinge couple (wide-short leaves worst)', checkIds: ['door:sag'], conditional: true, fixture: 'audit CASE-2 (wider-than-tall leaf; full-length-hinge fix clears)', realWorld: 'doors rubbing their bottom reveal away' },
+      { id: 'reveal_loss', mode: 'seasonal movement of slab leaves eats the fitted reveal', checkIds: ['door:reveal'], conditional: true, fixture: 'audit CASE-3 (red-oak inset pair vs plywood pass)', realWorld: 'inset doors that bind every August' },
+      { id: 'door_unlatched', mode: 'door with no (or an overwhelmed) catch swings open', checkIds: ['door:catch'], conditional: true, fixture: 'audit CASE-4 (BOM = check = step; touch latch declined past 4 kg)', realWorld: 'cabinet doors standing open; handleless fronts that will not pop' },
+      { id: 'oversize_single_door', mode: 'a single door too wide to hang is asked for', guard: 'Spec.correctSpec splits a > 600 mm single into a pair (X-07) and doorNotes discloses it', checkIds: ['door:sag'], fixture: 'audit CASE-5 + X-07b split assertions', realWorld: 'sagging oversize doors with room-filling swings' },
+      { id: 'ergonomic_miss', mode: 'case dimension outside the human-factors band', checkIds: ['ergo_'], conditional: true, fixture: 'audit CASE-5 (out-of-band nightstand height is named)', realWorld: 'shelves too shallow for the books they were built for' }
+    ],
+    hardware: [
+      { id: 'door_hinges', item: 'hinge style from the catalog (euro cup default); count from the height-band + weight rule', when: 'every door', capacity: 'capacityKgPair class ratings per catalog row', matchedTo: 'the hinge check — leaf weight (geometry × SG) vs count × pair capacity; BOM, drilling step, and check all call BB.HW.doorHingeCount' },
+      { id: 'door_catches', item: 'magnetic / roller catch or touch latch, selected and counted by BB.HW.catchSpec', when: 'every door (two per leaf ≥ 1500 mm tall — both free corners held flat)', capacity: 'holdKg class ratings per catalog row; touch latch refuses leaves past 4 kg (spring cap)', matchedTo: 'door:catch out-of-plumb swing demand at ≥ 1.5×; BOM count = check count = fitting step' },
+      { id: 'drawer_slides', item: 'slide family picked by computed load (BB.HW.slidePick)', when: 'drawer runner = slides', capacity: '22–100 kg class ratings', matchedTo: 'slide: check — interior litres × storage density vs the picked class; BOM buys the same pick' },
+      { id: 'antitip', item: 'anti-tip wall anchor kit', when: 'tip or tip_f2057 below gate', capacity: 'per kit rating', matchedTo: 'tipping checks (mandatory BOM line when they fire, audit M-18)' },
+      { id: 'pulls', item: 'pull style intent; CTC snapped into the industry series', when: 'doors and drawers', capacity: 'n/a (reach hardware)', matchedTo: 'BB.HW.pullSpec — label and bore count can never disagree (audit FE-H5)' }
+    ],
+    assembly: {
+      sequence: ['mill and label every part', 's1 (join the case: top/bottom/shelves between the sides, clamped square)', 'back panel into its rabbets (squares the case)', 'running gear and banks', 'doors_fit (fit, mark, then OFF again to finish)', 'finish'],
+      jigs: ['dado/rabbet setup blocks cut from the actual shelf stock', 'drill press fence + stop for cup bores — every cup the same distance from the edge', 'story stick for hinge and runner heights (mark all case parts together)'],
+      checks: ['equal diagonals across the case before the back goes on', 'back panel seats fully in its rabbets — no rock', 'reveal even all round with the door shimmed on playing cards', 'doors come OFF again before finishing (a door finished in place glues itself shut at the reveal)']
+    },
+    refusals: [
+      { id: 'no_doors_off_case', shape: 'doors on templates with no case front (tables, desks, benches, beds, wall shelves — and the nightstand, whose front is its drawer bank)', reason: 'a door needs a case front to close against; there is nothing to hang one on', surface: 'Spec.correctSpec DOOR_TEMPLATES gate + doorNotes + SCHEMA_DOC ("dr" = cabinet/bookshelf only)' },
+      { id: 'no_sliding_glazed', shape: 'sliding, tambour, or glazed doors', reason: 'sliding/tambour are mechanisms the model cannot express (the mechanism doctrine; template swing doors are the sole hinge exception) and glass is not a stocked material — the grooved-slider and tambour setouts live in the Shop Reference as teaching, not generated geometry', surface: 'SCHEMA_DOC mechanism doctrine + BB.HW.TRADITIONAL (reference stratum)' },
+      { id: 'no_wall_hung_case', shape: 'wall-hung cabinets', reason: 'the cantilever couple of a loaded cabinet outruns the hobby fixing model — wall-hung CASEWORK is named future work on the wall_mounted foundation (03-wall-mounted.md); everything in this class stands on the floor', surface: 'correction grounds airborne parts + SCHEMA_DOC floor rule + wall_mounted no_heavy_cantilever refusal' }
+    ],
+    fixtures: {
+      golden: ['advanced-cabinet-imperial', 'walnut-nightstand-2drawer-imperial', 'ash-bookshelf-metric', 'oak-armoire-pair-imperial', 'beech-sideboard-doors-metric'],
+      bad: ['audit CASE-1 contract + coverage', 'audit CASE-2 droop arithmetic + wider-than-tall', 'audit CASE-3 reveal survival vs movement', 'audit CASE-4 catch selection = BOM = step', 'audit CASE-5 refusals, split guard disclosure, ergonomics', 'frozen ash-bookshelf-metric honest-fail']
+    }
+  });
+  register({
+    key: 'childrens',
+    label: 'Children\'s furniture (scope over table / desk / chair / bookshelf)',
+    templates: ['chair', 'table', 'desk', 'bookshelf'],
+    scope: 'child', // overlay class: forTemplate skips it; scopeClasses(spec) reaches it
+    geom: CHILD_GEOM,
+    DESIGN_BASIS_CHILD,
+    family: {
+      rules: [
+        { path: 'overall.height', ownedBy: 'K.CHILD.BANDS tableH via Spec.correctSpec child block (table/desk)' },
+        { path: 'seat.height', ownedBy: 'K.CHILD.BANDS seatH via Spec.correctSeat child branch (chair)' },
+        { path: 'child.ageBand', ownedBy: 'K.CHILD.BANDS enum via Spec.correctSpec child sanitize' }
+      ],
+      couplings: [
+        { id: 'band_pins_heights', rule: 'the age band IS the height: table/desk overall.height = band tableH and chair seat = the band seat plan (EN 1729 size-mark pairs) — asked-for heights are not used and the refusal is said', enforcedBy: 'Spec.correctSpec child block + correctSeat child branch; childNotes discloses' },
+        { id: 'adult_loads_kept', rule: 'child scope NEVER lightens a load case: adults sit on kids\' chairs, so every structural check runs at the host class\'s adult magnitudes (documented derivation, stated in child:basis)', enforcedBy: 'Structural — the child scope adds checks and scope, changes no magnitude' },
+        { id: 'anchor_mandate', rule: 'child-scoped storage (bookshelf) carries the anti-tip wall anchor as a MANDATORY BOM line regardless of computed margin, and any child-scoped drawered piece takes the F2057 anchor gate at ≥1.5× whatever its height (CPSC Anchor It!; stricter than the F2057 clothing-storage scope)', enforcedBy: 'Structural tip / tip_f2057 child extension (audit KID-3)' },
+        { id: 'backed_floor_seating', rule: 'child seating keeps a back and floor-serving height: backless perches and counter/bar stools put a small child at fall height, so backHeight > 0 and counterHeight = null are forced and told', enforcedBy: 'Spec.correctSeat child branch + childNotes' },
+        { id: 'scope_templates', rule: 'the scope rides only templates already generated soundly (table, desk, chair, bookshelf); on any other template `child` is dropped and told — nightstand/cabinet child variants are future work on this foundation', enforcedBy: 'Spec.correctSpec child sanitize + childNotes' }
+      ]
+    },
+    humanFactors: [
+      { key: 'child_seat_height', label: 'Child seat height (EN 1729 marks 1–4)', min: 260, max: 380, unit: 'mm', source: 'K.CHILD.BANDS — EN 1729-1 size-mark seat heights (260/310/350/380 for marks 1–4), cross-checked against published sizing guides (ESPO/GLS/edu-quip, research 2026-07)' },
+      { key: 'child_table_height', label: 'Child table/desk height (EN 1729 marks 1–4)', min: 460, max: 640, unit: 'mm', source: 'K.CHILD.BANDS — EN 1729-1 size-mark table heights (460/530/590/640 for marks 1–4), same sources as the seat rows' },
+      { key: 'child_adult_boundary', label: 'Adult-sizing boundary', min: 12, max: 17, unit: 'years', source: 'EN 1729 mark 5 (seat 430 / table 710, age 11–14) meets the adult dining band this tool already builds — age ≥ 12 is served by adult furniture' }
+    ],
+    loadCases: [
+      { id: 'child_seat_adult', label: 'Seat load — ADULT magnitude kept', magnitude: '1334 N (136 kg) — unchanged from the seating class', apply: 'centre of the child seat', direction: 'gravity', duration: 'functional', acceptance: 'same gates as the seating class (sag ≤ L/300, bending ≥ 1× at MOR/4, joints ≥ 1.5×)', source: 'derivation: adults sit on children\'s chairs — the child scope keeps the seating class\'s BIFMA-benchmarked magnitudes and lightens nothing', traceability: 'derivation', ownedBy: 'Structural.LOAD_PRESETS.seating' },
+      { id: 'child_back_adult', label: 'Back/tilt load — ADULT magnitude kept', magnitude: '667 N at the crest, rear-tilt case included', apply: 'crest of the child chair back', direction: 'horizontal, rearward', duration: 'functional + repeated abuse', acceptance: 'seating-class gates unchanged (the shorter child geometry changes the levers, never the force)', source: 'derivation: same rationale — the heaviest user of a child chair is the adult who sits in it', traceability: 'derivation' },
+      { id: 'child_tip_pull', label: 'Open-drawer tip pull', magnitude: '22.7 kg (50 lb) on the open top drawer', apply: 'front of the highest open drawer, all drawers ⅔ open', direction: 'gravity at the worst lever', duration: 'abuse case', acceptance: 'child scope: ≥ 1.5× or the anchor is mandatory, at ANY height and on any drawered template (the adult check gates only clothing-storage height)', source: 'ASTM F2057 / STURDY test magnitude (existing check); the scope extension to all child-scoped pieces is ours (CPSC Anchor It! guidance)', traceability: 'standard' },
+      { id: 'child_shelf_books', label: 'Bookshelf duty unchanged', magnitude: '60 kg/m sustained', apply: 'every shelf', direction: 'gravity', duration: 'sustained (×2 creep)', acceptance: 'long-term sag ≤ L/300 — children\'s books are books', source: 'BIFMA X5.9 shelf load (preset basis string)', traceability: 'standard', ownedBy: 'Structural.LOAD_PRESETS.books' }
+    ],
+    jointRules: {
+      connections: [
+        { connection: 'child chair seat frame (inherits the seating mandate)', required: ['mortise_tenon', 'loose_tenon', 'kd_bolt'], prohibited: ['butt_screws', 'pocket_screws', 'biscuits', 'dowels'], reason: 'the child scope keeps adult loads, so the seating class\'s rear-tilt arithmetic — and its tenon-class mandate — apply unchanged. The SHORTER rail-to-stretcher arm on a child chair raises the couple demand per newton of back force, which is the opposite of a reason to relax the joint.' },
+        { connection: 'child table/desk aprons → legs (inherits frame_table)', required: ['mortise_tenon', 'dowels', 'pocket_screws', 'loose_tenon', 'kd_bolt', 'half_lap', 'bridle'], prohibited: ['biscuits', 'edge_glue'], reason: 'the frame_table joint rules apply unchanged at the band\'s shorter heights; the level matrix still gates.' }
+      ]
+    },
+    failureModes: [
+      { id: 'kid_tipover', mode: 'furniture tips onto a child (the CPSC tip-over scenario)', checkIds: ['tip', 'tip_f2057'], fixture: 'audit KID-3 (mandatory anchor on child storage; F2057 scope extension)', realWorld: 'furniture tip-over deaths — the reason STURDY exists' },
+      { id: 'kid_oversize', mode: 'child piece built at adult heights (dangling feet, chin-height desk)', guard: 'Spec.correctSpec child block + correctSeat child branch pin the EN 1729 band heights; childNotes discloses every refused height', fixture: 'audit KID-2', realWorld: 'kids kneeling on chairs to reach adult tables' },
+      { id: 'kid_entrapment', mode: 'a bounded opening in the 89–230 mm band traps a head', conditional: true, checkIds: ['child:entrap'], fixture: 'audit KID-5 (the chair-back openings are measured and named)', realWorld: 'head entrapment between rails — the 16 CFR 1213 scenario' },
+      { id: 'kid_finish_toxicity', mode: 'a child mouths a finish never meant for mouths', checkIds: ['child_finish'], fixture: 'audit KID-6', realWorld: 'lead-paint history; modern coatings are certified to EN 71-3 for a reason' },
+      { id: 'kid_adult_overload', mode: 'an adult sits/leans/steps on the child piece and it fails', checkIds: ['sag:', 'str:', 'chair:'], fixture: 'audit KID-4 (adult magnitudes asserted on child geometry, arithmetic in handcalc [23])', realWorld: 'the parent who perches on the kids\' chair at the school open house' },
+      { id: 'kid_regulated_product', mode: 'a regulated children\'s product is asked of a hobby tool', guard: 'intent-parser refusals with the regulation named (ai.js children\'s block) + SCHEMA_DOC; fires before any creation', fixture: 'audit KID-1 + battery children cases', realWorld: 'toy-chest lids, high-chair restraints, crib slats — categories with body counts and federal rules' },
+      { id: 'kid_fall_height', mode: 'a small child perches on a backless or counter-height seat', guard: 'Spec.correctSeat child branch forces a backed, floor-serving chair (backHeight > 0, counterHeight null) and childNotes says why', fixture: 'audit KID-2 (stool/counter asks corrected and told)', realWorld: 'falls from bar stools — the top of the child furniture injury tables' }
+    ],
+    hardware: [
+      { id: 'kid_antitip', item: 'anti-tip wall anchor kit', when: 'EVERY child-scoped storage piece (bookshelf), and any child-scoped drawered piece below the 1.5× F2057 gate', capacity: 'per kit rating', matchedTo: 'tip / tip_f2057 with the child scope extension — mandatory regardless of computed margin on storage (audit KID-3)' }
+    ],
+    assembly: {
+      sequence: ['build per the host template sequence (frame/case/chair steps unchanged)', 'ease every edge and round every corner — child duty, before finishing', 'finish on the toy-safe schedule and let it FULLY cure before handover', 'storage: fasten the anti-tip strap into a stud before anything goes on a shelf'],
+      jigs: ['roundover bit or sanding block for the eased-edge pass (no sharp arris anywhere a child reaches)'],
+      checks: ['no bounded opening between 89 and 230 mm within reach of the seat (measure the assembled back)', 'anti-tip strap engaged and tugged BEFORE the piece is loaded', 'finish cured hard (no odor, no tack) before a child touches it']
+    },
+    refusals: [
+      { id: 'no_toy_chest', shape: 'toy chests / hinged-lid boxes', reason: 'a falling toy-chest lid is a strangulation/crush hazard with its own lid-support requirements — ASTM F963 toy-chest provisions (formerly ASTM F834), mandatory under 16 CFR 1250 — and no lid or lid-support hardware is modeled here (lids are refused generally)', surface: 'intent parser (children\'s block) + SCHEMA_DOC' },
+      { id: 'no_high_chair', shape: 'high chairs / booster seats', reason: '16 CFR 1231 (ASTM F404) territory: restraint systems, stability tests, occupant retention — federal rules for a product that holds a child at height', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_changing_table', shape: 'changing tables / changing toppers', reason: '16 CFR 1235 (ASTM F2388) territory: barrier and retention requirements for an elevated infant surface', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_play_yard_gate', shape: 'play yards, playpens, safety gates and enclosures', reason: '16 CFR 1221 (ASTM F406) and 16 CFR 1239 (ASTM F1004) territory: containment products with entrapment and strength rules this tool does not model', surface: 'intent parser + SCHEMA_DOC' },
+      { id: 'no_infant_sleep', shape: 'cribs, bassinets, cradles, toddler beds', reason: '16 CFR 1219/1220 is federal safety law — permanently refused (restating the bed class\'s refusal so the children\'s surface tells one story)', surface: 'intent parser (bed block) + SCHEMA_DOC' },
+      { id: 'no_bunks_restated', shape: 'bunk and loft beds', reason: 'ASTM F1427 / 16 CFR 1213 territory (restating the bed class\'s refusal)', surface: 'intent parser (bed block) + SCHEMA_DOC' },
+      { id: 'no_child_stool', shape: 'backless or counter/bar-height child seating', reason: 'a perch at counter height puts a small child at fall height; the scope forces a backed, floor-serving chair and says so', surface: 'Spec.correctSeat child branch + childNotes' },
+      { id: 'no_other_templates', shape: 'child scope on templates outside table/desk/chair/bookshelf', reason: 'the scope only overlays templates already generated soundly; child-scoped casework (nightstand/cabinet) is future work', surface: 'Spec.correctSpec child sanitize + childNotes' }
+    ],
+    fixtures: {
+      golden: ['maple-kids-table-metric', 'oak-kids-chair-imperial'],
+      bad: ['audit KID-1 refusals with regulations named', 'audit KID-2 band pinning + disclosures', 'audit KID-3 anchor mandate', 'audit KID-4 adult loads kept', 'audit KID-5 entrapment band', 'audit KID-6 finish advisory + wire roundtrip', 'battery children cases']
+    }
+  });
   BB.Classes = {
-    register, get, all, forTemplate, validateContract, runChecklist,
-    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED
+    register, get, all, forTemplate, scopeClasses, validateContract, runChecklist,
+    DESIGN_BASIS_SEATING, DESIGN_BASIS_WALL, DESIGN_BASIS_BED, DESIGN_BASIS_CHILD
   };
 })();</script>
 <script>var BB = globalThis.BB = globalThis.BB || {};
@@ -5517,7 +5813,7 @@ body.ph-open .porch::after { display: none; }
   const PRIMITIVES = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SURFACES = ['none', 'seating', 'worktop', 'shelf'];
   const FRAME_TEMPLATES = ['table', 'desk', 'bench'];
-  const SPEC_VERSION = 9;
+  const SPEC_VERSION = 11;
   const migrations = {
     3: function (s) {
       const out = clone(s) || {};
@@ -5559,6 +5855,18 @@ body.ph-open .porch::after { display: none; }
       const out = clone(s) || {};
       out.specVersion = 9;
       if (out.bed === undefined) out.bed = null;
+      return out;
+    },
+    9: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 10;
+      if (out.exposure === undefined) out.exposure = 'interior';
+      return out;
+    },
+    10: function (s) {
+      const out = clone(s) || {};
+      out.specVersion = 11;
+      if (out.child === undefined) out.child = null;
       return out;
     }
   };
@@ -5602,13 +5910,15 @@ body.ph-open .porch::after { display: none; }
       },
       joinery: { frame: 'pocket_screws', case: 'butt_screws', box: 'pocket_screws' },
       finish: 'wipe_poly',
+      exposure: 'interior',
       hardware: { pull: 'bar_pull', hinge: 'euro_cup' },
       drawers: null,
       doors: null,
       custom: null,
       seat: null,
       wall: null,
-      bed: null
+      bed: null,
+      child: null
     };
     const t = base.meta.template;
     if (t === 'bed') {
@@ -5800,11 +6110,12 @@ body.ph-open .porch::after { display: none; }
     'structure.shelfThickness': 'shelf thickness', 'structure.sideThickness': 'side thickness',
     'structure.backPanel': 'back panel', 'structure.toeKick': 'toe kick',
     'joinery.frame': 'frame joinery', 'joinery.case': 'case joinery', 'joinery.box': 'drawer-box joinery',
-    'finish': 'finish', 'hardware.pull': 'pull style',
+    'finish': 'finish', 'exposure': 'exposure', 'hardware.pull': 'pull style',
     'drawers.count': 'drawer count', 'drawers.frontStyle': 'drawer fronts', 'drawers.runner': 'drawer runners',
     'seat.width': 'seat width', 'seat.depth': 'seat depth', 'seat.height': 'seat height',
     'seat.slopeDeg': 'seat slope', 'seat.backHeight': 'back height', 'seat.backRake': 'back rake',
-    'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height'
+    'seat.splayDeg': 'leg splay', 'seat.counterHeight': 'counter height',
+    'child.ageBand': 'child age band'
   };
   const MM_PATHS = /^(overall\.|structure\.(top|leg|apron|shelf|side)Thickness|structure\.apronHeight|structure\.apronInset|structure\.shelfThickness|seat\.(width|depth|height|backHeight|counterHeight)$|custom\.part\.(len|wid|thk)$)/;
   function fmtValue(path, v) {
@@ -6074,7 +6385,8 @@ body.ph-open .porch::after { display: none; }
   const STRETCHERS = ['none', 'h', 'box'];
   const DOOR_TEMPLATES = ['cabinet', 'bookshelf'];
   const DOOR_STYLES = ['inset', 'overlay'];
-  const DOOR_MAX_SINGLE_W = 600;
+  const DOOR_MAX_SINGLE_W = BB.Classes && BB.Classes.get('casework')
+    ? BB.Classes.get('casework').geom.DOOR_MAX_SINGLE_W : 600;
   const STRETCHER_APRON_GAP = 90;
   const STRETCHER_FLOOR_MIN = 100;
   function applyDim(path, v) {
@@ -6190,6 +6502,7 @@ body.ph-open .porch::after { display: none; }
     const derivedOverall = ['chair', 'bed'].includes(at(cor, 'meta', 'template'));
     for (const path of Object.keys(DIM_RULES)) {
       if (derivedOverall && path.startsWith('overall.')) continue;
+      if (cor.child && (path === 'overall.height' || path.startsWith('seat.'))) continue;
       const dot = path.indexOf('.');
       const sec = path.slice(0, dot), key = path.slice(dot + 1);
       const want = num(at(raw, sec, key), null), got = num(at(cor, sec, key), null);
@@ -6296,12 +6609,77 @@ body.ph-open .porch::after { display: none; }
       notes.push(`“${wantSize}” isn’t a mattress size this tool knows (twin, full, queen, king, california king) — the frame is sized for a ${cor.bed.size.replace('_', ' ')}.`);
     }
   }
+  function exposureNotes(raw, cor, notes) {
+    if (!cor || !['covered', 'exposed'].includes(cor.exposure)) return;
+    const wantSp = raw && isObj(raw.wood) ? raw.wood.species : undefined;
+    if (cor.exposure === 'exposed' && typeof wantSp === 'string' && cor.wood && wantSp !== cor.wood.species) {
+      const sp = K.WOOD_SPECIES[wantSp];
+      if (sp && !sp.sheet && !sp.outdoor) {
+        notes.push(`${sp.label} isn’t decay-resistant — left in the weather it rots at the joints and checks in the sun, so this exposed build is corrected to ${fmtValue('wood.species', cor.wood.species)}. Even durable species are durable in heartwood only (sapwood of every species is perishable — cull it for outdoor parts). Ask for a covered spot to keep ${sp.label.toLowerCase()}.`);
+      }
+    }
+    const wantFin = raw ? raw.finish : undefined;
+    if (typeof wantFin === 'string' && wantFin !== cor.finish) {
+      const f = K.FINISHES.find(x => x.key === wantFin);
+      if (f && !f.exterior) {
+        notes.push(`${f.label} is an interior finish — sun and water fail it outdoors, so the ${cor.exposure} build carries ${fmtValue('finish', cor.finish)} (exterior-rated: UV blockers and a flexible film; recoat before it ever peels).`);
+      }
+    }
+  }
+  function childNotes(raw, cor, notes) {
+    const rawChild = raw && isObj(raw.child) ? raw.child : null;
+    const t = at(cor, 'meta', 'template');
+    const fmt = mm => U().fmtLength(mm);
+    if (rawChild && (!cor || !cor.child)) {
+      notes.push('The child scope only rides tables, desks, chairs, and bookshelves — this template keeps adult sizing (child-scoped casework is future work).');
+      return;
+    }
+    if (!cor || !cor.child || !K.CHILD) return;
+    const band = K.CHILD.BANDS[cor.child.ageBand];
+    if (rawChild && typeof rawChild.ageBand === 'string' && rawChild.ageBand !== cor.child.ageBand) {
+      notes.push(`“${String(rawChild.ageBand).replace(/_/g, ' ')}” isn’t a child age band this tool knows (toddler, preschool, school, preteen) — the design is sized for a ${band.label}.`);
+    }
+    if (t === 'table' || t === 'desk') {
+      const want = num(at(raw, 'overall', 'height'), null);
+      if (want !== null && Math.abs(want - cor.overall.height) > 5) {
+        notes.push(`A ${t} for a ${band.label} is ${fmt(band.tableH)} tall — EN 1729 size mark ${band.mark} pairs it with the ${fmt(band.seatH)} seat — so the ${fmt(want)} asked for wasn’t used. Drop the child scope to size freely.`);
+      }
+    }
+    if (t === 'chair' && cor.seat) {
+      const rawSeat = raw && isObj(raw.seat) ? raw.seat : {};
+      const askedStool = num(rawSeat.backHeight, 1) === 0;
+      const askedCounter = num(rawSeat.counterHeight, null) !== null;
+      if (askedStool || askedCounter) {
+        notes.push('Child seating keeps a back and floor-serving height: a backless perch or a counter/bar stool puts a small child at fall height, so the child scope builds backed chairs only.');
+      }
+      const wantH = num(rawSeat.height, null);
+      if (wantH !== null && Math.abs(wantH - cor.seat.height) > 5) {
+        notes.push(`A chair for a ${band.label} seats at ${fmt(band.seatH)} (EN 1729 size mark ${band.mark}) — the ${fmt(wantH)} asked for wasn’t used.`);
+      }
+    }
+  }
   function drawerNote(raw, cor, notes) {
     const want = raw && raw.drawers;
     if (!want || typeof want !== 'object' || !cor || cor.drawers) return;
     const t = at(cor, 'meta', 'template');
     if (!TEMPLATES.includes(t) || DRAWER_TEMPLATES.includes(t)) return; // dropped for some other reason
     notes.push(`The ${t} template has no opening for drawers — the drawer bank was dropped.`);
+  }
+  function doorNotes(raw, cor, notes) {
+    const want = raw && raw.doors;
+    if (!want || typeof want !== 'object' || !cor) return;
+    const fmt = mm => U().fmtLength(mm);
+    if (cor.doors) {
+      const asked = Math.round(num(want.count, 0));
+      if (asked === 1 && cor.doors.count === 2) {
+        notes.push(`A single door across this opening would be wider than ${fmt(DOOR_MAX_SINGLE_W)} — past what cabinet hinges are charted for, and a swing radius nobody has — so the opening carries a pair of doors instead.`);
+      }
+    } else {
+      const t = at(cor, 'meta', 'template');
+      if (TEMPLATES.includes(t) && !DOOR_TEMPLATES.includes(t)) {
+        notes.push(`The ${t} template has no case front to hang doors on — the doors were dropped.`);
+      }
+    }
   }
   function correctionNotes(rawSpec, correctedSpec) {
     const notes = [];
@@ -6330,8 +6708,11 @@ body.ph-open .porch::after { display: none; }
       speciesNotes(raw, correctedSpec, notes);
       joineryNotes(raw, correctedSpec, notes);
       drawerNote(raw, correctedSpec, notes);
+      doorNotes(raw, correctedSpec, notes);
       seatNotes(raw, correctedSpec, notes);
       bedNotes(raw, correctedSpec, notes);
+      exposureNotes(raw, correctedSpec, notes);
+      childNotes(raw, correctedSpec, notes);
     }
     return [...new Set(notes)];
   }
@@ -6406,6 +6787,21 @@ body.ph-open .porch::after { display: none; }
     const G = C ? C.geom : null;
     const se = isObj(s.seat) ? s.seat : {};
     const out = {};
+    const childCls = s.child && BB.Classes ? BB.Classes.get('childrens') : null;
+    if (childCls && K.CHILD && K.CHILD.BANDS[s.child.ageBand]) {
+      const plan = childCls.geom.seatPlan(s.child.ageBand);
+      out.width = plan.width;
+      out.depth = plan.depth;
+      out.height = plan.height;
+      out.backHeight = plan.backHeight;
+      out.counterHeight = null;
+      out.slopeDeg = r1(clamp(num(se.slopeDeg, 3), 0, 8));
+      out.splayDeg = 0;
+      let kidRake = clamp(num(se.backRake, 4), 0, 8);
+      if (G) kidRake = Math.min(kidRake, G.backRakeMax(s.structure, out));
+      out.backRake = r1(Math.max(0, kidRake));
+      return out;
+    }
     out.width = applyDim('seat.width', se.width);
     out.depth = applyDim('seat.depth', se.depth);
     const bhRaw = num(se.backHeight, 470);
@@ -6438,6 +6834,12 @@ body.ph-open .porch::after { display: none; }
     if (!K.LEVELS.includes(s.meta.level)) s.meta.level = 'beginner';
     if (s.meta.units !== 'mm') s.meta.units = 'in';
     s.meta.name = String(s.meta.name || 'Untitled').slice(0, 60);
+    const CHILD_TEMPLATES = ['table', 'desk', 'chair', 'bookshelf'];
+    if (isObj(s.child) && CHILD_TEMPLATES.includes(template) && K.CHILD) {
+      s.child = { ageBand: K.CHILD.BANDS[s.child.ageBand] ? s.child.ageBand : 'school' };
+    } else {
+      s.child = null;
+    }
     const o = s.overall, st = s.structure;
     if (template !== 'custom') {
       o.width = applyDim('overall.width', o.width);
@@ -6447,6 +6849,10 @@ body.ph-open .porch::after { display: none; }
     if (!K.WOOD_SPECIES[s.wood.species] || K.WOOD_SPECIES[s.wood.species].sheet) s.wood.species = 'red_oak';
     const sheetSp = K.WOOD_SPECIES[s.wood.sheetSpecies];
     if (!sheetSp || !sheetSp.sheet) s.wood.sheetSpecies = 'baltic_birch';
+    s.exposure = K.EXPOSURES.includes(s.exposure) ? s.exposure : 'interior';
+    if (s.exposure === 'exposed') {
+      s.wood.species = K.outdoorSubstitute(s.wood.species);
+    }
     st.topThickness = applyDim('structure.topThickness', st.topThickness);
     st.legThickness = applyDim('structure.legThickness', st.legThickness);
     st.apronThickness = applyDim('structure.apronThickness', st.apronThickness);
@@ -6459,6 +6865,11 @@ body.ph-open .porch::after { display: none; }
     st.toeKick = template === 'cabinet' ? !!st.toeKick : false;
     st.stretcher = ((FRAME_TEMPLATES.includes(template) || template === 'chair') && STRETCHERS.includes(st.stretcher)) ? st.stretcher : 'none';
     st.stretcherHeight = applyDim('structure.stretcherHeight', st.stretcherHeight);
+    if (s.child && (template === 'table' || template === 'desk') && K.CHILD) {
+      const cG = BB.Classes ? BB.Classes.get('childrens').geom : { APRON_MAX: 80 };
+      o.height = K.CHILD.BANDS[s.child.ageBand].tableH;
+      st.apronHeight = Math.min(st.apronHeight, cG.APRON_MAX);
+    }
     if (template === 'chair') {
       s.seat = correctSeat(s);
       const seat = s.seat;
@@ -6545,6 +6956,10 @@ body.ph-open .porch::after { display: none; }
       s.joinery.frame = BB.Classes.get('seating').enforceFrameJoint(s.joinery.frame, lvl);
     }
     if (!K.FINISHES.some(f => f.key === s.finish)) s.finish = 'wipe_poly';
+    if (s.exposure !== 'interior') {
+      const finRow = K.FINISHES.find(f => f.key === s.finish);
+      if (!finRow || !finRow.exterior) s.finish = 'spar_urethane';
+    }
     s.hardware = s.hardware && typeof s.hardware === 'object' ? s.hardware : {};
     if (!BB.HW || !BB.HW.PULLS[s.hardware.pull]) s.hardware.pull = 'bar_pull';
     if (s.doors && DOOR_TEMPLATES.includes(template)) {
@@ -6732,6 +7147,7 @@ body.ph-open .porch::after { display: none; }
     const fmt = mm => U().fmtLength(mm);
     for (const row of K.ERGONOMICS) {
       if (!row.appliesTo.includes(t)) continue;
+      if (spec.child && row.axis === 'height') continue;
       if (row.axis === 'height' || row.axis === 'depth') {
         const v = o[row.axis];
         if (v < row.min || v > row.max) {
@@ -6743,7 +7159,7 @@ body.ph-open .porch::after { display: none; }
         }
       }
     }
-    if (t === 'chair' && spec.seat && BB.Classes) {
+    if (t === 'chair' && spec.seat && !spec.child && BB.Classes) {
       const hf = Object.fromEntries(BB.Classes.get('seating').humanFactors.map(h => [h.key, h]));
       const se = spec.seat;
       const stool = se.backHeight === 0;
@@ -6773,6 +7189,30 @@ body.ph-open .porch::after { display: none; }
         errors.push({ id: 'wall_substrate', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. Find the studs behind it (16 or 24 in apart) or name a masonry wall.' });
       }
     }
+    if (spec.exposure === 'covered' || spec.exposure === 'exposed') {
+      const exposed = spec.exposure === 'exposed';
+      const sheetParts = model && model.parts
+        ? model.parts.filter(p => K.WOOD_SPECIES[p.material] && K.WOOD_SPECIES[p.material].sheet) : [];
+      if (sheetParts.length) {
+        const names = [...new Set(sheetParts.map(p => p.name.toLowerCase()))].slice(0, 3).join(', ');
+        if (exposed) {
+          errors.push({ id: 'out_sheet', text: `This exposed build uses interior sheet stock (${names}) and no exterior-rated sheet good exists in this catalog — interior plywood delaminates and MDF swells the first time rain finds it. Remove the sheet parts (drawers, back panel), put the piece under cover, or keep it indoors. A guessed exterior rating would be worse than this refusal.` });
+        } else {
+          advisories.push({ id: 'out_sheet', text: `Covered outdoors, the sheet parts (${names}) stay out of the rain but carry no exterior rating — seal every edge, keep them off wet floors, and know that direct weather would be a refusal, not an upgrade.` });
+        }
+      }
+      if (exposed && t === 'wall_shelf') {
+        errors.push({ id: 'out_mount', text: 'A wall shelf can’t hang in direct weather: the anchor math uses NDS dry-service withdrawal values (moisture content ≤ 19%), and rain-wetted framing crosses into wet service — NDS derates withdrawal to 0.7×, a factor this model doesn’t carry. A covered porch wall stays dry-service and is fine.' });
+      }
+      const spx = K.WOOD_SPECIES[spec.wood.species];
+      if (!exposed && spx && !spx.outdoor) {
+        advisories.push({ id: 'out_species', text: `${spx.label} isn’t decay-resistant — a roof keeps the rain off, but expect faster greying and bigger seasonal movement than indoors, and never let it stand wet. In direct weather it would be corrected to a durable species.` });
+      }
+      if (exposed && t !== 'wall_shelf') {
+        advisories.push({ id: 'out_legs', text: 'Leg bottoms are end grain — they wick standing water like a straw. Seal them (thinned epoxy or extra finish coats), chamfer the bottom edges, and keep the feet on pavers or glides, never soil or grass: ground contact needs preservative-treated stock this catalog doesn’t carry.' });
+        advisories.push({ id: 'out_drain', text: 'Water must drain, not sit: upward-facing end grain and open joint mouths trap rain, so orient mortises and slots where they can’t hold water, seal every exposed end-grain surface, and let horizontal surfaces shed (a slight slope or slat gaps). Recoat the finish before it peels — a failed film traps water against the wood.' });
+      }
+    }
     if (t === 'bed' && spec.bed && BB.Classes) {
       const row = K.ergoRow('platform_bed_height');
       const ph = spec.bed.platformHeight;
@@ -6780,19 +7220,33 @@ body.ph-open .porch::after { display: none; }
         advisories.push({ id: 'ergo_platform', text: `${fmt(ph)} deck height is outside the ${fmt(row.min)}–${fmt(row.max)} platform band — with a mattress the sleeping surface should land ${fmt(500)}–${fmt(650)} off the floor (K.ERGONOMICS).` });
       }
     }
-    if (t === 'desk') {
+    if (t === 'desk' && !spec.child) {
       const clear = o.height - spec.structure.topThickness - spec.structure.apronHeight;
       if (clear < 600) {
         advisories.push({ id: 'ergo_knee', text: `${fmt(clear)} of knee clearance under the ${spec.drawers ? 'drawer band' : 'apron'} is below the ~${fmt(600)} seated-knee band (Panero & Zelnik; ADA 306.3 asks ${fmt(685)} for accessible desks). Shallower ${spec.drawers ? 'band' : 'aprons'} or a taller desk buys it back.` });
       }
     }
+    if (spec.child) {
+      const cf = K.FINISHES.find(f => f.key === spec.finish);
+      const cured = cf && cf.foodContact
+        ? `${cf.label} is a food-contact-class finish — the safest family for a child's piece; still allow the full cure${cf.cureDays ? ` (${cf.cureDays} days)` : ''} before handover.`
+        : `${cf ? cf.label : 'The chosen finish'} carries no toy-safety certification: a fully cured film finish is commonly considered inert, but that is practice, not a certificate.`;
+      advisories.push({
+        id: 'child_finish',
+        text: `Child-scoped piece: children mouth what they touch. ${cured} For a certified route use a finish tested to EN 71-3 (toy-safety migration limits) — or a food-contact finish like pure tung oil; note hardware-store premixed shellac is not food/toy certified even though shellac resin itself is FDA-listed (21 CFR 175.300).`
+      });
+    }
     const finRow = K.FINISHES.find(f => f.key === spec.finish);
     const spRow = K.WOOD_SPECIES[spec.wood.species];
+    const outdoorDuty = K.isOutdoor(spec);
     if (finRow && finRow.exterior && BB.HW && spRow &&
-      (spRow.outdoor || BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key))) {
+      (outdoorDuty || spRow.outdoor || BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key))) {
+      const tannic = BB.HW.GATES.outdoorHardware.tannicSpecies.includes(spRow.key);
       advisories.push({
         id: 'hw_outdoor',
-        text: `Outdoor duty: every screw, hinge, and fitting should be stainless, brass, or galvanized — plain steel streaks tannin-rich ${spRow.label.toLowerCase()} black in the rain.`
+        text: tannic
+          ? `Outdoor duty: every screw, hinge, and fitting must be ${K.OUTDOOR_FASTENER_SPEC} — plain steel reacts with tannin-rich ${spRow.label.toLowerCase()} and streaks it blue-black in the rain (electroplated zinc is too thin to last).`
+          : `Outdoor duty: every screw, hinge, and fitting must be ${K.OUTDOOR_FASTENER_SPEC} — plain and electroplated steel rust outdoors, and the BOM's fastener lines say so.`
       });
     }
     if (spec.hardware && spec.hardware.pull === 'none_touch' && spec.drawers && spec.drawers.frontStyle === 'overlay') {
@@ -7463,9 +7917,10 @@ body.ph-open .porch::after { display: none; }
     });
     return { parts, joints, openings: bankOut.openings, drawers: bankOut.drawers };
   }
-  const DOOR_REVEAL = 2;
-  const DOOR_OVERLAY_LAP = 12;   // how far an overlay door laps the case edge
-  const DOOR_T = 19;             // panel stock; a door thinner than this racks in its own frame
+  const CASE_G = BB.Classes && BB.Classes.get('casework') ? BB.Classes.get('casework').geom : null;
+  const DOOR_REVEAL = CASE_G ? CASE_G.DOOR_REVEAL : 2;
+  const DOOR_OVERLAY_LAP = CASE_G ? CASE_G.DOOR_OVERLAY_LAP : 12;   // how far an overlay door laps the case edge
+  const DOOR_T = CASE_G ? CASE_G.DOOR_T : 19;    // panel stock; a door thinner than this racks in its own frame
   function doorSpace(spec) {
     const d = spec.doors;
     if (!d || !d.count) return { none: true, recess: 0 };
@@ -8187,7 +8642,7 @@ body.ph-open .porch::after { display: none; }
     const allowed = K.jointsForLevel(level);
     const surfaces = surfacesOf(spec, model, opts.loadChoices, opts.defaultLoad);
     const byId = new Map(parts.map(p => [p.id, p]));
-    const dMC = K.CLIMATE_DMC[opts.climate] !== undefined ? K.CLIMATE_DMC[opts.climate] : K.CLIMATE_DMC.temperate;
+    const dMC = K.effectiveDMC(spec.exposure, opts.climate);
     let grounded = new Set();
     let adj = new Map();
     if (custom && parts.length) {
@@ -8784,6 +9239,31 @@ body.ph-open .porch::after { display: none; }
           data: { splayDeg: se.splayDeg }
         });
       }
+      if (spec.child && !stool && BB.Classes.get('childrens')) {
+        const cG = BB.Classes.get('childrens').geom;
+        const members = parts
+          .filter(p => p.role === 'slat' || p.role === 'crest') // chair back members (defKey back_slat / crest)
+          .map(p => ({ lo: p.pos.y - p.size.h / 2, hi: p.pos.y + p.size.h / 2 }))
+          .sort((a, b) => a.lo - b.lo);
+        const gaps = [];
+        let prevTop = se.height; // the seat surface bounds the lowest opening
+        for (const m of members) {
+          gaps.push(Math.round((m.lo - prevTop) * 10) / 10);
+          prevTop = Math.max(prevTop, m.hi);
+        }
+        const inBand = gaps.filter(g => g >= cG.ENTRAP_MIN && g < cG.ENTRAP_MAX);
+        checks.push({
+          id: 'child:entrap', title: 'Back openings vs the head-entrapment band',
+          status: inBand.length ? 'advisory' : 'pass',
+          value: `bounded back openings: ${gaps.map(g => fmtLen(Math.max(0, g))).join(', ')} (seat → slats → crest)`,
+          threshold: `openings between ${fmtLen(cG.ENTRAP_MIN)} and ${fmtLen(cG.ENTRAP_MAX)} are the head-entrapment band (16 CFR 1213: passes the wedge block, not the ${fmtLen(cG.ENTRAP_MAX)} sphere)`,
+          explain: inBand.length
+            ? `${inBand.length} bounded opening${inBand.length > 1 ? 's' : ''} in this back fall${inBand.length > 1 ? '' : 's'} inside the band where a small body slips through but the head does not — the geometry 16 CFR 1213 rejects on bunk guardrails. That standard does not regulate chairs, so this is an advisory, not a failure: closing the gap below ${fmtLen(cG.ENTRAP_MIN)} (an added slat or a filler panel — not yet generated here) or opening it past ${fmtLen(cG.ENTRAP_MAX)} removes the geometry. The assembly checks carry the tape-measure rule.`
+            : `No bounded opening in this back falls inside the ${fmtLen(cG.ENTRAP_MIN)}–${fmtLen(cG.ENTRAP_MAX)} band.`,
+          fixes: [],
+          data: { gapsMM: gaps, inBandCount: inBand.length }
+        });
+      }
       checks.push({
         id: 'chair:bifma', title: 'What these numbers are', status: 'pass',
         value: 'benchmarked, not certified',
@@ -9002,6 +9482,16 @@ body.ph-open .porch::after { display: none; }
         fixes: []
       });
     }
+    if (spec.child && BB.Classes && BB.Classes.get('childrens') && K.CHILD) {
+      const band = K.CHILD.BANDS[spec.child.ageBand];
+      checks.push({
+        id: 'child:basis', title: 'Child scope — what changes and what never does', status: 'pass',
+        value: `sized for a ${band.label} · adult design loads KEPT`,
+        threshold: 'EN 1729 size-mark heights pinned by code; no load case is ever lightened; regulated children\'s products are refused',
+        explain: BB.Classes.DESIGN_BASIS_CHILD,
+        fixes: []
+      });
+    }
     let antiTip = false, tip = null;
     if (!isWallMounted) {
       let mass = 0, mx = 0, my = 0, mz = 0;
@@ -9032,17 +9522,22 @@ body.ph-open .porch::after { display: none; }
           angLoaded = (Math.atan2(edge(cogL), cogL[1]) * 180) / Math.PI;
         }
         const ratio = height / baseDepth;
-        antiTip = ratio > 2.5 || angLoaded < 10;
+        const childStorage = !!spec.child && ['bookshelf', 'cabinet', 'nightstand'].includes(t);
+        antiTip = ratio > 2.5 || angLoaded < 10 || childStorage;
         tip = { angEmpty, angLoaded, ratio, loadKg, massKg: mass };
         checks.push({
           id: 'tip', title: 'Tipping stability',
           ...(antiTip ? { anchor: true } : {}), // this check mandates the wall anchor (audit M-18)
           status: angLoaded < 5 ? 'fail' : antiTip ? 'advisory' : 'pass',
           value: `tipping angle ${fmtDeg(angLoaded)} loaded · ${fmtDeg(angEmpty)} empty · height/depth ${ratio.toFixed(1)}`,
-          threshold: '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
-          explain: antiTip
-            ? `Tall or top-heavy${loadKg ? ` with ${U().fmtPointLoad(loadKg)} on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
-            : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
+          threshold: childStorage
+            ? 'child-scoped storage: the wall anchor is mandatory at ANY margin (CPSC Anchor It!)'
+            : '≥ 10° loaded, height/depth ≤ 2.5 — otherwise a wall anchor is mandatory',
+          explain: childStorage
+            ? `Child-scoped storage: the anti-tip wall anchor is mandatory regardless of the computed margin${ratio > 2.5 || angLoaded < 10 ? '' : ` (the geometry itself measures stable — ${fmtDeg(angLoaded)} loaded)`} — children climb shelves, and anchoring storage in a child's space is the CPSC Anchor It! rule this class adopts as a mandate. It is in the BOM and the assembly steps.`
+            : antiTip
+              ? `Tall or top-heavy${loadKg ? ` with ${U().fmtPointLoad(loadKg)} on the top surface` : ''}: an anti-tip wall anchor is added to the BOM and assembly steps (mandatory, not optional).`
+              : 'Stable footprint: the piece resists tipping even with the top surface fully loaded.',
           fixes: []
         });
       }
@@ -9071,7 +9566,8 @@ body.ph-open .porch::after { display: none; }
         const zLoad = (frontPart ? frontPart.pos.z + frontPart.size.d / 2 : zF) + top.travel * OPEN_FRACTION;
         over += TEST_KG * GRAV * Math.max(0, zLoad - zF);
         const margin = over > 0 ? stab / over : Infinity;
-        const inScope = spec.overall.height >= 686 && t !== 'desk';
+        const childScope = !!spec.child;
+        const inScope = childScope || (spec.overall.height >= 686 && t !== 'desk');
         const status = margin >= 1.5 ? 'pass' : margin >= 1 ? 'advisory' : (inScope ? 'fail' : 'advisory');
         const anchorHere = margin < 1 || (inScope && margin < 1.5);
         if (anchorHere) antiTip = true;
@@ -9080,14 +9576,14 @@ body.ph-open .porch::after { display: none; }
           ...(anchorHere ? { anchor: true } : {}), // this check mandates the wall anchor (audit M-18)
           status,
           value: `margin ${margin === Infinity ? '∞' : margin.toFixed(2) + '×'} with all drawers open ⅔ and ${U().fmtPointLoad(TEST_KG)} on the top drawer front`,
-          threshold: `≥ 1× to stand, ≥ 1.5× to skip the anchor — aligned with ASTM F2057 / STURDY (${U().fmtPointLoad(TEST_KG)} on an open drawer)`,
+          threshold: `≥ 1× to stand, ≥ 1.5× to skip the anchor — aligned with ASTM F2057 / STURDY (${U().fmtPointLoad(TEST_KG)} on an open drawer)${childScope ? '; child scope: the gate applies at ANY height and template' : ''}`,
           explain: margin >= 1.5
             ? 'Even with every drawer open and a child-weight pull on the top one, the piece stays planted.'
             : margin >= 1
-              ? `It stands, but the margin is thin${inScope ? ' at clothing-storage height (F2057 territory) — the anti-tip wall anchor is added and required' : ' — anchor it if children are around'}.`
+              ? `It stands, but the margin is thin${childScope ? ' — and this is a CHILD-SCOPED piece, so the F2057 anchor gate applies whatever the height: the anti-tip wall anchor is added and required' : inScope ? ' at clothing-storage height (F2057 territory) — the anti-tip wall anchor is added and required' : ' — anchor it if children are around'}.`
               : 'With drawers open and weight on the top front, this piece TIPS. The wall anchor is mandatory — and this check follows the same scenario regulators test dressers against.',
           fixes: [],
-          data: { marginRatio: margin, stabilizingNmm: stab, overturningNmm: over, testKg: TEST_KG, openFraction: OPEN_FRACTION }
+          data: { marginRatio: margin, stabilizingNmm: stab, overturningNmm: over, testKg: TEST_KG, openFraction: OPEN_FRACTION, childScope }
         });
       }
       const DENSITY_KG_PER_L = 0.24; // general household storage; paper runs ~0.72
@@ -9207,6 +9703,81 @@ body.ph-open .porch::after { display: none; }
             : `${worst.n} hinges is what this door's height and weight ask for, and ${hinge.label.toLowerCase()} carries it with room to spare.`,
           fixes
         });
+      }
+      const caseCls = BB.Classes ? BB.Classes.get('casework') : null;
+      if (worst && caseCls) {
+        const G = caseCls.geom;
+        const dp = worst.part;
+        const inset = spec.doors.style === 'inset';
+        const nLeaves = spec.doors.count;
+        {
+          const dd = G.doorDroop(hinge, dp.size.w, dp.size.h, worst.kg);
+          const vBudget = G.DOOR_REVEAL;
+          const sagStatus2 = dd.droopMM > vBudget ? 'fail'
+            : (dd.widerThanTall || dd.droopMM > vBudget / 2) ? 'advisory' : 'pass';
+          const sagFixes = [];
+          if (sagStatus2 !== 'pass') {
+            if (hinge.countRule !== 'fullLength') sagFixes.push({ id: 'hinge-piano', label: 'Hang it on a continuous (piano) hinge', patch: { hardware: { hinge: 'piano' } } });
+            if (nLeaves === 1) sagFixes.push({ id: 'door-pair', label: 'Split it into a pair of doors', patch: { doors: { count: 2 } } });
+          }
+          checks.push({
+            id: 'door:sag', title: 'Door droop',
+            status: sagStatus2,
+            value: `${fmtFine(dd.droopMM)} free-edge droop at ${fmtFine(G.HINGE_SETTLE_MM)} hinge settlement × ${dd.ampRatio} amplification (spread ${fmtLen(dd.spreadMM)})`,
+            threshold: `droop ≤ ${fmtFine(vBudget / 2)} clean, ≤ ${fmtFine(vBudget)} hard (the fitted reveal); leaf width ≤ height for two-point hinges (Blum chart rule)`,
+            explain: `A slab door cannot rack out of square — the panel is its own diagonal — so what drops the free corner is the hinge couple: ${U().fmtWeight(worst.kg)} at half the ${fmtLen(dp.size.w)} width puts ${Math.round(dd.coupleN)} N of horizontal pull on the top hinge fixing across the ${fmtLen(dd.spreadMM)} spread, and every millimetre it yields reads as ${dd.ampRatio} mm at the free edge.` +
+              (dd.widerThanTall ? ` This leaf is WIDER than it is tall — past the geometry the hinge count charts are written for (they stop at height > width); a wide-short door droops on any two-point hinge.` : '') +
+              (sagStatus2 === 'pass' ? ' Tall spread, modest width: the droop stays inside the fitted reveal.' : ''),
+            fixes: sagFixes,
+            data: { leafKg: worst.kg, spreadMM: dd.spreadMM, ampRatio: dd.ampRatio, droopMM: dd.droopMM, coupleN: dd.coupleN, widerThanTall: dd.widerThanTall },
+            prov: { rule: `couple F = ${worst.kg.toFixed(2)} kg × g × ${Math.round(dp.size.w)}/(2 × ${Math.round(dd.spreadMM)}) = ${Math.round(dd.coupleN)} N; droop = ${G.HINGE_SETTLE_MM} × ${Math.round(dp.size.w)}/${Math.round(dd.spreadMM)}` }
+          });
+        }
+        {
+          const crossW = Math.min(dp.size.w, dp.size.h);
+          const swing = G.doorSwingMM(dp.size.w, dp.size.h, dp.material, dMC);
+          const closure = nLeaves * swing / 2;
+          const freeRide = !inset && nLeaves === 1;
+          const budget = inset ? G.DOOR_REVEAL : nLeaves * G.HINGE_ADJUST_MM;
+          const over = !freeRide && closure > budget;
+          const revFixes = [];
+          if (over && inset) revFixes.push({ id: 'door-overlay', label: 'Overlay the doors (forgiving style)', patch: { doors: { style: 'overlay' } } });
+          checks.push({
+            id: 'door:reveal', title: 'Reveal survival',
+            status: over ? 'advisory' : 'pass',
+            value: freeRide
+              ? `overlay single: ${fmtFine(swing)} seasonal swing rides over the case face`
+              : `${fmtFine(closure)} of ${inset ? (nLeaves === 2 ? 'meeting-gap' : 'reveal') : 'meeting-gap'} closure vs ${fmtFine(budget)} of fitted air`,
+            threshold: inset
+              ? `closure ≤ ${fmtFine(budget)} (the fitted reveal) — half of each leaf's full-swing movement arrives at the free edge`
+              : `closure ≤ ${fmtFine(budget)} (± ${fmtFine(G.HINGE_ADJUST_MM)} plate adjustment per door)`,
+            explain: swing === 0
+              ? 'Sheet stock is movement-exempt: cross-laminated plies restrain each other, so the reveal holds all year.'
+              : `Each ${fmtLen(crossW)} slab leaf swings ${fmtFine(swing)} across the grain between a dry winter and a damp summer; the hinge screws pin one edge, so half of that arrives at the free edge${nLeaves === 2 ? ' of BOTH leaves, meeting in the middle' : ''}.` +
+                (freeRide ? ' An overlay single just rides over the case face — nothing to bind against.' : over
+                  ? ` That outruns the fitted air: fit in the season you are in and expect the ${inset ? 'reveal' : 'centre gap'} to breathe — fit tight in the HUMID season so winter opens a gap instead of summer binding it. Quartersawn stock roughly halves the swing; ${inset ? 'an overlay style forgives the case edges entirely' : 'the plates re-centre what they can'}.`
+                  : ' Inside the fitted air — the reveal breathes but survives the year.'),
+            fixes: revFixes,
+            data: { crossWidthMM: crossW, swingMM: swing, closureMM: closure, budgetMM: freeRide ? null : budget },
+            prov: { rule: `swing = ${Math.round(crossW)} × ct × ${dMC}%; closure = ${nLeaves} × swing/2 = ${closure.toFixed(2)} mm vs ${freeRide ? 'n/a (overlay single)' : `${budget} mm`}` }
+          });
+        }
+        {
+          const cs = BB.HW.catchSpec(worst.kg, dp.size.h, spec.hardware && spec.hardware.pull);
+          checks.push({
+            id: 'door:catch', title: 'Door catches',
+            status: cs.substituted ? 'advisory' : 'pass',
+            value: `${cs.count} × ${cs.label.toLowerCase()} per door — ${U().fmtWeight(cs.holdKg)} hold class, ${cs.marginRatio}× over the swing demand`,
+            threshold: `hold ≥ 1.5× the out-of-plumb swing force (m·g·sin 3° shared across ${cs.count} catch${cs.count > 1 ? 'es' : ''}); touch latches refuse leaves past ${U().fmtWeight(4)} (spring cap)`,
+            explain: (cs.count === 2 ? `At ${fmtLen(dp.size.h)} this leaf takes a catch top AND bottom, so both free corners are held flat against seasonal twist. ` : '') +
+              (cs.substituted
+                ? `A handleless front wants a touch latch, but at ${U().fmtWeight(worst.kg)} this leaf is past the ~${U().fmtWeight(4)} the pop-out spring can throw — an honest magnetic catch is fitted instead, and the front needs a pull after all.`
+                : `A case leaning 3° swings its own doors open; ${cs.count} × ${cs.label.toLowerCase()} holds ${U().fmtWeight(cs.holdKg * cs.count)} of class rating against a ${cs.demandN.toFixed(2)} N computed demand per catch.`),
+            fixes: [],
+            data: { countPerDoor: cs.count, holdN: cs.holdN, demandN: cs.demandN, marginRatio: cs.marginRatio, substituted: cs.substituted },
+            prov: { rule: `demand = ${worst.kg.toFixed(2)} kg × g × 0.05 / ${cs.count} = ${cs.demandN.toFixed(2)} N vs ${cs.holdN} N hold (${cs.label})` }
+          });
+        }
       }
     }
     {
@@ -10412,8 +10983,10 @@ body.ph-open .porch::after { display: none; }
       screw: 0.06, pocket: 0.08, dowel: 0.1, figure8: 0.8,
       biscuit: 0.15, loose_tenon: 0.5, kd_bolt: 1.5, spline: 0.4
     };
+    const corrode = K.isOutdoor(spec) ? ` — ${K.OUTDOOR_FASTENER_SPEC} (outdoor duty)` : '';
     for (const c of engineCounts) {
-      const label = c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${drill(c.pilotMM)})` : '');
+      const label = (c.kind === 'figure8' ? `Figure-8 fasteners + #8 × ${len(16)}` : c.spec + (c.pilotMM && c.kind === 'screw' ? ` (pilot ${drill(c.pilotMM)})` : ''))
+        + (c.kind === 'dowel' || c.kind === 'loose_tenon' || c.kind === 'biscuit' || c.kind === 'spline' ? '' : corrode);
       const detail = c.kind === 'figure8' ? 'top attachment — allows seasonal movement'
         : c.kind === 'pocket' ? 'per the pocket-hole layout in the steps'
         : c.kind === 'dowel' ? `drill ${drill(c.pilotMM)}, positions in the steps`
@@ -10445,7 +11018,7 @@ body.ph-open .porch::after { display: none; }
         } else {
           items.push({ kind: 'hardware', label: `${len(d.slideLen)} side-mount slides (pair)`, qty: 1, detail: `drawer ${d.index + 1}`, price: hp('slide_side_bb_34', 14) });
         }
-        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+        items.push({ kind: 'fastener', label: `M4 × ${len(16)} pan-head screws (pilot ${drill(3.0)})${corrode}`, qty: 8, detail: `slide mounting, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
       }
       const pull = d.pull || { styleKey: 'bar_pull', style: 'bar_pull', count: 1, ctcMM: 0, holes: 2 };
       const effKey = pull.style || pull.styleKey;
@@ -10467,7 +11040,7 @@ body.ph-open .porch::after { display: none; }
       } else {
         items.push({ kind: 'hardware', label: 'Drawer pull', qty: 1, detail: `drawer ${d.index + 1}`, price: hp('pull_bar_pull', 6) });
       }
-      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
+      items.push({ kind: 'fastener', label: `#8 × ${len(25)} wood screws (pilot ${drill(2.8)})${corrode}`, qty: 4, detail: `front attachment from inside, drawer ${d.index + 1}`, price: hp('screw_pack', 1) });
     }
     const doorParts = model.parts.filter(p => p.role === 'door');
     if (doorParts.length && BB.HW) {
@@ -10480,10 +11053,12 @@ body.ph-open .porch::after { display: none; }
           detail: `${dp.name.toLowerCase()} — ${U().fmtWeight(kg)} of door, ${hinge.fronts.includes('inset') && spec.doors.style === 'inset' ? 'inset' : 'overlay'} hung`,
           price: hp('hinge_' + hinge.key, hinge.price) * n
         });
+        const cs = BB.HW.catchSpec(kg, dp.size.h, spec.hardware && spec.hardware.pull);
         items.push({
-          kind: 'hardware', label: 'Door catch (magnetic, with strike)', qty: 1,
-          detail: `${dp.name.toLowerCase()} — a door with no catch swings open on its own`,
-          price: hp('catch_magnetic', 2)
+          kind: 'hardware', label: cs.label + (cs.count > 1 ? ' (top + bottom)' : ''), qty: cs.count,
+          detail: `${dp.name.toLowerCase()} — ${U().fmtWeight(cs.holdKg)} hold class, ${cs.marginRatio}× over the computed swing demand` +
+            (cs.substituted ? '; touch latch declined — past ~4 kg the pop-out spring loses, so this front needs a pull after all' : ''),
+          price: hp('catch_' + cs.key, cs.price) * cs.count
         });
       }
       const pStyle = BB.HW.PULLS[spec.hardware && spec.hardware.pull];
@@ -10513,6 +11088,8 @@ body.ph-open .porch::after { display: none; }
   function drawerSteps(spec, model, out, opts) {
     opts = opts || {};
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    const dMC = K.effectiveDMC(spec.exposure, climate);
+    const swingLabel = K.isOutdoor(spec) ? `${spec.exposure} outdoor swing` : `${climate} indoor swing`;
     const boxJ = K.JOINERY[spec.joinery.box];
     const len = mm => U().fmtLength(mm), fine = mm => U().fmtSmall(mm);
     const drill = mm => U().fmtDrill(mm); // pilots/bores: real bit sizes (audit M-01)
@@ -10546,9 +11123,9 @@ body.ph-open .porch::after { display: none; }
           gearIds, { drawer: d.index }));
       } else {
         const sp = K.WOOD_SPECIES[spec.wood.species];
-        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, K.CLIMATE_DMC[climate]) : 2;
+        const clr = BB.HW ? BB.HW.drawerVerticalClearance(d.box.h, spec.wood.species, dMC) : 2;
         out.push(step(`dr${n}_runners`, `Drawer ${n}: fit wood runners`,
-          `Glue and screw the hardwood runners level in the opening (they're in the cut list), with the rail above as the kicker so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, ${climate} indoor swing), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
+          `Glue and screw the hardwood runners level in the opening (they're in the cut list), with the rail above as the kicker so the box cannot tip open. Fit the box with ${fine(1)} per side and ${fine(clr)} of vertical clearance — that number is this drawer's computed seasonal movement (${sp.label.toLowerCase()}, ${swingLabel}), not a guess${sp.movement === 'high' ? '; quartersawn sides would halve it' : ''}. Wax the meeting surfaces with paraffin.`,
           gearIds, { drawer: d.index }));
       }
       out.push(step(`dr${n}_hang`, `Drawer ${n}: hang the box`,
@@ -10602,16 +11179,22 @@ body.ph-open .porch::after { display: none; }
       boringText = `Mark the ${hinge.label.toLowerCase()} leaf positions off ONE story stick for every door and every stile — matched pairs, not measured twice.` +
         (hinge.boring && hinge.boring.gainDepth ? ` Cut the gains ${hinge.boring.gainDepth} deep: deeper binds the door and springs the screws.` : '');
     }
+    const cs = BB.HW.catchSpec(kg, d0.size.h, spec.hardware && spec.hardware.pull);
+    const catchText = cs.count === 2
+      ? ` Fit ${cs.count} × ${cs.label.toLowerCase()} per door — one at the TOP and one at the BOTTOM of the free stile, so both free corners are held flat against seasonal twist on a leaf this tall.`
+      : ` Fit a ${cs.label.toLowerCase()} per door at the free stile${cs.substituted ? ' — the touch latch was declined (past ~4 kg the pop-out spring loses), so this front keeps a pull' : ''}.`;
     out.push(step('doors_fit', doors.length > 1 ? 'Fit the doors, then take them off again' : 'Fit the door, then take it off again',
       `${n} × ${hinge.label.toLowerCase()} per door — ${U().fmtWeight(kg)} of door and ${len(d0.size.h)} of height is what sets that count, not the look of it. ` +
       boringText + ' ' +
       (inset
         ? `Inset doors are fitted by planing to the opening, not by cutting to a number: aim for a ${len(2)} reveal all round and check it with the door IN the opening, shimmed on playing cards. The reveal is the whole job — an even gap reads as fine work and an uneven one is the first thing anybody sees. Fit in the season you are in and remember which way it will move: a door fitted tight in a damp August binds every August after.`
         : `Overlay doors forgive the opening but not each other: hang both, then adjust until the gap down the middle is even and the bottom edges line up across the pair. That centre gap is the only reference anyone looks at.`) +
+      catchText +
       ` Then unscrew the doors and set them aside — they get finished off the case, and go back on last.`,
       ids));
   }
-  const DOOR_OVERLAY_LAP_MM = 12;
+  const DOOR_OVERLAY_LAP_MM = BB.Classes && BB.Classes.get('casework')
+    ? BB.Classes.get('casework').geom.DOOR_OVERLAY_LAP : 12;
   function sandingStep(spec, out) {
     const fin = K.FINISHES.find(f => f.key === spec.finish);
     const prep = fin.prep || { grits: [120, 180] };
@@ -10644,6 +11227,10 @@ body.ph-open .porch::after { display: none; }
     if (narrowRip) notes.push(`Several rips finish under ${U().fmtLength(150)} wide — use a push stick and keep hands past the blade line.`);
     if (stockPlan && stockPlan.mode === 'rough') notes.push('Rough stock can hide staples and grit — inspect and scrub edges before it touches jointer knives.');
     if (integrity && integrity.antiTip) notes.push('This piece requires the wall anchor before it goes into service — it is in the steps and the BOM.');
+    if (K.isOutdoor(spec)) {
+      notes.push(`This is an outdoor build: every metal fastener and fitting must be ${K.OUTDOOR_FASTENER_SPEC} (the BOM says so on each line), leg bottoms and other end grain get sealed before assembly, and the exterior finish is a maintenance item — recoat before it peels, because a failed film traps water against the wood.`);
+      if (spec.exposure === 'exposed') notes.push('Keep the feet off soil and grass (pavers or glides) — ground contact is preservative-treated territory this plan does not cover.');
+    }
     out.push(step('safety', 'Shop safety for this build', notes.join(' '), []));
   }
   function millingSteps(spec, model, cut, out) {
@@ -10732,15 +11319,17 @@ body.ph-open .porch::after { display: none; }
     const top = model.parts.find(p => p.id === 'top_1');
     const topName = top ? top.name.toLowerCase() : 'top';
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
+    const topDMC = K.effectiveDMC(spec.exposure, climate);
+    const topSwing = K.isOutdoor(spec) ? `${spec.exposure} outdoor swing` : `${climate} indoor swing`;
     const topKey = top && K.WOOD_SPECIES[top.material] ? top.material : spec.wood.species;
     const topSp = K.WOOD_SPECIES[topKey];
     const crossW = top ? Math.min(top.size.w, top.size.d) : 0;
     const moves = !!(topSp && !topSp.sheet && crossW > 0);
-    const mv = moves ? K.movementMM(crossW, topKey, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    const mv = moves ? K.movementMM(crossW, topKey, 'tangential', topDMC) : 0;
     out.push(step('s3', `Attach the ${topName}`,
       `Center the ${topName} and fasten it from below with figure-8s or buttons — never glue a solid ${topName} to its base. ` +
       (moves
-        ? `This one travels about ${fine(mv)} across its ${len(crossW)} width between a dry winter and a damp summer (${topSp.label.toLowerCase()}, ${climate} indoor swing) and effectively nothing along its length, so every fastener has to hold it DOWN while letting it slide ACROSS the grain: set each figure-8 with its long axis running across the ${topName}'s grain so it can swivel, or cut the buttons' tongues to ride in a kerf running the same way. `
+        ? `This one travels about ${fine(mv)} across its ${len(crossW)} width between a dry winter and a damp summer (${topSp.label.toLowerCase()}, ${topSwing}) and effectively nothing along its length, so every fastener has to hold it DOWN while letting it slide ACROSS the grain: set each figure-8 with its long axis running across the ${topName}'s grain so it can swivel, or cut the buttons' tongues to ride in a kerf running the same way. `
         : `Hold it down without pinning it: a ${topName} that cannot move is one that splits. `) +
       `Snug, not crushed — a fastener torqued solid is a glued top with extra steps, and the crack turns up two winters later. Check the overhang is even on all four sides before you drill anything.`,
       ['top_1']));
@@ -10791,7 +11380,7 @@ body.ph-open .porch::after { display: none; }
     const seatPart = model.parts.find(p => p.id === 'seat_1');
     const crossW = seatPart ? Math.min(seatPart.size.w, seatPart.size.d) : 0;
     const climate = K.CLIMATE_DMC[opts.climate] !== undefined ? opts.climate : 'temperate';
-    const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.CLIMATE_DMC[climate]) : 0;
+    const mv = crossW ? K.movementMM(crossW, spec.wood.species, 'tangential', K.effectiveDMC(spec.exposure, climate)) : 0;
     out.push(step('s5', 'Fit and fasten the seat — held down, never pinned',
       `${stool ? 'Set the seat on the frame' : 'Notch the seat around the rear posts (the cut list size already includes the capture), then set it on the frame'} with even overhang and fasten it from BELOW through the corner blocks with screws in SLOTTED holes run across the grain${se.slopeDeg ? `, letting the ${U().fmtDeg(se.slopeDeg)} slope follow the rails` : ''}. This seat travels about ${fine(mv)} across its ${len(crossW)} width between seasons — a screw pinned solid is a split seat two winters out. Snug, not crushed.`,
       ['seat_1']));
@@ -11882,6 +12471,8 @@ BlueprintBuddyImport.build
   const PRIM = ['post', 'rail', 'panel', 'slab', 'cylinder'];
   const SUB = ['unknown', 'stud', 'masonry', 'drywall'];
   const BSZ = ['twin', 'full', 'queen', 'king', 'cal_king'];
+  const EXP = ['interior', 'covered', 'exposed'];
+  const AGE = ['toddler', 'preschool', 'school', 'preteen'];
   const SURF = ['none', 'seating', 'worktop', 'shelf'];
   const GRAIN = ['length', 'width'];
   const STK = ['solid', 'sheet'];
@@ -11926,6 +12517,9 @@ BlueprintBuddyImport.build
     if (spec.hardware && spec.hardware.pull && spec.hardware.pull !== 'bar_pull') {
       w.hp = ix(PUL, spec.hardware.pull, 0);
     }
+    if (spec.exposure && spec.exposure !== 'interior') {
+      w.ex = ix(EXP, spec.exposure, 0);
+    }
     for (const [k, path] of S_KEYS) {
       const v = spec.structure[path];
       w.s[k] = typeof v === 'boolean' ? (v ? 1 : 0) : v;
@@ -11948,6 +12542,9 @@ BlueprintBuddyImport.build
     }
     if (spec.bed && spec.meta.template === 'bed') {
       w.bd = [ix(BSZ, spec.bed.size, 2), spec.bed.platformHeight, spec.bed.headboardHeight];
+    }
+    if (spec.child) {
+      w.ch = [ix(AGE, spec.child.ageBand, 2)];
     }
     if (spec.custom && spec.meta.template === 'custom') {
       const idIndex = new Map(spec.custom.parts.map((p, i) => [p.id, i]));
@@ -12006,6 +12603,7 @@ BlueprintBuddyImport.build
         ? { frame: at(JNT, w.j[0], 'pocket_screws'), case: at(JNT, w.j[1], 'butt_screws'), box: at(JNT, w.j[2], 'pocket_screws') }
         : {},
       finish: at(FIN, w.f, 'wipe_poly'),
+      exposure: at(EXP, w.ex, 'interior'),
       hardware: { pull: at(PUL, w.hp, 'bar_pull'), hinge: at(HNG, w.hh, 'euro_cup') },
       doors: Array.isArray(w.dr) && w.dr.length
         ? { count: w.dr[0], style: at(FRONT, w.dr[1], 'overlay') }
@@ -12016,8 +12614,12 @@ BlueprintBuddyImport.build
       custom: null,
       seat: null,
       wall: null,
-      bed: null
+      bed: null,
+      child: null
     };
+    if (Array.isArray(w.ch) && ['table', 'desk', 'chair', 'bookshelf'].includes(spec.meta.template)) {
+      spec.child = { ageBand: at(AGE, w.ch[0], 'school') };
+    }
     if (Array.isArray(w.bd) && spec.meta.template === 'bed') {
       spec.bed = {
         size: at(BSZ, w.bd[0], 'queen'),
@@ -12076,6 +12678,7 @@ BlueprintBuddyImport.build
       if (w.j.b !== undefined) patch.joinery.box = at(JNT, w.j.b, undefined);
     }
     if (w.f !== undefined) patch.finish = at(FIN, w.f, undefined);
+    if (w.ex !== undefined) patch.exposure = at(EXP, w.ex, undefined);
     if (w.hp !== undefined) patch.hardware = { pull: at(PUL, w.hp, undefined) };
     if (w.d !== undefined) {
       if (!w.d) patch.drawers = null;
@@ -12122,6 +12725,11 @@ BlueprintBuddyImport.build
         if (w.se.sp !== undefined) patch.seat.splayDeg = w.se.sp;
         if (w.se.ch !== undefined) patch.seat.counterHeight = w.se.ch ? w.se.ch : null;
       }
+    }
+    if (w.ch !== undefined) {
+      if (!w.ch) patch.child = null;
+      else if (Array.isArray(w.ch)) patch.child = { ageBand: at(AGE, w.ch[0], undefined) };
+      else if (typeof w.ch === 'object' && w.ch.ab !== undefined) patch.child = { ageBand: at(AGE, w.ch.ab, undefined) };
     }
     const mapConns = (list, max) => list
       .filter(c => Array.isArray(c) && Number.isInteger(c[0]) && Number.isInteger(c[1]) &&
@@ -12178,13 +12786,15 @@ BlueprintBuddyImport.build
   const estimateTokens = s => Math.ceil(String(s).length / 3.6);
   const SCHEMA_DOC = [
     'WIRE FORMAT — every reply is minified JSON in this compact format (mm integers; enums are 0-based indexes into these lists, documented once here):',
-    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}]`,
+    `TPL=[${TPL.join(',')}] SPC=[${SPC.join(',')}] JNT=[${JNT.join(',')}] FIN=[${FIN.join(',')}] LVL=[${LVL.join(',')}] UNITS=[${UNITS.join(',')}] FRONT=[${FRONT.join(',')}] RUN=[${RUN.join(',')}] PUL=[${PUL.join(',')}] PRIM=[${PRIM.join(',')}] SURF=[${SURF.join(',')}] GRAIN=[${GRAIN.join(',')}] STK=[${STK.join(',')}] EXP=[${EXP.join(',')}]`,
     'Full spec: {"v":4,"n":name,"t":TPL,"l":LVL,"u":UNITS,"o":[width,depth,height],"m":SPC,"ms":SPC,"s":{structure},"j":[frameJNT,caseJNT,boxJNT],"f":FIN,"d":[count,FRONT,RUN]|0,"p":[...],"c":[...]}',
     '"m" must be a SOLID species; "ms" is the sheet stock (baltic_birch, mdf, or hardwood_ply only) — omit "ms" for the baltic_birch default.',
     `"dr":[count,FRONT]|0 = doors (cabinet/bookshelf only, count 1-2; code splits a too-wide single into a pair). "hh"=hinge STYLE HNG=[${HNG.join(',')}], omit for euro_cup; app owns hinge count, bore, and capacity.`,
     '"hp" is drawer-pull STYLE only (PUL; omit for the bar_pull default) — counts, sizes, spacing, and bores are computed by the app, never proposed.',
     `structure "s" keys: t=topThickness l=legThickness a=apronHeight at=apronThickness ai=apronInset c=shelfCount st=shelfThickness sd=sideThickness b=backPanel(0/1) k=toeKick(0/1) sx=stretcher STR=[${STR.join(',')}] sy=stretcherHeight(mm from floor; table/desk/bench only, omit unless bracing is asked for). Send only relevant keys, e.g. {"t":25,"c":4}.`,
     'BED (t=9 bed): knock-down platform bed + slat deck. "bd"=[BSZ,platformHeight,headboardHeight(0=none)], BSZ=[twin,full,queen,king,cal_king] — the mattress size drives the whole frame (overall is derived). Rails are ALWAYS barrel-bolted (code enforces; a glued bed cannot leave the room); centre rail auto-added at queen+. NOT buildable: bunk/loft beds (ASTM F1427 fall territory), cribs (16 CFR 1219 — always refuse), murphy/folding beds, storage/drawer beds — refuse or ask.',
+    'OUTDOOR ("ex"=EXP, omit for interior): propose the exposure WORD only — code routes everything (durable species, Type-I glue, exterior finish, stainless/galvanized fasteners, outdoor movement math). "porch"/"covered patio"=1 covered; open patio/garden/deck=2 exposed. On exposed, non-durable species are corrected to a durable one and told; interior sheet goods (plywood/MDF parts: drawers, back panels) are REFUSED exposed — no exterior sheet exists here; wall_shelf cannot be exposed (anchor math is dry-service only).',
+    `CHILDREN (t= table/desk/chair/bookshelf only): "ch"=[AGE], AGE=[${AGE.join(',')}] (≈3-4y/4-6/6-8/8-11; age ≥12 = adult, omit "ch"). Code pins EN 1729 size-mark heights (table/desk height + chair seat/plan — never propose them), KEEPS adult design loads, mandates the anti-tip anchor on child storage, and flags finish safety (EN 71-3). Child chairs are backed + floor height (no stools/counter seats: fall height). NOT buildable for children: toy chests/hinged-lid boxes (ASTM F963 lid-support, formerly F834, 16 CFR 1250), high chairs (16 CFR 1231/F404), changing tables (16 CFR 1235/F2388), play yards (16 CFR 1221/F406), safety gates (16 CFR 1239/F1004) — refuse or ask, never approximate; cribs and bunks stay refused as documented above.`,
     'WALL SHELF (t=8 wall_shelf): the ONE wall-mounted template — a French-cleat floating shelf. "wl"=[SUB,studSpacing_mm], SUB=[unknown,stud,masonry,drywall]. The SUBSTRATE IS REQUIRED: never propose wl[0]=0 (unknown) — ASK which wall it is; drywall-only is refused by code (anchor creep). Depth caps at 300; height is derived (cleat+shelf).',
     'SEATING (t=7 chair): "se"=[seatW,seatD,seatH,slopeDeg,backHeight,backRake,splayDeg,counterH|0]. backHeight 0=stool (splay stools-only); counterH>0 derives seat height (ask when a stool names none). Code mandates tenon-class seat-frame joints (never screws). NOT buildable: upholstered/slip seats, arms, sawn or bent rear legs, rockers, folders — refuse or ask, never approximate.',
     'NOVEL pieces (t=6 custom): "p"=parts, each a flat array [PRIM,x,y,z,len,wid,thk,rx,ry,rz,GRAIN,STK,loadBearing(0/1),SURF,"role"] (role string optional). position = part CENTER, mm, y up from the floor, +z toward the front; rotation in degrees about world axes, applied x then y then z. Before rotation: post/cylinder stand vertical (len = height); rail/panel run along x (len horizontal, wid vertical); slab lies flat (len along x, wid along z, thk vertical). "c"=connections as index pairs [partIndexA,partIndexB,JNT] — every part in at least one connection; connected parts must physically touch; unconnected parts must not intersect. loadBearing=1 on every load path, SURF on anything loaded or sat on. 2–40 parts.',
@@ -12205,7 +12815,7 @@ BlueprintBuddyImport.build
     return digest;
   }
   BB.Codec = {
-    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR, HNG,
+    TPL, SPC, JNT, FIN, LVL, UNITS, FRONT, RUN, PUL, PRIM, SURF, GRAIN, STK, STR, HNG, EXP, AGE,
     encode, decode, decodePartial, toShareCode, fromShareCode,
     estimateTokens, SCHEMA_DOC, buildDigest
   };
@@ -12325,7 +12935,7 @@ BlueprintBuddyImport.build
     }
     const patch = Codec().decodePartial(wireDiff);
     if (!patch) return null;
-    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c'];
+    const KNOWN = ['v', 'n', 't', 'l', 'u', 'o', 'm', 'ms', 's', 'j', 'f', 'hp', 'd', 'p', 'c', 'dr', 'hh', 'se', 'wl', 'bd', 'ex', 'ch'];
     const ignored = Object.keys(wireDiff).filter(k => !KNOWN.includes(k));
     return { kind: 'diff', patch, explain: explain || 'Updated.', ignored };
   }
@@ -12407,6 +13017,18 @@ BlueprintBuddyImport.build
     if (/\bmurphy\b|\bwall[- ]?beds?\b|\bfold(?:ing|[- ]?(?:up|down|away))\b.{0,12}\bbeds?\b/.test(t)) {
       return { kind: 'info', text: 'Murphy and folding beds need a lift mechanism and wall anchorage under a moving load — mechanisms are outside what I build (every joint here is fixed or bolted). A freestanding platform bed I can do.' };
     }
+    if (/\btoy[- ]?(?:chest|box)(?:es)?\b|\b(?:hinged|lidded)[- ]?(?:toy )?box(?:es)?\b|\bbox\b.{0,16}\bhinged lid\b/.test(t)) {
+      return { kind: 'info', text: 'Toy chests and hinged-lid boxes are refused: a falling lid is a strangulation and crush hazard with its own lid-support requirements — ASTM F834, whose toy-chest rules now live in ASTM F963 and are federal law under 16 CFR 1250 — and nothing I build has a lid or lid-support hardware. An open bin, or a low anchored bookshelf for toy storage, I can do.' };
+    }
+    if (/\bhigh[- ]?chairs?\b|\bbooster[- ]?seats?\b|\bfeeding chairs?\b/.test(t)) {
+      return { kind: 'info', text: 'High chairs and booster seats are refused: a product that holds a child at height for feeding is 16 CFR 1231 territory (ASTM F404 — restraint systems, stability and retention tests), not a hobbyist domain. A floor-height child\'s chair sized to EN 1729 I can build — say the age.' };
+    }
+    if (/\bchanging[- ]?(?:table|station|topper|unit)s?\b(?!\s*(?:height|width|depth|size|legs?|top|thickness))|\bdiaper[- ]?chang\w*\b/.test(t)) {
+      return { kind: 'info', text: 'Changing tables are refused: an elevated infant surface carries 16 CFR 1235 (ASTM F2388) barrier and retention requirements I don\'t model — I refuse rather than approximate. An ordinary dresser is also NOT a changing table unless it meets that standard.' };
+    }
+    if (/\bplay[- ]?(?:yard|pen)s?\b|\b(?:baby|safety|stair|child)[- ]?gates?\b|\bplay ?enclosures?\b/.test(t)) {
+      return { kind: 'info', text: 'Play yards and safety gates are refused: containment products carry 16 CFR 1221 (ASTM F406) and 16 CFR 1239 (ASTM F1004) entrapment and strength rules — federal law, not furniture I can approximate. Child-scoped tables, chairs, desks, and anchored bookshelves I can do.' };
+    }
     if (spec.meta.template === 'chair' || /\b(chairs?|stools?|armchairs?|barstools?)\b/.test(t)) {
       if (/\bupholster\w*|\bpadded\b|\bcushion\w*|\bslip[- ]seat\b|\bfoam\b|\bfabric seat\b|\bleather seat\b/.test(t)) {
         return { kind: 'info', text: 'I don’t generate upholstered or slip seats: the seat frame becomes its own part set with foam and fabric clearances I can’t model soundly yet, and a guessed frame is worse than a refusal. I can build the same chair with a solid wood seat — say the word.' };
@@ -12419,6 +13041,43 @@ BlueprintBuddyImport.build
       }
       if (/\bsteam[- ]?bent\b|\bbent[- ]?wood\b|\bcurved (rear |back )?legs?\b|\bsculpted\b/.test(t)) {
         return { kind: 'info', text: 'Curved or steam-bent rear legs are outside what I build soundly — sawing a bend from straight stock leaves short grain exactly where the back load breaks chairs, and I don’t model laminated bends. My chairs use straight rear posts with the back raked a few degrees by offset joinery.' };
+      }
+    }
+    const CHILD_OK = ['table', 'desk', 'chair', 'bookshelf'];
+    const AGE_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+    let childBand = null, childAge = null, childWord = false;
+    {
+      const am = t.match(/\b(\d{1,2})\s*[- ]?\s*(?:year|yr)s?[- ]?[- ]?olds?\b/) ||
+        t.match(/\bage\s+(\d{1,2})\b/) || t.match(/\b(\d{1,2})\s*yo\b/) ||
+        t.match(new RegExp('\\b(' + Object.keys(AGE_WORDS).join('|') + ')[- ]?(?:year|yr)s?[- ]?olds?\\b'));
+      if (am) childAge = AGE_WORDS[am[1]] !== undefined ? AGE_WORDS[am[1]] : parseInt(am[1], 10);
+      if (/\btoddlers?\b/.test(t)) childBand = 'toddler';
+      else if (/\bpre[- ]?schooler?s?\b|\bkindergart\w*\b/.test(t)) childBand = 'preschool';
+      else if (/\bpre[- ]?teens?\b|\btweens?\b/.test(t)) childBand = 'preteen';
+      else if (childAge !== null && K.CHILD) childBand = K.CHILD.bandForAge(childAge);
+      childWord = childBand !== null || childAge !== null ||
+        /\bkids?\b|\bkid'?s'?\b|\bchild(?:ren)?(?:'s)?\b|\bchilds\b/.test(t);
+      if (childAge !== null && childAge >= (K.CHILD ? K.CHILD.ADULT_AGE : 12)) {
+        childWord = false; childBand = null;
+        notes.push(`sized adult — at ${childAge}, EN 1729's larger marks meet the adult bands`);
+      }
+      const landT = creating ? wantTemplate : spec.meta.template;
+      if (childWord && !childBand && landT === 'bookshelf') childBand = 'school';
+      if (childBand && CHILD_OK.includes(landT)) {
+        set('child.ageBand', childBand);
+        notes.push(landT === 'bookshelf' && childAge === null
+          ? 'child-scoped (anti-tip anchor mandated)'
+          : K.CHILD ? `sized for a ${K.CHILD.BANDS[childBand].label}` : 'child-scoped');
+      } else if (childWord && !childBand && (creating || BACK_REF.test(t)) &&
+        ['table', 'desk', 'chair'].includes(landT)) {
+        const word = tmplWord || spec.meta.template;
+        return {
+          kind: 'question',
+          question: `Happy to size a ${word} for a child — the age sets the whole geometry (EN 1729 school-furniture size marks). How old?`,
+          options: [`A kids ${word} for a 3-year-old`, `A kids ${word} for a 5-year-old`, `A kids ${word} for a 7-year-old`]
+        };
+      } else if (childBand && creating && wantTemplate === 'bed') {
+        notes.push('a standard bed (the bed class is not child-scoped; cribs/toddler beds are refused)');
       }
     }
     if (/\b(bigger|larger|smaller)\b/.test(t) && !/\b(wide|width|deep|depth|tall|height|high|%|percent)\b/.test(t)) {
@@ -12578,6 +13237,18 @@ BlueprintBuddyImport.build
       const kw = f.key === 'wipe_poly' ? 'poly' : f.label.toLowerCase().split(' ')[0];
       if (t.includes(kw)) { set('finish', f.key); notes.push(f.label); break; }
     }
+    {
+      const covered = /\bcovered\s+(?:patio|porch|deck|area|spot)\b|\bporch\b|\bveranda(?:h)?\b|\bscreened[- ](?:porch|room)\b|\bunder\s+(?:a\s+|the\s+)?(?:roof|cover|awning|pergola|overhang)\b|\bthree[- ]season\b|\bsunroom\b/.test(t);
+      const outdoor = covered || /\boutdoors?\b|\boutside\b|\bpatio\b|\bgarden\b|\bbackyard\b|\bbalcon(?:y|ies)\b|\bterrace\b|\bal\s+fresco\b|\bexterior\b|\bweather ?proof\b|\bopen[- ]air\b|\b(?:on|for|by)\s+(?:the\s+|our\s+|my\s+)?deck\b|\bdeck\s+(?:furniture|bench|benches|table|tables|chairs?|set|box)\b/.test(t);
+      const indoor = /\bindoors?\b|\binside\b|\bback\s+in(?:doors|side)?\b/.test(t);
+      if (outdoor && !negated(t, /\boutdoors?\b|\boutside\b|\bpatio\b|\bgarden\b|\bporch\b|\bdeck\b/)) {
+        set('exposure', covered ? 'covered' : 'exposed');
+        notes.push(covered ? 'covered outdoor duty' : 'outdoor (exposed) duty');
+      } else if (indoor && !outdoor && spec.exposure && spec.exposure !== 'interior') {
+        set('exposure', 'interior');
+        notes.push('back to interior duty');
+      }
+    }
     if (creating) {
       let benchHeight = false;
       if (tmplWord === 'workbench' && !(patch.overall && patch.overall.height)) {
@@ -12595,6 +13266,9 @@ BlueprintBuddyImport.build
         notes.push(size.replace('_', ' ') + ' bed');
       }
       if (wantTemplate === 'wall_shelf') {
+        if (patch.exposure === 'exposed') {
+          return { kind: 'info', text: 'A wall shelf can’t hang in direct weather — the anchor math here uses NDS dry-service withdrawal values (moisture content ≤ 19%), and rain-wetted framing crosses into wet service, which derates withdrawal and isn’t modeled. On a covered porch wall (roofed, no direct rain) I can build it; fully exposed, a freestanding shelf or bench is the honest answer.' };
+        }
         if (/\bdrywall\b|\bplasterboard\b|\bsheetrock\b/.test(t) && !/\bstuds?\b/.test(t)) {
           return { kind: 'info', text: 'Drywall alone can’t carry a shelf: anchors creep under sustained load and their listed ratings are ultimate, not working values. If there are wood studs behind it (there usually are, 16 or 24 in apart), say “on studs”; on brick or block, say “on masonry”.' };
         }
@@ -12613,7 +13287,7 @@ BlueprintBuddyImport.build
       }
       let stoolAsk = '';
       if (wantTemplate === 'chair') {
-        const isStool = /stool/.test(tmplWord || '');
+        const isStool = /stool/.test(tmplWord || '') && !patch.child;
         if (isStool) {
           set('seat.backHeight', 0);
           const cm = t.match(/(\d+(?:\.\d+)?\s*(?:mm|cm|m\b|in\b|inch(?:es)?|"|ft|feet|foot)?)\s*(?:counter|bar|island|worktop)/);
@@ -12632,6 +13306,9 @@ BlueprintBuddyImport.build
       merged.meta.template = wantTemplate;
       merged.meta.name = pieceName(phrasing, tmplWord);
       const drawerNote = dm && !canDrawer(landing) ? ` (drawers aren’t available on a ${wantTemplate} yet, so I skipped those)` : '';
+      const childLine = patch.child && K.CHILD
+        ? ` Sized for a ${K.CHILD.BANDS[patch.child.ageBand].label}: EN 1729 heights pinned by code, adult design loads kept (grown-ups use kids’ furniture too). Refine away.`
+        : '';
       if (tmplWord === 'workbench') {
         return {
           kind: 'new', spec: merged,
@@ -12639,7 +13316,10 @@ BlueprintBuddyImport.build
         };
       }
       if (wantTemplate === 'chair') {
-        return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to the seating class's human-factors table${drawerNote} — solid wood seat, class-mandated seat-frame joinery (screwed rails don't survive the rear-tilt case).${stoolAsk || ' Refine away.'}` };
+        return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord}${drawerNote} — solid wood seat, class-mandated seat-frame joinery (screwed rails don't survive the rear-tilt case).${childLine || stoolAsk || ' Refine away.'}` };
+      }
+      if (childLine) {
+        return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord}${drawerNote}.${childLine}` };
       }
       return { kind: 'new', spec: merged, explain: `Roughed out a ${tmplWord} to standard proportions${drawerNote} — refine away.` };
     }
@@ -14049,6 +14729,21 @@ BlueprintBuddyImport.build
       test('classes', 'seating: rake clamps to straight-post capability',
         chairSpec.seat.backRake <= seat.geom.backRakeMax(chairSpec.structure, chairSpec.seat) + 0.05,
         String(chairSpec.seat.backRake), '≤ ' + seat.geom.backRakeMax(chairSpec.structure, chairSpec.seat));
+      const kid = Spec.correctSpec({ meta: { name: 'ct', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'school' } });
+      test('classes', 'childrens: the band pins the EN 1729 seat height',
+        kid.seat.height === K.CHILD.BANDS.school.seatH, String(kid.seat.height), String(K.CHILD.BANDS.school.seatH));
+      const kidModel = Parametric.build(kid);
+      const kidRes = { integrity: BB.Structural.computeIntegrity(kid, kidModel, {}), validation: Spec.validate(kid, kidModel), spec: kid };
+      const kidRows = BB.Classes.runChecklist('chair', kidRes) || [];
+      const kidUncovered = kidRows.filter(r => r.status === 'uncovered' && !r.guard).map(r => r.id);
+      test('classes', 'childrens: scope checklist covered on a live child chair (host rows included)',
+        kidUncovered.length === 0 && kidRows.some(r => r.id === 'kid_tipover') && kidRows.some(r => r.id === 'rear_tilt_racking'),
+        kidUncovered.join(', ') || 'all modes examined', 'all modes examined');
+      test('classes', 'childrens: child-scoped storage mandates the anchor at any margin',
+        (() => {
+          const b = Spec.correctSpec({ meta: { name: 'ct', template: 'bookshelf', level: 'beginner', units: 'mm' }, overall: { width: 800, depth: 300, height: 720 }, structure: { shelfCount: 2 }, child: { ageBand: 'school' } });
+          return BB.Structural.computeIntegrity(b, Parametric.build(b), {}).antiTip === true;
+        })(), 'anchor mandated', 'anchor mandated');
     }
     {
       const KINDS = ['frame', 'case', 'box', 'panel'];
@@ -14100,6 +14795,12 @@ BlueprintBuddyImport.build
         HW.doorHingeCount(899, 1) === 2 && HW.doorHingeCount(901, 1) === 3 &&
         HW.doorHingeCount(1601, 1) === 4 && HW.doorHingeCount(600, 8) === 3,
         [HW.doorHingeCount(899, 1), HW.doorHingeCount(901, 1), HW.doorHingeCount(1601, 1), HW.doorHingeCount(600, 8)].join('/'), '2/3/4/3');
+      const c1 = HW.catchSpec(3, 900, 'bar_pull'), c2 = HW.catchSpec(9, 1700, 'bar_pull'), c3 = HW.catchSpec(6, 900, 'none_touch');
+      test('hardware', 'catchSpec: type, count, and the touch-latch spring cap are code-owned',
+        c1.key === 'magnetic' && c1.count === 1 && c2.key === 'roller_catch' && c2.count === 2 &&
+        c3.key === 'magnetic' && c3.substituted === true,
+        [c1.key + '×' + c1.count, c2.key + '×' + c2.count, c3.key + (c3.substituted ? '(sub)' : '')].join('/'),
+        'magnetic×1/roller_catch×2/magnetic(sub)');
       const gs = HW.gasStrut(6.8, 450, 700);
       test('hardware', 'gas strut moment balance matches hand arithmetic and snaps UP',
         gs.count === 2 && Math.abs(gs.requiredNEach - 108.4) < 0.05 && gs.classN === 120,
@@ -14181,7 +14882,7 @@ BlueprintBuddyImport.build
         humid && /humid indoor swing/.test(humid.text), humid ? 'humid named' : 'step missing', 'humid named');
       const sysT = BB.AI.systemPrompt(Spec.correctSpec(Spec.defaultSpec('nightstand')));
       const tk = BB.Codec.estimateTokens(sysT);
-      test('hardening', 'system prompt under the 2900-token ceiling', tk <= 2900 && tk > 800, tk + ' tokens', '≤ 2900'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07)
+      test('hardening', 'system prompt under the 3300-token ceiling', tk <= 3300 && tk > 800, tk + ' tokens', '≤ 3300'); // raised for the A5 exclusion line, the C1 bed anchors, the G7 e-budget clause, the G6 ask-policy + G10 floor-boundary lines, the M-22 budget digest, X-07's stretcher and door/hinge keys, then the seating + wall_mounted + bed class keys and their refusal doctrines (2026-07), then the outdoor exposure overlay's "ex" key and routing/refusal doctrine plus the children's scope's "ch" age-band key and regulated-product refusal list with its regulations named (2026-08) — the refusal doctrines are the load-bearing spend
       const info = BB.AI.classify({ i: 'Use wipe-on poly.' });
       test('hardening', 'pure-advice replies classify as info (no spec change)', info && info.kind === 'info', info && info.kind, 'info');
       const mode = Store.persistenceMode();
@@ -14364,6 +15065,10 @@ BlueprintBuddyImport.build
       const reDiff = imported.spec ? firstDiff(drawerSpec, Spec.correctSpec(imported.spec)) : 'decode failed';
       test('codec', 'share code round-trips to an identical design', share.startsWith('BB4:') && !reDiff, reDiff || share.slice(0, 24) + '…', 'BB4:… → identical spec');
       test('codec', 'share code rejects garbage gracefully', !!Codec.fromShareCode('BB4:!!!').error && !!Codec.fromShareCode('hello').error, 'errors returned', 'errors returned');
+      test('codec', 'interior designs carry no "ex" wire key', !('ex' in Codec.encode(seed)), Object.keys(Codec.encode(seed)).join(','), 'no ex');
+      const exposedSpec = Spec.correctSpec({ meta: { name: 'ST outdoor', template: 'bench', units: 'mm' }, wood: { species: 'white_oak' }, exposure: 'exposed' });
+      const exBack = Spec.correctSpec(Codec.fromShareCode(Codec.toShareCode(exposedSpec)).spec);
+      test('codec', 'exposure survives the share-code round trip', exBack.exposure === 'exposed' && exBack.finish === 'spar_urethane', `${exBack.exposure} / ${exBack.finish}`, 'exposed / spar_urethane');
     }
     {
       const CUR = Spec.SPEC_VERSION;

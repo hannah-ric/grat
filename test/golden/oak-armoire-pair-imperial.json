@@ -1,0 +1,712 @@
+{
+ "spec": {
+  "specVersion": 11,
+  "meta": {
+   "name": "Oak Armoire",
+   "template": "cabinet",
+   "level": "intermediate",
+   "units": "in"
+  },
+  "overall": {
+   "width": 914.4,
+   "depth": 508,
+   "height": 1905
+  },
+  "wood": {
+   "species": "red_oak",
+   "sheetSpecies": "baltic_birch"
+  },
+  "structure": {
+   "topThickness": 25,
+   "legThickness": 70,
+   "apronHeight": 90,
+   "apronThickness": 20,
+   "apronInset": 12,
+   "shelfCount": 3,
+   "shelfThickness": 19,
+   "sideThickness": 18,
+   "backPanel": true,
+   "toeKick": true,
+   "stretcher": "none",
+   "stretcherHeight": 280
+  },
+  "joinery": {
+   "frame": "pocket_screws",
+   "case": "butt_screws",
+   "box": "pocket_screws"
+  },
+  "finish": "danish_oil",
+  "exposure": "interior",
+  "hardware": {
+   "pull": "bar_pull",
+   "hinge": "euro_cup"
+  },
+  "drawers": null,
+  "doors": {
+   "count": 2,
+   "style": "inset"
+  },
+  "custom": null,
+  "seat": null,
+  "wall": null,
+  "bed": null,
+  "child": null
+ },
+ "validation": {
+  "errors": [],
+  "advisories": [
+   "ergo_counter_height",
+   "movement_red_oak"
+  ]
+ },
+ "cutList": [
+  {
+   "name": "Back panel",
+   "qty": 1,
+   "L": 1778,
+   "W": 902.4,
+   "T": 6,
+   "material": "baltic_birch",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Side",
+   "qty": 2,
+   "L": 1880,
+   "W": 508,
+   "T": 18,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Left door",
+   "qty": 1,
+   "L": 1767,
+   "W": 436.2,
+   "T": 19,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Right door",
+   "qty": 1,
+   "L": 1767,
+   "W": 436.2,
+   "T": 19,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "",
+   "angles": null
+  },
+  {
+   "name": "Top",
+   "qty": 1,
+   "L": 914.4,
+   "W": 508,
+   "T": 25,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Bottom",
+   "qty": 1,
+   "L": 878.4,
+   "W": 508,
+   "T": 19,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Shelf",
+   "qty": 3,
+   "L": 878.4,
+   "W": 457,
+   "T": 19,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  },
+  {
+   "name": "Toe-kick board",
+   "qty": 1,
+   "L": 878.4,
+   "W": 90,
+   "T": 19,
+   "material": "red_oak",
+   "grain": "length",
+   "note": "select straight-grained stock, free of knots",
+   "angles": null
+  }
+ ],
+ "integrity": {
+  "antiTip": true,
+  "verdict": "anchor",
+  "rackScore": 69,
+  "tip": {
+   "angEmpty": 12.228,
+   "angLoaded": 9.566,
+   "ratio": 3.75
+  },
+  "checks": [
+   {
+    "id": "sag:top_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 1.296,
+     "limitMM": 3.048,
+     "spanMM": 914.4
+    }
+   },
+   {
+    "id": "str:top_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_1",
+    "status": "pass",
+    "data": {
+     "sagMM": 2.795,
+     "limitMM": 2.928,
+     "spanMM": 878.4
+    }
+   },
+   {
+    "id": "str:shelf_1",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_2",
+    "status": "pass",
+    "data": {
+     "sagMM": 2.795,
+     "limitMM": 2.928,
+     "spanMM": 878.4
+    }
+   },
+   {
+    "id": "str:shelf_2",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "sag:shelf_3",
+    "status": "pass",
+    "data": {
+     "sagMM": 2.795,
+     "limitMM": 2.928,
+     "spanMM": 878.4
+    }
+   },
+   {
+    "id": "str:shelf_3",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "tip",
+    "status": "advisory",
+    "data": null
+   },
+   {
+    "id": "rack",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "hinge",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "door:sag",
+    "status": "pass",
+    "data": {
+     "leafKg": 9.226,
+     "spreadMM": 1567,
+     "ampRatio": 0.278,
+     "droopMM": 0.139,
+     "coupleN": 12.6,
+     "widerThanTall": false
+    }
+   },
+   {
+    "id": "door:reveal",
+    "status": "advisory",
+    "data": {
+     "crossWidthMM": 436.2,
+     "swingMM": 6.438,
+     "closureMM": 6.438,
+     "budgetMM": 2
+    }
+   },
+   {
+    "id": "door:catch",
+    "status": "pass",
+    "data": {
+     "countPerDoor": 2,
+     "holdN": 39.2,
+     "demandN": 2.263,
+     "marginRatio": 17.34,
+     "substituted": false
+    }
+   },
+   {
+    "id": "joints",
+    "status": "pass",
+    "data": null
+   },
+   {
+    "id": "move:side_1",
+    "status": "advisory",
+    "data": {
+     "movementMM": 7.498,
+     "crossWidthMM": 508,
+     "context": "captured"
+    }
+   },
+   {
+    "id": "move:bottom_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 7.498,
+     "crossWidthMM": 508,
+     "context": "compatible"
+    }
+   },
+   {
+    "id": "move:top_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 7.498,
+     "crossWidthMM": 508,
+     "context": "compatible"
+    }
+   },
+   {
+    "id": "move:shelf_1",
+    "status": "pass",
+    "data": {
+     "movementMM": 6.745,
+     "crossWidthMM": 457,
+     "context": "compatible"
+    }
+   }
+  ]
+ },
+ "stock": {
+  "mode": "dimensional",
+  "shopping": [
+   {
+    "label": "Red Oak 1x10 x 6 ft (3/4 x 9 1/4 in)",
+    "qty": 1,
+    "cost": 32.264
+   },
+   {
+    "label": "Red Oak 1x10 x 12 ft (3/4 x 9 1/4 in)",
+    "qty": 3,
+    "cost": 193.581
+   },
+   {
+    "label": "Red Oak 1x6 x 6 ft (3/4 x 5 1/2 in)",
+    "qty": 1,
+    "cost": 17.119
+   },
+   {
+    "label": "Red Oak 1x8 x 8 ft (3/4 x 7 1/4 in)",
+    "qty": 3,
+    "cost": 94.789
+   },
+   {
+    "label": "Red Oak 1x8 x 10 ft (3/4 x 7 1/4 in)",
+    "qty": 3,
+    "cost": 118.506
+   },
+   {
+    "label": "Red Oak 5/4x8 x 10 ft (1 x 7 1/4 in)",
+    "qty": 1,
+    "cost": 53.767
+   },
+   {
+    "label": "Baltic Birch Ply 1/4 in — full sheet (4 x 8 ft base)",
+    "qty": 1,
+    "cost": 40
+   }
+  ],
+  "boards": [
+   {
+    "nominal": "1x10",
+    "stockLen": 3658,
+    "offcut": 91,
+    "cuts": [
+     {
+      "name": "Left door (strip 1/2)",
+      "len": 1767,
+      "offset": 15
+     },
+     {
+      "name": "Left door (strip 2/2)",
+      "len": 1767,
+      "offset": 1785
+     }
+    ]
+   },
+   {
+    "nominal": "1x10",
+    "stockLen": 3658,
+    "offcut": 91,
+    "cuts": [
+     {
+      "name": "Right door (strip 1/2)",
+      "len": 1767,
+      "offset": 15
+     },
+     {
+      "name": "Right door (strip 2/2)",
+      "len": 1767,
+      "offset": 1785
+     }
+    ]
+   },
+   {
+    "nominal": "1x10",
+    "stockLen": 3658,
+    "offcut": 105.4,
+    "cuts": [
+     {
+      "name": "Shelf (strip 1/2)",
+      "len": 878.4,
+      "offset": 15
+     },
+     {
+      "name": "Shelf (strip 2/2)",
+      "len": 878.4,
+      "offset": 896.4
+     },
+     {
+      "name": "Shelf (strip 1/2)",
+      "len": 878.4,
+      "offset": 1777.8
+     },
+     {
+      "name": "Shelf (strip 2/2)",
+      "len": 878.4,
+      "offset": 2659.2
+     }
+    ]
+   },
+   {
+    "nominal": "1x10",
+    "stockLen": 1829,
+    "offcut": 39.2,
+    "cuts": [
+     {
+      "name": "Shelf (strip 1/2)",
+      "len": 878.4,
+      "offset": 15
+     },
+     {
+      "name": "Shelf (strip 2/2)",
+      "len": 878.4,
+      "offset": 896.4
+     }
+    ]
+   },
+   {
+    "nominal": "1x6",
+    "stockLen": 1829,
+    "offcut": 920.6,
+    "cuts": [
+     {
+      "name": "Toe-kick board",
+      "len": 878.4,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "1x8",
+    "stockLen": 3048,
+    "offcut": 256.6,
+    "cuts": [
+     {
+      "name": "Side (strip 1/3)",
+      "len": 1880,
+      "offset": 15
+     },
+     {
+      "name": "Bottom (strip 1/3)",
+      "len": 878.4,
+      "offset": 1898
+     }
+    ]
+   },
+   {
+    "nominal": "1x8",
+    "stockLen": 3048,
+    "offcut": 256.6,
+    "cuts": [
+     {
+      "name": "Side (strip 2/3)",
+      "len": 1880,
+      "offset": 15
+     },
+     {
+      "name": "Bottom (strip 2/3)",
+      "len": 878.4,
+      "offset": 1898
+     }
+    ]
+   },
+   {
+    "nominal": "1x8",
+    "stockLen": 3048,
+    "offcut": 256.6,
+    "cuts": [
+     {
+      "name": "Side (strip 3/3)",
+      "len": 1880,
+      "offset": 15
+     },
+     {
+      "name": "Bottom (strip 3/3)",
+      "len": 878.4,
+      "offset": 1898
+     }
+    ]
+   },
+   {
+    "nominal": "1x8",
+    "stockLen": 2438,
+    "offcut": 528,
+    "cuts": [
+     {
+      "name": "Side (strip 1/3)",
+      "len": 1880,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "1x8",
+    "stockLen": 2438,
+    "offcut": 528,
+    "cuts": [
+     {
+      "name": "Side (strip 2/3)",
+      "len": 1880,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "1x8",
+    "stockLen": 2438,
+    "offcut": 528,
+    "cuts": [
+     {
+      "name": "Side (strip 3/3)",
+      "len": 1880,
+      "offset": 15
+     }
+    ]
+   },
+   {
+    "nominal": "5/4x8",
+    "stockLen": 3048,
+    "offcut": 268.8,
+    "cuts": [
+     {
+      "name": "Top (strip 1/3)",
+      "len": 914.4,
+      "offset": 15
+     },
+     {
+      "name": "Top (strip 2/3)",
+      "len": 914.4,
+      "offset": 932.4
+     },
+     {
+      "name": "Top (strip 3/3)",
+      "len": 914.4,
+      "offset": 1849.8
+     }
+    ]
+   }
+  ],
+  "sheets": [
+   {
+    "thickness": 6,
+    "fraction": 1,
+    "placements": [
+     {
+      "name": "Back panel",
+      "x": 0,
+      "y": 0,
+      "w": 1778,
+      "h": 902.4,
+      "rot": false
+     }
+    ]
+   }
+  ],
+  "totalCost": 550.03,
+  "wasteSolidPct": 19,
+  "wasteSheetPct": 46
+ },
+ "bom": {
+  "items": [
+   {
+    "kind": "lumber",
+    "label": "Red Oak 1x10 x 6 ft (3/4 x 9 1/4 in)",
+    "qty": 1,
+    "price": 32.26
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 1x10 x 12 ft (3/4 x 9 1/4 in)",
+    "qty": 3,
+    "price": 193.58
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 1x6 x 6 ft (3/4 x 5 1/2 in)",
+    "qty": 1,
+    "price": 17.12
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 1x8 x 8 ft (3/4 x 7 1/4 in)",
+    "qty": 3,
+    "price": 94.79
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 1x8 x 10 ft (3/4 x 7 1/4 in)",
+    "qty": 3,
+    "price": 118.51
+   },
+   {
+    "kind": "lumber",
+    "label": "Red Oak 5/4x8 x 10 ft (1 x 7 1/4 in)",
+    "qty": 1,
+    "price": 53.77
+   },
+   {
+    "kind": "sheet",
+    "label": "Baltic Birch Ply 1/4 in — full sheet (4 x 8 ft base)",
+    "qty": 1,
+    "price": 40
+   },
+   {
+    "kind": "lumber",
+    "label": "(reference) rough-sawn equivalent: 59.6 bd ft",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "lumber",
+    "label": "Waste from purchasable sizes: solid 19% · sheet 46%",
+    "qty": 1,
+    "price": 0
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 1/4 in wood screw (pilot 7/64 in)",
+    "qty": 39,
+    "price": 2.34
+   },
+   {
+    "kind": "fastener",
+    "label": "Figure-8 fasteners + #8 × 5/8 in",
+    "qty": 6,
+    "price": 4.81
+   },
+   {
+    "kind": "fastener",
+    "label": "#8 × 1 15/16 in wood screw (pilot 1/8 in)",
+    "qty": 4,
+    "price": 0.24
+   },
+   {
+    "kind": "glue",
+    "label": "Interior PVA (yellow glue)",
+    "qty": 1,
+    "price": 8
+   },
+   {
+    "kind": "hardware",
+    "label": "35 mm concealed cup hinge",
+    "qty": 4,
+    "price": 18
+   },
+   {
+    "kind": "hardware",
+    "label": "Roller catch (top + bottom)",
+    "qty": 2,
+    "price": 4
+   },
+   {
+    "kind": "hardware",
+    "label": "35 mm concealed cup hinge",
+    "qty": 4,
+    "price": 18
+   },
+   {
+    "kind": "hardware",
+    "label": "Roller catch (top + bottom)",
+    "qty": 2,
+    "price": 4
+   },
+   {
+    "kind": "hardware",
+    "label": "Bar pull",
+    "qty": 2,
+    "price": 12
+   },
+   {
+    "kind": "hardware",
+    "label": "Anti-tip wall anchor kit (strap + wall screws) — REQUIRED",
+    "qty": 1,
+    "price": 7
+   },
+   {
+    "kind": "finish",
+    "label": "Danish oil",
+    "qty": 1,
+    "price": 18
+   }
+  ],
+  "total": 646.42
+ },
+ "steps": [
+  "glueup1",
+  "glueup2",
+  "glueup3",
+  "glueup4",
+  "glueup5",
+  "glueup6",
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "s5",
+  "antitip",
+  "doors_fit",
+  "safety",
+  "sand",
+  "finish"
+ ]
+}

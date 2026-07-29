@@ -264,5 +264,187 @@
     "engine": 3.5002915451895045,
     "errPct": 0,
     "pass": true
+  },
+  {
+    "name": "door leaf mass geometry × SG (kg)",
+    "hand": 9.048099059999998,
+    "engine": 9.04809906,
+    "errPct": 1.9632376122551544e-14,
+    "pass": true
+  },
+  {
+    "name": "door hinge spread (mm)",
+    "hand": 1562,
+    "engine": 1562,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "door droop amplification w/s",
+    "hand": 0.2746478873239437,
+    "engine": 0.275,
+    "errPct": 0.12820512820512803,
+    "pass": true
+  },
+  {
+    "name": "door free-edge droop (mm)",
+    "hand": 0.13732394366197184,
+    "engine": 0.137,
+    "errPct": 0.2358974358974364,
+    "pass": true
+  },
+  {
+    "name": "door hinge couple F = W·g·w/2s (N)",
+    "hand": 12.189127532976759,
+    "engine": 12.2,
+    "errPct": 0.08919807421676312,
+    "pass": true
+  },
+  {
+    "name": "door seasonal swing (mm)",
+    "hand": 6.33204,
+    "engine": 6.33204,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "door reveal closure (mm)",
+    "hand": 6.33204,
+    "engine": 6.33204,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "catch count per tall leaf",
+    "hand": 2,
+    "engine": 2,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "catch swing demand (N)",
+    "hand": 2.219046294465,
+    "engine": 2.219,
+    "errPct": 0.0020862325006749407,
+    "pass": true
+  },
+  {
+    "name": "catch margin (×)",
+    "hand": 17.68327235798411,
+    "engine": 17.68,
+    "errPct": 0.018505386999999884,
+    "pass": true
+  },
+  {
+    "name": "hinge count (height band vs weight)",
+    "hand": 4,
+    "engine": 4,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "interior movement 800×0.00365×4 (mm)",
+    "hand": 11.68,
+    "engine": 11.68,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "covered movement 800×0.00365×6 (mm)",
+    "hand": 17.52,
+    "engine": 17.52,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "exposed movement 800×0.00365×12 (mm)",
+    "hand": 35.04,
+    "engine": 35.04,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "engine movement check, interior table (mm)",
+    "hand": 11.68,
+    "engine": 11.68,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "engine movement check, exposed table (mm)",
+    "hand": 35.04,
+    "engine": 35.04,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child seat plan width r5(260·430/445) (mm)",
+    "hand": 250,
+    "engine": 250,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child seat plan depth r5(260·420/445) (mm)",
+    "hand": 245,
+    "engine": 245,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child back rise r5(260·470/445) (mm)",
+    "hand": 275,
+    "engine": 275,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child rear-tilt moment M (N·mm)",
+    "hand": 96715,
+    "engine": 96715,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child rear-tilt joint demand R (N)",
+    "hand": 1045.5675675675675,
+    "engine": 1045.5675675675675,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child rear-tilt margin (×)",
+    "hand": 2.16915680090989,
+    "engine": 2.16915680090989,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child entrap gap seat→slat (mm)",
+    "hand": 140,
+    "engine": 140,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child entrap gap slat→crest (mm)",
+    "hand": 0,
+    "engine": 0,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child in-band opening reported as advisory",
+    "hand": 1,
+    "engine": 1,
+    "errPct": 0,
+    "pass": true
+  },
+  {
+    "name": "child table height = EN 1729 mark 2 (mm)",
+    "hand": 530,
+    "engine": 530,
+    "errPct": 0,
+    "pass": true
   }
 ]

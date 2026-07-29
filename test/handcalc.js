@@ -525,6 +525,170 @@ console.log('\n[6] Unit trace: sag [ (N/mm)·mm⁴ / ((N/mm²)·mm⁴) ] = mm �
   row('bed headboard post stress (MPa)', sigmaH, hb.data.stressMPa);
 }
 
+/* =========================================================================
+ * 15. DOORED CASEWORK (roadmap item 4) — droop, reveal, catches, by hand.
+ *    Fixture: the armoire golden in metric — cabinet 900×500×1900, sides 18,
+ *    top 25, toe kick 90, back panel, 3 shelves, NO drawers, red oak,
+ *    inset pair, euro cup hinges.
+ *
+ *    Leaf geometry by hand: innerW = 900 − 2×18 = 864. Opening bottom =
+ *    toe 90 + bottom 19 = 109; opening top = 1900 − 25 = 1875 (no drawer
+ *    bank) → openH = 1766. Inset: totalW = 864 − 2×2 = 860; leafW =
+ *    (860 − 2)/2 = 429; leafH = 1766 − 2×2 = 1762; t = 19.
+ * ========================================================================= */
+{
+  const { spec, model } = pipeline({
+    meta: { name: 'HC armoire', template: 'cabinet', level: 'intermediate', units: 'mm' },
+    overall: { width: 900, depth: 500, height: 1900 }, wood: { species: 'red_oak' },
+    structure: { shelfCount: 3, toeKick: true, backPanel: true, topThickness: 25, sideThickness: 18 },
+    drawers: null, doors: { count: 2, style: 'inset' }
+  });
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const door = model.parts.find(p => p.role === 'door');
+
+  /* Leaf mass: volume = 0.429 × 1.762 × 0.019 = 0.01436255 m³;
+   * red oak SG 0.63 → density 630 kg/m³ → m = 9.0484 kg. */
+  const kgHand = 0.429 * 1.762 * 0.019 * 630;
+  const sag = integ.checks.find(c => c.id === 'door:sag');
+  console.log(`\n[23] Door leaf: 429 × 1762 × 19 red oak → m = 0.429×1.762×0.019×630 = ${kgHand.toFixed(4)} kg`);
+  row('door leaf mass geometry × SG (kg)', kgHand, sag.data.leafKg);
+
+  /* Droop over the hinge couple: spread s = 1762 − 2×100 = 1562 mm;
+   * amplification w/s = 429/1562 = 0.274648; droop at the 0.5 mm design
+   * settlement = 0.137324 mm; couple F = m·g·w/(2s) =
+   * 9.0487 × 9.81 × 429 / (2 × 1562) = 12.19 N. */
+  const sHand = 1762 - 2 * 100;
+  const ampHand = 429 / sHand;
+  const droopHand = 0.5 * ampHand;
+  const coupleHand = kgHand * 9.81 * 429 / (2 * sHand);
+  console.log(`[24] Droop: s = ${sHand}; w/s = ${ampHand.toFixed(6)}; droop = 0.5 × w/s = ${droopHand.toFixed(4)} mm; F = ${kgHand.toFixed(4)}×9.81×429/(2×${sHand}) = ${coupleHand.toFixed(3)} N`);
+  row('door hinge spread (mm)', sHand, sag.data.spreadMM, 0.001);
+  row('door droop amplification w/s', ampHand, sag.data.ampRatio, 0.2);
+  row('door free-edge droop (mm)', droopHand, sag.data.droopMM, 0.3);
+  row('door hinge couple F = W·g·w/2s (N)', coupleHand, sag.data.coupleN, 0.5);
+
+  /* Reveal survival: cross-grain width = min(429, 1762) = 429; red oak
+   * ct = 0.00369; temperate ΔMC = 4% → swing = 429 × 0.00369 × 4 =
+   * 6.3320 mm per leaf. Fitted mid-season with the hinge edge pinned,
+   * half the swing arrives at each meeting edge: closure = 2 × swing/2 =
+   * 6.3320 mm vs the 2 mm fitted meeting reveal — the honest advisory. */
+  const rev = integ.checks.find(c => c.id === 'door:reveal');
+  const swingHand = 429 * K.WOOD_SPECIES.red_oak.ct * K.CLIMATE_DMC.temperate;
+  console.log(`[25] Reveal: swing = 429 × ${K.WOOD_SPECIES.red_oak.ct} × ${K.CLIMATE_DMC.temperate} = ${swingHand.toFixed(4)} mm; closure = 2 × swing/2 = ${swingHand.toFixed(4)} vs 2 mm reveal`);
+  row('door seasonal swing (mm)', swingHand, rev.data.swingMM);
+  row('door reveal closure (mm)', 2 * swingHand / 2, rev.data.closureMM);
+
+  /* Catches: 1762 ≥ 1500 → two per leaf (top + bottom). Demand =
+   * m·g·sin3° ≈ m·g·0.05 shared: 9.0487 × 9.81 × 0.05 / 2 = 2.2192 N.
+   * Roller catch (leaf > 4 kg) holds 4 kg = 39.24 N → margin 17.68×. */
+  const cat = integ.checks.find(c => c.id === 'door:catch');
+  const demandHand = kgHand * 9.81 * 0.05 / 2;
+  const marginHand = (4 * 9.81) / demandHand;
+  console.log(`[26] Catch: demand = ${kgHand.toFixed(4)}×9.81×0.05/2 = ${demandHand.toFixed(4)} N; hold 4×9.81 = 39.24 N; margin ${marginHand.toFixed(2)}×`);
+  row('catch count per tall leaf', 2, cat.data.countPerDoor, 0.001);
+  row('catch swing demand (N)', demandHand, cat.data.demandN, 0.5);
+  row('catch margin (×)', marginHand, cat.data.marginRatio, 0.5);
+
+  /* Hinge count: height band(1762 ≤ 2000) = 4; weight rule =
+   * max(2, ceil(9.0487/3.5)) = 3 → count = max(4, 3) = 4. */
+  const nHand = Math.max(4, Math.max(2, Math.ceil(kgHand / 3.5)));
+  console.log(`[27] Hinges: band(1762) = 4; ceil(${kgHand.toFixed(2)}/3.5) = ${Math.ceil(kgHand / 3.5)}; count = ${nHand}`);
+  row('hinge count (height band vs weight)', nHand, BB.HW.doorHingeCount(door.size.h, sag.data.leafKg), 0.001);
+}
+
+/* =========================================================================
+ * 16. OUTDOOR EXPOSURE (2026-08) — indoor vs outdoor movement, every step.
+ *     ΔMC sources (single source: K.EXPOSURE_DMC, knowledge.js):
+ *       interior temperate 4  — CLIMATE_DMC, unchanged.
+ *       covered 6   — WH FPL-GTR-282 Table 13-2 exterior installation MC:
+ *                     12% average, 9–14% range for most of the US (≈5 pts),
+ *                     widened to 6 for humid-coastal outdoor monthly spans
+ *                     (FPL-RN-0268 data, e.g. Seattle 12.2–16.5%).
+ *       exposed 12  — sun-dried lows ≈7% (arid monthly EMC 4–8.5% band) to
+ *                     the 19% MC NDS dry/wet-service boundary under direct
+ *                     wetting: 19 − 7 = 12 points (documented derivation).
+ *     White-oak top, 800 mm across the grain, ct 0.00365 (Table 13-5):
+ *       interior: 800 × 0.00365 × 4  = 11.680 mm
+ *       covered:  800 × 0.00365 × 6  = 17.520 mm
+ *       exposed:  800 × 0.00365 × 12 = 35.040 mm  (3× the indoor swing)
+ * ========================================================================= */
+{
+  Units.set({ system: 'metric' });
+  const ct = K.WOOD_SPECIES.white_oak.ct;
+  console.log(`\n[28] Outdoor movement: 800 × ${ct} × {4, 6, 12} ΔMC`);
+  row('interior movement 800×0.00365×4 (mm)', 800 * ct * 4, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('interior', 'temperate')), 0.01);
+  row('covered movement 800×0.00365×6 (mm)', 800 * ct * 6, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('covered', 'temperate')), 0.01);
+  row('exposed movement 800×0.00365×12 (mm)', 800 * ct * 12, K.movementMM(800, 'white_oak', 'tangential', K.effectiveDMC('exposed', 'temperate')), 0.01);
+  /* The ENGINE's movement check on the same top, indoors and out — the same
+   * spec, one field apart, must report exactly these two numbers. */
+  const mk = exposure => {
+    const { spec, model } = pipeline({
+      meta: { name: 'HC outdoor', template: 'table', level: 'advanced', units: 'mm' },
+      overall: { width: 1400, depth: 800, height: 740 }, wood: { species: 'white_oak' },
+      joinery: { frame: 'mortise_tenon' }, exposure
+    });
+    return Structural.computeIntegrity(spec, model, {}).checks.find(c => c.id === 'move:top_1').data.movementMM;
+  };
+  row('engine movement check, interior table (mm)', 800 * ct * 4, mk('interior'), 0.01);
+  row('engine movement check, exposed table (mm)', 800 * ct * 12, mk('exposed'), 0.01);
+  console.log(`    exposed / interior = ${(mk('exposed') / mk('interior')).toFixed(3)} (hand: 12/4 = 3.000)`);
+}
+
+/* =========================================================================
+ * 17. CHILDREN'S SCOPE (2026-07) — toddler chair, every number by hand.
+ *     Band: EN 1729 mark 1 (K.CHILD) — seat 260, table pair 460.
+ *     Derived plan (CHILD_GEOM, ratios off the adult 445/430/420/470 nominal,
+ *     round-to-5): width r5(260·430/445) = r5(251.24) = 250;
+ *     depth r5(260·420/445) = r5(245.39) = 245;
+ *     back r5(260·470/445) = r5(274.61) = 275.
+ *     ADULT LOADS KEPT (class doctrine): back force 667 N unchanged.
+ *     Rear tilt on the child geometry (beginner → kd_bolt mandate, red oak):
+ *       railY = 260 − 20 − 65/2 = 207.5
+ *       railBottom = 260 − 20 − 65 = 175 → stretcher clamp ceiling 175 − 60
+ *         = 115; asked 200 → strY = 115; arm = 207.5 − 115 = 92.5
+ *       crestY = 260 + 275 − 75/2 = 497.5
+ *       M = (667/2)·(497.5 − 207.5) = 333.5 × 290 = 96 715 N·mm
+ *       R = M/92.5 = 1045.568 N  (vs 840.25 N on the ADULT chair — the
+ *         shorter couple arm RAISES the joint demand; nothing lightened)
+ *       cap = 1800 × (0.63/0.5) = 2268 N → margin 2.169× → PASS (≥1.5)
+ *     Entrapment band (16 CFR 1213 wedge/sphere geometry, advisory):
+ *       slat bottom = (260 + 170) − 60/2 = 400 → gap₁ = 400 − 260 = 140 mm
+ *         → INSIDE the 89–230 band (the advisory must fire)
+ *       crest bottom = 497.5 − 37.5 = 460; slat top = 430 + 30 = 460
+ *         → gap₂ = 0 mm → below the band.
+ *     Band height pin: preschool (mark 2) table = 530 mm from K.CHILD.
+ * ========================================================================= */
+{
+  Units.set({ system: 'metric' });
+  const spec = Spec.correctSpec({ meta: { name: 'HC kid chair', template: 'chair', level: 'beginner', units: 'mm' }, child: { ageBand: 'toddler' } });
+  const model = Parametric.build(spec);
+  const integ = Structural.computeIntegrity(spec, model, {});
+  const r5 = v => Math.round(v / 5) * 5;
+  row('child seat plan width r5(260·430/445) (mm)', r5(260 * 430 / 445), spec.seat.width, 0.01);
+  row('child seat plan depth r5(260·420/445) (mm)', r5(260 * 420 / 445), spec.seat.depth, 0.01);
+  row('child back rise r5(260·470/445) (mm)', r5(260 * 470 / 445), spec.seat.backHeight, 0.01);
+  const railY = 260 - 20 - 65 / 2;
+  const crestY = 260 + 275 - 75 / 2;
+  const arm = railY - 115;
+  const Mhand = (667 / 2) * (crestY - railY);
+  const Rhand = Mhand / arm;
+  const capHand = 1800 * (K.WOOD_SPECIES.red_oak.sg / 0.5);
+  const tilt = integ.checks.find(c => c.id === 'chair:tilt');
+  console.log(`\n[29] Child chair rear tilt (ADULT 667 N kept): M = 333.5 × (${crestY} − ${railY}) = ${Mhand.toFixed(0)} N·mm; R = M/${arm} = ${Rhand.toFixed(2)} N; cap ${capHand} N; margin ${(capHand / Rhand).toFixed(3)}×`);
+  row('child rear-tilt moment M (N·mm)', Mhand, tilt.data.momentNmm);
+  row('child rear-tilt joint demand R (N)', Rhand, tilt.data.demandN);
+  row('child rear-tilt margin (×)', capHand / Rhand, tilt.data.marginRatio);
+  const en = integ.checks.find(c => c.id === 'child:entrap');
+  const gap1 = (260 + 170 - 60 / 2) - 260;
+  const gap2 = (crestY - 75 / 2) - (260 + 170 + 60 / 2);
+  console.log(`    Entrapment: gap₁ = ${gap1} (in 89–230 band → ${en.status}); gap₂ = ${gap2}`);
+  row('child entrap gap seat→slat (mm)', gap1, en.data.gapsMM[0], 0.01);
+  row('child entrap gap slat→crest (mm)', gap2, en.data.gapsMM[1], 0.01);
+  rows.push({ name: 'child in-band opening reported as advisory', hand: 1, engine: en.status === 'advisory' && en.data.inBandCount === 1 ? 1 : 0, errPct: en.status === 'advisory' ? 0 : 100, pass: en.status === 'advisory' && en.data.inBandCount === 1 });
+  const kt = Spec.correctSpec({ meta: { name: 'HC kid table', template: 'table', level: 'beginner', units: 'mm' }, overall: { height: 750 }, child: { ageBand: 'preschool' } });
+  row('child table height = EN 1729 mark 2 (mm)', K.CHILD.BANDS.preschool.tableH, kt.overall.height, 0.001);
+}
+
 const fails = rows.filter(r => !r.pass);
 console.log(`\nworksheet: ${rows.length - fails.length}/${rows.length} agree`);
 for (const f of fails) console.log(`  DISAGREE: ${f.name} (hand ${f.hand} vs engine ${f.engine})`);

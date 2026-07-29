@@ -3,11 +3,13 @@
   "version": null,
   "kind": "spec",
   "expectAfterMigration": {
-    "specVersion": 9,
+    "specVersion": 11,
     "custom": null,
     "wood.sheetSpecies": "baltic_birch",
     "structure.stretcher": "none",
-    "doors": null
+    "doors": null,
+    "exposure": "interior",
+    "child": null
   },
   "expect": {
     "template": "table",
