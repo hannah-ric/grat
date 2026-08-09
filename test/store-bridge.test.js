@@ -17,16 +17,24 @@ function ok(cond, msg) { if (cond) pass++; else { fail++; console.error('  ✗ '
 function eq(a, b, msg) { ok(JSON.stringify(a) === JSON.stringify(b), `${msg} — got ${JSON.stringify(a)}, want ${JSON.stringify(b)}`); }
 function section(name) { console.log('· ' + name); }
 
-/* ---- extract the bootstrap script from the Swift source, verbatim ---- */
+/* ---- extract the bootstrap scripts from the Swift source, verbatim ---- */
 section('bootstrap extraction from WebViewController.swift');
 const swift = fs.readFileSync(path.join(__dirname, '../ios/App/WebViewController.swift'), 'utf8');
-const m = swift.match(/bootstrapJS = """\n([\s\S]*?)\n(\s*)"""/);
-ok(!!m, 'WebViewController.swift contains the bootstrapJS multiline literal');
-if (!m) { console.error(`${pass} passed, ${fail} failed`); process.exit(1); }
 // Swift strips the closing delimiter's indentation from every line of a
 // multiline literal — replicate that to get the exact runtime script.
-const indent = m[2];
-const bootstrap = m[1].split('\n').map(l => (l.startsWith(indent) ? l.slice(indent.length) : l)).join('\n');
+function swiftLiteral(name) {
+  const m = swift.match(new RegExp(name + ' = """\\n([\\s\\S]*?)\\n(\\s*)"""'));
+  if (!m) return null;
+  const indent = m[2];
+  return m[1].split('\n').map(l => (l.startsWith(indent) ? l.slice(indent.length) : l)).join('\n');
+}
+const storagePart = swiftLiteral('storageBootstrapJS');
+const printPart = swiftLiteral('printBootstrapJS');
+ok(!!storagePart, 'WebViewController.swift contains the storageBootstrapJS literal');
+ok(!!printPart, 'WebViewController.swift contains the printBootstrapJS literal');
+if (!storagePart || !printPart) { console.error(`${pass} passed, ${fail} failed`); process.exit(1); }
+// Offline mode injects both scripts — run them exactly as the shell does.
+const bootstrap = storagePart + '\n' + printPart;
 ok(bootstrap.includes('window.storage'), 'bootstrap installs window.storage');
 
 /* ---- fake the native side with StoreBridge semantics ----
