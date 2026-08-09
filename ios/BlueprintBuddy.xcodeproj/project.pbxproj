@@ -10,6 +10,7 @@
 		AA0000000000000000000101 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000001 /* AppDelegate.swift */; };
 		AA0000000000000000000102 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000002 /* SceneDelegate.swift */; };
 		AA0000000000000000000103 /* WebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000003 /* WebViewController.swift */; };
+		AA0000000000000000000106 /* NativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000008 /* NativeBridge.swift */; };
 		AA0000000000000000000104 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000004 /* Assets.xcassets */; };
 		AA0000000000000000000105 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
@@ -18,6 +19,7 @@
 		AA0000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		AA0000000000000000000002 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		AA0000000000000000000003 /* WebViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewController.swift; sourceTree = "<group>"; };
+		AA0000000000000000000008 /* NativeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBridge.swift; sourceTree = "<group>"; };
 		AA0000000000000000000004 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA0000000000000000000005 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		AA0000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -49,6 +51,7 @@
 				AA0000000000000000000001 /* AppDelegate.swift */,
 				AA0000000000000000000002 /* SceneDelegate.swift */,
 				AA0000000000000000000003 /* WebViewController.swift */,
+				AA0000000000000000000008 /* NativeBridge.swift */,
 				AA0000000000000000000004 /* Assets.xcassets */,
 				AA0000000000000000000005 /* LaunchScreen.storyboard */,
 				AA0000000000000000000006 /* Info.plist */,
@@ -156,6 +159,7 @@
 				AA0000000000000000000101 /* AppDelegate.swift in Sources */,
 				AA0000000000000000000102 /* SceneDelegate.swift in Sources */,
 				AA0000000000000000000103 /* WebViewController.swift in Sources */,
+				AA0000000000000000000106 /* NativeBridge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

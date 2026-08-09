@@ -16,7 +16,7 @@ Blueprint Buddy — an AI-guided parametric furniture design studio and workshop
 npm install --ignore-scripts   # only needed for the browser suites (Playwright + axe-core are the only devDependencies)
 npm run build                  # node build.js → dist/index.html (single file) + dist/robots.txt + dist/sw.js
 npm run dev                    # build + serve on $PORT (default 3000) + watch-rebuild + /api/chat proxy
-npm test                       # unit + audit + golden + battery + server + credits suites (plain node, no browser, no install)
+npm test                       # unit + audit + golden + battery + server + credits + store-bridge suites (plain node, no browser, no install)
 npm run test:smoke             # build + drive the real app in headless Chromium
 npm run test:porch             # build + drive the landing (porch) in headless Chromium: gate matrix, scrub, calculator, overture, reduced-motion parity
 npm run test:gating            # the four entitlement states against a configured mock origin

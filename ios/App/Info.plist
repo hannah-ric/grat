@@ -24,6 +24,10 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera opens only if you choose “Take Photo” when adding a reference photo of furniture to design from.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Lets you save exported drawings to your photo library when you choose to from the share sheet.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
