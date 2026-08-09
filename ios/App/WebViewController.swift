@@ -90,12 +90,41 @@ final class WebViewController: UIViewController {
         loadApp()
     }
 
+    /// Dialogs and share sheets must present from the TOP of the presentation
+    /// stack: presenting from a covered controller fails silently, and for
+    /// confirm()/prompt() a failed presentation would strand the page's
+    /// blocked JavaScript forever (WebKit waits on the completion handler).
+    private var topPresenter: UIViewController {
+        var top: UIViewController = self
+        while let presented = top.presentedViewController { top = presented }
+        return top
+    }
+
     private func loadApp() {
         guard let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "www") else {
             assertionFailure("www/index.html missing — did the Bundle Web App build phase run?")
+            showBundleError()
             return
         }
         webView.loadFileURL(index, allowingReadAccessTo: index.deletingLastPathComponent())
+    }
+
+    /// Release-build fallback for a broken bundle: a blank screen would be
+    /// undiagnosable; say what happened and how to fix it.
+    private func showBundleError() {
+        let label = UILabel()
+        label.text = "This build is incomplete — www/index.html is missing from the app bundle.\n\nRebuild in Xcode: the “Bundle Web App” phase copies dist/index.html from the repository."
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.textColor = .label
+        label.font = .preferredFont(forTextStyle: .callout)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            label.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),
+        ])
     }
 
     private func presentPrint() {
@@ -190,7 +219,7 @@ extension WebViewController: WKDownloadDelegate {
         let share = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         share.popoverPresentationController?.sourceView = view
         share.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-        present(share, animated: true)
+        topPresenter.present(share, animated: true)
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
@@ -216,7 +245,7 @@ extension WebViewController: WKUIDelegate {
                  completionHandler: @escaping () -> Void) {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
-        present(alert, animated: true)
+        topPresenter.present(alert, animated: true)
     }
 
     func webView(_ webView: WKWebView,
@@ -226,7 +255,7 @@ extension WebViewController: WKUIDelegate {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
-        present(alert, animated: true)
+        topPresenter.present(alert, animated: true)
     }
 
     func webView(_ webView: WKWebView,
@@ -240,6 +269,6 @@ extension WebViewController: WKUIDelegate {
         alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in
             completionHandler(alert?.textFields?.first?.text)
         })
-        present(alert, animated: true)
+        topPresenter.present(alert, animated: true)
     }
 }
