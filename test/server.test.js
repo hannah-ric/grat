@@ -1150,6 +1150,99 @@ function objectBodyReq(url, bodyObj, headers) {
     cleanEnv();
   }
 
+  /* ---------------- auth: account deletion (App Store 5.1.1(v)) ---------------- */
+  section('auth: POST action=delete wipes the account and its data');
+  {
+    cleanEnv();
+    process.env.AUTH_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
+    const drop = useTempKV();
+    const KV = require('../api/_kv.js');
+    const kv = KV.backend();
+    const post = (body, headers) => fakeReq('/api/auth', { method: 'POST', body, headers });
+    const sessOf = r => [].concat(r.headers['set-cookie'] || []).find(c => c.startsWith('bb_sess=') && !/bb_sess=;/.test(c));
+    const tokOf = c => decodeURIComponent(c.split(';')[0].split('=').slice(1).join('='));
+
+    let res = fakeRes();
+    await auth(post({ action: 'register', email: 'gone@example.com', password: 'goodpassword1', name: 'Gone' }), res);
+    eq(res.statusCode, 200, 'account to delete registers');
+    const tok = tokOf(sessOf(res));
+    const uid = S.verify(tok, process.env.AUTH_SECRET).uid;
+    const cookie = { cookie: `bb_sess=${encodeURIComponent(tok)}` };
+
+    // Seed every per-account root a real account can own: client docs (via
+    // /api/store), credits/ledger, entitlement usage, issued blueprints.
+    const month = new Date().toISOString().slice(0, 7);
+    const seeds = {
+      'projects:index': JSON.stringify([{ id: 'p1', name: 'Bench' }]),
+      'project:p1': '{"id":"p1"}',
+      'thumb:p1': '"data:x"',
+      'prices:v1': '{}', 'prefs:v2': '{}', 'gallery:thumbs:v1': '{}',
+      credits: '{}', creditbal: '1', ledger: '[]', subscription: '{}',
+      [`usage:ai:${month}`]: '3', [`usage:tokens:${month}`]: '900',
+      'designs:index': JSON.stringify([{ id: 'd1' }]),
+      'design:d1': JSON.stringify({ id: 'd1', artifactHash: 'ah1', specHashes: ['h1', 'h2'] }),
+      'bphash:h1': 'd1', 'bphash:h2': 'd1', 'artifact:ah1': '{}'
+    };
+    for (const [doc, v] of Object.entries(seeds)) await kv.set(`bb:${uid}:${doc}`, v);
+
+    res = fakeRes();
+    await auth(post({ action: 'delete', password: 'goodpassword1' }), res);
+    eq(res.statusCode, 401, 'delete without a session → 401');
+
+    res = fakeRes();
+    await auth(post({ action: 'delete', password: 'wrongpassword' }, cookie), res);
+    eq(res.statusCode, 401, 'delete with the wrong password → 401');
+    eq(json(res).error, 'invalid_credentials', 'with the same generic code as login');
+    ok(!!(await kv.get(`bb:${uid}:project:p1`)), 'a refused delete removes nothing');
+
+    res = fakeRes();
+    await auth(post({ action: 'delete', password: 'goodpassword1' }, cookie), res);
+    eq(res.statusCode, 200, 'delete with the right password succeeds');
+    ok(json(res).ok === true, 'and says so');
+    ok([].concat(res.headers['set-cookie'] || []).some(c => /bb_sess=;/.test(c)), 'the session cookie is cleared');
+
+    const left = Object.keys(JSON.parse(fs.readFileSync(process.env.BB_KV_FILE, 'utf8')))
+      .filter(k => k.includes(uid) || k.startsWith('bb:cred:'));
+    eq(left, [], 'every per-account key AND the credential record are gone');
+
+    // Coverage guard: every static doc-name literal the CLIENT can write
+    // (src/*.js Store.set/get/del first-arg literals plus the doc-key
+    // constants in store.js/ui.js) must appear in auth.js's WIPE_DOCS.
+    // Dynamic families (project:/thumb:) are wiped via the projects index.
+    // A new client document must never silently survive account deletion —
+    // exactly the bug this guard was written against (gallery:thumbs:v1).
+    const srcDir = path.join(__dirname, '../src');
+    const clientDocs = new Set();
+    for (const f of fs.readdirSync(srcDir).filter(n => n.endsWith('.js'))) {
+      const text = fs.readFileSync(path.join(srcDir, f), 'utf8');
+      for (const m of text.matchAll(/Store\.(?:set|get|del)\(\s*'([^']+)'/g)) clientDocs.add(m[1]);
+      for (const m of text.matchAll(/(?:INDEX_KEY|PRICES_KEY|PREFS_KEY|THUMBS_KEY)\s*=\s*'([^']+)'/g)) clientDocs.add(m[1]);
+    }
+    ok(clientDocs.has('gallery:thumbs:v1'), 'the guard actually sees client doc literals');
+    const uncovered = [...clientDocs].filter(d => !auth.WIPE_DOCS.includes(d));
+    eq(uncovered, [], 'every static client doc root is covered by the account wipe');
+
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'gone@example.com', password: 'goodpassword1' }), res);
+    eq(res.statusCode, 401, 'the deleted account cannot sign back in');
+    eq(json(res).error, 'invalid_credentials', 'indistinguishable from an address that never existed');
+
+    // Admin accounts are env-configured — deletion is an env-var operation.
+    process.env.BB_ADMIN_USER = 'ops@example.com';
+    process.env.BB_ADMIN_PASSWORD = 'admin-password-long-1';
+    res = fakeRes();
+    await auth(post({ action: 'login', email: 'ops@example.com', password: 'admin-password-long-1' }), res);
+    eq(res.statusCode, 200, 'admin signs in through the same form');
+    const aCookie = { cookie: `bb_sess=${encodeURIComponent(tokOf(sessOf(res)))}` };
+    res = fakeRes();
+    await auth(post({ action: 'delete' }, aCookie), res);
+    eq(res.statusCode, 400, 'admin sessions refuse deletion');
+    eq(json(res).error, 'admin_account', 'with a branchable code');
+
+    drop();
+    cleanEnv();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exitCode = 1;
 })().catch(e => { console.error('server tests crashed:', e); process.exitCode = 1; });

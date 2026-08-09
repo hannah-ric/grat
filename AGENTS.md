@@ -17,7 +17,7 @@ a prompt, and never let model output write a dimension directly into state.
 npm install --ignore-scripts   # devDependencies: Playwright + axe-core (tests only)
 npm run build                  # node build.js → dist/index.html + robots.txt + sw.js
 npm run dev                    # build + serve on $PORT (3000) + watch + /api/chat proxy
-npm test                       # unit + audit + golden + battery + server + credits (node, no browser)
+npm test                       # unit + audit + golden + battery + server + credits + store-bridge (node, no browser)
 npm run test:smoke             # build + drive the real app in headless Chromium
 npm run test:porch             # build + drive the landing (porch) in headless Chromium
 npm run test:gating            # the four entitlement states on a configured mock origin

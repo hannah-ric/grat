@@ -39,6 +39,7 @@ const Admin = require('./_admin.js');
 const Credits = require('./_credits.js');
 const Env = require('./_env-check.js');
 const Log = require('./_log.js');
+const KV = require('./_kv.js');
 
 // Audit env vars once at cold start so missing keys surface immediately in logs.
 Env.audit();
@@ -104,11 +105,112 @@ const PASSWORD_ERROR_STATUS = {
 };
 const EXPECTED_PASSWORD_ERROR = new Set(['email_taken', 'too_many_attempts', 'invalid_email', 'weak_password', 'invalid_password', 'invalid_credentials', 'unknown_action', 'bad_request']);
 
+/* Account deletion (POST {action:'delete', password?}). App Store guideline
+ * 5.1.1(v) requires in-app deletion wherever accounts can be created, and
+ * it's the right thing to offer everywhere. The KV client has no scan, so
+ * the wipe enumerates every root an account can own: client documents
+ * through the projects index, credits/ledger/balance, entitlement usage
+ * over a trailing window, issued blueprints through the designs index
+ * (each design record lists its bphash entries and artifact), and finally
+ * the credential record. Sessions are stateless, so an already-copied
+ * cookie stays verifiable until it expires — with the credential record
+ * and every document gone it authenticates an empty, unrecoverable account. */
+const USAGE_WIPE_MONTHS = 36;
+
+/* Every STATIC per-account document root — client docs (the /api/store
+ * namespace the app writes) plus the server-side reserved roots. Dynamic
+ * names (project:{id}, thumb:{id}, design:{id}, bphash:{hash},
+ * artifact:{hash}, usage:*:{month}) are enumerated from their indexes and
+ * the month window in wipeAccount. test/server.test.js greps the client
+ * source for doc-name literals and fails if one is missing here, so a new
+ * client document can never silently survive account deletion. */
+const WIPE_DOCS = [
+  'projects:index', 'prices:v1', 'prefs:v2', 'prefs:v1',
+  'gallery:thumbs:v1', 'selftest:probe',
+  'credits', 'creditbal', 'ledger', 'subscription', 'designs:index'
+];
+
+async function wipeAccount(kv, uid) {
+  const pre = `bb:${uid}:`;
+  const del = async doc => { try { await kv.del(pre + doc); } catch (e) { /* best effort — keep wiping */ } };
+  const read = async doc => {
+    try { const raw = await kv.get(pre + doc); return raw ? JSON.parse(raw) : null; }
+    catch (e) { return null; }
+  };
+
+  const projects = await read('projects:index');
+  for (const row of (Array.isArray(projects) ? projects : []).slice(0, 1000)) {
+    if (!row || !row.id) continue;
+    await del('project:' + row.id);
+    await del('thumb:' + row.id);
+  }
+
+  const designs = await read('designs:index');
+  for (const row of (Array.isArray(designs) ? designs : []).slice(0, 1000)) {
+    if (!row || !row.id) continue;
+    const design = await read('design:' + row.id);
+    const hashes = design && Array.isArray(design.specHashes) ? design.specHashes : [];
+    for (const h of hashes.slice(0, 1000)) await del('bphash:' + h);
+    if (design && design.artifactHash) await del('artifact:' + design.artifactHash);
+    await del('design:' + row.id);
+  }
+
+  for (const doc of WIPE_DOCS) await del(doc);
+
+  const now = new Date();
+  for (let i = 0; i < USAGE_WIPE_MONTHS; i++) {
+    const m = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)).toISOString().slice(0, 7);
+    await del('usage:ai:' + m);
+    await del('usage:tokens:' + m);
+  }
+
+  if (uid.startsWith('email:')) {
+    try { await kv.del('bb:cred:' + uid.slice('email:'.length)); } catch (e) { /* best effort */ }
+  }
+}
+
+async function handleDelete(req, res, body) {
+  let sess = S.sessionFrom(req);
+  if (sess && sess.p === 'admin') {
+    // Rotation is revocation (api/_admin.js): a stale fingerprint reads as
+    // signed out. A LIVE admin is env vars, not data — nothing to delete.
+    if (!Admin.isAdmin(sess)) sess = null;
+    else return sendJSON(res, 400, { error: 'admin_account' });
+  }
+  if (!sess || !sess.uid) return sendJSON(res, 401, { error: 'signed_out' });
+  const kv = KV.backend();
+  if (!kv) return sendJSON(res, 503, { error: 'storage_unconfigured' });
+  // Password accounts confirm with their password, sharing login's generic
+  // error code (no oracle). OAuth accounts have no password — the HttpOnly
+  // session is the proof of control.
+  if (sess.uid.startsWith('email:')) {
+    try {
+      const raw = await kv.get('bb:cred:' + sess.uid.slice('email:'.length));
+      if (raw) {
+        const record = JSON.parse(raw);
+        await P.login({ email: record.email, password: String((body && body.password) || '') },
+          { ip: Credits.clientIp(req) });
+      }
+    } catch (e) {
+      const code = (e && e.code) || 'invalid_credentials';
+      return sendJSON(res, PASSWORD_ERROR_STATUS[code] || 401,
+        { error: EXPECTED_PASSWORD_ERROR.has(code) ? code : 'invalid_credentials' });
+    }
+  }
+  try { await wipeAccount(kv, sess.uid); }
+  catch (e) {
+    Log.report('auth', 'account_delete_failed', e);
+    return sendJSON(res, 500, { error: 'delete_failed' });
+  }
+  return sendJSON(res, 200, { ok: true }, [S.clearSessionCookie(req)]);
+}
+
 async function handlePassword(req, res) {
-  if (!P.available() && !Admin.available()) return sendJSON(res, 404, { error: 'password auth not configured' });
   let body;
   try { body = await readBody(req); } catch (e) { return sendJSON(res, 400, { error: 'bad_request' }); }
   const action = body && body.action;
+  if (action === 'delete') return handleDelete(req, res, body);
+  if (!P.available() && !Admin.available()) return sendJSON(res, 404, { error: 'password auth not configured' });
   const fail = code => Object.assign(new Error(code), { code });
   try {
     let user = null;
@@ -263,3 +365,7 @@ module.exports = async function handler(req, res) {
 
   return sendJSON(res, 400, { error: 'unknown auth request' });
 };
+
+// Exposed for test/server.test.js: the deletion coverage guard greps the
+// client source and asserts every static doc root is in this list.
+module.exports.WIPE_DOCS = WIPE_DOCS;

@@ -653,6 +653,7 @@ var BB = globalThis.BB = globalThis.BB || {};
   const PROVIDER_LABELS = { google: 'Google', github: 'GitHub', dev: 'Dev (local)' };
   let signinProbe = 'idle'; // idle | busy | done
   let signinMode = 'login'; // login | register — the email/password form's mode
+  let signinDelete = false; // the account view's delete-confirmation panel
   // Server error codes (api/_passwords.js) → human copy. Login stays generic
   // on a bad address so the page never reveals which emails are registered.
   const PASSWORD_ERROR_COPY = {
@@ -669,6 +670,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     if (!box) return;
     const St = BB.Store;
     const a = St && St.auth ? St.auth() : { user: null, providers: [] };
+    if (!a.user) signinDelete = false; // never open a stale confirm on the next sign-in
     if (signinProbe === 'idle' && St && St.init) {
       signinProbe = 'busy';
       Promise.resolve()
@@ -688,6 +690,7 @@ var BB = globalThis.BB = globalThis.BB || {};
       return b;
     };
     if (a.user) {
+      if (signinDelete) { renderDeleteConfirm(box, a); return; }
       const row = el('div', 'signin-user',
         (a.user.avatar ? `<img class="signin-avatar" src="${esc(a.user.avatar)}" alt="" referrerpolicy="no-referrer">` : '') +
         `<span>${esc(a.user.name)}</span>`);
@@ -697,6 +700,13 @@ var BB = globalThis.BB = globalThis.BB || {};
       const out = btn('', 'Sign out');
       out.onclick = () => { location.href = St.logoutUrl; };
       box.append(open, out);
+      // Admin is env-configured (api/_admin.js) — nothing stored to delete.
+      if (!a.user.admin) {
+        const del = el('button', 'linkish signin-delete-link', 'Delete account…');
+        del.type = 'button';
+        del.onclick = () => { signinDelete = true; renderSignin(); };
+        box.append(el('p', 'signin-note', ''), del);
+      }
       return;
     }
     const hasOAuth = !!(a.providers && a.providers.length);
@@ -726,6 +736,48 @@ var BB = globalThis.BB = globalThis.BB || {};
       // OAuth-only origin (no password auth configured).
       box.append(note('Sign-in runs through your existing account. Your projects then follow you to any device.'));
     }
+  }
+
+  /* The deletion confirm panel — App Store guideline 5.1.1(v): a service
+   * with account creation must offer account deletion in-app. Password
+   * accounts re-enter their password (the server refuses with login's
+   * generic code on a mismatch); OAuth accounts confirm with the button
+   * alone. Device-local designs survive — only the account and its cloud
+   * data go, and the copy says exactly that. */
+  function renderDeleteConfirm(box, a) {
+    const form = el('form', 'signin-form');
+    form.setAttribute('novalidate', '');
+    const needsPassword = a.user && a.user.provider === 'password';
+    form.innerHTML =
+      `<h2 class="signin-form-title">Delete your account?</h2>
+       <p class="signin-note">This permanently removes your account, cloud projects, credits, and issued blueprints. Designs saved on this device stay on this device. This can’t be undone.</p>` +
+      (needsPassword ? `<label class="signin-field"><span>Confirm with your password</span>
+         <input type="password" name="password" autocomplete="current-password" required placeholder="Your password"></label>` : '') +
+      `<p class="signin-error" role="alert" aria-live="polite" hidden></p>
+       <button type="submit" class="btn primary signin-btn signin-delete-confirm">Permanently delete my account</button>
+       <button type="button" class="btn signin-btn" data-keep>Keep my account</button>`;
+    const errEl = form.querySelector('.signin-error');
+    const submit = form.querySelector('.signin-delete-confirm');
+    form.querySelector('[data-keep]').onclick = () => { signinDelete = false; renderSignin(); };
+    form.onsubmit = async e => {
+      e.preventDefault();
+      errEl.hidden = true;
+      submit.disabled = true;
+      submit.textContent = 'Deleting…';
+      try {
+        await BB.Store.deleteAccount(String(new FormData(form).get('password') || ''));
+        signinDelete = false;
+        renderSignin();
+        box.prepend(el('p', 'signin-note', 'Your account and its cloud data are deleted. Designs saved on this device are still here.'));
+        updateNav();
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = 'Permanently delete my account';
+        errEl.textContent = PASSWORD_ERROR_COPY[err && err.code] || 'Deletion failed. Check your connection and try again.';
+        errEl.hidden = false;
+      }
+    };
+    box.append(form);
   }
 
   /* The email + password form. One <form> so Enter submits and browser

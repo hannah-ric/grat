@@ -249,6 +249,36 @@ var BB = globalThis.BB = globalThis.BB || {};
     catch (e) { auth = auth || { providers: [], passwordAuth: true }; auth.user = data.user; }
     return authState();
   }
+  /* Permanent account deletion (POST action:'delete'). The server verifies a
+   * password account's password (sharing login's generic error code), wipes
+   * every per-account document — cloud projects, credits, issued blueprints,
+   * the credential record — and clears the session cookie. Device-local
+   * copies are untouched: they belong to the device, and keeping them means
+   * deletion never destroys the design someone is looking at. Rejects with
+   * .code for the UI, exactly like passwordAuth. */
+  async function deleteAccount(password) {
+    const r = await fetch('/api/auth', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', password: password || '' })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) {
+      const e = new Error(data.error || 'delete_failed');
+      e.code = data.error || 'delete_failed';
+      throw e;
+    }
+    // Drop the USER, keep the deployment's capabilities: providers,
+    // passwordAuth, and storage describe the server, not the session — the
+    // sign-in form must still render so someone else (or a regretful owner
+    // with a fresh account) can sign in.
+    auth = auth
+      ? { user: null, billing: null, providers: auth.providers || [], passwordAuth: !!auth.passwordAuth, storage: !!auth.storage }
+      : null;
+    setRemote(false);
+    return authState();
+  }
+
   const setBilling = billing => {
     auth = auth || { user: null, providers: [], storage: false };
     auth.billing = billing;
@@ -465,7 +495,7 @@ var BB = globalThis.BB = globalThis.BB || {};
     get, set, del, hasStorage,
     consumeWriteDenial: () => { const d = writeDenial; writeDenial = null; return d; },
     isPersistent: () => persistenceMode() !== 'session',
-    persistenceMode, init, auth: authState, setBilling, onModeChange, passwordAuth,
+    persistenceMode, init, auth: authState, setBilling, onModeChange, passwordAuth, deleteAccount,
     loginUrl: p => '/api/auth?provider=' + encodeURIComponent(p),
     logoutUrl: '/api/auth?logout=1',
     newId, loadIndex, saveProject, loadProject, loadThumb, deleteProject, renameProject, duplicateProject,
